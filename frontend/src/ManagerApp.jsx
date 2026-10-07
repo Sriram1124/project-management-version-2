@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { useLocation, useNavigate } from 'react-router-dom';
 import Sidebar from './components/layout/Sidebar';
 import Header from './components/layout/Header';
 import ManagerDashboardView from './components/views/ManagerDashboardView';
@@ -9,6 +10,7 @@ import TechLeadsView from './components/views/TechLeadsView';
 import TasksView from './components/views/TasksView';
 import ManagerMyTasksView from './components/views/ManagerMyTasksView';
 import ReportsView from './components/views/ReportsView';
+import TimesheetView from './components/views/TimesheetView';
 import InternPortalView from './components/views/InternPortalView';
 import AlertModal from './components/modals/AlertModal';
 import QuickSearchModal from './components/modals/QuickSearchModal';
@@ -20,11 +22,41 @@ import { notificationsService } from './services/notifications.service';
 
 export default function ManagerApp() {
   const { user: authUser, logout } = useAuth();
+  const location = useLocation();
+  const navigate = useNavigate();
+
+  const getViewFromPath = (pathname) => {
+    const clean = pathname.replace(/^\/manager\/?/, '');
+    if (!clean || clean === 'dashboard') return 'dashboard';
+    if (['projects', 'my-tasks', 'tasks', 'interns', 'tech-leads', 'reports', 'timesheet', 'channels'].includes(clean)) {
+      return clean;
+    }
+    return 'dashboard';
+  };
+
   const [currentRole, setCurrentRole] = useState('manager'); // 'manager' | 'intern'
-  const [currentView, setCurrentView] = useState('dashboard');
+  const [currentView, setCurrentView] = useState(() => getViewFromPath(location.pathname));
   const [activeProjectId, setActiveProjectId] = useState(null);
   const [activeProjectName, setActiveProjectName] = useState(null);
   const [activeProjectTab, setActiveProjectTab] = useState('overview');
+
+  useEffect(() => {
+    const v = getViewFromPath(location.pathname);
+    if (v !== currentView && !activeProjectId) {
+      setCurrentView(v);
+    }
+  }, [location.pathname, activeProjectId]);
+
+  const handleNavigate = (viewId) => {
+    setCurrentView(viewId);
+    setActiveProjectId(null);
+    if (currentRole !== 'manager') setCurrentRole('manager');
+    if (viewId === 'dashboard') {
+      navigate('/manager/dashboard');
+    } else {
+      navigate(`/manager/${viewId}`);
+    }
+  };
   const [isSearchOpen, setIsSearchOpen] = useState(false);
   const [isAlertModalOpen, setIsAlertModalOpen] = useState(false);
   const [selectedException, setSelectedException] = useState(null);
@@ -175,6 +207,8 @@ export default function ManagerApp() {
         return 'Task Deadlines & Boards';
       case 'reports':
         return 'Intern Performance Reports';
+      case 'timesheet':
+        return 'Timesheet & Attendance';
       case 'channels':
         return 'Teams Channel: Forms & Broadcasts';
       default:
@@ -196,6 +230,7 @@ export default function ManagerApp() {
         'tech-leads': 'Tech Leads',
         tasks: 'Tasks',
         reports: 'Performance Reports',
+        timesheet: 'Timesheet',
         channels: 'Teams Channel',
       }[currentView] || 'Manager Dashboard';
 
@@ -203,15 +238,11 @@ export default function ManagerApp() {
   };
 
   return (
-    <div className="min-h-screen flex bg-[#F7F8FC] font-sans antialiased text-slate-800 selection:bg-purple-200">
+    <div className="h-screen flex overflow-hidden bg-[#F7F8FC] font-sans antialiased text-slate-800 selection:bg-purple-200">
       {/* Sidebar navigation */}
       <Sidebar
         currentView={currentView}
-        setCurrentView={(view) => {
-          setCurrentView(view);
-          setActiveProjectId(null);
-          if (currentRole !== 'manager') setCurrentRole('manager');
-        }}
+        setCurrentView={(view) => handleNavigate(view)}
         activeProjectId={activeProjectId}
         onExitProject={handleExitProject}
         activeProjectTab={activeProjectTab}
@@ -224,7 +255,7 @@ export default function ManagerApp() {
       />
 
       {/* Main Content Area */}
-      <div className="flex-1 flex flex-col min-w-0">
+      <div className="flex-1 flex flex-col min-w-0 min-h-0">
         {/* Header */}
         <Header
           breadcrumbs={getBreadcrumbs()}
@@ -237,14 +268,13 @@ export default function ManagerApp() {
             if (crumb === 'Projects') {
               handleExitProject();
             } else if (crumb === 'Console') {
-              setActiveProjectId(null);
-              setCurrentView('dashboard');
+              handleNavigate('dashboard');
             }
           }}
         />
 
         {/* Page Content Container */}
-        <main className="flex-1 p-4 sm:p-6 overflow-y-auto">
+        <main className="flex-1 min-h-0 p-4 sm:p-6 overflow-y-auto">
           {currentRole === 'intern' ? (
             <InternPortalView onSwitchToManager={() => setCurrentRole('manager')} />
           ) : activeProjectId ? (
@@ -264,9 +294,7 @@ export default function ManagerApp() {
             <>
               {currentView === 'dashboard' && (
                 <ManagerDashboardView
-                  onNavigate={(v) => {
-                    setCurrentView(v);
-                  }}
+                  onNavigate={(v) => handleNavigate(v)}
                   onOpenAlertModal={() => setIsAlertModalOpen(true)}
                   onOpenExceptionModal={(excId) => setSelectedException(excId)}
                   onSendAlertMessage={handleCustomAlertFromBar}
@@ -296,6 +324,7 @@ export default function ManagerApp() {
               {currentView === 'my-tasks' && <ManagerMyTasksView onToast={triggerToast} />}
               {currentView === 'tasks' && <TasksView onToast={triggerToast} />}
               {currentView === 'reports' && <ReportsView />}
+              {currentView === 'timesheet' && <TimesheetView onToast={triggerToast} />}
               {currentView === 'channels' && (
                 <TeamsChannelView
                   forms={channelForms}

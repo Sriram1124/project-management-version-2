@@ -1,5 +1,13 @@
-import React from 'react';
-import { X, User, KeyRound, UserX, Shield, Calendar, Mail, Hash, CheckCircle2, Clock } from 'lucide-react';
+import React, { useEffect, useState } from 'react';
+import { X, User, KeyRound, UserX, Shield, Calendar, Mail, Hash, CheckCircle2, Clock, Loader2, RefreshCw } from 'lucide-react';
+import { timesheetService } from '../../services/timesheet.service';
+
+const formatMinutes = (minutes = 0) => {
+  const total = Number(minutes) || 0;
+  return `${Math.floor(total / 60)}h ${total % 60}m`;
+};
+
+const today = () => new Date().toISOString().slice(0, 10);
 
 export default function UserDetailModal({
   isOpen,
@@ -8,11 +16,41 @@ export default function UserDetailModal({
   onOpenResetPassword,
   onOpenDeactivate
 }) {
+  const [reportPeriod, setReportPeriod] = useState('day');
+  const [reportDate, setReportDate] = useState(today());
+  const [report, setReport] = useState(null);
+  const [reportLoading, setReportLoading] = useState(false);
+  const [reportError, setReportError] = useState('');
+
+  const loadReport = async () => {
+    if (!user?.id) return;
+    try {
+      setReportLoading(true);
+      setReportError('');
+      const response = await timesheetService.getUserReport(user.id, {
+        period: reportPeriod,
+        date: reportDate,
+      });
+      setReport(response.report || null);
+    } catch (error) {
+      setReport(null);
+      setReportError(error.message || 'Unable to load timesheet report.');
+    } finally {
+      setReportLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    if (isOpen && user?.id) loadReport();
+  }, [isOpen, user?.id, reportPeriod, reportDate]);
+
   if (!isOpen || !user) return null;
+
+  const totals = report?.totals || {};
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs">
-      <div className="bg-white rounded-2xl border border-slate-200 shadow-2xl max-w-md w-full overflow-hidden animate-in fade-in zoom-in-95 duration-200">
+      <div className="bg-white rounded-2xl border border-slate-200 shadow-2xl max-w-3xl w-full max-h-[92vh] overflow-y-auto animate-in fade-in zoom-in-95 duration-200">
         
         {/* Header */}
         <div className="p-5 border-b border-slate-100 flex items-center justify-between bg-slate-50/50">
@@ -114,6 +152,56 @@ export default function UserDetailModal({
               </div>
             )}
           </div>
+
+          <section className="mt-5 rounded-xl border border-violet-100 bg-violet-50/30 p-4 text-xs">
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <div>
+                <h3 className="flex items-center gap-2 text-sm font-bold text-slate-900"><Clock className="h-4 w-4 text-violet-600" /> Timesheet / Work Report</h3>
+                <p className="mt-1 text-[11px] text-slate-500">Backend-recorded attendance and task time for this member.</p>
+              </div>
+              <div className="flex items-center gap-1 rounded-lg border border-violet-100 bg-white p-1">
+                {['day', 'week', 'month'].map((period) => (
+                  <button key={period} type="button" onClick={() => setReportPeriod(period)} className={`rounded-md px-2.5 py-1 text-[11px] font-bold capitalize ${reportPeriod === period ? 'bg-violet-600 text-white' : 'text-slate-500 hover:bg-violet-50'}`}>
+                    {period}
+                  </button>
+                ))}
+                <input type="date" value={reportDate} onChange={(event) => setReportDate(event.target.value)} className="ml-1 rounded-md border border-slate-200 px-2 py-1 text-[11px] text-slate-600" />
+                <button type="button" onClick={loadReport} disabled={reportLoading} title="Refresh timesheet" className="rounded-md p-1.5 text-slate-500 hover:bg-violet-50 hover:text-violet-700 disabled:opacity-50"><RefreshCw className={`h-3.5 w-3.5 ${reportLoading ? 'animate-spin' : ''}`} /></button>
+              </div>
+            </div>
+
+            {reportLoading ? (
+              <div className="flex items-center justify-center gap-2 py-8 text-slate-500"><Loader2 className="h-4 w-4 animate-spin text-violet-600" /> Loading report...</div>
+            ) : reportError ? (
+              <div className="mt-3 flex items-center justify-between rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-rose-700"><span>{reportError}</span><button type="button" onClick={loadReport} title="Retry" className="rounded p-1 hover:bg-rose-100"><RefreshCw className="h-3.5 w-3.5" /></button></div>
+            ) : (
+              <>
+                <div className="mt-4 grid grid-cols-2 gap-2 sm:grid-cols-5">
+                  {[
+                    ['Gross', totals.gross_office_minutes],
+                    ['Break', totals.break_minutes],
+                    ['Net work', totals.net_working_minutes],
+                    ['Task time', totals.task_minutes],
+                    ['Unallocated', totals.unallocated_minutes],
+                  ].map(([label, value]) => <div key={label} className="rounded-lg border border-white bg-white p-2.5"><div className="text-[10px] font-semibold text-slate-400">{label}</div><div className="mt-1 font-bold text-slate-800">{formatMinutes(value)}</div></div>)}
+                </div>
+
+                <div className="mt-4 overflow-x-auto rounded-lg border border-slate-200 bg-white">
+                  <table className="w-full min-w-[560px] text-left text-[11px]"><thead className="bg-slate-50 text-[10px] uppercase tracking-wide text-slate-500"><tr><th className="px-3 py-2">Date</th><th className="px-3 py-2">Attendance</th><th className="px-3 py-2">Net Work</th><th className="px-3 py-2">Task Time</th><th className="px-3 py-2">Unallocated</th></tr></thead><tbody className="divide-y divide-slate-100">{report?.days?.length ? report.days.map((day) => <tr key={day.date}><td className="px-3 py-2 font-semibold text-slate-700">{day.date}</td><td className="px-3 py-2 text-slate-600">{formatMinutes(day.attendance_minutes)}</td><td className="px-3 py-2 text-slate-600">{formatMinutes(day.net_working_minutes)}</td><td className="px-3 py-2 text-slate-600">{formatMinutes(day.task_minutes)}</td><td className="px-3 py-2 text-slate-600">{formatMinutes(day.unallocated_minutes)}</td></tr>) : <tr><td colSpan="5" className="px-3 py-5 text-center text-slate-400">No recorded work for this period.</td></tr>}</tbody></table>
+                </div>
+
+                <div className="mt-4 overflow-x-auto rounded-lg border border-slate-200 bg-white">
+                  <table className="w-full min-w-[860px] text-left text-[11px]"><thead className="bg-slate-50 text-[10px] uppercase tracking-wide text-slate-500"><tr><th className="px-3 py-2">Task</th><th className="px-3 py-2">Project</th><th className="px-3 py-2">Assigned</th><th className="px-3 py-2">Completed</th><th className="px-3 py-2">Lifecycle</th><th className="px-3 py-2">Actual Work</th><th className="px-3 py-2">Status</th></tr></thead><tbody className="divide-y divide-slate-100">{report?.task_breakdown?.length ? report.task_breakdown.map((task) => <tr key={task.task_id}><td className="px-3 py-2 font-semibold text-slate-700">{task.task_title}</td><td className="px-3 py-2 text-slate-600">{task.project_name || 'Personal'}</td><td className="px-3 py-2 text-slate-600">{task.assigned_at ? new Date(task.assigned_at).toLocaleString([], { dateStyle: 'short', timeStyle: 'short' }) : '—'}</td><td className="px-3 py-2 text-slate-600">{task.completed_at ? new Date(task.completed_at).toLocaleString([], { dateStyle: 'short', timeStyle: 'short' }) : 'In Progress'}</td><td className="px-3 py-2 font-semibold text-violet-700">{formatMinutes(task.lifecycle_minutes)}</td><td className="px-3 py-2 font-semibold text-emerald-700">{formatMinutes(task.actual_work_minutes ?? task.minutes)}</td><td className="px-3 py-2 text-slate-600">{task.status || '—'}</td></tr>) : <tr><td colSpan="7" className="px-3 py-5 text-center text-slate-400">No tasks assigned in this period.</td></tr>}</tbody></table>
+                </div>
+
+                <div className="mt-4 overflow-x-auto rounded-lg border border-slate-200 bg-white">
+                  <table className="w-full min-w-[680px] text-left text-[11px]"><thead className="bg-slate-50 text-[10px] uppercase tracking-wide text-slate-500"><tr><th className="px-3 py-2">Recorded Work</th><th className="px-3 py-2">Date</th><th className="px-3 py-2">Start</th><th className="px-3 py-2">End</th><th className="px-3 py-2">Duration</th></tr></thead><tbody className="divide-y divide-slate-100">{report?.time_entries?.length ? report.time_entries.map((entry) => <tr key={entry.id}><td className="px-3 py-2 font-semibold text-slate-700">{entry.task_title}</td><td className="px-3 py-2 text-slate-600">{new Date(entry.date).toLocaleDateString()}</td><td className="px-3 py-2 text-slate-600">{new Date(entry.start_time).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</td><td className="px-3 py-2 text-slate-600">{new Date(entry.end_time).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</td><td className="px-3 py-2 text-slate-600">{formatMinutes(entry.duration_minutes)}</td></tr>) : <tr><td colSpan="5" className="px-3 py-5 text-center text-slate-400">No TimeEntries recorded for this period.</td></tr>}</tbody></table>
+                </div>
+
+                <div className="mt-4 rounded-lg border border-slate-200 bg-white p-3"><div className="mb-2 text-[10px] font-bold uppercase tracking-wide text-slate-500">Task timeline</div>{report?.timeline?.length ? <div className="space-y-2">{report.timeline.map((event, index) => <div key={`${event.type}-${event.task_id}-${event.timestamp}-${index}`} className="flex items-start gap-2 text-[11px]"><span className="mt-1 h-1.5 w-1.5 shrink-0 rounded-full bg-violet-500" /><div><span className="font-semibold text-slate-700">{event.type.replaceAll('_', ' ')}</span><span className="text-slate-500"> · {event.task_title}</span><span className="ml-2 text-slate-400">{new Date(event.timestamp).toLocaleString()}</span></div></div>)}</div> : <div className="text-[11px] text-slate-400">No task lifecycle events recorded for this period.</div>}</div>
+              </>
+            )}
+          </section>
         </div>
 
         {/* Action Buttons */}

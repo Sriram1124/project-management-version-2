@@ -61,6 +61,51 @@ export class WorkItemService {
   }
 
   /**
+   * Helper to verify if user has authority to assign tasks
+   * (Admins, Managers, Tech Leads, Project Owners, or users with TASK_ASSIGN permission)
+   */
+  private static isAuthorizedToAssign(
+    user: any,
+    projectOwnerId?: string | null,
+    creatorId?: string | null
+  ): boolean {
+    if (this.isManagerOrAdmin(user)) return true;
+
+    // Project owner or task creator
+    if (projectOwnerId && user.id === projectOwnerId) return true;
+    if (creatorId && user.id === creatorId) return true;
+
+    // Check roles for TECH_LEAD
+    const roleNames: string[] = [];
+    if (user.role) roleNames.push(user.role);
+    if (Array.isArray(user.roles)) {
+      user.roles.forEach((ur: any) => {
+        if (ur.role?.name) roleNames.push(ur.role.name);
+        if (ur.name) roleNames.push(ur.name);
+      });
+    }
+    if (roleNames.includes('TECH_LEAD') || roleNames.includes('PROJECT_MANAGER')) {
+      return true;
+    }
+
+    // Check permissions
+    if (Array.isArray(user.permissions) && user.permissions.includes('TASK_ASSIGN')) {
+      return true;
+    }
+    if (Array.isArray(user.roles)) {
+      for (const ur of user.roles) {
+        if (Array.isArray(ur.role?.permissions)) {
+          if (ur.role.permissions.some((rp: any) => rp.permission?.name === 'TASK_ASSIGN' || rp.name === 'TASK_ASSIGN')) {
+            return true;
+          }
+        }
+      }
+    }
+
+    return false;
+  }
+
+  /**
    * Helper to verify user membership in a project
    */
   private static async verifyProjectMembership(
@@ -82,7 +127,8 @@ export class WorkItemService {
 
   /**
    * Validate hierarchy integrity:
-   * EPIC -> STORY -> TASK -> SUBTASK
+   * Project -> Tasks -> Subtasks
+   * Epic -> Story -> Task -> Subtask also supported.
    * BUG is standalone
    * Parent must belong to same project, or both must be personal.
    */
@@ -152,9 +198,9 @@ export class WorkItemService {
   }
 
   /**
-   * Helper to derive dynamic attributes (such as is_overdue)
+   * Helper to derive dynamic attributes (such as is_overdue and formatted children)
    */
-  private static formatWorkItem(item: any) {
+  private static formatWorkItem(item: any): any {
     if (!item) return null;
     const is_overdue = Boolean(
       item.due_date &&
@@ -170,10 +216,15 @@ export class WorkItemService {
         }))
       : [];
 
+    const formattedChildren = Array.isArray(item.children)
+      ? item.children.map((child: any) => this.formatWorkItem(child))
+      : [];
+
     return {
       ...item,
       is_overdue,
       assignees: formattedAssignees,
+      children: formattedChildren,
     };
   }
 
@@ -258,6 +309,16 @@ export class WorkItemService {
           if (!memberIds.has(uid)) {
             throw new Error(`User ${uid} is not a member of project ${projectId}`);
           }
+        }
+      }
+
+      // Check assignment authorization if assigning to others
+      if (assigneeIds.some((uid) => uid !== user.id)) {
+        const project = projectId
+          ? await prisma.project.findUnique({ where: { id: projectId }, select: { owner_id: true } })
+          : null;
+        if (!this.isAuthorizedToAssign(user, project?.owner_id, user.id)) {
+          throw new Error('Forbidden: you do not have permission to assign tasks to other users');
         }
       }
     }
@@ -399,6 +460,21 @@ export class WorkItemService {
         },
         parent: {
           select: { id: true, title: true, type: true, status: true, priority: true },
+        },
+        children: {
+          include: {
+            creator: {
+              select: { id: true, name: true, email: true },
+            },
+            assignees: {
+              include: {
+                user: {
+                  select: { id: true, name: true, email: true },
+                },
+              },
+            },
+          },
+          orderBy: { created_at: 'asc' },
         },
         assignees: {
           include: {
@@ -650,15 +726,17 @@ export class WorkItemService {
 
     // Permission check
     if (item.project_id) {
-      if (!isMgr) {
-        const isMember = await this.verifyProjectMembership(item.project_id, user.id, orgId);
-        if (!isMember) {
-          throw new Error('Forbidden: you are not a member of this project');
-        }
+      const project = await prisma.project.findUnique({
+        where: { id: item.project_id },
+        select: { owner_id: true },
+      });
+      const canAssign = this.isAuthorizedToAssign(user, project?.owner_id, item.created_by);
+      if (!canAssign) {
+        throw new Error('Forbidden: you do not have permission to assign tasks in this project');
       }
     } else {
-      if (item.created_by !== user.id && !isMgr) {
-        throw new Error('Forbidden: only creator can assign users to this personal task');
+      if (item.created_by !== user.id && !this.isAuthorizedToAssign(user, null, item.created_by)) {
+        throw new Error('Forbidden: only creator or authorized manager can assign users to this personal task');
       }
     }
 

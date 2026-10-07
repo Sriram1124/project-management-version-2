@@ -81,3 +81,32 @@ export const requirePermission = (requiredPermission: string) => {
     next();
   };
 };
+
+export const requireAnyPermission = (...requiredPermissions: string[]) => {
+  return async (req: Request, res: Response, next: NextFunction): Promise<void> => {
+    const fullUser = (req as any).fullUser;
+    
+    if (!fullUser) {
+      res.status(401).json({ error: 'Unauthorized' });
+      return;
+    }
+
+    let hasPermission = false;
+    for (const ur of fullUser.roles) {
+      for (const rp of ur.role.permissions) {
+        if (requiredPermissions.includes(rp.permission.name)) {
+          hasPermission = true;
+          break;
+        }
+      }
+      if (hasPermission) break;
+    }
+
+    if (!hasPermission) {
+      res.status(403).json({ error: 'Forbidden: insufficient permissions', message: 'You do not have permission to perform this action' });
+      return;
+    }
+
+    next();
+  };
+};

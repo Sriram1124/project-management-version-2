@@ -4,50 +4,91 @@ import { authService } from '../services/auth.service';
 const AuthContext = createContext(null);
 
 export const AuthProvider = ({ children }) => {
-  const [user, setUser] = useState(null);
+  // Hydrate user immediately from localStorage to avoid flashes or unauthenticated redirects on refresh
+  const [user, setUser] = useState(() => {
+    try {
+      const cached = localStorage.getItem('user');
+      return cached ? JSON.parse(cached) : null;
+    } catch (e) {
+      return null;
+    }
+  });
   const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
+    let isMounted = true;
+
     const initAuth = async () => {
       const token = localStorage.getItem('accessToken');
       if (token) {
         try {
           const userData = await authService.getCurrentUser();
           const activeUser = userData?.user || userData;
-          if (activeUser) {
+          if (activeUser && isMounted) {
             setUser(activeUser);
             localStorage.setItem('user', JSON.stringify(activeUser));
           }
-        } catch(e) {
-          localStorage.removeItem('accessToken');
-          localStorage.removeItem('user');
+        } catch (e) {
+          // If token expired and couldn't be refreshed, clear auth state
+          if (e.message?.includes('401') || e.message?.includes('Unauthorized') || e.message?.includes('Invalid access token')) {
+            if (isMounted) {
+              localStorage.removeItem('accessToken');
+              localStorage.removeItem('user');
+              setUser(null);
+            }
+          }
+          // On network blip, preserve cached user so user is not logged out
         }
       } else {
-        localStorage.removeItem('user');
+        if (isMounted) {
+          localStorage.removeItem('user');
+          setUser(null);
+        }
       }
-      setIsLoading(false);
+      if (isMounted) {
+        setIsLoading(false);
+      }
     };
+
     initAuth();
+
+    return () => {
+      isMounted = false;
+    };
   }, []);
 
   const login = async (identifier, password, organization_id = null) => {
-    // Real PostgreSQL API Call:
     const data = await authService.login(identifier, password, organization_id);
-    setUser(data.user);
-    if (data.user) {
-      localStorage.setItem('user', JSON.stringify(data.user));
+    const activeUser = data.user || data;
+    setUser(activeUser);
+    if (activeUser) {
+      localStorage.setItem('user', JSON.stringify(activeUser));
     }
     return data;
   };
 
   const logout = async () => {
-    await authService.logout();
-    localStorage.removeItem('user');
-    setUser(null);
+    try {
+      await authService.logout();
+    } catch (e) {
+      // Ignore logout errors
+    } finally {
+      localStorage.removeItem('accessToken');
+      localStorage.removeItem('user');
+      setUser(null);
+    }
+  };
+
+  const updateUser = (updatedFields) => {
+    setUser((prev) => {
+      const updated = { ...prev, ...updatedFields };
+      localStorage.setItem('user', JSON.stringify(updated));
+      return updated;
+    });
   };
 
   return (
-    <AuthContext.Provider value={{ user, login, logout, isLoading }}>
+    <AuthContext.Provider value={{ user, setUser, updateUser, login, logout, isLoading }}>
       {children}
     </AuthContext.Provider>
   );

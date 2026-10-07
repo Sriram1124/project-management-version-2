@@ -8,6 +8,7 @@ import { workItemRouter } from './routes/work-item.routes';
 import { formRouter } from './routes/form.routes';
 import { organizationRouter } from './routes/organization.routes';
 import { notificationRouter } from './routes/notification.routes';
+import { timesheetRouter } from './routes/timesheet.routes';
 
 const app = express();
 
@@ -31,5 +32,6 @@ app.use('/api/work-items', workItemRouter);
 app.use('/api/forms', formRouter);
 app.use('/api/organizations', organizationRouter);
 app.use('/api/notifications', notificationRouter);
+app.use('/api/timesheet', timesheetRouter);
 
 export default app;

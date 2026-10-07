@@ -24,7 +24,8 @@ async function main() {
     'FORM_READ', 'FORM_CREATE', 'FORM_UPDATE', 'FORM_DELETE', 'FORM_SUBMIT',
     'ATTENDANCE_READ', 'ATTENDANCE_CREATE', 'ATTENDANCE_UPDATE',
     'EVALUATION_READ', 'EVALUATION_CREATE', 'EVALUATION_UPDATE',
-    'ORGANIZATION_READ', 'ORGANIZATION_CREATE', 'ORGANIZATION_UPDATE', 'ORGANIZATION_DELETE'
+    'ORGANIZATION_READ', 'ORGANIZATION_CREATE', 'ORGANIZATION_UPDATE', 'ORGANIZATION_DELETE',
+    'DOCUMENT_UPLOAD'
   ];
 
   for (const permName of permissions) {
@@ -35,11 +36,12 @@ async function main() {
     });
   }
 
-  // 3. Assign Permissions to Roles (Manager & Intern & Employee)
+  // 3. Assign Permissions to Roles (Manager & Intern & Employee & Tech Lead)
   const managerRole = await prisma.role.findUnique({ where: { name: 'MANAGER' } });
   const internRole = await prisma.role.findUnique({ where: { name: 'INTERN' } });
   const employeeRole = await prisma.role.findUnique({ where: { name: 'EMPLOYEE' } });
   const superAdminRole = await prisma.role.findUnique({ where: { name: 'SUPER_ADMIN' } });
+  const techLeadRole = await prisma.role.findUnique({ where: { name: 'TECH_LEAD' } });
 
   const superAdminPerms = [
     'ORGANIZATION_READ', 'ORGANIZATION_CREATE', 'ORGANIZATION_UPDATE', 'ORGANIZATION_DELETE'
@@ -49,7 +51,12 @@ async function main() {
     'USER_READ', 'USER_CREATE', 'USER_BULK_CREATE', 'PROJECT_READ', 'PROJECT_CREATE', 'PROJECT_UPDATE', 'PROJECT_DELETE',
     'TASK_READ', 'TASK_CREATE', 'TASK_UPDATE', 'TASK_DELETE', 'TASK_ASSIGN',
     'FORM_READ', 'FORM_CREATE', 'FORM_UPDATE', 'EVALUATION_READ', 'EVALUATION_CREATE', 'EVALUATION_UPDATE',
-    'ATTENDANCE_READ', 'ATTENDANCE_CREATE', 'ATTENDANCE_UPDATE'
+    'ATTENDANCE_READ', 'ATTENDANCE_CREATE', 'ATTENDANCE_UPDATE', 'DOCUMENT_UPLOAD'
+  ];
+
+  const techLeadPerms = [
+    'PROJECT_READ', 'PROJECT_UPDATE', 'TASK_READ', 'TASK_CREATE', 'TASK_UPDATE', 'TASK_ASSIGN',
+    'FORM_READ', 'DOCUMENT_UPLOAD'
   ];
 
   const internPerms = [
@@ -146,6 +153,27 @@ async function main() {
     }
   }
 
+  if (techLeadRole) {
+    for (const permName of techLeadPerms) {
+      const perm = await prisma.permission.findUnique({ where: { name: permName } });
+      if (perm) {
+        await prisma.rolePermission.upsert({
+          where: {
+            role_id_permission_id: {
+              role_id: techLeadRole.id,
+              permission_id: perm.id
+            }
+          },
+          update: {},
+          create: {
+            role_id: techLeadRole.id,
+            permission_id: perm.id
+          }
+        });
+      }
+    }
+  }
+
   // 4. Default Organization
   let org = await prisma.organization.findFirst({ where: { name: 'Dailoqa Technologies' } });
   if (!org) {
@@ -153,6 +181,27 @@ async function main() {
       data: { name: 'Dailoqa Technologies' },
     });
   }
+
+  await prisma.organizationWorkPolicy.upsert({
+    where: { organization_id: org.id },
+    update: {
+      office_start_time: '09:00',
+      office_end_time: '17:30',
+      break_start_time: '13:00',
+      break_end_time: '14:00',
+      lunch_break_minutes: 60,
+      timezone: 'Asia/Kolkata',
+    },
+    create: {
+      organization_id: org.id,
+      office_start_time: '09:00',
+      office_end_time: '17:30',
+      break_start_time: '13:00',
+      break_end_time: '14:00',
+      lunch_break_minutes: 60,
+      timezone: 'Asia/Kolkata',
+    },
+  });
 
   // 5. Create / Update Users
   const passwordHash = await argon2.hash('password123');
@@ -170,12 +219,13 @@ async function main() {
 
   const intern = await prisma.user.upsert({
     where: { email: 'intern@dailoqa.com' },
-    update: { organization_id: org.id },
+    update: { organization_id: org.id, batch: 'Batch 2026-A' },
     create: {
       name: 'Test Intern',
       email: 'intern@dailoqa.com',
       password_hash: passwordHash,
       organization_id: org.id,
+      batch: 'Batch 2026-A',
     },
   });
 
@@ -203,7 +253,7 @@ async function main() {
   });
 
   // 6. Assign Users to Roles
-  const techLeadRole = await prisma.role.findUnique({ where: { name: 'TECH_LEAD' } });
+  const seededTechLeadRole = await prisma.role.findUnique({ where: { name: 'TECH_LEAD' } });
 
   if (superAdminRole && superAdmin) {
     await prisma.userRole.upsert({
@@ -253,18 +303,18 @@ async function main() {
     });
   }
 
-  if (techLeadRole && lead) {
+  if (seededTechLeadRole && lead) {
     await prisma.userRole.upsert({
       where: {
         user_id_role_id: {
           user_id: lead.id,
-          role_id: techLeadRole.id
+          role_id: seededTechLeadRole.id
         }
       },
       update: {},
       create: {
         user_id: lead.id,
-        role_id: techLeadRole.id
+          role_id: seededTechLeadRole.id
       }
     });
   }

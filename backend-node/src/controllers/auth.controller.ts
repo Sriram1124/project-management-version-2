@@ -127,16 +127,23 @@ export class AuthController {
       }
 
       const primaryRole = user.roles[0]?.role;
-      const permissions = primaryRole?.permissions.map((rp: any) => rp.permission.name) || [];
+      const roleName = primaryRole?.name || 'USER';
+      const isInternOrEmployee = roleName === 'INTERN' || roleName === 'EMPLOYEE';
+
+      // Security requirement 13: Hide API permissions from intern profile endpoint
+      const permissions = isInternOrEmployee
+        ? []
+        : (primaryRole?.permissions.map((rp: any) => rp.permission.name) || []);
 
       res.status(200).json({
         id: user.id,
         name: user.name,
         email: user.email,
-        user_code: user.user_code,
+        batch: user.batch || null,
+        user_code: isInternOrEmployee ? undefined : user.user_code,
         must_change_password: user.must_change_password,
         organization_id: user.organization_id,
-        role: primaryRole?.name || 'USER',
+        role: roleName,
         permissions,
       });
     } catch (error) {

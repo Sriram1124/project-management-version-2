@@ -18,8 +18,28 @@ model Organization {
   work_items WorkItem[]
   forms      Form[]
   notifications Notification[]
+  work_policy OrganizationWorkPolicy?
 
   @@map("organizations")
+}
+
+model OrganizationWorkPolicy {
+  id                   String    @id @default(uuid())
+  organization_id       String    @unique
+  office_start_time    String    @default("09:00")
+  office_end_time      String    @default("17:30")
+  break_start_time     String?
+  break_end_time       String?
+  lunch_break_minutes  Int       @default(60)
+  timezone             String    @default("Asia/Kolkata")
+  overtime_enabled     Boolean   @default(false)
+  overtime_start_time  String?   @default("17:30")
+  created_at           DateTime  @default(now())
+  updated_at           DateTime  @updatedAt
+
+  organization         Organization @relation(fields: [organization_id], references: [id], onDelete: Cascade)
+
+  @@map("organization_work_policies")
 }
 
 model User {
@@ -28,6 +48,7 @@ model User {
   name            String
   email           String        @unique
   user_code       String?
+  batch           String?
   must_change_password Boolean    @default(true)
   password_hash   String
   is_active       Boolean       @default(true)
@@ -37,6 +58,8 @@ model User {
   organization        Organization?   @relation(fields: [organization_id], references: [id])
   roles               UserRole[]
   sessions            UserSession[]
+  work_sessions       WorkSession[]
+  time_entries        TimeEntry[]
   owned_projects        Project[]          @relation("ProjectOwner")
   project_memberships   ProjectMember[]
   created_work_items    WorkItem[]         @relation("WorkItemCreator")
@@ -48,6 +71,54 @@ model User {
 
   @@unique([organization_id, user_code])
   @@map("users")
+}
+
+model WorkSession {
+  id              String    @id @default(uuid())
+  organization_id String
+  user_id         String
+  task_id         String?
+  started_at      DateTime
+  ended_at        DateTime?
+  break_minutes   Int       @default(0)
+  notes           String?
+  created_at      DateTime  @default(now())
+  updated_at      DateTime  @updatedAt
+
+  user            User      @relation(fields: [user_id], references: [id], onDelete: Cascade)
+  task            WorkItem? @relation(fields: [task_id], references: [id], onDelete: SetNull)
+  time_entries    TimeEntry[]
+
+  @@index([organization_id, user_id])
+  @@index([user_id, started_at])
+  @@index([user_id, task_id, ended_at])
+  @@map("work_sessions")
+}
+
+model TimeEntry {
+  id              String    @id @default(uuid())
+  organization_id String
+  user_id         String
+  task_id         String
+  project_id      String?
+  work_session_id String?
+  date            DateTime
+  start_time      DateTime
+  end_time        DateTime
+  duration_minutes Int      @default(0)
+  notes           String?
+  created_at      DateTime  @default(now())
+  updated_at      DateTime  @updatedAt
+
+  user            User      @relation(fields: [user_id], references: [id], onDelete: Cascade)
+  task            WorkItem  @relation(fields: [task_id], references: [id], onDelete: Cascade)
+  project         Project?  @relation(fields: [project_id], references: [id], onDelete: SetNull)
+  work_session    WorkSession? @relation(fields: [work_session_id], references: [id], onDelete: SetNull)
+
+  @@index([organization_id, user_id, date])
+  @@index([task_id])
+  @@index([user_id, start_time])
+  @@map("time_entries")
 }
 
 model Role {
@@ -139,6 +210,7 @@ model Project {
   documents       ProjectDocument[]
   work_items      WorkItem[]
   forms           Form[]
+  time_entries    TimeEntry[]
 
   @@map("projects")
 }
@@ -215,6 +287,8 @@ model WorkItem {
   creator         User               @relation("WorkItemCreator", fields: [created_by], references: [id])
   assignees       WorkItemAssignee[]
   attachments     WorkItemAttachment[]
+  time_entries    TimeEntry[]
+  work_sessions   WorkSession[]
 
   @@index([organization_id])
   @@index([project_id])
@@ -226,6 +300,7 @@ model WorkItem {
 model WorkItemAssignee {
   work_item_id String
   user_id      String
+  created_at   DateTime @default(now())
 
   work_item    WorkItem @relation(fields: [work_item_id], references: [id], onDelete: Cascade)
   user         User     @relation(fields: [user_id], references: [id], onDelete: Cascade)

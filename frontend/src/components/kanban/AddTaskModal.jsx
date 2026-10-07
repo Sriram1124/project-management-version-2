@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { X, Plus, AlertCircle, Loader2, GitFork, User, Calendar, Tag } from 'lucide-react';
+import { X, Plus, AlertCircle, Loader2, GitFork, User, Calendar, Tag, Search } from 'lucide-react';
 import { workItemsService } from '../../services/workItems.service';
 import { projectsService } from '../../services/projects.service';
 
@@ -43,6 +43,7 @@ export default function AddTaskModal({
   const [selectedProjectId, setSelectedProjectId] = useState(projectId || '');
   const [parentId, setParentId] = useState(initialParentId || '');
   const [assigneeId, setAssigneeId] = useState('');
+  const [assigneeSearch, setAssigneeSearch] = useState('');
   const [startDate, setStartDate] = useState('');
   const [dueDate, setDueDate] = useState('');
 
@@ -362,22 +363,53 @@ export default function AddTaskModal({
             </div>
 
             <div>
-              <label className="block text-[11px] font-bold text-slate-700 uppercase tracking-wider mb-1 flex items-center gap-1">
-                <User className="w-3.5 h-3.5 text-slate-400" />
-                <span>Assignee</span>
+              <label className="block text-[11px] font-bold text-slate-700 uppercase tracking-wider mb-1 flex items-center justify-between">
+                <span className="flex items-center gap-1">
+                  <User className="w-3.5 h-3.5 text-slate-400" />
+                  <span>Assignee</span>
+                </span>
+                {assigneeSearch && (
+                  <button
+                    type="button"
+                    onClick={() => setAssigneeSearch('')}
+                    className="text-[10px] text-purple-600 hover:underline"
+                  >
+                    Clear search
+                  </button>
+                )}
               </label>
-              <select
-                value={assigneeId}
-                onChange={(e) => setAssigneeId(e.target.value)}
-                className="w-full px-3 py-2 rounded-xl border border-slate-200 bg-white text-slate-800 focus:outline-none focus:border-purple-600"
-              >
-                <option value="">Unassigned</option>
-                {members.map((m) => (
-                  <option key={m.id || m.user_id} value={m.user_id || m.id}>
-                    {m.name || m.user?.name} ({m.email || m.user?.email})
-                  </option>
-                ))}
-              </select>
+              <div className="space-y-1.5">
+                <div className="relative">
+                  <Search className="w-3.5 h-3.5 text-slate-400 absolute left-2.5 top-2.5" />
+                  <input
+                    type="text"
+                    value={assigneeSearch}
+                    onChange={(e) => setAssigneeSearch(e.target.value)}
+                    placeholder="Search assignees by name or email..."
+                    className="w-full pl-8 pr-3 py-1.5 rounded-lg border border-slate-200 text-xs text-slate-800 focus:outline-none focus:border-purple-600"
+                  />
+                </div>
+                <select
+                  value={assigneeId}
+                  onChange={(e) => setAssigneeId(e.target.value)}
+                  className="w-full px-3 py-2 rounded-xl border border-slate-200 bg-white text-slate-800 focus:outline-none focus:border-purple-600"
+                >
+                  <option value="">Unassigned</option>
+                  {members
+                    .filter((m) => {
+                      if (!assigneeSearch.trim()) return true;
+                      const q = assigneeSearch.toLowerCase();
+                      const name = (m.name || m.user?.name || '').toLowerCase();
+                      const email = (m.email || m.user?.email || '').toLowerCase();
+                      return name.includes(q) || email.includes(q);
+                    })
+                    .map((m) => (
+                      <option key={m.id || m.user_id} value={m.user_id || m.id}>
+                        {m.name || m.user?.name} ({m.email || m.user?.email})
+                      </option>
+                    ))}
+                </select>
+              </div>
             </div>
           </div>
 

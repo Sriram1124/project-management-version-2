@@ -1,7 +1,7 @@
 import { Router } from 'express';
 import multer from 'multer';
 import { ProjectController } from '../controllers/project.controller';
-import { authenticate, requirePermission } from '../middleware/auth.middleware';
+import { authenticate, requirePermission, requireAnyPermission } from '../middleware/auth.middleware';
 
 const upload = multer({
   storage: multer.memoryStorage(),
@@ -27,7 +27,7 @@ router.delete('/:id/members/:userId', requirePermission('PROJECT_UPDATE'), Proje
 
 // ── Project Documents ────────────────────────────────────────────────────────
 router.get('/:id/documents', requirePermission('PROJECT_READ'), ProjectController.getDocuments);
-router.post('/:id/documents', requirePermission('PROJECT_UPDATE'), upload.single('file'), ProjectController.createDocument);
+router.post('/:id/documents', requireAnyPermission('DOCUMENT_UPLOAD', 'PROJECT_UPDATE'), upload.single('file'), ProjectController.createDocument);
 router.get('/:id/documents/:documentId/download', requirePermission('PROJECT_READ'), ProjectController.downloadDocument);
 router.get('/:id/documents/:documentId/preview', requirePermission('PROJECT_READ'), ProjectController.previewDocument);
 router.patch('/:id/documents/:documentId', requirePermission('PROJECT_UPDATE'), ProjectController.updateDocument);

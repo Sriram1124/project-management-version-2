@@ -36,5 +36,9 @@ export const authService = {
 
   async changePassword(current_password, new_password) {
     return await api.post('/auth/change-password', { current_password, new_password });
+  },
+
+  async updateProfile(profileData) {
+    return await api.patch('/users/profile', profileData);
   }
 };

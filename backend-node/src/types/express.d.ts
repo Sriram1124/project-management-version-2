@@ -1,0 +1,12 @@
+import 'express-serve-static-core';
+
+declare global {
+  namespace Express {
+    interface Request {
+      user?: any;
+      fullUser?: any;
+    }
+  }
+}
+
+export {};

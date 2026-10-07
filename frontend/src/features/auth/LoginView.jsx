@@ -18,6 +18,7 @@ import {
 import { useAuth } from '../../context/AuthContext';
 import { useNavigate } from 'react-router-dom';
 import { authService } from '../../services/auth.service';
+import dailoqaLogo from '../../../dailoqa-logo.jpg';
 
 export default function LoginView() {
   // Step state: 'PORTAL_SELECT' | 'ROOT_LOGIN' | 'ORG_SELECT' | 'ORG_LOGIN' | 'FORCE_CHANGE_PASSWORD'
@@ -178,171 +179,98 @@ export default function LoginView() {
   );
 
   return (
-    <div className="min-h-screen flex items-center justify-center font-sans selection:bg-[#7a3bff] selection:text-white bg-[#0a0518] relative overflow-hidden" style={{ fontFamily: "'Inter', system-ui, sans-serif" }}>
-      
-      {/* Dynamic Cyberpunk Grid */}
-      <div 
-        className="absolute inset-0 z-0 opacity-15 pointer-events-none"
-        style={{
-          backgroundImage: `linear-gradient(to right, #7a3bff 1px, transparent 1px), linear-gradient(to bottom, #7a3bff 1px, transparent 1px)`,
-          backgroundSize: '3rem 3rem',
-          maskImage: 'radial-gradient(ellipse at center, black 20%, transparent 80%)',
-          WebkitMaskImage: 'radial-gradient(ellipse at center, black 20%, transparent 80%)'
-        }}
-      />
+    <div className="min-h-screen bg-[#f5f3ff] text-slate-900 relative overflow-hidden" style={{ fontFamily: "'Inter', system-ui, sans-serif" }}>
+      <div className="absolute inset-0 bg-[radial-gradient(circle_at_top_left,_rgba(167,139,250,0.32),_transparent_28%),radial-gradient(circle_at_bottom_right,_rgba(196,181,253,0.34),_transparent_24%)]" />
+      <div className="absolute left-[-8rem] top-[-6rem] h-72 w-72 rounded-full bg-violet-200/70 blur-3xl" />
+      <div className="absolute right-[-7rem] bottom-[-7rem] h-96 w-96 rounded-full bg-purple-200/80 blur-3xl" />
 
-      {/* Massive Ambient Glows */}
-      <div className="absolute top-[-20%] left-[-10%] w-[70%] h-[70%] bg-[#4c1d95] rounded-full mix-blend-screen filter blur-[120px] opacity-40 animate-pulse" />
-      <div className="absolute bottom-[-20%] right-[-10%] w-[60%] h-[80%] bg-[#581c87] rounded-full mix-blend-screen filter blur-[150px] opacity-30 animate-pulse" style={{ animationDelay: '2s' }} />
-      <div className="absolute top-[20%] left-[30%] w-[40%] h-[40%] bg-[#7a3bff] rounded-full mix-blend-screen filter blur-[150px] opacity-20 animate-pulse" style={{ animationDelay: '4s' }} />
-      
-      {/* Neon Rings */}
-      <div className="absolute top-[-30%] right-[-10%] w-[120%] h-[120%] rounded-[100%] border-[1px] border-purple-500/30 shadow-[0_0_50px_rgba(124,58,237,0.1)] opacity-60 pointer-events-none animate-[spin_60s_linear_infinite]" />
-      <div className="absolute bottom-[-50%] right-[-20%] w-[150%] h-[150%] rounded-[100%] border-[2px] border-purple-400/20 shadow-[0_0_100px_rgba(124,58,237,0.2)] opacity-80 pointer-events-none animate-[spin_90s_linear_infinite_reverse]" />
+      <div className="relative z-10 mx-auto flex min-h-screen max-w-7xl items-center justify-center px-4 py-10 sm:px-6 lg:px-12">
+        <div className="grid w-full max-w-6xl overflow-hidden rounded-[32px] border border-violet-200 bg-white/80 shadow-[0_30px_80px_rgba(76,29,149,0.09)] backdrop-blur-xl lg:grid-cols-[1.05fr_0.95fr]">
+          <div className="p-6 sm:p-8 lg:p-12">
+            <div className="mb-8 flex items-center gap-3">
+              <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-violet-600 text-sm font-black text-white shadow-lg shadow-violet-200">
+                D
+              </div>
+              <div>
+                <div className="text-[10px] font-bold uppercase tracking-[0.28em] text-violet-500">Dailoqa</div>
+                <div className="text-lg font-semibold text-slate-900">Workspace</div>
+              </div>
+            </div>
 
-      {/* Floating 3D Spheres */}
-      <div className="absolute top-[15%] right-[25%] w-20 h-20 rounded-full bg-gradient-to-br from-[#d8b4fe] to-[#4c1d95] shadow-[0_0_40px_rgba(124,58,237,0.6)] animate-[bounce_5s_ease-in-out_infinite] backdrop-blur-md">
-        <div className="absolute inset-0 rounded-full bg-white/20 blur-[2px] w-8 h-8 top-2 left-2" />
-      </div>
-      <div className="absolute bottom-[25%] right-[35%] w-14 h-14 rounded-full bg-gradient-to-br from-[#c084fc] to-[#3b0764] shadow-[0_0_30px_rgba(124,58,237,0.5)] animate-[bounce_7s_ease-in-out_infinite] delay-1000">
-        <div className="absolute inset-0 rounded-full bg-white/20 blur-[2px] w-4 h-4 top-1 left-1" />
-      </div>
-      <div className="absolute top-[45%] left-[10%] w-10 h-10 rounded-full bg-gradient-to-br from-[#e9d5ff] to-[#6b21a8] shadow-[0_0_20px_rgba(124,58,237,0.4)] animate-[bounce_6s_ease-in-out_infinite] delay-500" />
-
-      {/* MAIN CONTAINER */}
-      <div className="flex w-full max-w-[1400px] mx-auto relative z-10 p-6 lg:p-12 h-full items-center">
-        
-        {/* LEFT SIDE: Card */}
-        <div className="w-full lg:w-[48%] flex justify-center lg:justify-start z-20">
-          
-          <div className="w-full max-w-[500px] bg-[#110826]/75 backdrop-blur-2xl p-8 sm:p-10 rounded-3xl border border-purple-400/20 shadow-[0_0_50px_rgba(0,0,0,0.6),inset_0_0_20px_rgba(124,58,237,0.1)] relative">
-            
-            {/* Top highlight bar */}
-            <div className="absolute top-0 left-10 right-10 h-[1px] bg-gradient-to-r from-transparent via-purple-400/60 to-transparent" />
-
-            {/* Error Banner */}
             {error && (
-              <div className="mb-6 p-4 bg-red-950/60 border border-red-500/40 text-red-200 rounded-xl text-xs font-medium flex items-start gap-3 shadow-lg">
-                <AlertCircle className="w-4 h-4 text-red-400 shrink-0 mt-0.5" />
-                <span className="leading-relaxed">{error}</span>
+              <div className="mb-6 flex items-start gap-3 rounded-2xl border border-red-200 bg-red-50 p-4 text-sm text-red-700">
+                <AlertCircle className="mt-0.5 h-4 w-4 shrink-0 text-red-500" />
+                <span>{error}</span>
               </div>
             )}
 
-            {/* ========================================================== */}
-            {/* STEP 1: PORTAL SELECTION                                   */}
-            {/* ========================================================== */}
             {step === 'PORTAL_SELECT' && (
               <div className="space-y-6">
                 <div>
-                  <div className="flex items-center gap-2 mb-2">
-                    <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-[10px] font-bold tracking-wider uppercase bg-purple-900/60 text-purple-300 border border-purple-700/50">
-                      Platform Portal
-                    </span>
-                  </div>
-                  <h1 className="text-2xl sm:text-3xl font-black text-white tracking-tight leading-tight uppercase">
-                    PROJECT MANAGEMENT SYSTEM
-                  </h1>
-                  <p className="text-sm font-bold text-purple-400 mt-1">
-                    Sign In
-                  </p>
-                  <p className="text-xs sm:text-sm text-slate-300/80 mt-2 leading-relaxed">
-                    Select your access tier to sign in to the Project Management and Performance Tracking Platform.
-                  </p>
+                  <p className="mb-2 text-xs font-semibold uppercase tracking-[0.22em] text-violet-500">Sign in</p>
+                  <h1 className="text-3xl font-bold tracking-tight text-slate-900 sm:text-4xl">Welcome to Dailoqa</h1>
+                  <p className="mt-2 text-sm text-slate-600">Choose your access path to continue.</p>
                 </div>
 
-                <div className="space-y-3 pt-2">
-                  {/* ROOT / SUPER ADMIN Option */}
+                <div className="space-y-3">
                   <button
                     type="button"
                     onClick={() => handleSelectPortalMode('ROOT')}
-                    className="w-full text-left p-5 rounded-2xl bg-gradient-to-r from-purple-950/50 to-indigo-950/40 border border-purple-500/30 hover:border-purple-400 hover:shadow-[0_0_25px_rgba(168,85,247,0.25)] transition-all group relative overflow-hidden"
+                    className="w-full rounded-2xl border border-violet-200 bg-gradient-to-r from-violet-50 to-white p-4 text-left shadow-sm transition hover:border-violet-300 hover:shadow-md"
                   >
-                    <div className="flex items-center justify-between">
+                    <div className="flex items-center justify-between gap-4">
                       <div className="flex items-center gap-4">
-                        <div className="w-12 h-12 rounded-xl bg-purple-600/30 border border-purple-400/40 flex items-center justify-center text-purple-200 group-hover:scale-105 transition-transform shadow-inner">
-                          <ShieldCheck className="w-6 h-6 text-purple-300" />
+                        <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-violet-600 text-violet-50 shadow-md shadow-violet-200">
+                          <ShieldCheck className="h-5 w-5" />
                         </div>
                         <div>
                           <div className="flex items-center gap-2">
-                            <h3 className="text-sm font-bold text-white group-hover:text-purple-200 transition-colors">
-                              Root / Super Admin
-                            </h3>
-                            <span className="px-1.5 py-0.5 rounded text-[9px] font-bold uppercase tracking-wider bg-purple-500/20 text-purple-300 border border-purple-400/30">
-                              Global
-                            </span>
+                            <h3 className="text-sm font-bold text-slate-900">Super Admin</h3>
+                            <span className="rounded-full border border-violet-200 bg-violet-50 px-2 py-0.5 text-[9px] font-bold uppercase tracking-wider text-violet-600">Global</span>
                           </div>
-                          <p className="text-xs text-slate-400 mt-0.5">
-                            Global control plane &amp; organization tenant management
-                          </p>
+                          <p className="mt-1 text-xs text-slate-500">Platform administration and organization management</p>
                         </div>
                       </div>
-                      <ArrowRight className="w-5 h-5 text-purple-400 group-hover:translate-x-1 transition-transform shrink-0 ml-3" />
+                      <ArrowRight className="h-5 w-5 text-violet-500" />
                     </div>
                   </button>
 
-                  {/* ORGANIZATION USER Option */}
                   <button
                     type="button"
                     onClick={() => handleSelectPortalMode('ORG')}
-                    className="w-full text-left p-5 rounded-2xl bg-gradient-to-r from-slate-900/60 to-purple-950/40 border border-slate-700/40 hover:border-purple-400 hover:shadow-[0_0_25px_rgba(168,85,247,0.2)] transition-all group relative overflow-hidden"
+                    className="w-full rounded-2xl border border-slate-200 bg-white p-4 text-left shadow-sm transition hover:border-violet-200 hover:shadow-md"
                   >
-                    <div className="flex items-center justify-between">
+                    <div className="flex items-center justify-between gap-4">
                       <div className="flex items-center gap-4">
-                        <div className="w-12 h-12 rounded-xl bg-slate-800/60 border border-slate-600/40 flex items-center justify-center text-slate-300 group-hover:scale-105 transition-transform shadow-inner">
-                          <Building2 className="w-6 h-6 text-indigo-300" />
+                        <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-slate-100 text-slate-700">
+                          <Building2 className="h-5 w-5" />
                         </div>
                         <div>
-                          <h3 className="text-sm font-bold text-white group-hover:text-purple-200 transition-colors">
-                            Organization User
-                          </h3>
-                          <p className="text-xs text-slate-400 mt-0.5">
-                            Managers, interns, and employees belonging to an organization
-                          </p>
+                          <h3 className="text-sm font-bold text-slate-900">Organization Sign In</h3>
+                          <p className="mt-1 text-xs text-slate-500">Managers, interns, and team members</p>
                         </div>
                       </div>
-                      <ArrowRight className="w-5 h-5 text-purple-400 group-hover:translate-x-1 transition-transform shrink-0 ml-3" />
+                      <ArrowRight className="h-5 w-5 text-violet-500" />
                     </div>
                   </button>
                 </div>
               </div>
             )}
 
-            {/* ========================================================== */}
-            {/* STEP 2 (ROOT): ROOT LOGIN                                  */}
-            {/* ========================================================== */}
             {step === 'ROOT_LOGIN' && (
               <form onSubmit={handleSubmit} className="space-y-5">
                 <div>
-                  <button
-                    type="button"
-                    onClick={handleBack}
-                    className="inline-flex items-center gap-1.5 text-xs font-semibold text-purple-300/80 hover:text-white mb-4 transition-colors group"
-                  >
-                    <ArrowLeft className="w-3.5 h-3.5 group-hover:-translate-x-1 transition-transform" />
-                    Back to portal selection
+                  <button type="button" onClick={handleBack} className="mb-4 inline-flex items-center gap-1.5 text-xs font-semibold text-violet-600 transition hover:text-violet-700">
+                    <ArrowLeft className="h-3.5 w-3.5" /> Back
                   </button>
-                  <div className="flex items-center gap-2">
-                    <span className="p-1 rounded-md bg-purple-600/30 text-purple-300 border border-purple-500/40">
-                      <ShieldCheck className="w-3.5 h-3.5" />
-                    </span>
-                    <span className="text-[11px] font-bold text-purple-300 uppercase tracking-widest">
-                      Root Control Plane
-                    </span>
-                  </div>
-                  <h1 className="text-3xl font-black text-white mt-1 tracking-tight">
-                    Root Login
-                  </h1>
-                  <p className="text-xs text-slate-400 mt-1">
-                    Sign in with your global Super Admin credentials.
-                  </p>
+                  <h1 className="text-3xl font-bold tracking-tight text-slate-900">Super Admin Sign In</h1>
+                  <p className="mt-1 text-sm text-slate-500">Use your global Dailoqa administrator account.</p>
                 </div>
 
                 <div>
-                  <label className="block text-xs font-semibold text-slate-300 mb-1.5">
-                    Email / User ID
-                  </label>
+                  <label className="mb-1.5 block text-xs font-semibold text-slate-600">Email / User ID</label>
                   <div className="relative">
-                    <User className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+                    <User className="absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
                     <input
                       type="text"
                       required
@@ -350,101 +278,70 @@ export default function LoginView() {
                       onChange={(e) => setIdentifier(e.target.value)}
                       placeholder="superadmin@dailoqa.com"
                       autoFocus
-                      className="w-full pl-11 pr-4 py-3 rounded-xl bg-[#0f0720] border border-purple-900/50 focus:border-[#a855f7] focus:ring-1 focus:ring-[#a855f7] text-white placeholder-slate-500 font-medium transition-all shadow-inner text-xs"
+                      className="w-full rounded-2xl border border-violet-200 bg-violet-50/40 py-3 pl-11 pr-4 text-sm text-slate-800 placeholder:text-slate-400 focus:border-violet-400 focus:outline-none focus:ring-2 focus:ring-violet-200"
                     />
                   </div>
                 </div>
 
                 <div>
-                  <label className="block text-xs font-semibold text-slate-300 mb-1.5">
-                    Password
-                  </label>
+                  <label className="mb-1.5 block text-xs font-semibold text-slate-600">Password</label>
                   <div className="relative">
-                    <Lock className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+                    <Lock className="absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
                     <input
                       type={showPassword ? 'text' : 'password'}
                       required
                       value={password}
                       onChange={(e) => setPassword(e.target.value)}
                       placeholder="••••••••••••"
-                      className="w-full pl-11 pr-12 py-3 rounded-xl bg-[#0f0720] border border-purple-900/50 focus:border-[#a855f7] focus:ring-1 focus:ring-[#a855f7] text-white placeholder-slate-500 font-medium transition-all shadow-inner text-xs"
+                      className="w-full rounded-2xl border border-violet-200 bg-violet-50/40 py-3 pl-11 pr-12 text-sm text-slate-800 placeholder:text-slate-400 focus:border-violet-400 focus:outline-none focus:ring-2 focus:ring-violet-200"
                     />
-                    <button
-                      type="button"
-                      onClick={() => setShowPassword(!showPassword)}
-                      className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-400 hover:text-white"
-                    >
-                      {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                    <button type="button" onClick={() => setShowPassword(!showPassword)} className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-500 hover:text-slate-700">
+                      {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
                     </button>
                   </div>
                 </div>
 
-                <button
-                  type="submit"
-                  disabled={isLoading}
-                  className="w-full mt-4 flex justify-center items-center py-3.5 px-6 rounded-xl shadow-[0_0_25px_rgba(168,85,247,0.35)] text-xs font-bold text-white bg-gradient-to-r from-[#7a3bff] to-[#a35cff] hover:from-[#6d30ea] hover:to-[#9146f2] focus:outline-none focus:ring-2 focus:ring-[#a855f7] transition-all disabled:opacity-50 disabled:cursor-not-allowed border border-purple-400/30"
-                >
+                <button type="submit" disabled={isLoading} className="w-full rounded-2xl bg-violet-600 px-6 py-3.5 text-sm font-semibold text-white shadow-lg shadow-violet-200 transition hover:bg-violet-700 disabled:cursor-not-allowed disabled:opacity-60">
                   {isLoading ? (
-                    <span className="flex items-center gap-2">
-                      <Loader2 className="w-4 h-4 animate-spin" />
-                      Authenticating Root...
+                    <span className="flex items-center justify-center gap-2">
+                      <Loader2 className="h-4 w-4 animate-spin" /> Authenticating...
                     </span>
                   ) : (
-                    <span>Sign In to Root</span>
+                    'Sign In to Dailoqa'
                   )}
                 </button>
               </form>
             )}
 
-            {/* ========================================================== */}
-            {/* STEP 2 (ORG): SELECT ORGANIZATION                          */}
-            {/* ========================================================== */}
             {step === 'ORG_SELECT' && (
               <div className="space-y-5">
                 <div>
-                  <button
-                    type="button"
-                    onClick={handleBack}
-                    className="inline-flex items-center gap-1.5 text-xs font-semibold text-purple-300/80 hover:text-white mb-4 transition-colors group"
-                  >
-                    <ArrowLeft className="w-3.5 h-3.5 group-hover:-translate-x-1 transition-transform" />
-                    Back to portal selection
+                  <button type="button" onClick={handleBack} className="mb-4 inline-flex items-center gap-1.5 text-xs font-semibold text-violet-600 transition hover:text-violet-700">
+                    <ArrowLeft className="h-3.5 w-3.5" /> Back
                   </button>
-                  <h1 className="text-2xl sm:text-3xl font-black text-white tracking-tight">
-                    Select Organization
-                  </h1>
-                  <p className="text-xs text-slate-400 mt-1">
-                    Choose your organization workspace to sign in.
-                  </p>
+                  <h1 className="text-3xl font-bold tracking-tight text-slate-900">Select Organization</h1>
+                  <p className="mt-1 text-sm text-slate-500">Choose the workspace you want to access.</p>
                 </div>
 
-                {/* Search Bar */}
                 <div className="relative">
-                  <Search className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
+                  <Search className="absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
                   <input
                     type="text"
                     value={orgSearch}
                     onChange={(e) => setOrgSearch(e.target.value)}
-                    placeholder="Search organizations..."
-                    autoFocus
-                    className="w-full pl-10 pr-4 py-2.5 rounded-xl bg-[#0f0720] border border-purple-900/50 focus:border-[#a855f7] focus:ring-1 focus:ring-[#a855f7] text-white placeholder-slate-500 font-medium transition-all shadow-inner text-xs"
+                    placeholder="Search organizations"
+                    className="w-full rounded-2xl border border-violet-200 bg-violet-50/40 py-2.5 pl-10 pr-4 text-sm text-slate-800 placeholder:text-slate-400 focus:border-violet-400 focus:outline-none focus:ring-2 focus:ring-violet-200"
                   />
                 </div>
 
-                {/* Organization List */}
-                <div className="space-y-2 max-h-72 overflow-y-auto pr-1">
+                <div className="space-y-2">
                   {loadingOrgs ? (
-                    <div className="py-12 text-center text-slate-400 flex flex-col items-center justify-center gap-2">
-                      <Loader2 className="w-5 h-5 text-purple-400 animate-spin" />
-                      <p className="text-xs">Loading available organizations...</p>
+                    <div className="flex flex-col items-center justify-center gap-2 rounded-2xl border border-violet-100 bg-violet-50/40 py-8 text-sm text-slate-500">
+                      <Loader2 className="h-5 w-5 animate-spin text-violet-500" /> Loading organizations...
                     </div>
                   ) : filteredOrgs.length === 0 ? (
-                    <div className="py-10 text-center text-slate-400 bg-purple-950/20 rounded-2xl border border-purple-900/30 p-6">
-                      <Building2 className="w-8 h-8 text-slate-500 mx-auto mb-2 opacity-60" />
-                      <p className="text-xs font-semibold text-slate-300">No organizations found</p>
-                      <p className="text-[11px] text-slate-400 mt-1">
-                        {orgSearch ? `No matches for "${orgSearch}"` : 'No active organizations provisioned yet.'}
-                      </p>
+                    <div className="rounded-2xl border border-violet-100 bg-violet-50/40 p-6 text-center text-sm text-slate-500">
+                      No active organizations found.
                     </div>
                   ) : (
                     filteredOrgs.map((org) => (
@@ -452,22 +349,18 @@ export default function LoginView() {
                         key={org.id}
                         type="button"
                         onClick={() => handleSelectOrg(org)}
-                        className="w-full text-left p-4 rounded-xl bg-purple-950/30 hover:bg-purple-900/50 border border-purple-900/40 hover:border-purple-400/60 transition-all flex items-center justify-between group shadow-sm"
+                        className="flex w-full items-center justify-between rounded-2xl border border-violet-100 bg-violet-50/30 p-4 text-left shadow-sm transition hover:border-violet-200 hover:bg-violet-50"
                       >
                         <div className="flex items-center gap-3">
-                          <div className="w-9 h-9 rounded-lg bg-purple-800/40 border border-purple-600/40 flex items-center justify-center text-purple-200 font-bold text-xs group-hover:scale-105 transition-transform">
-                            <Building2 className="w-4 h-4 text-purple-300" />
+                          <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-violet-100 text-violet-700">
+                            <Building2 className="h-4 w-4" />
                           </div>
                           <div>
-                            <span className="text-xs font-bold text-white group-hover:text-purple-200 transition-colors block">
-                              {org.name}
-                            </span>
-                            <span className="text-[10px] text-slate-400">
-                              Workspace Tenant
-                            </span>
+                            <div className="text-sm font-semibold text-slate-900">{org.name}</div>
+                            <div className="text-[11px] text-slate-500">Workspace tenant</div>
                           </div>
                         </div>
-                        <ArrowRight className="w-4 h-4 text-purple-400 group-hover:translate-x-1 transition-transform" />
+                        <ArrowRight className="h-4 w-4 text-violet-500" />
                       </button>
                     ))
                   )}
@@ -475,223 +368,147 @@ export default function LoginView() {
               </div>
             )}
 
-            {/* ========================================================== */}
-            {/* STEP 3: ORGANIZATION LOGIN                                 */}
-            {/* ========================================================== */}
             {step === 'ORG_LOGIN' && (
               <form onSubmit={handleSubmit} className="space-y-5">
                 <div>
-                  <button
-                    type="button"
-                    onClick={handleBack}
-                    className="inline-flex items-center gap-1.5 text-xs font-semibold text-purple-300/80 hover:text-white mb-4 transition-colors group"
-                  >
-                    <ArrowLeft className="w-3.5 h-3.5 group-hover:-translate-x-1 transition-transform" />
-                    Back to organization list
+                  <button type="button" onClick={handleBack} className="mb-4 inline-flex items-center gap-1.5 text-xs font-semibold text-violet-600 transition hover:text-violet-700">
+                    <ArrowLeft className="h-3.5 w-3.5" /> Back
                   </button>
-                  <div className="flex items-center gap-2">
-                    <span className="p-1 rounded-md bg-purple-600/30 text-purple-300 border border-purple-500/40">
-                      <Building2 className="w-3.5 h-3.5" />
-                    </span>
-                    <span className="text-[11px] font-bold text-purple-300 uppercase tracking-widest">
-                      Tenant Workspace
-                    </span>
-                  </div>
-                  <h1 className="text-3xl font-black text-white mt-1 tracking-tight">
-                    {selectedOrg?.name || 'Organization'}
-                  </h1>
-                  <p className="text-xs text-slate-400 mt-1">
-                    Sign in with your organization credentials. Your role will be determined automatically.
-                  </p>
+                  <h1 className="text-3xl font-bold tracking-tight text-slate-900">{selectedOrg?.name || 'Organization'}</h1>
+                  <p className="mt-1 text-sm text-slate-500">Sign in with your organization credentials.</p>
                 </div>
 
                 <div>
-                  <label className="block text-xs font-semibold text-slate-300 mb-1.5">
-                    Email / User ID
-                  </label>
+                  <label className="mb-1.5 block text-xs font-semibold text-slate-600">Email / User ID</label>
                   <div className="relative">
-                    <User className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+                    <User className="absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
                     <input
                       type="text"
                       required
                       value={identifier}
                       onChange={(e) => setIdentifier(e.target.value)}
-                      placeholder="e.g. manager@dailoqa.com or INT-1234"
-                      autoFocus
-                      className="w-full pl-11 pr-4 py-3 rounded-xl bg-[#0f0720] border border-purple-900/50 focus:border-[#a855f7] focus:ring-1 focus:ring-[#a855f7] text-white placeholder-slate-500 font-medium transition-all shadow-inner text-xs"
+                      placeholder="manager@dailoqa.com or INT-1234"
+                      className="w-full rounded-2xl border border-violet-200 bg-violet-50/40 py-3 pl-11 pr-4 text-sm text-slate-800 placeholder:text-slate-400 focus:border-violet-400 focus:outline-none focus:ring-2 focus:ring-violet-200"
                     />
                   </div>
                 </div>
 
                 <div>
-                  <label className="block text-xs font-semibold text-slate-300 mb-1.5">
-                    Password
-                  </label>
+                  <label className="mb-1.5 block text-xs font-semibold text-slate-600">Password</label>
                   <div className="relative">
-                    <Lock className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+                    <Lock className="absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
                     <input
                       type={showPassword ? 'text' : 'password'}
                       required
                       value={password}
                       onChange={(e) => setPassword(e.target.value)}
                       placeholder="••••••••••••"
-                      className="w-full pl-11 pr-12 py-3 rounded-xl bg-[#0f0720] border border-purple-900/50 focus:border-[#a855f7] focus:ring-1 focus:ring-[#a855f7] text-white placeholder-slate-500 font-medium transition-all shadow-inner text-xs"
+                      className="w-full rounded-2xl border border-violet-200 bg-violet-50/40 py-3 pl-11 pr-12 text-sm text-slate-800 placeholder:text-slate-400 focus:border-violet-400 focus:outline-none focus:ring-2 focus:ring-violet-200"
                     />
-                    <button
-                      type="button"
-                      onClick={() => setShowPassword(!showPassword)}
-                      className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-400 hover:text-white"
-                    >
-                      {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                    <button type="button" onClick={() => setShowPassword(!showPassword)} className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-500 hover:text-slate-700">
+                      {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
                     </button>
                   </div>
                 </div>
 
-                <button
-                  type="submit"
-                  disabled={isLoading}
-                  className="w-full mt-4 flex justify-center items-center py-3.5 px-6 rounded-xl shadow-[0_0_25px_rgba(168,85,247,0.35)] text-xs font-bold text-white bg-gradient-to-r from-[#7a3bff] to-[#a35cff] hover:from-[#6d30ea] hover:to-[#9146f2] focus:outline-none focus:ring-2 focus:ring-[#a855f7] transition-all disabled:opacity-50 disabled:cursor-not-allowed border border-purple-400/30"
-                >
+                <button type="submit" disabled={isLoading} className="w-full rounded-2xl bg-violet-600 px-6 py-3.5 text-sm font-semibold text-white shadow-lg shadow-violet-200 transition hover:bg-violet-700 disabled:cursor-not-allowed disabled:opacity-60">
                   {isLoading ? (
-                    <span className="flex items-center gap-2">
-                      <Loader2 className="w-4 h-4 animate-spin" />
-                      Authenticating...
+                    <span className="flex items-center justify-center gap-2">
+                      <Loader2 className="h-4 w-4 animate-spin" /> Authenticating...
                     </span>
                   ) : (
-                    <span>Sign In to {selectedOrg?.name}</span>
+                    `Sign In to ${selectedOrg?.name || 'Dailoqa'}`
                   )}
                 </button>
               </form>
             )}
 
-            {/* ========================================================== */}
-            {/* STEP 4: FORCE PASSWORD CHANGE ON FIRST LOGIN               */}
-            {/* ========================================================== */}
             {step === 'FORCE_CHANGE_PASSWORD' && (
               <form onSubmit={handlePasswordChangeSubmit} className="space-y-4">
                 <div>
-                  <div className="flex items-center gap-2 mb-1">
-                    <span className="p-1 rounded-md bg-amber-500/20 text-amber-300 border border-amber-500/40">
-                      <KeyRound className="w-3.5 h-3.5" />
-                    </span>
-                    <span className="text-[10px] font-bold text-amber-300 uppercase tracking-widest">
-                      Security Setup
-                    </span>
-                  </div>
-                  <h1 className="text-2xl sm:text-3xl font-black text-white tracking-tight">
-                    Change Your Password
-                  </h1>
-                  <p className="text-xs text-slate-300/80 mt-1 leading-relaxed">
-                    Welcome, <strong>{pendingUser?.name}</strong>! As this is your first sign-in, please set your permanent password to continue.
-                  </p>
+                  <h1 className="text-3xl font-bold tracking-tight text-slate-900">Update your password</h1>
+                  <p className="mt-2 text-sm text-slate-500">Welcome back, {pendingUser?.name}. Set a new password to continue.</p>
                 </div>
 
                 <div>
-                  <label className="block text-xs font-semibold text-slate-300 mb-1.5">
-                    Temporary Password
-                  </label>
+                  <label className="mb-1.5 block text-xs font-semibold text-slate-600">Temporary Password</label>
                   <div className="relative">
-                    <Lock className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+                    <Lock className="absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
                     <input
                       type="password"
                       required
                       value={currentPassword}
                       onChange={(e) => setCurrentPassword(e.target.value)}
-                      placeholder="Enter the temporary password provided"
-                      className="w-full pl-11 pr-4 py-2.5 rounded-xl bg-[#0f0720] border border-purple-900/50 focus:border-[#a855f7] focus:ring-1 focus:ring-[#a855f7] text-white placeholder-slate-500 font-medium text-xs"
+                      className="w-full rounded-2xl border border-violet-200 bg-violet-50/40 py-3 pl-11 pr-4 text-sm text-slate-800 placeholder:text-slate-400 focus:border-violet-400 focus:outline-none focus:ring-2 focus:ring-violet-200"
                     />
                   </div>
                 </div>
 
                 <div>
-                  <label className="block text-xs font-semibold text-slate-300 mb-1.5">
-                    New Password
-                  </label>
+                  <label className="mb-1.5 block text-xs font-semibold text-slate-600">New Password</label>
                   <div className="relative">
-                    <Lock className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+                    <Lock className="absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
                     <input
                       type={showNewPassword ? 'text' : 'password'}
                       required
                       value={newPassword}
                       onChange={(e) => setNewPassword(e.target.value)}
                       placeholder="At least 8 characters"
-                      className="w-full pl-11 pr-12 py-2.5 rounded-xl bg-[#0f0720] border border-purple-900/50 focus:border-[#a855f7] focus:ring-1 focus:ring-[#a855f7] text-white placeholder-slate-500 font-medium text-xs"
+                      className="w-full rounded-2xl border border-violet-200 bg-violet-50/40 py-3 pl-11 pr-12 text-sm text-slate-800 placeholder:text-slate-400 focus:border-violet-400 focus:outline-none focus:ring-2 focus:ring-violet-200"
                     />
-                    <button
-                      type="button"
-                      onClick={() => setShowNewPassword(!showNewPassword)}
-                      className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-400 hover:text-white"
-                    >
-                      {showNewPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                    <button type="button" onClick={() => setShowNewPassword(!showNewPassword)} className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-500 hover:text-slate-700">
+                      {showNewPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
                     </button>
                   </div>
                 </div>
 
                 <div>
-                  <label className="block text-xs font-semibold text-slate-300 mb-1.5">
-                    Confirm New Password
-                  </label>
+                  <label className="mb-1.5 block text-xs font-semibold text-slate-600">Confirm New Password</label>
                   <div className="relative">
-                    <Lock className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+                    <Lock className="absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
                     <input
                       type={showNewPassword ? 'text' : 'password'}
                       required
                       value={confirmPassword}
                       onChange={(e) => setConfirmPassword(e.target.value)}
-                      placeholder="Re-enter your new password"
-                      className="w-full pl-11 pr-4 py-2.5 rounded-xl bg-[#0f0720] border border-purple-900/50 focus:border-[#a855f7] focus:ring-1 focus:ring-[#a855f7] text-white placeholder-slate-500 font-medium text-xs"
+                      placeholder="Re-enter password"
+                      className="w-full rounded-2xl border border-violet-200 bg-violet-50/40 py-3 pl-11 pr-4 text-sm text-slate-800 placeholder:text-slate-400 focus:border-violet-400 focus:outline-none focus:ring-2 focus:ring-violet-200"
                     />
                   </div>
                 </div>
 
-                <button
-                  type="submit"
-                  disabled={isChangingPassword}
-                  className="w-full mt-3 flex justify-center items-center py-3.5 px-6 rounded-xl shadow-[0_0_25px_rgba(168,85,247,0.35)] text-xs font-bold text-white bg-gradient-to-r from-[#7a3bff] to-[#a35cff] hover:from-[#6d30ea] hover:to-[#9146f2] focus:outline-none focus:ring-2 focus:ring-[#a855f7] transition-all disabled:opacity-50 disabled:cursor-not-allowed border border-purple-400/30"
-                >
+                <button type="submit" disabled={isChangingPassword} className="w-full rounded-2xl bg-violet-600 px-6 py-3.5 text-sm font-semibold text-white shadow-lg shadow-violet-200 transition hover:bg-violet-700 disabled:cursor-not-allowed disabled:opacity-60">
                   {isChangingPassword ? (
-                    <span className="flex items-center gap-2">
-                      <Loader2 className="w-4 h-4 animate-spin" />
-                      Updating Password...
+                    <span className="flex items-center justify-center gap-2">
+                      <Loader2 className="h-4 w-4 animate-spin" /> Updating password...
                     </span>
                   ) : (
-                    <span>Change Password &amp; Continue</span>
+                    'Change Password & Continue'
                   )}
                 </button>
               </form>
             )}
-
-          </div>
-        </div>
-
-        {/* RIGHT SIDE: Branding Graphic */}
-        <div className="hidden lg:flex w-[52%] items-center justify-center relative pl-10 z-10">
-          
-          {/* Backlight Glow for the Logo */}
-          <div className="absolute w-[40rem] h-[40rem] bg-gradient-to-r from-[#4c1d95]/40 to-[#a855f7]/40 rounded-full mix-blend-screen filter blur-[100px] animate-pulse pointer-events-none" />
-          
-          {/* Main Logo Container with Floating Animation */}
-          <div className="relative flex flex-col items-center animate-[bounce_4s_ease-in-out_infinite] text-center">
-            <div className="text-[6.5rem] xl:text-[8rem] font-black tracking-tighter leading-none flex items-center justify-center relative drop-shadow-[0_20px_50px_rgba(0,0,0,0.5)]">
-              <span className="text-white relative z-10 filter drop-shadow-[0_0_20px_rgba(255,255,255,0.2)]">
-                {selectedOrg ? selectedOrg.name.toUpperCase() : 'PMS'}
-              </span>
-            </div>
-            
-            <p className="text-purple-300 font-semibold text-sm tracking-wider uppercase mt-4">
-              Project Management &amp; Performance Platform
-            </p>
-
-            {/* Minimalist Tech Lines Underneath */}
-            <div className="mt-4 flex items-center gap-4 opacity-70">
-              <div className="h-[2px] w-24 bg-gradient-to-r from-transparent to-white/40" />
-              <div className="w-2 h-2 rounded-full bg-[#a855f7] shadow-[0_0_10px_#a855f7]" />
-              <div className="h-[2px] w-24 bg-gradient-to-l from-transparent to-white/40" />
-            </div>
           </div>
 
+          <div className="relative hidden overflow-hidden bg-gradient-to-br from-violet-50 via-white to-indigo-50 p-12 lg:flex lg:items-center lg:justify-center">
+            <div className="absolute left-[-5rem] top-[-5rem] h-56 w-56 rounded-full bg-violet-200/80 blur-3xl" />
+            <div className="absolute bottom-[-4rem] right-[-4rem] h-60 w-60 rounded-full bg-purple-200/80 blur-3xl" />
+            <div className="absolute inset-8 rounded-[28px] border border-violet-100 bg-white/60" />
+            <div className="relative z-10 flex flex-col items-center text-center">
+              <img
+                src={dailoqaLogo}
+                alt="Dailoqa"
+                className="w-72 max-w-full object-contain"
+              />
+              <p className="mt-7 max-w-xs text-sm font-medium leading-6 text-slate-600">Performance, projects, and operational clarity in one secure workspace.</p>
+              <div className="mt-8 flex items-center gap-4 opacity-80">
+                <div className="h-px w-16 bg-violet-300" />
+                <div className="h-2.5 w-2.5 rounded-full bg-violet-500 shadow-[0_0_16px_rgba(124,58,237,0.8)]" />
+                <div className="h-px w-16 bg-violet-300" />
+              </div>
+            </div>
+          </div>
         </div>
-        
       </div>
     </div>
   );

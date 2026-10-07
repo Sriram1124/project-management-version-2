@@ -428,9 +428,9 @@ export class ProjectService {
   }
 
   /**
-   * List project members
+   * List project members with optional search filtering
    */
-  static async getProjectMembers(projectId: string, user: any) {
+  static async getProjectMembers(projectId: string, user: any, searchQuery?: string) {
     const orgId = this.getUserOrgId(user);
 
     const project = await prisma.project.findFirst({
@@ -440,8 +440,19 @@ export class ProjectService {
       throw new Error('Project not found');
     }
 
+    const whereMembers: any = { project_id: projectId };
+    if (searchQuery && searchQuery.trim()) {
+      const q = searchQuery.trim();
+      whereMembers.user = {
+        OR: [
+          { name: { contains: q, mode: 'insensitive' } },
+          { email: { contains: q, mode: 'insensitive' } },
+        ],
+      };
+    }
+
     const members = await prisma.projectMember.findMany({
-      where: { project_id: projectId },
+      where: whereMembers,
       include: {
         user: {
           select: {

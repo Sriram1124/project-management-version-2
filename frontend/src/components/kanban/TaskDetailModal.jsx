@@ -12,10 +12,13 @@ import {
   Plus, 
   GitFork, 
   Calendar,
-  Layers
+  Layers,
+  Search
 } from 'lucide-react';
 import { workItemsService } from '../../services/workItems.service';
 import { projectsService } from '../../services/projects.service';
+import { timesheetService } from '../../services/timesheet.service';
+import { useAuth } from '../../context/AuthContext';
 
 const STATUS_OPTIONS = [
   { id: 'TODO', label: 'To Do' },
@@ -42,11 +45,14 @@ export default function TaskDetailModal({
 }) {
   if (!isOpen || !task) return null;
 
+  const { user: authUser } = useAuth();
   const [liveTask, setLiveTask] = useState(task);
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [error, setError] = useState('');
+  const [taskSession, setTaskSession] = useState(null);
+  const [taskSessionLoading, setTaskSessionLoading] = useState(false);
 
   // Editable fields
   const [isEditing, setIsEditing] = useState(false);
@@ -64,6 +70,7 @@ export default function TaskDetailModal({
   // Assignees
   const [projectMembers, setProjectMembers] = useState([]);
   const [selectedNewAssignee, setSelectedNewAssignee] = useState('');
+  const [assigneeSearch, setAssigneeSearch] = useState('');
 
   // Reload task details from backend
   const fetchTaskDetails = async (id) => {
@@ -102,6 +109,26 @@ export default function TaskDetailModal({
         .catch((err) => console.error('Failed to load project members:', err));
     }
   }, [isOpen, liveTask?.project_id]);
+
+  useEffect(() => {
+    if (!isOpen || !liveTask?.id) return;
+    let cancelled = false;
+    setTaskSessionLoading(true);
+    timesheetService
+      .getActiveTaskSession(liveTask.id)
+      .then((data) => {
+        if (!cancelled) setTaskSession(data?.session || null);
+      })
+      .catch(() => {
+        if (!cancelled) setTaskSession(null);
+      })
+      .finally(() => {
+        if (!cancelled) setTaskSessionLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [isOpen, liveTask?.id]);
 
   const handleStatusChange = async (newStatus) => {
     try {
@@ -217,6 +244,43 @@ export default function TaskDetailModal({
   const children = liveTask.children || [];
   const parent = liveTask.parent;
   const currentAssignees = liveTask.assignees || [];
+  const authRole = String(authUser?.role?.name || authUser?.role || authUser?.type || authUser?.user_type || '').toUpperCase();
+  const authUserId = authUser?.id || authUser?.user_id || authUser?.userId || authUser?.user?.id;
+  const assignedUserIds = [
+    ...currentAssignees.map((assignee) => assignee.user_id || assignee.userId || assignee.assignee_id || assignee.user?.id || assignee.user?.user_id || assignee.id),
+    ...(liveTask.assignee_ids || liveTask.assigneeIds || []),
+  ].filter(Boolean).map(String);
+  const isAssignedIntern = ['INTERN', 'EMPLOYEE'].includes(authRole) && Boolean(authUserId) && assignedUserIds.includes(String(authUserId));
+  const isManagerOrAdmin = authUser?.role === 'MANAGER' || authUser?.role === 'ADMIN' || authUser?.role === 'TECH_LEAD';
+  const canDelete = Boolean(liveTask?.id) && (isManagerOrAdmin || liveTask.created_by === authUser?.id);
+
+  const handleStartWork = async () => {
+    try {
+      setTaskSessionLoading(true);
+      setError('');
+      const response = await timesheetService.startSession({ task_id: liveTask.id });
+      setTaskSession(response.session || null);
+      onToast?.('Work started for this task');
+    } catch (err) {
+      setError(err.message || 'Unable to start work');
+    } finally {
+      setTaskSessionLoading(false);
+    }
+  };
+
+  const handleStopWork = async () => {
+    try {
+      setTaskSessionLoading(true);
+      setError('');
+      const response = await timesheetService.endSession({ task_id: liveTask.id });
+      setTaskSession(null);
+      onToast?.(`Work stopped: ${response.session?.time_entry?.duration_minutes || 0} minutes recorded`);
+    } catch (err) {
+      setError(err.message || 'Unable to stop work');
+    } finally {
+      setTaskSessionLoading(false);
+    }
+  };
 
   return (
     <div
@@ -266,15 +330,17 @@ export default function TaskDetailModal({
               </button>
             )}
 
-            <button
-              type="button"
-              onClick={handleDelete}
-              disabled={deleting}
-              className="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-colors cursor-pointer disabled:opacity-50"
-              title="Delete task"
-            >
-              {deleting ? <Loader2 className="w-4 h-4 animate-spin text-rose-600" /> : <Trash2 className="w-4 h-4" />}
-            </button>
+            {canDelete && (
+              <button
+                type="button"
+                onClick={handleDelete}
+                disabled={deleting}
+                className="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-colors cursor-pointer disabled:opacity-50"
+                title="Delete task"
+              >
+                {deleting ? <Loader2 className="w-4 h-4 animate-spin text-rose-600" /> : <Trash2 className="w-4 h-4" />}
+              </button>
+            )}
 
             <button
               onClick={onClose}
@@ -351,6 +417,19 @@ export default function TaskDetailModal({
               </select>
             </div>
           </div>
+
+          {isAssignedIntern && (
+            <div className="flex items-center justify-between gap-3 rounded-xl border border-violet-100 bg-violet-50/50 p-3.5">
+              <div>
+                <div className="text-[11px] font-bold uppercase tracking-wider text-violet-700">Task work timer</div>
+                <div className="mt-1 text-xs text-slate-600">{taskSession ? `Started ${new Date(taskSession.started_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}` : 'Record actual work time for this task.'}</div>
+              </div>
+              <button type="button" onClick={taskSession ? handleStopWork : handleStartWork} disabled={taskSessionLoading} className={`inline-flex shrink-0 items-center gap-2 rounded-lg px-3 py-2 text-xs font-bold text-white disabled:opacity-50 ${taskSession ? 'bg-rose-600 hover:bg-rose-700' : 'bg-violet-600 hover:bg-violet-700'}`}>
+                {taskSessionLoading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Clock className="h-3.5 w-3.5" />}
+                {taskSession ? 'Stop Work' : 'Start Work'}
+              </button>
+            </div>
+          )}
 
           {/* Description */}
           <div>
@@ -499,31 +578,50 @@ export default function TaskDetailModal({
                 </div>
               )}
 
-              {/* Add Assignee Selector */}
+              {/* Add Assignee Selector with Search */}
               {projectMembers.length > 0 && (
-                <div className="flex items-center gap-2 pt-1">
-                  <select
-                    value={selectedNewAssignee}
-                    onChange={(e) => setSelectedNewAssignee(e.target.value)}
-                    className="flex-1 px-3 py-1.5 rounded-lg border border-slate-200 bg-white text-slate-800 text-xs focus:outline-none focus:border-purple-600"
-                  >
-                    <option value="">Select project member to assign...</option>
-                    {projectMembers
-                      .filter((m) => !currentAssignees.some((a) => (a.user_id || a.id) === (m.user_id || m.id)))
-                      .map((m) => (
-                        <option key={m.id || m.user_id} value={m.user_id || m.id}>
-                          {m.name || m.user?.name} ({m.email || m.user?.email})
-                        </option>
-                      ))}
-                  </select>
-                  <button
-                    type="button"
-                    onClick={handleAddAssignee}
-                    disabled={!selectedNewAssignee}
-                    className="px-3 py-1.5 bg-slate-100 hover:bg-purple-100 text-purple-700 font-bold rounded-lg text-xs transition-colors cursor-pointer disabled:opacity-40"
-                  >
-                    Assign
-                  </button>
+                <div className="space-y-1.5 pt-1">
+                  <div className="relative">
+                    <Search className="w-3 h-3 text-slate-400 absolute left-2.5 top-2.5" />
+                    <input
+                      type="text"
+                      value={assigneeSearch}
+                      onChange={(e) => setAssigneeSearch(e.target.value)}
+                      placeholder="Search members by name or email..."
+                      className="w-full pl-7 pr-3 py-1.5 rounded-lg border border-slate-200 bg-white text-slate-800 text-xs focus:outline-none focus:border-purple-600"
+                    />
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <select
+                      value={selectedNewAssignee}
+                      onChange={(e) => setSelectedNewAssignee(e.target.value)}
+                      className="flex-1 px-3 py-1.5 rounded-lg border border-slate-200 bg-white text-slate-800 text-xs focus:outline-none focus:border-purple-600"
+                    >
+                      <option value="">Select project member to assign...</option>
+                      {projectMembers
+                        .filter((m) => !currentAssignees.some((a) => (a.user_id || a.id) === (m.user_id || m.id)))
+                        .filter((m) => {
+                          if (!assigneeSearch.trim()) return true;
+                          const q = assigneeSearch.toLowerCase();
+                          const name = (m.name || m.user?.name || '').toLowerCase();
+                          const email = (m.email || m.user?.email || '').toLowerCase();
+                          return name.includes(q) || email.includes(q);
+                        })
+                        .map((m) => (
+                          <option key={m.id || m.user_id} value={m.user_id || m.id}>
+                            {m.name || m.user?.name} ({m.email || m.user?.email})
+                          </option>
+                        ))}
+                    </select>
+                    <button
+                      type="button"
+                      onClick={handleAddAssignee}
+                      disabled={!selectedNewAssignee}
+                      className="px-3 py-1.5 bg-slate-100 hover:bg-purple-100 text-purple-700 font-bold rounded-lg text-xs transition-colors cursor-pointer disabled:opacity-40"
+                    >
+                      Assign
+                    </button>
+                  </div>
                 </div>
               )}
             </div>

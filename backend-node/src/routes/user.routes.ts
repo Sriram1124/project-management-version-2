@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import multer from 'multer';
 import { UserController } from '../controllers/user.controller';
+import { TimesheetController } from '../controllers/timesheet.controller';
 import { authenticate, requireRole, requirePermission } from '../middleware/auth.middleware';
 
 const router = Router();
@@ -23,6 +24,12 @@ router.post('/bulk/validate', requireRole(['MANAGER']), upload.single('file'), U
 
 // Manager confirms bulk creation
 router.post('/bulk', requireRole(['MANAGER']), upload.single('file'), UserController.createBulk);
+
+// User updates own profile
+router.patch('/profile', UserController.updateProfile);
+
+// Manager-authorized individual work report for a selected organization user
+router.get('/:userId/timesheet/report', requireRole(['MANAGER', 'ADMIN', 'SUPER_ADMIN']), TimesheetController.getIndividualReport);
 
 // Manager resets an organization user's password
 router.post('/:id/reset-password', requireRole(['MANAGER']), UserController.resetPassword);

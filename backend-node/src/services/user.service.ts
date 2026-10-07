@@ -544,23 +544,43 @@ export class UserService {
   }
 
   /**
-   * List users belonging strictly to manager's organization
+   * List users belonging strictly to manager's organization with search and batch filtering
    */
-  static async listUsers(managerOrgId: string, typeFilter?: string) {
+  static async listUsers(
+    managerOrgId: string,
+    typeFilter?: string,
+    searchQuery?: string,
+    batchFilter?: string
+  ) {
     if (!managerOrgId) {
       throw new Error('Manager organization context required.');
     }
 
-    const users = await prisma.user.findMany({
-      where: {
-        organization_id: managerOrgId,
-        // Exclude global SUPER_ADMIN
-        roles: {
-          none: {
-            role: { name: 'SUPER_ADMIN' },
-          },
+    const whereClause: any = {
+      organization_id: managerOrgId,
+      // Exclude global SUPER_ADMIN
+      roles: {
+        none: {
+          role: { name: 'SUPER_ADMIN' },
         },
       },
+    };
+
+    if (searchQuery && searchQuery.trim()) {
+      const q = searchQuery.trim();
+      whereClause.OR = [
+        { name: { contains: q, mode: 'insensitive' } },
+        { email: { contains: q, mode: 'insensitive' } },
+        { user_code: { contains: q, mode: 'insensitive' } },
+      ];
+    }
+
+    if (batchFilter && batchFilter.trim()) {
+      whereClause.batch = { contains: batchFilter.trim(), mode: 'insensitive' };
+    }
+
+    const users = await prisma.user.findMany({
+      where: whereClause,
       include: {
         roles: {
           include: {
@@ -578,6 +598,7 @@ export class UserService {
         user_code: u.user_code,
         name: u.name,
         email: u.email,
+        batch: u.batch || null,
         type: roleName,
         is_active: u.is_active,
         created_at: u.created_at,
@@ -592,12 +613,77 @@ export class UserService {
         filtered = filtered.filter((u) => u.is_active);
       } else if (typeFilter === 'INACTIVE') {
         filtered = filtered.filter((u) => !u.is_active);
-      } else if (['INTERN', 'EMPLOYEE', 'MANAGER'].includes(typeFilter)) {
+      } else if (['INTERN', 'EMPLOYEE', 'MANAGER', 'TECH_LEAD'].includes(typeFilter)) {
         filtered = filtered.filter((u) => u.type === typeFilter);
       }
     }
 
     return filtered;
+  }
+
+  /**
+   * Update authenticated user's profile
+   */
+  static async updateProfile(userId: string, data: { name?: string; batch?: string }) {
+    if (!userId) {
+      const err: any = new Error('User ID is required.');
+      err.statusCode = 400;
+      throw err;
+    }
+
+    const user = await prisma.user.findUnique({
+      where: { id: userId },
+      include: {
+        roles: {
+          include: { role: true },
+        },
+      },
+    });
+
+    if (!user || !user.is_active) {
+      const err: any = new Error('User not found or inactive.');
+      err.statusCode = 404;
+      throw err;
+    }
+
+    const dataToUpdate: any = {};
+    if (data.name !== undefined) {
+      if (!data.name || typeof data.name !== 'string' || !data.name.trim()) {
+        const err: any = new Error('Name cannot be empty.');
+        err.statusCode = 400;
+        throw err;
+      }
+      dataToUpdate.name = data.name.trim();
+    }
+
+    if (data.batch !== undefined) {
+      dataToUpdate.batch = data.batch && typeof data.batch === 'string' ? data.batch.trim() : null;
+    }
+
+    const updatedUser = await prisma.user.update({
+      where: { id: userId },
+      data: dataToUpdate,
+      include: {
+        roles: {
+          include: { role: true },
+        },
+      },
+    });
+
+    const primaryRole = updatedUser.roles[0]?.role?.name || 'USER';
+    const isInternOrEmployee = primaryRole === 'INTERN' || primaryRole === 'EMPLOYEE';
+
+    return {
+      id: updatedUser.id,
+      name: updatedUser.name,
+      email: updatedUser.email,
+      batch: updatedUser.batch || null,
+      role: primaryRole,
+      user_code: isInternOrEmployee ? undefined : updatedUser.user_code,
+      must_change_password: updatedUser.must_change_password,
+      organization_id: updatedUser.organization_id,
+      updated_at: updatedUser.updated_at,
+    };
   }
 
   /**

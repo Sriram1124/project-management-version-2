@@ -163,7 +163,7 @@ export class UserController {
 
   /**
    * GET /api/users
-   * Lists users in the authenticated Manager's organization with optional ?type=INTERN|EMPLOYEE
+   * Lists users in the authenticated Manager's organization with optional ?type=INTERN|EMPLOYEE&search=...&batch=...
    */
   static async list(req: Request, res: Response): Promise<void> {
     try {
@@ -176,11 +176,34 @@ export class UserController {
       }
 
       const typeFilter = req.query.type as string | undefined;
-      const users = await UserService.listUsers(managerOrgId, typeFilter);
+      const search = (req.query.search || req.query.q) as string | undefined;
+      const batch = req.query.batch as string | undefined;
+      const users = await UserService.listUsers(managerOrgId, typeFilter, search, batch);
 
       res.status(200).json({ users });
     } catch (error: any) {
       res.status(500).json({ error: error?.message || 'Failed to list organization users' });
+    }
+  }
+
+  /**
+   * PATCH /api/users/profile
+   * Authenticated user updates their own profile
+   */
+  static async updateProfile(req: Request, res: Response): Promise<void> {
+    try {
+      const userId = (req as any).user?.userId;
+      if (!userId) {
+        res.status(401).json({ error: 'Unauthorized' });
+        return;
+      }
+
+      const { name, batch } = req.body;
+      const updated = await UserService.updateProfile(userId, { name, batch });
+      res.status(200).json({ user: updated, message: 'Profile updated successfully' });
+    } catch (error: any) {
+      const statusCode = error.statusCode || 500;
+      res.status(statusCode).json({ error: error.message || 'Failed to update profile' });
     }
   }
 

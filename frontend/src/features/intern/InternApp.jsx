@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { useLocation, useNavigate } from 'react-router-dom';
 import { 
   LayoutDashboard, 
   FolderKanban, 
@@ -13,7 +14,8 @@ import {
   ArrowLeft,
   ChevronRight,
   ShieldAlert,
-  ArrowRightLeft
+  ArrowRightLeft,
+  Menu
 } from 'lucide-react';
 
 import InternDashboardTab from './components/InternDashboardTab';
@@ -39,12 +41,44 @@ import { notificationsService } from './services/notificationsService';
 
 export default function InternApp({ onLogout, onSelectProject, onToast }) {
   const { user: authUser } = useAuth();
-  const [currentTab, setCurrentTab] = useState('dashboard');
+  const location = useLocation();
+  const navigate = useNavigate();
+
+  const getTabFromPath = (pathname) => {
+    const clean = pathname.replace(/^\/intern\/?/, '');
+    if (!clean || clean === 'dashboard') return 'dashboard';
+    if (clean === 'tasks' || clean === 'my-tasks') return 'tasks';
+    if (['alerts', 'projects', 'forms', 'attendance', 'mom', 'profile'].includes(clean)) {
+      return clean;
+    }
+    return 'dashboard';
+  };
+
+  const [currentTab, setCurrentTab] = useState(() => getTabFromPath(location.pathname));
   const [selectedProjectId, setSelectedProjectId] = useState(null);
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [workItems, setWorkItems] = useState([]);
   const [loadingTasks, setLoadingTasks] = useState(false);
   const [forms, setForms] = useState(formsService.getAssignedForms());
   const [notifications, setNotifications] = useState(notificationsService.getAllNotifications());
+
+  useEffect(() => {
+    const tabFromUrl = getTabFromPath(location.pathname);
+    if (tabFromUrl !== currentTab) {
+      setCurrentTab(tabFromUrl);
+    }
+  }, [location.pathname]);
+
+  const handleTabChange = (tabId) => {
+    setSelectedProjectId(null);
+    setCurrentTab(tabId);
+    setMobileMenuOpen(false);
+    if (tabId === 'dashboard') {
+      navigate('/intern/dashboard');
+    } else {
+      navigate(`/intern/${tabId}`);
+    }
+  };
 
   // Modal states
   const [selectedTask, setSelectedTask] = useState(null);
@@ -138,10 +172,10 @@ export default function InternApp({ onLogout, onSelectProject, onToast }) {
   };
 
   return (
-    <div className="min-h-screen flex bg-[#F7F8FC] font-sans antialiased text-slate-800 selection:bg-purple-200">
+    <div className="h-screen flex overflow-hidden bg-[#F7F8FC] font-sans antialiased text-slate-800 selection:bg-purple-200">
       {/* 1. DEDICATED INTERN SIDEBAR */}
-      <aside className="w-60 bg-[#4C1D95] text-slate-200 flex flex-col justify-between shrink-0 select-none min-h-screen sticky top-0 border-r border-purple-900/40">
-        <div className="flex flex-col">
+      <aside className="w-60 h-screen bg-[#4C1D95] text-slate-200 flex flex-col shrink-0 select-none sticky top-0 overflow-hidden border-r border-purple-900/40">
+        <div className="flex flex-col flex-1 min-h-0">
           {/* Brand Header */}
           <div className="h-14 flex items-center justify-between px-4 border-b border-purple-800/60 bg-purple-950/30">
             <div className="flex items-center gap-2.5">
@@ -160,7 +194,7 @@ export default function InternApp({ onLogout, onSelectProject, onToast }) {
           </div>
 
           {/* Navigation Items */}
-          <div className="px-2.5 py-4 space-y-4">
+          <div className="flex-1 min-h-0 px-2.5 py-4 space-y-4 overflow-y-auto">
             <div>
               <div className="px-2 text-[10px] font-semibold uppercase tracking-wider text-purple-300/50 mb-1.5">
                 My Workspace
@@ -172,11 +206,8 @@ export default function InternApp({ onLogout, onSelectProject, onToast }) {
                   return (
                     <button
                       key={item.id}
-                      onClick={() => {
-                        setSelectedProjectId(null);
-                        setCurrentTab(item.id);
-                      }}
-                      className={`w-full flex items-center justify-between px-2.5 py-2 rounded-md text-xs font-medium transition-colors ${
+                      onClick={() => handleTabChange(item.id)}
+                      className={`w-full flex items-center justify-between px-2.5 py-2 rounded-md text-xs font-medium transition-colors cursor-pointer ${
                         isActive
                           ? 'bg-purple-900/80 text-white font-bold shadow-2xs'
                           : 'text-purple-200/80 hover:bg-purple-800/40 hover:text-white'
@@ -205,7 +236,7 @@ export default function InternApp({ onLogout, onSelectProject, onToast }) {
         </div>
 
         {/* Intern User Footer */}
-        <div className="p-3 border-t border-purple-800/60 bg-purple-950/40">
+        <div className="shrink-0 p-3 border-t border-purple-800/60 bg-purple-950/40">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2">
               <img
@@ -235,7 +266,7 @@ export default function InternApp({ onLogout, onSelectProject, onToast }) {
       </aside>
 
       {/* 2. MAIN CONTENT AREA */}
-      <div className="flex-1 flex flex-col min-w-0">
+      <div className="flex-1 flex flex-col min-w-0 min-h-0">
         {/* Header */}
         <header className="h-14 bg-white px-6 flex items-center justify-between border-b border-slate-200 select-none">
           {/* Breadcrumbs */}
@@ -268,7 +299,7 @@ export default function InternApp({ onLogout, onSelectProject, onToast }) {
         </header>
 
         {/* Page Content */}
-        <main className="flex-1 p-4 sm:p-6 overflow-y-auto">
+        <main className="flex-1 min-h-0 p-4 sm:p-6 overflow-y-auto">
           <div className="max-w-6xl mx-auto space-y-6">
             {/* Authenticated User Banner */}
             <div className="p-4 rounded-2xl bg-gradient-to-r from-purple-700 to-indigo-700 text-white flex flex-col sm:flex-row sm:items-center justify-between gap-3 shadow-md">
@@ -284,6 +315,11 @@ export default function InternApp({ onLogout, onSelectProject, onToast }) {
                     <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-white/20 uppercase tracking-wider">
                       {displayRole}
                     </span>
+                    {authUser?.batch && (
+                      <span className="px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-emerald-400/25 text-emerald-100 border border-emerald-300/30">
+                        {authUser.batch}
+                      </span>
+                    )}
                   </div>
                   <p className="text-xs text-purple-100">
                     {authUser?.email || currentUser.email}
@@ -300,15 +336,12 @@ export default function InternApp({ onLogout, onSelectProject, onToast }) {
                 notifications={notifications}
                 onOpenTaskModal={(t) => setSelectedTask(t)}
                 onOpenFormModal={(f) => setSelectedForm(f)}
-                onOpenMoMModal={() => setCurrentTab('mom')}
+                onOpenMoMModal={() => handleTabChange('mom')}
                 onOpenNotifications={() => setIsNotificationsOpen(true)}
-                onNavigateTab={(tabId) => {
-                  setSelectedProjectId(null);
-                  setCurrentTab(tabId);
-                }}
+                onNavigateTab={(tabId) => handleTabChange(tabId)}
                 onSelectProject={(projectId) => {
                   setSelectedProjectId(projectId);
-                  setCurrentTab('projects');
+                  handleTabChange('projects');
                 }}
                 onToggleTask={handleToggleTask}
               />

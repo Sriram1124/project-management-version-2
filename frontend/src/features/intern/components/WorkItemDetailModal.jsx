@@ -14,6 +14,8 @@ import {
   Trash2
 } from 'lucide-react';
 import { workItemsService } from '../services/workItemsService';
+import { timesheetService } from '../../../services/timesheet.service';
+import { useAuth } from '../../../context/AuthContext';
 
 export default function WorkItemDetailModal({
   workItem,
@@ -32,6 +34,9 @@ export default function WorkItemDetailModal({
   const [error, setError] = useState('');
   const [status, setStatus] = useState(workItem.status);
   const [priority, setPriority] = useState(workItem.priority);
+  const [taskSession, setTaskSession] = useState(null);
+  const [taskSessionLoading, setTaskSessionLoading] = useState(false);
+  const { user: authUser } = useAuth();
 
   useEffect(() => {
     if (workItem?.id && isOpen) {
@@ -55,11 +60,66 @@ export default function WorkItemDetailModal({
     }
   }, [workItem?.id, isOpen]);
 
+  useEffect(() => {
+    const currentItemId = liveItem?.id || workItem?.id;
+    if (!isOpen || !currentItemId) return;
+    let cancelled = false;
+    setTaskSessionLoading(true);
+    timesheetService.getActiveTaskSession(currentItemId)
+      .then((data) => {
+        if (!cancelled) setTaskSession(data?.session || null);
+      })
+      .catch(() => {
+        if (!cancelled) setTaskSession(null);
+      })
+      .finally(() => {
+        if (!cancelled) setTaskSessionLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [isOpen, liveItem?.id, workItem?.id]);
+
   const item = liveItem || workItem;
   const isOverdue = workItemsService.isOverdue(item);
   const childItems = item.children || [];
   const parentItem = item.parent || null;
   const assignees = item.assignees || [];
+  const authRole = String(authUser?.role?.name || authUser?.role || authUser?.type || authUser?.user_type || '').toUpperCase();
+  const authUserId = authUser?.id || authUser?.user_id || authUser?.userId || authUser?.user?.id;
+  const assignedUserIds = [
+    ...assignees.map((assignee) => assignee.user_id || assignee.userId || assignee.assignee_id || assignee.user?.id || assignee.user?.user_id || assignee.id),
+    ...(item.assignee_ids || item.assigneeIds || []),
+  ].filter(Boolean).map(String);
+  const isAssignedIntern = ['INTERN', 'EMPLOYEE'].includes(authRole) && Boolean(authUserId) && assignedUserIds.includes(String(authUserId));
+
+  const handleStartWork = async () => {
+    try {
+      setTaskSessionLoading(true);
+      setError('');
+      const response = await timesheetService.startSession({ task_id: item.id });
+      setTaskSession(response.session || null);
+      onToast?.('Work started for this task');
+    } catch (err) {
+      setError(err.message || 'Unable to start work');
+    } finally {
+      setTaskSessionLoading(false);
+    }
+  };
+
+  const handleStopWork = async () => {
+    try {
+      setTaskSessionLoading(true);
+      setError('');
+      const response = await timesheetService.endSession({ task_id: item.id });
+      setTaskSession(null);
+      onToast?.(`Work stopped: ${response.session?.time_entry?.duration_minutes || 0} minutes recorded`);
+    } catch (err) {
+      setError(err.message || 'Unable to stop work');
+    } finally {
+      setTaskSessionLoading(false);
+    }
+  };
 
   const handleStatusChange = async (newStatus) => {
     try {
@@ -301,6 +361,19 @@ export default function WorkItemDetailModal({
                   </select>
                 </div>
               </div>
+
+              {isAssignedIntern && (
+                <div className="flex items-center justify-between gap-3 rounded-xl border border-purple-100 bg-purple-50/40 p-4">
+                  <div>
+                    <div className="text-[11px] font-bold uppercase tracking-wider text-purple-700">Task work timer</div>
+                    <div className="mt-1 text-xs text-slate-600">{taskSession ? `Started ${new Date(taskSession.started_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}` : 'Record actual work time for this task.'}</div>
+                  </div>
+                  <button type="button" onClick={taskSession ? handleStopWork : handleStartWork} disabled={taskSessionLoading} className={`inline-flex shrink-0 items-center gap-2 rounded-lg px-3 py-2 text-xs font-bold text-white disabled:opacity-50 ${taskSession ? 'bg-rose-600 hover:bg-rose-700' : 'bg-purple-600 hover:bg-purple-700'}`}>
+                    {taskSessionLoading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Clock className="h-3.5 w-3.5" />}
+                    {taskSession ? 'Stop Work' : 'Start Work'}
+                  </button>
+                </div>
+              )}
 
               {/* Dates & Deadlines */}
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">

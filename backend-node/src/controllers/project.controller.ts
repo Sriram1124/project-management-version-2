@@ -106,8 +106,9 @@ export class ProjectController {
     try {
       const user = (req as any).fullUser;
       const { id } = req.params;
+      const search = (req.query.search || req.query.q) as string | undefined;
 
-      const members = await ProjectService.getProjectMembers(id, user);
+      const members = await ProjectService.getProjectMembers(id, user, search);
       res.status(200).json({ members });
     } catch (error) {
       ProjectController.handleError(res, error);
