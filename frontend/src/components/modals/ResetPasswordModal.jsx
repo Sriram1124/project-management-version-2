@@ -55,7 +55,7 @@ export default function ResetPasswordModal({ isOpen, user, onClose, onSuccess })
                 {tempPassword ? 'Password Reset Successfully' : 'Reset User Password?'}
               </h3>
               <p className="text-[11px] text-slate-500">
-                {user.name} ({user.user_code || user.email})
+                {user.name} ({user.email})
               </p>
             </div>
           </div>

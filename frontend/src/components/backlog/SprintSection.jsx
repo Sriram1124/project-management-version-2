@@ -1,36 +1,47 @@
 import React, { useState } from 'react';
-import IssueRow from './IssueRow';
+import HierarchicalIssueTable from './HierarchicalIssueTable';
 import { 
   ChevronDown, 
   ChevronRight, 
   Plus, 
   Check, 
   Play, 
-  Calendar,
-  MoreHorizontal
+  Calendar 
 } from 'lucide-react';
 
 export default function SprintSection({
   sprint,
   issues = [],
-  epics = [],
+  allWorkItems = [],
+  sprints = [],
+  members = [],
   selectedIssueId,
   onSelectIssue,
+  onUpdateStatus,
+  onUpdatePriority,
+  onUpdateAssignee,
+  onUpdateSprint,
+  onUpdateStoryPoints,
+  onUpdateDueDate,
+  onDeleteIssue,
+  onAddChild,
+  expandedIds,
+  onToggleExpand,
   onDragStart,
   onDragEnd,
   onDropIssue,
-  onToggleSubtask,
-  onAddSubtask,
   onCreateIssueInSprint,
   onCompleteSprint,
   onStartSprint,
 }) {
-  const [isExpanded, setIsExpanded] = useState(true);
+  const [isSectionOpen, setIsSectionOpen] = useState(true);
   const [isDragOver, setIsDragOver] = useState(false);
 
-  // Calculate totals
-  const totalSP = issues.reduce((acc, curr) => acc + (Number(curr.storyPoints) || 0), 0);
-  const completedCount = issues.filter(i => i.status === 'DONE' || i.status === 'COMPLETED').length;
+  // Calculate totals from real database fields
+  const totalSP = issues.reduce((acc, curr) => acc + (Number(curr.story_points) || 0), 0);
+  const completedCount = issues.filter(
+    (i) => String(i.status).toUpperCase() === 'COMPLETED' || String(i.status).toUpperCase() === 'DONE'
+  ).length;
 
   const handleDragOver = (e) => {
     e.preventDefault();
@@ -56,6 +67,10 @@ export default function SprintSection({
   const isBacklog = sprint.id === 'backlog';
   const isActive = sprint.status === 'ACTIVE';
 
+  const formattedDates = sprint.startDate && sprint.endDate
+    ? `${new Date(sprint.startDate).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })} - ${new Date(sprint.endDate).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}`
+    : sprint.dates || null;
+
   return (
     <div
       onDragOver={handleDragOver}
@@ -68,14 +83,19 @@ export default function SprintSection({
       }`}
     >
       {/* Sprint Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 p-2.5 bg-slate-50/80 border-b border-slate-200 rounded-t-md text-xs">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 p-2.5 bg-slate-50/90 border-b border-slate-200 rounded-t-md text-xs">
         {/* Left: Expander, Name, Badge, Dates, Stats */}
         <div className="flex items-center gap-2 flex-wrap min-w-0">
           <button
-            onClick={() => setIsExpanded(!isExpanded)}
+            type="button"
+            onClick={() => setIsSectionOpen(!isSectionOpen)}
             className="text-slate-500 hover:text-slate-800 p-0.5 rounded transition-colors"
           >
-            {isExpanded ? <ChevronDown className="w-3.5 h-3.5" /> : <ChevronRight className="w-3.5 h-3.5" />}
+            {isSectionOpen ? (
+              <ChevronDown className="w-3.5 h-3.5" />
+            ) : (
+              <ChevronRight className="w-3.5 h-3.5" />
+            )}
           </button>
 
           <h3 className="font-bold text-slate-900 tracking-tight">
@@ -84,20 +104,20 @@ export default function SprintSection({
 
           {/* Status Badge */}
           {isActive ? (
-            <span className="px-1.5 py-0.2 rounded text-[10px] font-bold bg-purple-100 text-purple-700 border border-purple-200/60 uppercase">
+            <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-purple-100 text-purple-700 border border-purple-200/80 uppercase tracking-wider">
               Active Sprint
             </span>
           ) : !isBacklog ? (
-            <span className="px-1.5 py-0.2 rounded text-[10px] font-semibold bg-slate-200/70 text-slate-700 uppercase">
+            <span className="px-2 py-0.5 rounded text-[10px] font-semibold bg-slate-200/70 text-slate-700 uppercase tracking-wider">
               Planned
             </span>
           ) : null}
 
           {/* Dates */}
-          {!isBacklog && sprint.dates && (
+          {!isBacklog && formattedDates && (
             <div className="flex items-center gap-1 text-[11px] text-slate-500 font-medium">
               <Calendar className="w-3 h-3 text-slate-400" />
-              <span>{sprint.dates}</span>
+              <span>{formattedDates}</span>
             </div>
           )}
 
@@ -113,6 +133,7 @@ export default function SprintSection({
         <div className="flex items-center gap-1.5 shrink-0 self-end sm:self-auto">
           {isActive ? (
             <button
+              type="button"
               onClick={() => onCompleteSprint?.(sprint.id)}
               className="px-2.5 py-1 rounded-md border border-slate-200 bg-white hover:bg-slate-50 text-slate-700 text-xs font-medium transition-colors flex items-center gap-1"
             >
@@ -121,6 +142,7 @@ export default function SprintSection({
             </button>
           ) : !isBacklog ? (
             <button
+              type="button"
               onClick={() => onStartSprint?.(sprint.id)}
               className="px-2.5 py-1 rounded-md border border-purple-200 bg-purple-50 hover:bg-purple-100 text-purple-700 text-xs font-semibold transition-colors flex items-center gap-1"
             >
@@ -130,6 +152,7 @@ export default function SprintSection({
           ) : null}
 
           <button
+            type="button"
             onClick={() => onCreateIssueInSprint?.(sprint.id)}
             className="px-2 py-1 rounded-md text-slate-600 hover:text-purple-700 hover:bg-slate-100 text-xs font-medium transition-colors flex items-center gap-1"
             title={`Add issue to ${sprint.name}`}
@@ -140,40 +163,31 @@ export default function SprintSection({
         </div>
       </div>
 
-      {/* Issues List */}
-      {isExpanded && (
-        <div className="divide-y divide-slate-100">
-          {issues.map((issue) => {
-            const issueEpic = epics.find(e => e.id === issue.epicId);
-            return (
-              <IssueRow
-                key={issue.id}
-                issue={issue}
-                epic={issueEpic}
-                isSelected={selectedIssueId === issue.id}
-                onSelectIssue={onSelectIssue}
-                onDragStart={onDragStart}
-                onDragEnd={onDragEnd}
-                onToggleSubtask={onToggleSubtask}
-                onAddSubtask={onAddSubtask}
-              />
-            );
-          })}
-
-          {issues.length === 0 && (
-            <div className="p-4 text-center text-xs text-slate-400 border-dashed">
-              No issues in {sprint.name}. Drag issues here or{' '}
-              <button
-                onClick={() => onCreateIssueInSprint?.(sprint.id)}
-                className="text-purple-700 font-semibold hover:underline"
-              >
-                create an issue
-              </button>.
-            </div>
-          )}
-        </div>
+      {/* Issues Table */}
+      {isSectionOpen && (
+        <HierarchicalIssueTable
+          issues={issues}
+          allWorkItems={allWorkItems}
+          sprints={sprints}
+          members={members}
+          selectedIssueId={selectedIssueId}
+          onSelectIssue={onSelectIssue}
+          onUpdateStatus={onUpdateStatus}
+          onUpdatePriority={onUpdatePriority}
+          onUpdateAssignee={onUpdateAssignee}
+          onUpdateSprint={onUpdateSprint}
+          onUpdateStoryPoints={onUpdateStoryPoints}
+          onUpdateDueDate={onUpdateDueDate}
+          onDeleteIssue={onDeleteIssue}
+          onAddChild={onAddChild}
+          expandedIds={expandedIds}
+          onToggleExpand={onToggleExpand}
+          isHierarchical={true}
+          onDragStart={onDragStart}
+          onDragEnd={onDragEnd}
+          emptyMessage={`No issues in ${sprint.name}. Drag issues here or click Create to add one.`}
+        />
       )}
     </div>
   );
 }
-

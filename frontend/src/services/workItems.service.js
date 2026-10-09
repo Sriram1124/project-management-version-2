@@ -11,6 +11,9 @@ export const workItemsService = {
     if (filters.type) params.append('type', filters.type);
     if (filters.status) params.append('status', filters.status);
     if (filters.priority) params.append('priority', filters.priority);
+    if (filters.sprint_id !== undefined && filters.sprint_id !== null) {
+      params.append('sprint_id', filters.sprint_id);
+    }
     if (filters.assigned_to_me) params.append('assigned_to_me', 'true');
     if (filters.my_personal) params.append('my_personal', 'true');
 
@@ -41,6 +44,9 @@ export const workItemsService = {
     if (cleanPayload.parent_id === '' || cleanPayload.parent_id === undefined) {
       cleanPayload.parent_id = null;
     }
+    if (cleanPayload.sprint_id === '' || cleanPayload.sprint_id === undefined) {
+      cleanPayload.sprint_id = null;
+    }
     if (cleanPayload.due_date === '') {
       cleanPayload.due_date = null;
     }
@@ -53,7 +59,7 @@ export const workItemsService = {
   },
 
   /**
-   * Update work item fields (title, description, status, priority, start_date, due_date)
+   * Update work item fields (title, description, status, priority, start_date, due_date, sprint_id, parent_id)
    */
   async updateWorkItem(id, payload) {
     if (!id) throw new Error('Work item ID is required');
@@ -61,6 +67,8 @@ export const workItemsService = {
     if (cleanPayload.due_date === '') cleanPayload.due_date = null;
     if (cleanPayload.start_date === '') cleanPayload.start_date = null;
     if (cleanPayload.description === '') cleanPayload.description = null;
+    if (cleanPayload.sprint_id === '') cleanPayload.sprint_id = null;
+    if (cleanPayload.parent_id === '') cleanPayload.parent_id = null;
 
     const data = await api.patch(`/work-items/${id}`, cleanPayload);
     return data.work_item;

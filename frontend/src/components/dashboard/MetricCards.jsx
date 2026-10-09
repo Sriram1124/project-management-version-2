@@ -53,8 +53,7 @@ export default function MetricCards({ metrics, onCardClick }) {
 
       {/* Tasks Completed */}
       <div 
-        onClick={() => onCardClick?.('tasks')}
-        className="bg-white rounded-2xl p-5 border border-slate-200/80 shadow-card hover:shadow-card-hover transition-all duration-200 cursor-pointer flex flex-col justify-between"
+        className="bg-white rounded-2xl p-5 border border-slate-200/80 shadow-card flex flex-col justify-between select-none"
       >
         <div className="flex items-center justify-between">
           <span className="text-xs font-semibold text-slate-500 uppercase tracking-wider">
@@ -77,8 +76,7 @@ export default function MetricCards({ metrics, onCardClick }) {
 
       {/* Overdue Tasks */}
       <div 
-        onClick={() => onCardClick?.('tasks-overdue')}
-        className="bg-white rounded-2xl p-5 border border-slate-200/80 shadow-card hover:shadow-card-hover transition-all duration-200 cursor-pointer flex flex-col justify-between"
+        className="bg-white rounded-2xl p-5 border border-slate-200/80 shadow-card flex flex-col justify-between select-none"
       >
         <div className="flex items-center justify-between">
           <span className="text-xs font-semibold text-slate-500 uppercase tracking-wider">

@@ -19,6 +19,7 @@ import TeamsChannelView from './components/channels/TeamsChannelView';
 import { CheckCircle2 } from 'lucide-react';
 import { useAuth } from './context/AuthContext';
 import { notificationsService } from './services/notifications.service';
+import { cohortsService } from './services/cohorts.service';
 
 export default function ManagerApp() {
   const { user: authUser, logout } = useAuth();
@@ -39,6 +40,45 @@ export default function ManagerApp() {
   const [activeProjectId, setActiveProjectId] = useState(null);
   const [activeProjectName, setActiveProjectName] = useState(null);
   const [activeProjectTab, setActiveProjectTab] = useState('overview');
+
+  // Cohort state management
+  const [cohorts, setCohorts] = useState([]);
+  const [selectedCohortId, setSelectedCohortId] = useState(() => {
+    return localStorage.getItem('selected_cohort_id') || null;
+  });
+
+  useEffect(() => {
+    let isMounted = true;
+    cohortsService.getCohorts()
+      .then((data) => {
+        if (isMounted && Array.isArray(data) && data.length > 0) {
+          setCohorts(data);
+          // Default to stored cohort if valid, else first cohort (Cohort 1)
+          const stored = localStorage.getItem('selected_cohort_id');
+          const found = data.find((c) => c.id === stored);
+          if (found) {
+            setSelectedCohortId(found.id);
+          } else {
+            setSelectedCohortId(data[0].id);
+            localStorage.setItem('selected_cohort_id', data[0].id);
+          }
+        }
+      })
+      .catch((err) => console.error('Failed to load cohorts:', err));
+
+    return () => {
+      isMounted = false;
+    };
+  }, []);
+
+  const handleSelectCohort = (cohortId) => {
+    setSelectedCohortId(cohortId);
+    localStorage.setItem('selected_cohort_id', cohortId);
+    const chosen = cohorts.find((c) => c.id === cohortId);
+    if (chosen) {
+      triggerToast(`Switched view to ${chosen.name}`);
+    }
+  };
 
   useEffect(() => {
     const v = getViewFromPath(location.pathname);
@@ -127,7 +167,10 @@ export default function ManagerApp() {
   }, []);
 
   const triggerToast = (msg) => {
-    setToast({ msg });
+    const text = typeof msg === 'object' && msg !== null 
+      ? (msg.message || msg.msg || JSON.stringify(msg)) 
+      : String(msg || '');
+    setToast({ msg: text });
     setTimeout(() => setToast(null), 3500);
   };
 
@@ -264,6 +307,9 @@ export default function ManagerApp() {
           onOpenAlertModal={() => setIsAlertModalOpen(true)}
           unreadAlertCount={0}
           onBackClick={activeProjectId ? handleExitProject : null}
+          cohorts={cohorts}
+          selectedCohortId={selectedCohortId}
+          onSelectCohort={handleSelectCohort}
           onBreadcrumbClick={(crumb) => {
             if (crumb === 'Projects') {
               handleExitProject();
@@ -302,6 +348,7 @@ export default function ManagerApp() {
                   onPostForm={handlePostChannelForm}
                   onSubmitResponse={handleSubmitChannelFormResponse}
                   onToast={triggerToast}
+                  selectedCohort={cohorts.find((c) => c.id === selectedCohortId) || cohorts[0]}
                 />
               )}
               {currentView === 'projects' && (

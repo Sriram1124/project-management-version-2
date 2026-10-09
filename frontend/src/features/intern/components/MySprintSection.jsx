@@ -169,7 +169,7 @@ export default function MySprintSection({
                     </span>
                     <h5
                       className={`text-xs font-bold truncate ${
-                        isDone ? 'line-through text-slate-400' : 'text-slate-800'
+                        isDone ? 'text-slate-500' : 'text-slate-800'
                       }`}
                     >
                       {t.title}

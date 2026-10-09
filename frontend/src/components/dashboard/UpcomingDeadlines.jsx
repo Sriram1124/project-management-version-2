@@ -181,14 +181,6 @@ export default function UpcomingDeadlines({ deadlines, onViewAll }) {
               This Week
             </button>
           </div>
-
-          <button
-            onClick={onViewAll}
-            className="text-xs font-semibold text-purple-700 hover:text-purple-900 flex items-center gap-1 px-2.5 py-1 rounded-lg border border-purple-200 bg-purple-50/50 hover:bg-purple-100/60 transition-colors ml-1"
-          >
-            <span>Tasks</span>
-            <ArrowUpRight className="w-3.5 h-3.5" />
-          </button>
         </div>
       </div>
 
@@ -268,16 +260,17 @@ export default function UpcomingDeadlines({ deadlines, onViewAll }) {
       </div>
 
       {/* FOOTER STRIP */}
-      <div className="px-5 py-2.5 bg-slate-50 border-t border-slate-200/80 flex items-center justify-between text-xs text-slate-500">
-        <div className="flex items-center gap-1.5">
-          <CalendarDays className="w-3.5 h-3.5 text-slate-400" />
-          <span>Showing upcoming schedule from active sprints and cohort milestones</span>
+      <div className="px-5 py-2.5 bg-slate-50 border-t border-slate-200/80 flex items-center justify-between text-xs text-slate-500 gap-3">
+        <div className="flex items-center gap-1.5 min-w-0">
+          <CalendarDays className="w-3.5 h-3.5 text-slate-400 shrink-0" />
+          <span className="truncate">Showing upcoming schedule from active sprints and cohort milestones</span>
         </div>
         <button
           onClick={onViewAll}
-          className="font-semibold text-purple-700 hover:text-purple-900 hover:underline transition-colors cursor-pointer"
+          className="text-xs font-semibold text-purple-700 hover:text-purple-900 flex items-center gap-1 px-2.5 py-1 rounded-lg border border-purple-200 bg-purple-50/70 hover:bg-purple-100/80 transition-colors cursor-pointer shrink-0 ml-auto"
         >
-          Open Task Deadlines & Boards →
+          <span>Tasks</span>
+          <ArrowUpRight className="w-3.5 h-3.5" />
         </button>
       </div>
     </div>

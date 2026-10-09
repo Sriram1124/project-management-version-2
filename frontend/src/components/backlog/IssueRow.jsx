@@ -89,7 +89,8 @@ export default function IssueRow({
   const handleSubtaskSubmit = (e) => {
     e.preventDefault();
     if (newSubtaskTitle.trim()) {
-      onAddSubtask?.(issue.id, newSubtaskTitle.trim());
+      const childType = String(issue?.type || '').toUpperCase() === 'STORY' ? 'TASK' : 'SUBTASK';
+      onAddSubtask?.(issue.id, newSubtaskTitle.trim(), childType);
       setNewSubtaskTitle('');
       setIsAddingSubtask(false);
     }
@@ -134,9 +135,7 @@ export default function IssueRow({
 
           {/* Summary */}
           <span
-            className={`font-medium text-slate-800 truncate group-hover:text-purple-700 transition-colors flex-1 ${
-              issue.status === 'DONE' ? 'line-through text-slate-400' : ''
-            }`}
+            className="font-medium text-slate-800 truncate group-hover:text-purple-700 transition-colors flex-1"
           >
             {issue.title}
           </span>
@@ -235,9 +234,7 @@ export default function IssueRow({
                   {subtask.id}
                 </span>
                 <span
-                  className={`text-xs text-slate-700 truncate ${
-                    subtask.done ? 'line-through text-slate-400' : ''
-                  }`}
+                  className="text-xs text-slate-700 truncate"
                 >
                   {subtask.title}
                 </span>
@@ -249,40 +246,51 @@ export default function IssueRow({
             </div>
           ))}
 
-          {/* Quick Add Subtask Row */}
-          {isAddingSubtask ? (
-            <form onSubmit={handleSubtaskSubmit} className="flex items-center gap-2 pl-5 pt-1">
-              <CornerDownRight className="w-3 h-3 text-slate-300 shrink-0" />
-              <input
-                type="text"
-                autoFocus
-                value={newSubtaskTitle}
-                onChange={(e) => setNewSubtaskTitle(e.target.value)}
-                placeholder="Subtask summary... (Press Enter)"
-                className="flex-1 px-2 py-1 text-xs rounded border border-purple-300 focus:outline-none focus:ring-1 focus:ring-purple-600 bg-white"
-              />
+          {/* Quick Add Child Item Row (Only for non-leaf items: Task & Story) */}
+          {(String(issue?.type || '').toUpperCase() === 'TASK' ||
+            String(issue?.type || '').toUpperCase() === 'STORY') && (
+            isAddingSubtask ? (
+              <form onSubmit={handleSubtaskSubmit} className="flex items-center gap-2 pl-5 pt-1">
+                <CornerDownRight className="w-3 h-3 text-slate-300 shrink-0" />
+                <input
+                  type="text"
+                  autoFocus
+                  value={newSubtaskTitle}
+                  onChange={(e) => setNewSubtaskTitle(e.target.value)}
+                  placeholder={`${
+                    String(issue?.type || '').toUpperCase() === 'STORY'
+                      ? 'Task'
+                      : 'Subtask'
+                  } summary... (Press Enter)`}
+                  className="flex-1 px-2 py-1 text-xs rounded border border-purple-300 focus:outline-none focus:ring-1 focus:ring-purple-600 bg-white"
+                />
+                <button
+                  type="submit"
+                  className="px-2 py-1 rounded bg-purple-600 text-white text-[11px] font-medium"
+                >
+                  Add
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setIsAddingSubtask(false)}
+                  className="px-1.5 py-1 text-slate-400 hover:text-slate-600 text-[11px]"
+                >
+                  Cancel
+                </button>
+              </form>
+            ) : (
               <button
-                type="submit"
-                className="px-2 py-1 rounded bg-purple-600 text-white text-[11px] font-medium"
+                onClick={() => setIsAddingSubtask(true)}
+                className="flex items-center gap-1 text-[11px] font-medium text-slate-400 hover:text-purple-700 pl-5 py-0.5 transition-colors"
               >
-                Add
+                <Plus className="w-3 h-3" />
+                <span>
+                  {String(issue?.type || '').toUpperCase() === 'STORY'
+                    ? 'Add task'
+                    : 'Add subtask'}
+                </span>
               </button>
-              <button
-                type="button"
-                onClick={() => setIsAddingSubtask(false)}
-                className="px-1.5 py-1 text-slate-400 hover:text-slate-600 text-[11px]"
-              >
-                Cancel
-              </button>
-            </form>
-          ) : (
-            <button
-              onClick={() => setIsAddingSubtask(true)}
-              className="flex items-center gap-1 text-[11px] font-medium text-slate-400 hover:text-purple-700 pl-5 py-0.5 transition-colors"
-            >
-              <Plus className="w-3 h-3" />
-              <span>Add subtask</span>
-            </button>
+            )
           )}
         </div>
       )}

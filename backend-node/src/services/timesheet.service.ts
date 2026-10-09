@@ -348,16 +348,46 @@ export class TimesheetService {
       throw new Error('Forbidden: you are not assigned to this task');
     }
 
-    const startTime = toDate(input.start_time);
-    const endTime = toDate(input.end_time);
+    let startTime = toDate(input.start_time);
+    let endTime = toDate(input.end_time);
+    let durationMinutes = Number(input.duration_minutes ?? (startTime && endTime ? diffMinutes(startTime, endTime) : 0));
+
+    if ((!startTime || !endTime) && durationMinutes > 0) {
+      const entryDate = input.date ? new Date(input.date) : new Date();
+      const baseYear = entryDate.getUTCFullYear();
+      const baseMonth = entryDate.getUTCMonth();
+      const baseDay = entryDate.getUTCDate();
+
+      const dayStart = new Date(Date.UTC(baseYear, baseMonth, baseDay, 9, 0, 0));
+      const dayEnd = new Date(Date.UTC(baseYear, baseMonth, baseDay, 23, 59, 59));
+
+      const lastEntry = await prisma.timeEntry.findFirst({
+        where: {
+          user_id: user.id,
+          organization_id: orgId,
+          end_time: { gte: dayStart, lte: dayEnd },
+        },
+        orderBy: { end_time: 'desc' },
+      });
+
+      if (lastEntry && lastEntry.end_time >= dayStart) {
+        startTime = new Date(lastEntry.end_time.getTime() + MINUTE_MS);
+      } else {
+        startTime = dayStart;
+      }
+      endTime = new Date(startTime.getTime() + durationMinutes * MINUTE_MS);
+    }
+
     if (!startTime || !endTime) {
-      throw new Error('Start time and end time are required');
+      throw new Error('Start time and end time or valid duration are required');
     }
     if (endTime <= startTime) {
       throw new Error('Time entry end time must be after the start time');
     }
 
-    const durationMinutes = Number(input.duration_minutes ?? diffMinutes(startTime, endTime));
+    if (durationMinutes <= 0) {
+      durationMinutes = diffMinutes(startTime, endTime);
+    }
     if (durationMinutes <= 0) {
       throw new Error('Time entry duration must be greater than zero');
     }
@@ -372,7 +402,13 @@ export class TimesheetService {
     });
 
     if (overlap) {
-      throw new Error('Time entry overlaps with an existing entry. Please adjust the range.');
+      // If times were auto-generated, bump after the overlapping end_time
+      if (!input.start_time || !input.end_time) {
+        startTime = new Date(overlap.end_time.getTime() + MINUTE_MS);
+        endTime = new Date(startTime.getTime() + durationMinutes * MINUTE_MS);
+      } else {
+        throw new Error('Time entry overlaps with an existing entry. Please adjust the range.');
+      }
     }
 
     return prisma.timeEntry.create({

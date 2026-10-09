@@ -6,25 +6,33 @@ export interface CreateWorkItemInput {
   type: WorkItemType;
   project_id?: string | null;
   parent_id?: string | null;
+  sprint_id?: string | null;
   description?: string | null;
   status?: WorkItemStatus;
   priority?: WorkItemPriority;
   start_date?: string | Date | null;
   due_date?: string | Date | null;
+  story_points?: number | null;
   assignee_ids?: string[];
 }
 
 export interface UpdateWorkItemInput {
   title?: string;
+  type?: WorkItemType;
   description?: string | null;
   status?: WorkItemStatus;
   priority?: WorkItemPriority;
   start_date?: string | Date | null;
   due_date?: string | Date | null;
+  story_points?: number | null;
+  sprint_id?: string | null;
+  parent_id?: string | null;
+  assignee_ids?: string[];
 }
 
 export interface WorkItemFilter {
   project_id?: string;
+  sprint_id?: string;
   type?: string;
   status?: string;
   priority?: string;
@@ -127,10 +135,16 @@ export class WorkItemService {
 
   /**
    * Validate hierarchy integrity:
-   * Project -> Tasks -> Subtasks
-   * Epic -> Story -> Task -> Subtask also supported.
-   * BUG is standalone
-   * Parent must belong to same project, or both must be personal.
+   * Strict Jira-Style Hierarchy:
+   * EPIC -> STORY or BUG only
+   * STORY -> TASK or BUG only
+   * TASK -> SUBTASK only
+   * SUBTASK -> cannot have children
+   * BUG -> cannot have children
+   *
+   * Top-level (parentId = null):
+   * In a Project (projectId != null): only EPIC is permitted at root.
+   * Personal Tasks (projectId == null): only TASK is permitted.
    */
   private static async validateHierarchy(
     type: WorkItemType,
@@ -139,10 +153,25 @@ export class WorkItemService {
     orgId: string
   ): Promise<void> {
     if (!parentId) {
-      if (type === WorkItemType.SUBTASK) {
-        throw new Error('SUBTASK must have a parent of type TASK');
+      if (projectId) {
+        if (type !== WorkItemType.EPIC) {
+          throw new Error(
+            `${type} must have a parent work item. Only EPIC can be created at the project root.`
+          );
+        }
+      } else {
+        if (type !== WorkItemType.TASK) {
+          throw new Error(
+            `Personal tasks without a project must be of type TASK. Cannot create ${type} as a personal item.`
+          );
+        }
       }
       return;
+    }
+
+    // EPIC cannot have a parent
+    if (type === WorkItemType.EPIC) {
+      throw new Error('EPIC cannot have a parent work item');
     }
 
     const parent = await prisma.workItem.findFirst({
@@ -166,34 +195,70 @@ export class WorkItemService {
       }
     }
 
-    // Type hierarchy check
-    switch (type) {
+    // Strict parent-child validation rules
+    switch (parent.type) {
       case WorkItemType.EPIC:
-        throw new Error('EPIC cannot have a parent work item');
+        if (type !== WorkItemType.STORY && type !== WorkItemType.BUG) {
+          throw new Error(
+            `An EPIC can only contain STORY or BUG work items. Cannot create ${type} under an EPIC.`
+          );
+        }
+        break;
 
       case WorkItemType.STORY:
-        if (parent.type !== WorkItemType.EPIC) {
-          throw new Error('STORY must have a parent of type EPIC');
+        if (type !== WorkItemType.TASK && type !== WorkItemType.BUG) {
+          throw new Error(
+            `A STORY can only contain TASK or BUG work items. Cannot create ${type} under a STORY.`
+          );
         }
         break;
 
       case WorkItemType.TASK:
-        if (parent.type !== WorkItemType.STORY) {
-          throw new Error('TASK must have a parent of type STORY');
+        if (type !== WorkItemType.SUBTASK) {
+          throw new Error(
+            `A TASK can only contain SUBTASK work items. Cannot create ${type} under a TASK.`
+          );
         }
         break;
 
       case WorkItemType.SUBTASK:
-        if (parent.type !== WorkItemType.TASK) {
-          throw new Error('SUBTASK must have a parent of type TASK');
-        }
-        break;
+        throw new Error(
+          'A SUBTASK is a leaf item and cannot have child work items.'
+        );
 
       case WorkItemType.BUG:
-        throw new Error('BUG is a standalone work item type and cannot have a parent');
+        throw new Error(
+          'A BUG is a leaf item and cannot have child work items.'
+        );
 
       default:
-        throw new Error(`Invalid work item type: ${type}`);
+        throw new Error(`Invalid parent work item type: ${parent.type}`);
+    }
+  }
+
+  /**
+   * Traverse ancestor chain to prevent circular parent-child relationships
+   */
+  private static async assertNoCycles(itemId: string, targetParentId: string): Promise<void> {
+    if (itemId === targetParentId) {
+      throw new Error('Circular parent-child relationship detected: an item cannot be its own parent.');
+    }
+
+    let currentId: string | null = targetParentId;
+    const visited = new Set<string>([itemId]);
+
+    while (currentId) {
+      if (visited.has(currentId)) {
+        throw new Error('Circular parent-child relationship detected.');
+      }
+      visited.add(currentId);
+
+      const parentRecord: { parent_id: string | null } | null = await prisma.workItem.findUnique({
+        where: { id: currentId },
+        select: { parent_id: true },
+      });
+
+      currentId = parentRecord?.parent_id || null;
     }
   }
 
@@ -220,9 +285,14 @@ export class WorkItemService {
       ? item.children.map((child: any) => this.formatWorkItem(child))
       : [];
 
+    const logged_minutes = Array.isArray(item.time_entries)
+      ? item.time_entries.reduce((sum: number, entry: any) => sum + (Number(entry.duration_minutes) || 0), 0)
+      : 0;
+
     return {
       ...item,
       is_overdue,
+      logged_minutes,
       assignees: formattedAssignees,
       children: formattedChildren,
     };
@@ -323,6 +393,24 @@ export class WorkItemService {
       }
     }
 
+    // Validate sprint if provided
+    let sprintId: string | null = null;
+    if (data.sprint_id) {
+      if (!projectId) {
+        throw new Error('Personal tasks cannot be assigned to a sprint');
+      }
+      const sprint = await prisma.sprint.findFirst({
+        where: { id: data.sprint_id, organization_id: orgId },
+      });
+      if (!sprint) {
+        throw new Error('Sprint not found in your organization');
+      }
+      if (sprint.project_id !== projectId) {
+        throw new Error('Cannot assign work item to a sprint belonging to a different project');
+      }
+      sprintId = sprint.id;
+    }
+
     const status = data.status || WorkItemStatus.TODO;
     const priority = data.priority || WorkItemPriority.MEDIUM;
     const completedAt = status === WorkItemStatus.COMPLETED ? new Date() : null;
@@ -332,6 +420,7 @@ export class WorkItemService {
         organization_id: orgId,
         project_id: projectId,
         parent_id: parentId,
+        sprint_id: sprintId,
         created_by: user.id,
         type: data.type,
         title: data.title.trim(),
@@ -340,6 +429,7 @@ export class WorkItemService {
         priority,
         start_date: data.start_date ? new Date(data.start_date) : null,
         due_date: data.due_date ? new Date(data.due_date) : null,
+        story_points: data.story_points !== undefined && data.story_points !== null ? Number(data.story_points) : 0,
         completed_at: completedAt,
         assignees: {
           create: assigneeIds.map((uid) => ({
@@ -352,6 +442,9 @@ export class WorkItemService {
           select: { id: true, name: true, email: true },
         },
         project: {
+          select: { id: true, name: true, status: true },
+        },
+        sprint: {
           select: { id: true, name: true, status: true },
         },
         parent: {
@@ -398,6 +491,14 @@ export class WorkItemService {
         throw new Error(`Invalid work item priority: ${filters.priority}`);
       }
       where.priority = filters.priority as WorkItemPriority;
+    }
+
+    if (filters?.sprint_id !== undefined) {
+      if (filters.sprint_id === 'null' || filters.sprint_id === 'backlog' || filters.sprint_id === '') {
+        where.sprint_id = null;
+      } else {
+        where.sprint_id = filters.sprint_id;
+      }
     }
 
     if (filters?.my_personal) {
@@ -458,6 +559,9 @@ export class WorkItemService {
         project: {
           select: { id: true, name: true, status: true },
         },
+        sprint: {
+          select: { id: true, name: true, status: true },
+        },
         parent: {
           select: { id: true, title: true, type: true, status: true, priority: true },
         },
@@ -483,6 +587,9 @@ export class WorkItemService {
             },
           },
         },
+        time_entries: {
+          select: { id: true, duration_minutes: true },
+        },
       },
       orderBy: { created_at: 'desc' },
     });
@@ -506,6 +613,9 @@ export class WorkItemService {
         project: {
           select: { id: true, name: true, status: true },
         },
+        sprint: {
+          select: { id: true, name: true, status: true },
+        },
         parent: {
           select: { id: true, title: true, type: true, status: true, priority: true },
         },
@@ -525,6 +635,9 @@ export class WorkItemService {
               select: { id: true, name: true, email: true },
             },
           },
+        },
+        time_entries: {
+          select: { id: true, duration_minutes: true },
         },
       },
     });
@@ -640,6 +753,173 @@ export class WorkItemService {
       dataToUpdate.due_date = input.due_date ? new Date(input.due_date) : null;
     }
 
+    if (input.story_points !== undefined) {
+      dataToUpdate.story_points = input.story_points !== null && input.story_points !== undefined ? Math.max(0, parseInt(String(input.story_points), 10) || 0) : null;
+    }
+
+    if (input.sprint_id !== undefined) {
+      if (
+        input.sprint_id === null ||
+        input.sprint_id === '' ||
+        input.sprint_id === 'null' ||
+        input.sprint_id === 'backlog'
+      ) {
+        dataToUpdate.sprint_id = null;
+      } else {
+        if (!currentItem.project_id) {
+          throw new Error('Personal tasks cannot be assigned to a sprint');
+        }
+        const sprint = await prisma.sprint.findFirst({
+          where: { id: input.sprint_id, organization_id: orgId },
+        });
+        if (!sprint) {
+          throw new Error('Sprint not found in your organization');
+        }
+        if (sprint.project_id !== currentItem.project_id) {
+          throw new Error('Cannot assign work item to a sprint belonging to a different project');
+        }
+        dataToUpdate.sprint_id = sprint.id;
+      }
+    }
+
+    const effectiveType = input.type !== undefined ? input.type : currentItem.type;
+    const effectiveParentId =
+      input.parent_id !== undefined
+        ? input.parent_id === '' || input.parent_id === 'null'
+          ? null
+          : input.parent_id
+        : currentItem.parent_id;
+
+    if (input.type !== undefined) {
+      if (!Object.values(WorkItemType).includes(input.type)) {
+        throw new Error(`Invalid work item type: ${input.type}`);
+      }
+    }
+
+    if (input.type !== undefined || input.parent_id !== undefined) {
+      // If setting parent_id to a new non-null value, assert no cycles
+      if (
+        input.parent_id !== undefined &&
+        input.parent_id !== null &&
+        input.parent_id !== '' &&
+        input.parent_id !== 'null'
+      ) {
+        await this.assertNoCycles(id, input.parent_id);
+      }
+
+      // Validate hierarchy for effective type and effective parent
+      await this.validateHierarchy(
+        effectiveType,
+        effectiveParentId,
+        currentItem.project_id,
+        orgId
+      );
+
+      // Check children compatibility if type changed
+      if (input.type !== undefined && input.type !== currentItem.type) {
+        const children = await prisma.workItem.findMany({
+          where: { parent_id: id },
+          select: { id: true, type: true },
+        });
+
+        if (children.length > 0) {
+          if (input.type === WorkItemType.SUBTASK || input.type === WorkItemType.BUG) {
+            throw new Error(
+              `Cannot change type to ${input.type}: work item has ${children.length} child item(s), but ${input.type} cannot have children.`
+            );
+          }
+          for (const child of children) {
+            if (
+              input.type === WorkItemType.EPIC &&
+              child.type !== WorkItemType.STORY &&
+              child.type !== WorkItemType.BUG
+            ) {
+              throw new Error(
+                `Cannot change type to EPIC: existing child item is of type ${child.type}. EPIC only allows STORY or BUG.`
+              );
+            }
+            if (
+              input.type === WorkItemType.STORY &&
+              child.type !== WorkItemType.TASK &&
+              child.type !== WorkItemType.BUG
+            ) {
+              throw new Error(
+                `Cannot change type to STORY: existing child item is of type ${child.type}. STORY only allows TASK or BUG.`
+              );
+            }
+            if (input.type === WorkItemType.TASK && child.type !== WorkItemType.SUBTASK) {
+              throw new Error(
+                `Cannot change type to TASK: existing child item is of type ${child.type}. TASK only allows SUBTASK.`
+              );
+            }
+          }
+        }
+        dataToUpdate.type = input.type;
+      }
+
+      if (input.parent_id !== undefined) {
+        dataToUpdate.parent_id = effectiveParentId;
+      }
+    }
+
+    if (input.assignee_ids !== undefined) {
+      const cleanUserIds = Array.isArray(input.assignee_ids)
+        ? [...new Set(input.assignee_ids.map((uid) => uid.trim()))].filter(Boolean)
+        : [];
+
+      // Check assignment authorization if assigning to others
+      if (cleanUserIds.some((uid) => uid !== user.id)) {
+        const project = currentItem.project_id
+          ? await prisma.project.findUnique({
+              where: { id: currentItem.project_id },
+              select: { owner_id: true },
+            })
+          : null;
+        if (!this.isAuthorizedToAssign(user, project?.owner_id, currentItem.created_by)) {
+          throw new Error('Forbidden: you do not have permission to assign tasks to other users');
+        }
+      }
+
+      if (cleanUserIds.length > 0) {
+        const validUsers = await prisma.user.findMany({
+          where: {
+            id: { in: cleanUserIds },
+            organization_id: orgId,
+            is_active: true,
+          },
+          select: { id: true },
+        });
+        if (validUsers.length !== cleanUserIds.length) {
+          throw new Error('One or more users do not exist in your organization');
+        }
+
+        if (currentItem.project_id) {
+          const projectMembers = await prisma.projectMember.findMany({
+            where: { project_id: currentItem.project_id, user_id: { in: cleanUserIds } },
+            select: { user_id: true },
+          });
+          const memberIds = new Set(projectMembers.map((pm) => pm.user_id));
+          for (const uid of cleanUserIds) {
+            if (!memberIds.has(uid)) {
+              throw new Error(`User ${uid} is not a member of project ${currentItem.project_id}`);
+            }
+          }
+        }
+      }
+
+      await prisma.workItemAssignee.deleteMany({
+        where: { work_item_id: id },
+      });
+      if (cleanUserIds.length > 0) {
+        await prisma.workItemAssignee.createMany({
+          data: cleanUserIds.map((uid) => ({
+            work_item_id: id,
+            user_id: uid,
+          })),
+        });
+      }
+    }
+
     const updated = await prisma.workItem.update({
       where: { id },
       data: dataToUpdate,
@@ -648,6 +928,9 @@ export class WorkItemService {
           select: { id: true, name: true, email: true },
         },
         project: {
+          select: { id: true, name: true, status: true },
+        },
+        sprint: {
           select: { id: true, name: true, status: true },
         },
         parent: {
@@ -659,6 +942,9 @@ export class WorkItemService {
               select: { id: true, name: true, email: true },
             },
           },
+        },
+        time_entries: {
+          select: { id: true, duration_minutes: true },
         },
       },
     });

@@ -178,7 +178,8 @@ export class UserController {
       const typeFilter = req.query.type as string | undefined;
       const search = (req.query.search || req.query.q) as string | undefined;
       const batch = req.query.batch as string | undefined;
-      const users = await UserService.listUsers(managerOrgId, typeFilter, search, batch);
+      const cohort = (req.query.cohort_id || req.query.cohort) as string | undefined;
+      const users = await UserService.listUsers(managerOrgId, typeFilter, search, batch, cohort);
 
       res.status(200).json({ users });
     } catch (error: any) {
@@ -252,6 +253,53 @@ export class UserController {
     } catch (error: any) {
       const statusCode = error.statusCode || 500;
       res.status(statusCode).json({ error: error.message || 'Failed to deactivate user' });
+    }
+  }
+
+  /**
+   * PATCH /api/users/:id
+   * Manager updates an organization member's permitted details (name, batch, subbatch)
+   */
+  static async updateMember(req: Request, res: Response): Promise<void> {
+    try {
+      const fullUser = (req as any).fullUser;
+      const managerOrgId = fullUser?.organization_id;
+
+      if (!managerOrgId) {
+        res.status(403).json({ error: 'Manager organization context required' });
+        return;
+      }
+
+      // Security check: reject attempts to modify forbidden fields
+      if (
+        req.body.organization_id !== undefined ||
+        req.body.password !== undefined ||
+        req.body.password_hash !== undefined ||
+        req.body.email !== undefined ||
+        req.body.role !== undefined ||
+        req.body.roles !== undefined ||
+        req.body.cohort_id !== undefined
+      ) {
+        res.status(400).json({ error: 'Security violation: Only name, batch, and subbatch may be updated' });
+        return;
+      }
+
+      const targetUserId = req.params.id;
+      const { name, batch, subbatch } = req.body;
+
+      const updatedUser = await UserService.updateMember(managerOrgId, targetUserId, {
+        name,
+        batch,
+        subbatch,
+      });
+
+      res.status(200).json({
+        user: updatedUser,
+        message: 'Intern details updated successfully.',
+      });
+    } catch (error: any) {
+      const statusCode = error.statusCode || 500;
+      res.status(statusCode).json({ error: error.message || 'Failed to update member details' });
     }
   }
 }

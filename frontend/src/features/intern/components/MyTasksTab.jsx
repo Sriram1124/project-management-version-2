@@ -26,7 +26,8 @@ export default function MyTasksTab({
   onOpenTaskModal,
   onOpenCreatePersonalTask,
   onToggleTask,
-  onToast
+  onToast,
+  showViewSwitcher = true
 }) {
   const [filterType, setFilterType] = useState('ALL'); // 'ALL' | 'DUE_TODAY' | 'OVERDUE' | 'IN_PROGRESS' | 'COMPLETED' | 'PERSONAL'
   const [search, setSearch] = useState('');
@@ -162,43 +163,45 @@ export default function MyTasksTab({
         </div>
 
         {/* 3-Way View Switcher: LIST, BOARD, HIERARCHY */}
-        <div className="flex items-center gap-1 bg-slate-100 p-0.5 rounded-lg text-xs self-start md:self-auto shrink-0">
-          <button
-            onClick={() => setViewMode('list')}
-            className={`flex items-center gap-1.5 px-3 py-1 rounded-md font-semibold transition-all ${
-              viewMode === 'list'
-                ? 'bg-white text-purple-700 shadow-2xs'
-                : 'text-slate-600 hover:text-slate-900'
-            }`}
-          >
-            <List className="w-3.5 h-3.5" />
-            <span>LIST</span>
-          </button>
+        {showViewSwitcher && (
+          <div className="flex items-center gap-1 bg-slate-100 p-0.5 rounded-lg text-xs self-start md:self-auto shrink-0">
+            <button
+              onClick={() => setViewMode('list')}
+              className={`flex items-center gap-1.5 px-3 py-1 rounded-md font-semibold transition-all ${
+                viewMode === 'list'
+                  ? 'bg-white text-purple-700 shadow-2xs'
+                  : 'text-slate-600 hover:text-slate-900'
+              }`}
+            >
+              <List className="w-3.5 h-3.5" />
+              <span>LIST</span>
+            </button>
 
-          <button
-            onClick={() => setViewMode('board')}
-            className={`flex items-center gap-1.5 px-3 py-1 rounded-md font-semibold transition-all ${
-              viewMode === 'board'
-                ? 'bg-white text-purple-700 shadow-2xs'
-                : 'text-slate-600 hover:text-slate-900'
-            }`}
-          >
-            <LayoutGrid className="w-3.5 h-3.5" />
-            <span>BOARD</span>
-          </button>
+            <button
+              onClick={() => setViewMode('board')}
+              className={`flex items-center gap-1.5 px-3 py-1 rounded-md font-semibold transition-all ${
+                viewMode === 'board'
+                  ? 'bg-white text-purple-700 shadow-2xs'
+                  : 'text-slate-600 hover:text-slate-900'
+              }`}
+            >
+              <LayoutGrid className="w-3.5 h-3.5" />
+              <span>BOARD</span>
+            </button>
 
-          <button
-            onClick={() => setViewMode('hierarchy')}
-            className={`flex items-center gap-1.5 px-3 py-1 rounded-md font-semibold transition-all ${
-              viewMode === 'hierarchy'
-                ? 'bg-white text-purple-700 shadow-2xs'
-                : 'text-slate-600 hover:text-slate-900'
-            }`}
-          >
-            <GitFork className="w-3.5 h-3.5" />
-            <span>HIERARCHY</span>
-          </button>
-        </div>
+            <button
+              onClick={() => setViewMode('hierarchy')}
+              className={`flex items-center gap-1.5 px-3 py-1 rounded-md font-semibold transition-all ${
+                viewMode === 'hierarchy'
+                  ? 'bg-white text-purple-700 shadow-2xs'
+                  : 'text-slate-600 hover:text-slate-900'
+              }`}
+            >
+              <GitFork className="w-3.5 h-3.5" />
+              <span>HIERARCHY</span>
+            </button>
+          </div>
+        )}
       </div>
 
       {loading ? (
@@ -317,7 +320,7 @@ export default function MyTasksTab({
                             <h4
                               className={`text-xs font-bold truncate ${
                                 isCompleted
-                                  ? 'line-through text-slate-400'
+                                  ? 'text-slate-500'
                                   : 'text-slate-800'
                               }`}
                             >

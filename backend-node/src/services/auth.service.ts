@@ -4,7 +4,7 @@ import { prisma } from '../lib/prisma';
 
 const ACCESS_SECRET = process.env.JWT_ACCESS_SECRET || 'access_secret';
 const REFRESH_SECRET = process.env.JWT_REFRESH_SECRET || 'refresh_secret';
-const ACCESS_EXPIRY = process.env.ACCESS_TOKEN_EXPIRY || '15m';
+const ACCESS_EXPIRY = process.env.ACCESS_TOKEN_EXPIRY || '7d';
 
 export class AuthService {
   static async login(
@@ -81,13 +81,13 @@ export class AuthService {
     const refreshToken = jwt.sign(
       { userId: user.id },
       REFRESH_SECRET,
-      { expiresIn: '7d' } // using hardcoded 7d for payload
+      { expiresIn: '30d' }
     );
     
     // Hash refresh token for DB
     const refreshTokenHash = await argon2.hash(refreshToken);
     const expiresAt = new Date();
-    expiresAt.setDate(expiresAt.getDate() + 7);
+    expiresAt.setDate(expiresAt.getDate() + 30);
 
     const session = await prisma.userSession.create({
       data: {
@@ -156,26 +156,18 @@ export class AuthService {
         { expiresIn: ACCESS_EXPIRY as any }
       );
 
-      // Rotate refresh token
-      const newRefreshToken = jwt.sign(
-        { userId: user.id },
-        REFRESH_SECRET,
-        { expiresIn: '7d' }
-      );
-      
-      const newRefreshTokenHash = await argon2.hash(newRefreshToken);
-      
+      // Keep session updated
       await prisma.userSession.update({
         where: { id: sessionId },
         data: {
-          refresh_token_hash: newRefreshTokenHash,
           last_used_at: new Date(),
         },
       });
 
       return {
         accessToken: newAccessToken,
-        refreshToken: newRefreshToken,
+        refreshToken: refreshToken,
+        sessionId: session.id,
       };
 
     } catch (e) {

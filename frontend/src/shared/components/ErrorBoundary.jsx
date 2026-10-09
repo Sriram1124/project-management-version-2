@@ -34,6 +34,11 @@ export default class ErrorBoundary extends React.Component {
             <p className="text-xs text-slate-500 mb-6 leading-relaxed">
               An unexpected error occurred while rendering this view. Your session and authentication remain active.
             </p>
+            {this.state.error && (
+              <pre className="text-left text-[11px] p-2.5 mb-4 bg-slate-100 text-rose-700 rounded-lg overflow-auto max-h-36 font-mono whitespace-pre-wrap border border-slate-200">
+                {this.state.error.toString()}
+              </pre>
+            )}
             <button
               onClick={this.handleReset}
               className="inline-flex items-center gap-2 px-4 py-2 bg-purple-600 hover:bg-purple-700 text-white rounded-xl text-xs font-semibold transition-colors cursor-pointer"

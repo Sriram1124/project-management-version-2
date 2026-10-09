@@ -13,14 +13,15 @@ import {
   MessageSquare,
   History,
   Activity,
-  Calendar
+  Calendar,
+  GitFork
 } from 'lucide-react';
-import { MOCK_ASSIGNEES } from '../../constants/kanban';
 
 export default function IssueDetailDrawer({
   issue,
   epics = [],
   sprints = [],
+  members = [],
   isOpen,
   onClose,
   onUpdateIssue,
@@ -36,6 +37,21 @@ export default function IssueDetailDrawer({
     { id: 'c1', author: 'Priya Sharma', time: 'Yesterday at 3:45 PM', text: 'Please ensure migration handles foreign key cascade deletes properly.' }
   ]);
   const [newSubtaskTitle, setNewSubtaskTitle] = useState('');
+  const [childType, setChildType] = useState('SUBTASK');
+
+  const allowedChildTypes = React.useMemo(() => {
+    const t = String(issue?.type || '').toUpperCase();
+    if (t === 'EPIC') return ['STORY', 'BUG'];
+    if (t === 'STORY') return ['TASK', 'BUG'];
+    if (t === 'TASK') return ['SUBTASK'];
+    return [];
+  }, [issue?.type]);
+
+  useEffect(() => {
+    if (allowedChildTypes.length > 0) {
+      setChildType(allowedChildTypes[0]);
+    }
+  }, [allowedChildTypes]);
 
   useEffect(() => {
     if (issue) {
@@ -44,19 +60,17 @@ export default function IssueDetailDrawer({
     }
   }, [issue]);
 
-  if (!isOpen || !issue) return null;
-
-  const currentEpic = epics.find(e => e.id === issue.epicId);
-  const currentSprint = sprints.find(s => s.id === issue.sprintId);
+  const currentEpic = epics.find(e => e.id === issue?.epicId);
+  const currentSprint = sprints.find(s => s.id === issue?.sprintId);
 
   const handleTitleBlur = () => {
-    if (editedTitle.trim() && editedTitle !== issue.title) {
+    if (editedTitle.trim() && editedTitle !== issue?.title) {
       onUpdateIssue?.({ ...issue, title: editedTitle.trim() });
     }
   };
 
   const handleDescBlur = () => {
-    if (editedDesc !== issue.description) {
+    if (editedDesc !== issue?.description) {
       onUpdateIssue?.({ ...issue, description: editedDesc });
     }
   };
@@ -70,8 +84,8 @@ export default function IssueDetailDrawer({
   };
 
   const handleAssigneeChange = (assigneeId) => {
-    const user = MOCK_ASSIGNEES.find(u => u.id === assigneeId) || null;
-    onUpdateIssue?.({ ...issue, assignee: user });
+    const user = members.find((u) => (u.user_id || u.id) === assigneeId) || null;
+    onUpdateIssue?.({ ...issue, assignee: user, assigneeId: assigneeId || null });
   };
 
   const handleSprintChange = (sprintId) => {
@@ -87,8 +101,19 @@ export default function IssueDetailDrawer({
   };
 
   const handleDueDateChange = (dueDate) => {
-    onUpdateIssue?.({ ...issue, dueDate });
+    onUpdateIssue?.({ ...issue, dueDate, due_date: dueDate });
   };
+
+  const rawDueDate = issue?.due_date || issue?.dueDate;
+  let formattedDueDateForInput = '';
+  if (rawDueDate) {
+    try {
+      const d = new Date(rawDueDate);
+      if (!isNaN(d.getTime())) {
+        formattedDueDateForInput = d.toISOString().split('T')[0];
+      }
+    } catch (_) {}
+  }
 
   const handleAddComment = (e) => {
     e.preventDefault();
@@ -101,13 +126,15 @@ export default function IssueDetailDrawer({
     }
   };
 
-  const handleAddSubtaskSubmit = (e) => {
+  const handleAddChildSubmit = (e) => {
     e.preventDefault();
-    if (newSubtaskTitle.trim()) {
-      onAddSubtask?.(issue.id, newSubtaskTitle.trim());
+    if (newSubtaskTitle.trim() && allowedChildTypes.length > 0) {
+      onAddSubtask?.(issue.id, newSubtaskTitle.trim(), childType);
       setNewSubtaskTitle('');
     }
   };
+
+  if (!isOpen || !issue) return null;
 
   const completedSubtasks = (issue.subtasks || []).filter(s => s.done).length;
   const totalSubtasks = (issue.subtasks || []).length;
@@ -194,14 +221,20 @@ export default function IssueDetailDrawer({
           <div className="flex items-center justify-between">
             <span className="text-slate-500 font-medium">Assignee</span>
             <select
-              value={issue.assignee?.id || ''}
+              value={issue.assignee?.id || issue.assignee?.user_id || ''}
               onChange={(e) => handleAssigneeChange(e.target.value)}
               className="px-2 py-1 rounded border border-slate-200 text-xs font-medium bg-white text-slate-800 focus:outline-none focus:border-purple-600 max-w-[180px]"
             >
               <option value="">Unassigned</option>
-              {MOCK_ASSIGNEES.map((u) => (
-                <option key={u.id} value={u.id}>{u.name}</option>
-              ))}
+              {members.map((u) => {
+                const uid = u.user_id || u.id;
+                const uName = u.name || u.user?.name || u.email || u.user?.email || 'Member';
+                return (
+                  <option key={uid} value={uid}>
+                    {uName}
+                  </option>
+                );
+              })}
             </select>
           </div>
 
@@ -249,14 +282,32 @@ export default function IssueDetailDrawer({
 
           {/* Due Date */}
           <div className="flex items-center justify-between">
-            <span className="text-slate-500 font-medium">Due Date</span>
-            <input
-              type="text"
-              value={issue.dueDate || ''}
-              onChange={(e) => handleDueDateChange(e.target.value)}
-              placeholder="e.g. Dec 20"
-              className="w-24 px-2 py-0.5 rounded border border-slate-200 text-xs font-medium bg-white text-slate-800 text-right focus:outline-none focus:border-purple-600"
-            />
+            <span className="text-slate-500 font-medium flex items-center gap-1.5">
+              <Calendar className="w-3.5 h-3.5 text-slate-400" />
+              <span>Due Date</span>
+            </span>
+            <div className="flex items-center gap-1.5">
+              <input
+                type="date"
+                value={formattedDueDateForInput}
+                onChange={(e) => {
+                  const val = e.target.value;
+                  const isoDate = val ? new Date(val).toISOString() : null;
+                  handleDueDateChange(isoDate);
+                }}
+                className="px-2 py-0.5 rounded border border-slate-200 text-xs font-medium bg-white text-slate-800 focus:outline-none focus:border-purple-600 cursor-pointer shadow-2xs"
+              />
+              {formattedDueDateForInput && (
+                <button
+                  type="button"
+                  onClick={() => handleDueDateChange(null)}
+                  title="Clear due date"
+                  className="p-1 rounded hover:bg-slate-200 text-slate-400 hover:text-slate-600 cursor-pointer transition-colors"
+                >
+                  <X className="w-3 h-3" />
+                </button>
+              )}
+            </div>
           </div>
         </div>
 
@@ -273,11 +324,11 @@ export default function IssueDetailDrawer({
           />
         </div>
 
-        {/* Subtasks Section */}
+        {/* Child Items Section */}
         <div className="space-y-2 pt-2 border-t border-slate-100">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-1.5 font-bold text-slate-800 text-xs">
-              <span>Subtasks</span>
+              <span>Child Items</span>
               <span className="text-slate-400 font-mono text-[11px]">
                 ({completedSubtasks}/{totalSubtasks})
               </span>
@@ -294,7 +345,7 @@ export default function IssueDetailDrawer({
             </div>
           )}
 
-          {/* Subtasks List */}
+          {/* Child Items List */}
           <div className="space-y-1">
             {issue.subtasks?.map((st) => (
               <div
@@ -311,30 +362,47 @@ export default function IssueDetailDrawer({
                     {st.done && <Check className="w-2.5 h-2.5 stroke-[3]" />}
                   </button>
                   <span className="font-mono text-[10px] text-slate-400">{st.id}</span>
-                  <span className={`text-xs text-slate-800 truncate ${st.done ? 'line-through text-slate-400' : ''}`}>
+                  <span className="text-xs text-slate-800 truncate">
                     {st.title}
                   </span>
                 </div>
               </div>
             ))}
 
-            {/* Inline Add Subtask */}
-            <form onSubmit={handleAddSubtaskSubmit} className="flex items-center gap-2 pt-1">
-              <input
-                type="text"
-                value={newSubtaskTitle}
-                onChange={(e) => setNewSubtaskTitle(e.target.value)}
-                placeholder="+ Add new subtask..."
-                className="flex-1 px-2 py-1 text-xs rounded border border-slate-200 focus:outline-none focus:border-purple-600"
-              />
-              <button
-                type="submit"
-                disabled={!newSubtaskTitle.trim()}
-                className="px-2 py-1 rounded bg-purple-600 hover:bg-purple-700 disabled:opacity-40 text-white text-xs font-medium transition-colors"
-              >
-                Add
-              </button>
-            </form>
+            {/* Context-Sensitive Add Child Item */}
+            {allowedChildTypes.length > 0 ? (
+              <form onSubmit={handleAddChildSubmit} className="flex items-center gap-1.5 pt-1">
+                {allowedChildTypes.length > 1 && (
+                  <select
+                    value={childType}
+                    onChange={(e) => setChildType(e.target.value)}
+                    className="px-1.5 py-1 text-[11px] font-bold rounded border border-purple-200 bg-purple-50 text-purple-800"
+                  >
+                    {allowedChildTypes.map((t) => (
+                      <option key={t} value={t}>{t}</option>
+                    ))}
+                  </select>
+                )}
+                <input
+                  type="text"
+                  value={newSubtaskTitle}
+                  onChange={(e) => setNewSubtaskTitle(e.target.value)}
+                  placeholder={`+ Add new ${childType.toLowerCase()}...`}
+                  className="flex-1 px-2 py-1 text-xs rounded border border-slate-200 focus:outline-none focus:border-purple-600"
+                />
+                <button
+                  type="submit"
+                  disabled={!newSubtaskTitle.trim()}
+                  className="px-2 py-1 rounded bg-purple-600 hover:bg-purple-700 disabled:opacity-40 text-white text-xs font-medium transition-colors"
+                >
+                  Add
+                </button>
+              </form>
+            ) : (
+              <div className="text-[11px] text-slate-400 italic py-1">
+                Leaf item · Cannot have child items
+              </div>
+            )}
           </div>
         </div>
 

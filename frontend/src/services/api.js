@@ -1,4 +1,12 @@
-const API_URL = import.meta.env.VITE_API_URL || 'http://127.0.0.1:3001/api';
+const getApiBaseUrl = () => {
+  if (import.meta.env.VITE_API_URL) return import.meta.env.VITE_API_URL;
+  if (typeof window !== 'undefined' && window.location.hostname === 'localhost') {
+    return 'http://localhost:3001/api';
+  }
+  return 'http://127.0.0.1:3001/api';
+};
+
+const API_URL = getApiBaseUrl();
 
 let isRefreshing = false;
 let refreshSubscribers = [];
@@ -12,11 +20,30 @@ function onRefreshed(token) {
   refreshSubscribers = [];
 }
 
+function onRefreshFailed() {
+  refreshSubscribers.forEach((cb) => cb(null));
+  refreshSubscribers = [];
+}
+
+function clearAuthSession() {
+  localStorage.removeItem('accessToken');
+  localStorage.removeItem('refreshToken');
+  localStorage.removeItem('sessionId');
+  localStorage.removeItem('user');
+  if (window.location.pathname !== '/login') {
+    window.location.href = '/login';
+  }
+}
+
 async function tryRefreshToken() {
   try {
+    const refreshToken = localStorage.getItem('refreshToken');
+    const sessionId = localStorage.getItem('sessionId');
+
     const res = await fetch(`${API_URL}/auth/refresh`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ refreshToken, sessionId }),
       credentials: 'include',
     });
     if (!res.ok) {
@@ -25,6 +52,12 @@ async function tryRefreshToken() {
     const data = await res.json();
     if (data?.accessToken) {
       localStorage.setItem('accessToken', data.accessToken);
+      if (data.refreshToken) {
+        localStorage.setItem('refreshToken', data.refreshToken);
+      }
+      if (data.sessionId) {
+        localStorage.setItem('sessionId', data.sessionId);
+      }
       return data.accessToken;
     }
     return null;
@@ -64,11 +97,8 @@ const api = {
             credentials: 'include',
           });
         } else {
-          localStorage.removeItem('accessToken');
-          localStorage.removeItem('user');
-          if (window.location.pathname !== '/login') {
-            window.location.href = '/login';
-          }
+          onRefreshFailed();
+          clearAuthSession();
         }
       } else {
         // Wait for existing refresh to complete
@@ -142,11 +172,7 @@ const api = {
           credentials: 'include',
         });
       } else {
-        localStorage.removeItem('accessToken');
-        localStorage.removeItem('user');
-        if (window.location.pathname !== '/login') {
-          window.location.href = '/login';
-        }
+        clearAuthSession();
       }
     }
 
@@ -180,11 +206,7 @@ const api = {
           credentials: 'include',
         });
       } else {
-        localStorage.removeItem('accessToken');
-        localStorage.removeItem('user');
-        if (window.location.pathname !== '/login') {
-          window.location.href = '/login';
-        }
+        clearAuthSession();
       }
     }
 

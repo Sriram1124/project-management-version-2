@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { X, Plus, AlertCircle, Loader2, GitFork, User, Calendar, Tag, Search } from 'lucide-react';
 import { workItemsService } from '../../services/workItems.service';
 import { projectsService } from '../../services/projects.service';
+import { sprintsService } from '../../services/sprints.service';
 
 const WORK_ITEM_TYPES = [
   { id: 'TASK', label: 'Task' },
@@ -31,17 +32,23 @@ export default function AddTaskModal({
   onClose,
   projectId = null,
   initialType = 'TASK',
+  initialStatus = 'TODO',
+  initialSprintId = null,
   initialParentId = null,
+  parentItem = null,
+  allowedTypes = null,
+  sprints = [],
   onTaskCreated,
   onToast,
 }) {
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
   const [type, setType] = useState(initialType);
-  const [status, setStatus] = useState('TODO');
+  const [status, setStatus] = useState(initialStatus || 'TODO');
   const [priority, setPriority] = useState('MEDIUM');
   const [selectedProjectId, setSelectedProjectId] = useState(projectId || '');
   const [parentId, setParentId] = useState(initialParentId || '');
+  const [sprintId, setSprintId] = useState(initialSprintId || '');
   const [assigneeId, setAssigneeId] = useState('');
   const [assigneeSearch, setAssigneeSearch] = useState('');
   const [startDate, setStartDate] = useState('');
@@ -49,27 +56,81 @@ export default function AddTaskModal({
 
   const [projects, setProjects] = useState([]);
   const [members, setMembers] = useState([]);
+  const [availableSprints, setAvailableSprints] = useState(sprints || []);
   const [potentialParents, setPotentialParents] = useState([]);
   const [loadingParents, setLoadingParents] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState('');
 
+  // Determine permitted types based on Jira hierarchy rules
+  const effectiveAllowedTypes = React.useMemo(() => {
+    if (allowedTypes && Array.isArray(allowedTypes) && allowedTypes.length > 0) {
+      return allowedTypes;
+    }
+    if (parentItem) {
+      if (parentItem.type === 'EPIC') return ['STORY', 'BUG'];
+      if (parentItem.type === 'STORY') return ['TASK', 'BUG'];
+      if (parentItem.type === 'TASK') return ['SUBTASK'];
+      return [];
+    }
+    const targetProjId = projectId || selectedProjectId;
+    if (!targetProjId) {
+      return ['TASK'];
+    }
+    return ['EPIC', 'STORY', 'TASK', 'BUG', 'SUBTASK'];
+  }, [allowedTypes, parentItem, projectId, selectedProjectId]);
+
   // Sync initial props
   useEffect(() => {
     if (isOpen) {
       setSelectedProjectId(projectId || '');
-      setType(initialType);
-      setParentId(initialParentId || '');
       setTitle('');
       setDescription('');
-      setStatus('TODO');
+      setStatus(initialStatus || 'TODO');
+      setSprintId(initialSprintId || '');
       setPriority('MEDIUM');
       setAssigneeId('');
       setStartDate('');
       setDueDate('');
       setError('');
+
+      if (parentItem) {
+        setParentId(parentItem.id);
+        const defaultType =
+          parentItem.type === 'EPIC'
+            ? 'STORY'
+            : parentItem.type === 'STORY'
+            ? 'TASK'
+            : 'SUBTASK';
+        const chosenType =
+          initialType && effectiveAllowedTypes.includes(initialType)
+            ? initialType
+            : defaultType;
+        setType(chosenType);
+      } else {
+        setParentId(initialParentId || '');
+        const chosenType =
+          initialType && effectiveAllowedTypes.includes(initialType)
+            ? initialType
+            : effectiveAllowedTypes[0] || 'TASK';
+        setType(chosenType);
+      }
+
+      if (sprints && sprints.length > 0) {
+        setAvailableSprints(sprints);
+      }
     }
-  }, [isOpen, projectId, initialType, initialParentId]);
+  }, [
+    isOpen,
+    projectId,
+    initialType,
+    initialParentId,
+    parentItem,
+    initialStatus,
+    initialSprintId,
+    sprints,
+    effectiveAllowedTypes,
+  ]);
 
   // Load available projects if not already specified
   useEffect(() => {
@@ -86,7 +147,7 @@ export default function AddTaskModal({
     }
   }, [isOpen, projectId]);
 
-  // Load project members when selected project changes
+  // Load project members and sprints when selected project changes
   useEffect(() => {
     const targetProjId = projectId || selectedProjectId;
     if (isOpen && targetProjId) {
@@ -94,38 +155,113 @@ export default function AddTaskModal({
         .getMembers(targetProjId)
         .then((list) => setMembers(list || []))
         .catch((err) => console.error('Failed to load members in AddTaskModal:', err));
+
+      if (!sprints || sprints.length === 0) {
+        sprintsService
+          .getSprints(targetProjId)
+          .then((list) => setAvailableSprints(list || []))
+          .catch((err) => console.error('Failed to load sprints in AddTaskModal:', err));
+      }
     } else {
       setMembers([]);
     }
-  }, [isOpen, projectId, selectedProjectId]);
+  }, [isOpen, projectId, selectedProjectId, sprints]);
 
-  // Load potential parents based on hierarchy rules
+  // Load potential parents based on hierarchy rules when no fixed parent is passed
   useEffect(() => {
+    if (parentItem) {
+      setPotentialParents([]);
+      return;
+    }
+
     const targetProjId = projectId || selectedProjectId;
     if (!isOpen || !targetProjId) {
       setPotentialParents([]);
       return;
     }
 
-    let requiredParentType = null;
-    if (type === 'STORY') requiredParentType = 'EPIC';
-    else if (type === 'TASK') requiredParentType = 'STORY';
-    else if (type === 'SUBTASK') requiredParentType = 'TASK';
-
-    if (requiredParentType) {
-      setLoadingParents(true);
-      workItemsService
-        .listWorkItems({ project_id: targetProjId, type: requiredParentType })
-        .then((items) => {
-          setPotentialParents(items || []);
-        })
-        .catch((err) => console.error('Failed to load potential parents:', err))
-        .finally(() => setLoadingParents(false));
-    } else {
+    if (type === 'EPIC') {
       setPotentialParents([]);
       setParentId('');
+      return;
     }
-  }, [isOpen, projectId, selectedProjectId, type]);
+
+    setLoadingParents(true);
+    if (type === 'STORY') {
+      workItemsService
+        .listWorkItems({ project_id: targetProjId, type: 'EPIC' })
+        .then((items) => {
+          const list = items || [];
+          setPotentialParents(list);
+          setParentId((prev) => (list.some((p) => p.id === prev) ? prev : ''));
+        })
+        .catch((err) => console.error('Failed to load potential epics:', err))
+        .finally(() => setLoadingParents(false));
+    } else if (type === 'TASK') {
+      workItemsService
+        .listWorkItems({ project_id: targetProjId, type: 'STORY' })
+        .then((items) => {
+          const list = items || [];
+          setPotentialParents(list);
+          setParentId((prev) => (list.some((p) => p.id === prev) ? prev : ''));
+        })
+        .catch((err) => console.error('Failed to load potential stories:', err))
+        .finally(() => setLoadingParents(false));
+    } else if (type === 'SUBTASK') {
+      workItemsService
+        .listWorkItems({ project_id: targetProjId, type: 'TASK' })
+        .then((items) => {
+          const list = items || [];
+          setPotentialParents(list);
+          setParentId((prev) => (list.some((p) => p.id === prev) ? prev : ''));
+        })
+        .catch((err) => console.error('Failed to load potential tasks:', err))
+        .finally(() => setLoadingParents(false));
+    } else if (type === 'BUG') {
+      workItemsService
+        .listWorkItems({ project_id: targetProjId })
+        .then((items) => {
+          const validParents = (items || []).filter(
+            (i) => i.type === 'EPIC' || i.type === 'STORY'
+          );
+          setPotentialParents(validParents);
+          setParentId((prev) => (validParents.some((p) => p.id === prev) ? prev : ''));
+        })
+        .catch((err) => console.error('Failed to load potential bug parents:', err))
+        .finally(() => setLoadingParents(false));
+    }
+  }, [isOpen, projectId, selectedProjectId, type, parentItem]);
+
+  const handleTypeChange = (newType) => {
+    setType(newType);
+    setError('');
+
+    if (newType === 'EPIC') {
+      setParentId('');
+      return;
+    }
+
+    if (parentItem) return;
+
+    if (!parentId) return;
+
+    const currentParent = potentialParents.find((p) => p.id === parentId);
+    if (!currentParent) {
+      setParentId('');
+      return;
+    }
+
+    const pType = currentParent.type;
+    let isValid = false;
+    if (newType === 'STORY' && pType === 'EPIC') isValid = true;
+    else if (newType === 'TASK' && pType === 'STORY') isValid = true;
+    else if (newType === 'SUBTASK' && pType === 'TASK') isValid = true;
+    else if (newType === 'BUG' && (pType === 'EPIC' || pType === 'STORY')) isValid = true;
+
+    if (!isValid) {
+      setParentId('');
+    }
+  };
 
   if (!isOpen) return null;
 
@@ -135,9 +271,50 @@ export default function AddTaskModal({
 
     const targetProjId = projectId || selectedProjectId || null;
 
-    if (type === 'SUBTASK' && !parentId) {
-      setError('A parent Task is required for Subtasks.');
+    // Validate sprint date order
+    if (startDate && dueDate && new Date(startDate) > new Date(dueDate)) {
+      setError('Due date cannot be earlier than start date.');
       return;
+    }
+
+    if (targetProjId) {
+      const effectiveParentId = parentItem ? parentItem.id : parentId;
+      if (type !== 'EPIC' && !effectiveParentId) {
+        setError(
+          `A parent work item is required for ${type}. Only EPIC can be created at the project root.`
+        );
+        return;
+      }
+      if (type === 'EPIC' && effectiveParentId) {
+        setError('An EPIC sits at the root and cannot have a parent.');
+        return;
+      }
+
+      const effectiveParent = parentItem || potentialParents.find((p) => p.id === effectiveParentId);
+      if (effectiveParent) {
+        const pType = effectiveParent.type;
+        if (type === 'STORY' && pType !== 'EPIC') {
+          setError('A Story must have an Epic as its parent.');
+          return;
+        }
+        if (type === 'TASK' && pType !== 'STORY') {
+          setError('A Task must have a Story as its parent.');
+          return;
+        }
+        if (type === 'SUBTASK' && pType !== 'TASK') {
+          setError('A Subtask must have a Task as its parent.');
+          return;
+        }
+        if (type === 'BUG' && pType !== 'EPIC' && pType !== 'STORY') {
+          setError('A Bug must have an Epic or Story as its parent.');
+          return;
+        }
+      }
+    } else {
+      if (type !== 'TASK') {
+        setError('Personal tasks must be of type TASK.');
+        return;
+      }
     }
 
     try {
@@ -152,6 +329,7 @@ export default function AddTaskModal({
         priority,
         project_id: targetProjId,
         parent_id: parentId || null,
+        sprint_id: sprintId || null,
         start_date: startDate ? new Date(startDate).toISOString() : null,
         due_date: dueDate ? new Date(dueDate).toISOString() : null,
         assignee_ids: assigneeId ? [assigneeId] : [],
@@ -241,13 +419,10 @@ export default function AddTaskModal({
               </label>
               <select
                 value={type}
-                onChange={(e) => {
-                  setType(e.target.value);
-                  setParentId('');
-                }}
-                className="w-full px-3 py-2 rounded-xl border border-slate-200 bg-white text-slate-800 focus:outline-none focus:border-purple-600"
+                onChange={(e) => handleTypeChange(e.target.value)}
+                className="w-full px-3 py-2 rounded-xl border border-slate-200 bg-white text-slate-800 focus:outline-none focus:border-purple-600 font-semibold"
               >
-                {WORK_ITEM_TYPES.map((t) => (
+                {WORK_ITEM_TYPES.filter((t) => effectiveAllowedTypes.includes(t.id)).map((t) => (
                   <option key={t.id} value={t.id}>
                     {t.label}
                   </option>
@@ -303,48 +478,96 @@ export default function AddTaskModal({
           </div>
 
           {/* Parent Work Item (Hierarchical Dependency) */}
-          {(type === 'STORY' || type === 'TASK' || type === 'SUBTASK') && (
-            <div className="p-3 bg-purple-50/50 rounded-xl border border-purple-100">
-              <label className="block text-[11px] font-bold text-purple-900 uppercase tracking-wider mb-1 flex items-center gap-1.5">
-                <GitFork className="w-3.5 h-3.5 text-purple-600" />
-                <span>
-                  Parent {type === 'STORY' ? 'Epic' : type === 'TASK' ? 'Story (Optional)' : 'Task (Required)'}
+          {parentItem ? (
+            <div className="p-3 bg-purple-50/70 rounded-xl border border-purple-200">
+              <div className="flex items-center justify-between">
+                <span className="text-[10px] font-bold uppercase tracking-wider text-purple-700 flex items-center gap-1">
+                  <GitFork className="w-3.5 h-3.5" />
+                  <span>Parent {parentItem.type} (Locked)</span>
                 </span>
-              </label>
-
-              {loadingParents ? (
-                <div className="flex items-center gap-2 text-slate-500 py-1 text-xs">
-                  <Loader2 className="w-3.5 h-3.5 animate-spin text-purple-600" />
-                  <span>Loading potential parent items...</span>
-                </div>
-              ) : potentialParents.length === 0 ? (
-                <p className="text-[11px] text-amber-700 py-1">
-                  {type === 'SUBTASK'
-                    ? 'No Tasks found in this project. Create a Task first before adding subtasks.'
-                    : type === 'STORY'
-                    ? 'No Epics found in this project. Create an Epic first, or this Story will be standalone.'
-                    : 'No Stories found in this project. This Task will be created as a standalone task.'}
-                </p>
-              ) : (
-                <select
-                  value={parentId}
-                  onChange={(e) => setParentId(e.target.value)}
-                  required={type === 'SUBTASK'}
-                  className="w-full px-3 py-2 rounded-lg border border-purple-200 bg-white text-slate-800 focus:outline-none focus:border-purple-600"
-                >
-                  <option value="">{type === 'SUBTASK' ? 'Select Parent Task *' : 'No Parent (Standalone)'}</option>
-                  {potentialParents.map((p) => (
-                    <option key={p.id} value={p.id}>
-                      [{p.type}] {p.title}
-                    </option>
-                  ))}
-                </select>
-              )}
+                <span className="text-[10px] font-mono font-semibold text-purple-600">
+                  {parentItem.id}
+                </span>
+              </div>
+              <p className="mt-1 font-semibold text-slate-800 text-xs truncate">
+                {parentItem.title}
+              </p>
             </div>
-          )}
+          ) : currentProjId ? (
+            type === 'EPIC' ? (
+              <div className="p-3 bg-slate-50 rounded-xl border border-slate-200 text-slate-600">
+                <span className="text-[10px] font-bold uppercase tracking-wider text-slate-500 block mb-0.5">
+                  Project Root Deliverable
+                </span>
+                <p className="text-[11px] text-slate-600">
+                  EPIC items sit at the root of the project hierarchy and cannot have a parent.
+                </p>
+              </div>
+            ) : (
+              <div className="p-3 bg-purple-50/50 rounded-xl border border-purple-100">
+                <label className="block text-[11px] font-bold text-purple-900 uppercase tracking-wider mb-1 flex items-center gap-1.5">
+                  <GitFork className="w-3.5 h-3.5 text-purple-600" />
+                  <span>
+                    Parent {type === 'STORY' ? 'Epic *' : type === 'TASK' ? 'Story *' : type === 'SUBTASK' ? 'Task *' : 'Epic or Story *'}
+                  </span>
+                </label>
 
-          {/* Row: Status & Assignee */}
+                {loadingParents ? (
+                  <div className="flex items-center gap-2 text-slate-500 py-1 text-xs">
+                    <Loader2 className="w-3.5 h-3.5 animate-spin text-purple-600" />
+                    <span>Loading potential parent items...</span>
+                  </div>
+                ) : potentialParents.length === 0 ? (
+                  <p className="text-[11px] text-amber-700 py-1 font-medium">
+                    {type === 'STORY'
+                      ? 'No Epics found in this project. Create an Epic first before creating a Story.'
+                      : type === 'TASK'
+                      ? 'No Stories found in this project. Create a Story first before creating a Task.'
+                      : type === 'SUBTASK'
+                      ? 'No Tasks found in this project. Create a Task first before creating a Subtask.'
+                      : 'No Epics or Stories found in this project. Create an Epic or Story first before creating a Bug.'}
+                  </p>
+                ) : (
+                  <select
+                    value={parentId}
+                    onChange={(e) => setParentId(e.target.value)}
+                    required
+                    className="w-full px-3 py-2 rounded-lg border border-purple-200 bg-white text-slate-800 focus:outline-none focus:border-purple-600"
+                  >
+                    <option value="">
+                      Select Parent {type === 'STORY' ? 'Epic' : type === 'TASK' ? 'Story' : type === 'SUBTASK' ? 'Task' : 'Epic or Story'} *
+                    </option>
+                    {potentialParents.map((p) => (
+                      <option key={p.id} value={p.id}>
+                        [{p.type}] {p.title}
+                      </option>
+                    ))}
+                  </select>
+                )}
+              </div>
+            )
+          ) : null}
+
+          {/* Row: Sprint & Status */}
           <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="block text-[11px] font-bold text-slate-700 uppercase tracking-wider mb-1">
+                Sprint
+              </label>
+              <select
+                value={sprintId}
+                onChange={(e) => setSprintId(e.target.value)}
+                className="w-full px-3 py-2 rounded-xl border border-slate-200 bg-white text-slate-800 focus:outline-none focus:border-purple-600"
+              >
+                <option value="">Project Backlog (No Sprint)</option>
+                {availableSprints.map((s) => (
+                  <option key={s.id} value={s.id}>
+                    {s.name} {s.status === 'ACTIVE' ? '• Active' : ''}
+                  </option>
+                ))}
+              </select>
+            </div>
+
             <div>
               <label className="block text-[11px] font-bold text-slate-700 uppercase tracking-wider mb-1">
                 Initial Status
@@ -361,6 +584,7 @@ export default function AddTaskModal({
                 ))}
               </select>
             </div>
+          </div>
 
             <div>
               <label className="block text-[11px] font-bold text-slate-700 uppercase tracking-wider mb-1 flex items-center justify-between">
@@ -411,9 +635,8 @@ export default function AddTaskModal({
                 </select>
               </div>
             </div>
-          </div>
 
-          {/* Row: Dates */}
+            {/* Row: Dates */}
           <div className="grid grid-cols-2 gap-3">
             <div>
               <label className="block text-[11px] font-bold text-slate-700 uppercase tracking-wider mb-1 flex items-center gap-1">

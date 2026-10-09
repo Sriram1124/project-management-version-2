@@ -6,12 +6,12 @@ import {
   CheckSquare, 
   FileText, 
   CalendarCheck, 
-  MessageSquare, 
   User, 
   LogOut, 
   Bell, 
   Search, 
   ArrowLeft,
+  X,
   ChevronRight,
   ShieldAlert,
   ArrowRightLeft,
@@ -24,7 +24,6 @@ import ScopedProjectView from './components/ScopedProjectView';
 import MyTasksTab from './components/MyTasksTab';
 import AssignedFormsTab from './components/AssignedFormsTab';
 import InternAttendanceTab from './components/InternAttendanceTab';
-import InternMomTab from './components/InternMomTab';
 import InternProfileTab from './components/InternProfileTab';
 import DynamicFormModal from './components/DynamicFormModal';
 import WorkItemDetailModal from './components/WorkItemDetailModal';
@@ -48,7 +47,7 @@ export default function InternApp({ onLogout, onSelectProject, onToast }) {
     const clean = pathname.replace(/^\/intern\/?/, '');
     if (!clean || clean === 'dashboard') return 'dashboard';
     if (clean === 'tasks' || clean === 'my-tasks') return 'tasks';
-    if (['alerts', 'projects', 'forms', 'attendance', 'mom', 'profile'].includes(clean)) {
+    if (['alerts', 'projects', 'forms', 'attendance', 'profile'].includes(clean)) {
       return clean;
     }
     return 'dashboard';
@@ -61,6 +60,7 @@ export default function InternApp({ onLogout, onSelectProject, onToast }) {
   const [loadingTasks, setLoadingTasks] = useState(false);
   const [forms, setForms] = useState(formsService.getAssignedForms());
   const [notifications, setNotifications] = useState(notificationsService.getAllNotifications());
+  const [notificationPopup, setNotificationPopup] = useState(false);
 
   useEffect(() => {
     const tabFromUrl = getTabFromPath(location.pathname);
@@ -107,15 +107,46 @@ export default function InternApp({ onLogout, onSelectProject, onToast }) {
 
   useEffect(() => {
     loadWorkItems();
-    notificationsService.loadNotifications();
     const unsubForms = formsService.subscribe(setForms);
-    const unsubNotifs = notificationsService.subscribe(setNotifications);
+    let knownNotificationIds = new Set(
+      notificationsService.getAllNotifications().map((notification) => notification.id)
+    );
+    let hasLoadedNotifications = false;
+    const unsubNotifs = notificationsService.subscribe((nextNotifications) => {
+      setNotifications(nextNotifications);
+
+      if (hasLoadedNotifications) {
+        const receivedManagerAlert = nextNotifications.some(
+          (notification) =>
+            !knownNotificationIds.has(notification.id) &&
+            notification.type === 'BROADCAST' &&
+            !notification.is_read
+        );
+        if (receivedManagerAlert) setNotificationPopup(true);
+      }
+
+      knownNotificationIds = new Set(nextNotifications.map((notification) => notification.id));
+    });
+    notificationsService.loadNotifications().then((loadedNotifications) => {
+      knownNotificationIds = new Set(loadedNotifications.map((notification) => notification.id));
+      hasLoadedNotifications = true;
+    });
+    const notificationRefreshInterval = window.setInterval(() => {
+      notificationsService.loadNotifications();
+    }, 5000);
 
     return () => {
       unsubForms();
       unsubNotifs();
+      window.clearInterval(notificationRefreshInterval);
     };
   }, []);
+
+  useEffect(() => {
+    if (!notificationPopup || currentTab !== 'dashboard') return undefined;
+    const timeoutId = window.setTimeout(() => setNotificationPopup(false), 3000);
+    return () => window.clearTimeout(timeoutId);
+  }, [notificationPopup, currentTab]);
 
   const handleToggleTask = async (taskId) => {
     const item = workItems.find((w) => w.id === taskId);
@@ -140,7 +171,6 @@ export default function InternApp({ onLogout, onSelectProject, onToast }) {
     { id: 'tasks', label: 'My Tasks', icon: CheckSquare, badge: workItems.filter(w => w.status !== 'COMPLETED').length },
     { id: 'forms', label: 'Forms', icon: FileText, badge: pendingFormsCount, badgeColor: 'bg-amber-500' },
     { id: 'attendance', label: 'Attendance', icon: CalendarCheck },
-    { id: 'mom', label: 'MoM', icon: MessageSquare },
     { id: 'profile', label: 'Profile', icon: User },
   ];
 
@@ -162,8 +192,6 @@ export default function InternApp({ onLogout, onSelectProject, onToast }) {
         return 'Assigned Evaluations & Forms';
       case 'attendance':
         return 'Attendance & Session History';
-      case 'mom':
-        return 'Published Minutes of Meeting';
       case 'profile':
         return 'Intern Profile & Privileges';
       default:
@@ -279,17 +307,45 @@ export default function InternApp({ onLogout, onSelectProject, onToast }) {
           {/* Right Header Actions */}
           <div className="flex items-center gap-3">
             {/* Notifications Trigger */}
-            <button
-              type="button"
-              onClick={() => setIsNotificationsOpen(true)}
-              className="relative p-2 rounded-lg border border-slate-200 text-slate-600 hover:bg-slate-50 hover:text-slate-900 transition-colors"
-              title="Notifications"
-            >
-              <Bell className="w-4 h-4" />
-              {unreadCount > 0 && (
-                <span className="w-2 h-2 rounded-full bg-rose-500 absolute top-1.5 right-1.5" />
+            <div className="relative">
+              <button
+                type="button"
+                onClick={() => {
+                  setNotificationPopup(false);
+                  setIsNotificationsOpen(true);
+                }}
+                className="relative p-2 rounded-lg border border-slate-200 text-slate-600 hover:bg-slate-50 hover:text-slate-900 transition-colors"
+                title="Notifications"
+              >
+                <Bell className="w-4 h-4" />
+                {unreadCount > 0 && (
+                  <span className="w-2 h-2 rounded-full bg-rose-500 absolute top-1.5 right-1.5" />
+                )}
+              </button>
+              {notificationPopup && currentTab === 'dashboard' && (
+                <div
+                  role="status"
+                  aria-live="polite"
+                  className="absolute bottom-full right-0 z-40 mb-2 flex w-56 max-w-[80vw] items-center gap-2 rounded-full border border-purple-200 bg-white px-3 py-2 text-left shadow-lg animate-in fade-in zoom-in-95 slide-in-from-bottom-1 duration-200"
+                >
+                  <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-purple-100">
+                    <Bell className="h-3.5 w-3.5 text-purple-700" />
+                  </span>
+                  <span className="min-w-0 flex-1">
+                    <span className="block truncate text-xs font-bold text-slate-900">New manager alert</span>
+                    <span className="block text-[10px] font-medium text-slate-500">Tap the bell to view</span>
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => setNotificationPopup(false)}
+                    className="rounded p-0.5 text-slate-400 hover:bg-slate-100 hover:text-slate-700"
+                    aria-label="Dismiss notification popup"
+                  >
+                    <X className="h-3 w-3" />
+                  </button>
+                </div>
               )}
-            </button>
+            </div>
 
             {/* Date Display */}
             <div className="pl-3 border-l border-slate-200 text-xs font-medium text-slate-500">
@@ -300,44 +356,14 @@ export default function InternApp({ onLogout, onSelectProject, onToast }) {
 
         {/* Page Content */}
         <main className="flex-1 min-h-0 p-4 sm:p-6 overflow-y-auto">
-          <div className="max-w-6xl mx-auto space-y-6">
-            {/* Authenticated User Banner */}
-            <div className="p-4 rounded-2xl bg-gradient-to-r from-purple-700 to-indigo-700 text-white flex flex-col sm:flex-row sm:items-center justify-between gap-3 shadow-md">
-              <div className="flex items-center gap-3">
-                <div className="w-10 h-10 rounded-full bg-white/20 flex items-center justify-center font-bold text-sm tracking-wider">
-                  {(displayName.slice(0, 2) || 'IN').toUpperCase()}
-                </div>
-                <div>
-                  <div className="flex items-center gap-2">
-                    <h2 className="text-base font-bold">
-                      {displayName}
-                    </h2>
-                    <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-white/20 uppercase tracking-wider">
-                      {displayRole}
-                    </span>
-                    {authUser?.batch && (
-                      <span className="px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-emerald-400/25 text-emerald-100 border border-emerald-300/30">
-                        {authUser.batch}
-                      </span>
-                    )}
-                  </div>
-                  <p className="text-xs text-purple-100">
-                    {authUser?.email || currentUser.email}
-                  </p>
-                </div>
-              </div>
-            </div>
-
+          <div className={currentTab === 'dashboard' ? 'w-full space-y-6' : 'max-w-6xl mx-auto space-y-6'}>
             {/* Render Tab View */}
             {currentTab === 'dashboard' && (
               <InternDashboardTab
                 workItems={workItems}
                 forms={forms}
-                notifications={notifications}
                 onOpenTaskModal={(t) => setSelectedTask(t)}
                 onOpenFormModal={(f) => setSelectedForm(f)}
-                onOpenMoMModal={() => handleTabChange('mom')}
-                onOpenNotifications={() => setIsNotificationsOpen(true)}
                 onNavigateTab={(tabId) => handleTabChange(tabId)}
                 onSelectProject={(projectId) => {
                   setSelectedProjectId(projectId);
@@ -378,6 +404,7 @@ export default function InternApp({ onLogout, onSelectProject, onToast }) {
                 onOpenCreatePersonalTask={() => setIsCreatePersonalOpen(true)}
                 onToggleTask={handleToggleTask}
                 onToast={onToast}
+                showViewSwitcher={false}
               />
             )}
 
@@ -390,10 +417,6 @@ export default function InternApp({ onLogout, onSelectProject, onToast }) {
 
             {currentTab === 'attendance' && (
               <InternAttendanceTab onToast={onToast} />
-            )}
-
-            {currentTab === 'mom' && (
-              <InternMomTab onToast={onToast} />
             )}
 
             {currentTab === 'profile' && (
@@ -443,8 +466,6 @@ export default function InternApp({ onLogout, onSelectProject, onToast }) {
           } else if (notif.target_type === 'form') {
             const form = formsService.getFormById(notif.target_id);
             if (form) setSelectedForm(form);
-          } else if (notif.target_type === 'mom') {
-            setCurrentTab('mom');
           }
         }}
         onToast={onToast}

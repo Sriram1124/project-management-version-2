@@ -5,13 +5,16 @@ import { MOCK_ASSIGNEES, MOCK_EPICS, MOCK_SPRINTS } from '../../constants/kanban
 export default function FilterBar({
   searchQuery = '',
   onSearchChange,
+  members = [],
+  epics = [],
+  sprints = [],
   selectedAssignee,
   onSelectAssignee,
   selectedPriority,
   onSelectPriority,
   selectedEpic,
   onSelectEpic,
-  selectedSprint = 'Sprint 04 / Active Sprint',
+  selectedSprint = 'All Sprints',
   onSelectSprint,
   quickFilterMyTasks = false,
   onToggleMyTasks,
@@ -119,24 +122,30 @@ export default function FilterBar({
                 {!selectedAssignee && <Check className="w-3 h-3 text-purple-600" />}
               </button>
 
-              {MOCK_ASSIGNEES.map((user) => (
-                <button
-                  key={user.id}
-                  onClick={() => {
-                    onSelectAssignee?.(user);
-                    setOpenDropdown(null);
-                  }}
-                  className={`w-full text-left px-3 py-1.5 text-xs hover:bg-slate-50 transition-colors flex items-center justify-between ${
-                    selectedAssignee?.id === user.id ? 'text-purple-700 font-semibold bg-purple-50/40' : 'text-slate-700'
-                  }`}
-                >
-                  <div className="flex items-center gap-2">
-                    <img src={user.avatar} alt={user.name} className="w-4 h-4 rounded-full object-cover" />
-                    <span className="truncate">{user.name}</span>
-                  </div>
-                  {selectedAssignee?.id === user.id && <Check className="w-3 h-3 text-purple-600" />}
-                </button>
-              ))}
+              {(members.length > 0 ? members : MOCK_ASSIGNEES).map((user) => {
+                const uid = user.user_id || user.id;
+                const uName = user.name || user.email;
+                const uAvatar = user.avatar || `https://ui-avatars.com/api/?name=${encodeURIComponent(uName)}&background=random`;
+                const isSelected = selectedAssignee && (selectedAssignee.user_id === uid || selectedAssignee.id === uid);
+                return (
+                  <button
+                    key={uid}
+                    onClick={() => {
+                      onSelectAssignee?.(user);
+                      setOpenDropdown(null);
+                    }}
+                    className={`w-full text-left px-3 py-1.5 text-xs hover:bg-slate-50 transition-colors flex items-center justify-between ${
+                      isSelected ? 'text-purple-700 font-semibold bg-purple-50/40' : 'text-slate-700'
+                    }`}
+                  >
+                    <div className="flex items-center gap-2 truncate">
+                      <img src={uAvatar} alt={uName} className="w-4 h-4 rounded-full object-cover shrink-0" />
+                      <span className="truncate">{uName}</span>
+                    </div>
+                    {isSelected && <Check className="w-3 h-3 text-purple-600 shrink-0" />}
+                  </button>
+                );
+              })}
             </div>
           )}
         </div>
@@ -190,27 +199,44 @@ export default function FilterBar({
             }`}
           >
             <span className="truncate max-w-[100px]">
-              {selectedEpic && selectedEpic !== 'All Epics' ? selectedEpic : 'Epic'}
+              {selectedEpic && selectedEpic !== 'All Epics'
+                ? typeof selectedEpic === 'object' ? selectedEpic.name || selectedEpic.title : selectedEpic
+                : 'Epic'}
             </span>
             <ChevronDown className="w-3 h-3 text-slate-400" />
           </button>
 
           {openDropdown === 'epic' && (
-            <div className="absolute left-0 mt-1 w-48 bg-white rounded-md shadow-md border border-slate-200 py-1 z-30">
-              {MOCK_EPICS.map((e) => {
-                const isSelected = (!selectedEpic && e === 'All Epics') || selectedEpic === e;
+            <div className="absolute left-0 mt-1 w-52 bg-white rounded-md shadow-md border border-slate-200 py-1 z-30">
+              <button
+                onClick={() => {
+                  onSelectEpic?.(null);
+                  setOpenDropdown(null);
+                }}
+                className={`w-full text-left px-3 py-1.5 text-xs hover:bg-slate-50 transition-colors flex items-center justify-between ${
+                  !selectedEpic || selectedEpic === 'All Epics' ? 'text-purple-700 font-semibold bg-purple-50/40' : 'text-slate-700'
+                }`}
+              >
+                <span>All Epics</span>
+                {(!selectedEpic || selectedEpic === 'All Epics') && <Check className="w-3 h-3 text-purple-600" />}
+              </button>
+
+              {(epics.length > 0 ? epics : MOCK_EPICS.map(name => ({ id: name, name }))).map((e) => {
+                const eid = e.id || e;
+                const ename = e.name || e.title || e;
+                const isSelected = selectedEpic === eid || selectedEpic === ename || selectedEpic?.id === eid;
                 return (
                   <button
-                    key={e}
+                    key={eid}
                     onClick={() => {
-                      onSelectEpic?.(e === 'All Epics' ? null : e);
+                      onSelectEpic?.(eid);
                       setOpenDropdown(null);
                     }}
                     className={`w-full text-left px-3 py-1.5 text-xs hover:bg-slate-50 transition-colors flex items-center justify-between ${
                       isSelected ? 'text-purple-700 font-semibold bg-purple-50/40' : 'text-slate-700'
                     }`}
                   >
-                    <span>{e}</span>
+                    <span className="truncate">{ename}</span>
                     {isSelected && <Check className="w-3 h-3 text-purple-600" />}
                   </button>
                 );
@@ -225,27 +251,63 @@ export default function FilterBar({
             onClick={() => toggleDropdown('sprint')}
             className="flex items-center gap-1.5 px-2.5 py-1 rounded-md border border-slate-200 text-xs font-medium text-slate-700 bg-white hover:bg-slate-50 transition-colors"
           >
-            <span className="truncate max-w-[120px]">{selectedSprint}</span>
+            <span className="truncate max-w-[130px]">
+              {typeof selectedSprint === 'object' ? selectedSprint.name : selectedSprint}
+            </span>
             <ChevronDown className="w-3 h-3 text-slate-400" />
           </button>
 
           {openDropdown === 'sprint' && (
             <div className="absolute left-0 mt-1 w-56 bg-white rounded-md shadow-md border border-slate-200 py-1 z-30">
-              {MOCK_SPRINTS.map((s) => {
-                const isSelected = selectedSprint === s;
+              <button
+                onClick={() => {
+                  onSelectSprint?.('All Sprints');
+                  setOpenDropdown(null);
+                }}
+                className={`w-full text-left px-3 py-1.5 text-xs hover:bg-slate-50 transition-colors flex items-center justify-between ${
+                  selectedSprint === 'All Sprints' ? 'text-purple-700 font-semibold bg-purple-50/40' : 'text-slate-700'
+                }`}
+              >
+                <span>All Sprints</span>
+                {selectedSprint === 'All Sprints' && <Check className="w-3 h-3 text-purple-600" />}
+              </button>
+
+              <button
+                onClick={() => {
+                  onSelectSprint?.('Backlog Only');
+                  setOpenDropdown(null);
+                }}
+                className={`w-full text-left px-3 py-1.5 text-xs hover:bg-slate-50 transition-colors flex items-center justify-between ${
+                  selectedSprint === 'Backlog Only' ? 'text-purple-700 font-semibold bg-purple-50/40' : 'text-slate-700'
+                }`}
+              >
+                <span>Backlog (Unassigned)</span>
+                {selectedSprint === 'Backlog Only' && <Check className="w-3 h-3 text-purple-600" />}
+              </button>
+
+              {(sprints.length > 0 ? sprints : MOCK_SPRINTS.map(name => ({ id: name, name }))).map((s) => {
+                const sName = s.name || s;
+                const isSelected = selectedSprint === sName || selectedSprint === s.id;
                 return (
                   <button
-                    key={s}
+                    key={s.id || s}
                     onClick={() => {
-                      onSelectSprint?.(s);
+                      onSelectSprint?.(sName);
                       setOpenDropdown(null);
                     }}
                     className={`w-full text-left px-3 py-1.5 text-xs hover:bg-slate-50 transition-colors flex items-center justify-between ${
                       isSelected ? 'text-purple-700 font-semibold bg-purple-50/40' : 'text-slate-700'
                     }`}
                   >
-                    <span>{s}</span>
-                    {isSelected && <Check className="w-3 h-3 text-purple-600" />}
+                    <div className="flex items-center gap-1.5 truncate">
+                      <span className="truncate">{sName}</span>
+                      {s.status === 'ACTIVE' && (
+                        <span className="px-1.5 py-0.2 rounded text-[9px] font-bold bg-purple-100 text-purple-700 shrink-0">
+                          ACTIVE
+                        </span>
+                      )}
+                    </div>
+                    {isSelected && <Check className="w-3 h-3 text-purple-600 shrink-0" />}
                   </button>
                 );
               })}

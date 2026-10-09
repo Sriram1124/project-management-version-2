@@ -25,15 +25,13 @@ export default function WorkItemDetailModal({
   onTaskDeleted,
   onToast
 }) {
-  if (!isOpen || !workItem) return null;
-
   const [activeTab, setActiveTab] = useState('details'); // 'details' | 'attachments' | 'activity' | 'comments'
-  const [liveItem, setLiveItem] = useState(workItem);
+  const [liveItem, setLiveItem] = useState(workItem || {});
   const [loading, setLoading] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [error, setError] = useState('');
-  const [status, setStatus] = useState(workItem.status);
-  const [priority, setPriority] = useState(workItem.priority);
+  const [status, setStatus] = useState(workItem?.status || 'TODO');
+  const [priority, setPriority] = useState(workItem?.priority || 'MEDIUM');
   const [taskSession, setTaskSession] = useState(null);
   const [taskSessionLoading, setTaskSessionLoading] = useState(false);
   const { user: authUser } = useAuth();
@@ -202,6 +200,8 @@ export default function WorkItemDetailModal({
         return 'bg-slate-100 text-slate-800 border-slate-200';
     }
   };
+
+  if (!isOpen || !workItem) return null;
 
   return (
     <div
@@ -480,7 +480,7 @@ export default function WorkItemDetailModal({
                           <span
                             className={
                               child.status === 'COMPLETED'
-                                ? 'line-through text-slate-400 font-medium'
+                                ? 'text-slate-500 font-medium'
                                 : 'text-slate-800 font-semibold'
                             }
                           >

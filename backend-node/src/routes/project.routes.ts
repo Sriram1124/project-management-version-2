@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import multer from 'multer';
 import { ProjectController } from '../controllers/project.controller';
+import { SprintController } from '../controllers/sprint.controller';
 import { authenticate, requirePermission, requireAnyPermission } from '../middleware/auth.middleware';
 
 const upload = multer({
@@ -23,7 +24,17 @@ router.post('/:id/archive', requirePermission('PROJECT_UPDATE'), ProjectControll
 // ── Project Members ──────────────────────────────────────────────────────────
 router.get('/:id/members', requirePermission('PROJECT_READ'), ProjectController.getMembers);
 router.post('/:id/members', requirePermission('PROJECT_UPDATE'), ProjectController.addMember);
+router.patch('/:id/members/roles', requirePermission('PROJECT_UPDATE'), ProjectController.updateMemberRoles);
 router.delete('/:id/members/:userId', requirePermission('PROJECT_UPDATE'), ProjectController.removeMember);
+
+// ── Project Sprints ──────────────────────────────────────────────────────────
+router.get('/:id/sprints', requirePermission('PROJECT_READ'), SprintController.list);
+router.post('/:id/sprints', requirePermission('PROJECT_UPDATE'), SprintController.create);
+router.get('/:id/sprints/:sprintId', requirePermission('PROJECT_READ'), SprintController.getById);
+router.patch('/:id/sprints/:sprintId', requirePermission('PROJECT_UPDATE'), SprintController.update);
+router.post('/:id/sprints/:sprintId/start', requirePermission('PROJECT_UPDATE'), SprintController.start);
+router.post('/:id/sprints/:sprintId/complete', requirePermission('PROJECT_UPDATE'), SprintController.complete);
+router.delete('/:id/sprints/:sprintId', requirePermission('PROJECT_UPDATE'), SprintController.delete);
 
 // ── Project Documents ────────────────────────────────────────────────────────
 router.get('/:id/documents', requirePermission('PROJECT_READ'), ProjectController.getDocuments);

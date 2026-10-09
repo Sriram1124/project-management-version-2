@@ -140,6 +140,25 @@ export class ProjectController {
     }
   }
 
+  static async updateMemberRoles(req: Request, res: Response): Promise<void> {
+    try {
+      const user = (req as any).fullUser;
+      const { id } = req.params;
+      const roles = req.body.roles;
+
+      if (!Array.isArray(roles)) {
+        res.status(400).json({ error: 'Roles must be an array of { user_id, project_role }' });
+        return;
+      }
+
+      const members = await ProjectService.updateProjectMemberRoles(id, roles, user);
+      res.status(200).json({ members });
+    } catch (error) {
+      ProjectController.handleError(res, error);
+    }
+  }
+
+
   static async getDocuments(req: Request, res: Response): Promise<void> {
     try {
       const user = (req as any).fullUser;

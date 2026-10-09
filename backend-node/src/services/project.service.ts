@@ -468,7 +468,67 @@ export class ProjectService {
       user_id: m.user.id,
       name: m.user.name,
       email: m.user.email,
+      project_role: m.project_role || null,
     }));
+  }
+
+  static readonly ALLOWED_PROJECT_ROLES = [
+    'DEVELOPER',
+    'QA_TESTER',
+    'TECH_LEAD',
+    'UI_UX_DESIGNER',
+    'DEVOPS_ENGINEER',
+    'BUSINESS_ANALYST',
+    'PROJECT_COORDINATOR',
+  ] as const;
+
+  /**
+   * Update project member roles
+   */
+  static async updateProjectMemberRoles(
+    projectId: string,
+    roleAssignments: Array<{ user_id: string; project_role?: string | null }>,
+    user: any
+  ) {
+    const orgId = this.getUserOrgId(user);
+
+    const project = await prisma.project.findFirst({
+      where: { id: projectId, organization_id: orgId },
+    });
+    if (!project) {
+      throw new Error('Project not found');
+    }
+
+    if (!Array.isArray(roleAssignments)) {
+      throw new Error('Invalid role assignments data');
+    }
+
+    for (const item of roleAssignments) {
+      if (!item.user_id) continue;
+
+      let normalizedRole: string | null = null;
+      if (item.project_role && typeof item.project_role === 'string' && item.project_role.trim()) {
+        const candidate = item.project_role.trim().toUpperCase();
+        if (!this.ALLOWED_PROJECT_ROLES.includes(candidate as any)) {
+          throw new Error(
+            `Invalid project role: ${item.project_role}. Allowed roles: ${this.ALLOWED_PROJECT_ROLES.join(', ')}`
+          );
+        }
+        normalizedRole = candidate;
+      }
+
+      await prisma.projectMember.updateMany({
+        where: {
+          project_id: projectId,
+          user_id: item.user_id,
+        },
+        data: {
+          project_role: normalizedRole,
+        },
+      });
+    }
+
+    return await this.getProjectMembers(projectId, user);
   }
 
   /**

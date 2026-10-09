@@ -16,8 +16,11 @@ model Organization {
   users      User[]
   projects   Project[]
   work_items WorkItem[]
+  sprints    Sprint[]
   forms      Form[]
   notifications Notification[]
+  cohorts    Cohort[]
+  action_items ActionItem[]
   work_policy OrganizationWorkPolicy?
 
   @@map("organizations")
@@ -48,7 +51,9 @@ model User {
   name            String
   email           String        @unique
   user_code       String?
+  cohort_id       String?
   batch           String?
+  subbatch        String?
   must_change_password Boolean    @default(true)
   password_hash   String
   is_active       Boolean       @default(true)
@@ -56,6 +61,7 @@ model User {
   updated_at      DateTime      @updatedAt
 
   organization        Organization?   @relation(fields: [organization_id], references: [id])
+  cohort              Cohort?         @relation(fields: [cohort_id], references: [id], onDelete: SetNull)
   roles               UserRole[]
   sessions            UserSession[]
   work_sessions       WorkSession[]
@@ -68,9 +74,32 @@ model User {
   form_submissions   FormSubmission[]   @relation("FormSubmitter")
   sent_notifications Notification[]     @relation("SentNotifications")
   received_notifications NotificationRecipient[] @relation("ReceivedNotifications")
+  assigned_action_items  ActionItem[]            @relation("ActionItemAssignee")
+  created_action_items   ActionItem[]            @relation("ActionItemCreator")
 
   @@unique([organization_id, user_code])
+  @@index([cohort_id])
   @@map("users")
+}
+
+model Cohort {
+  id              String       @id @default(uuid())
+  organization_id String
+  name            String
+  code            String
+  description     String?
+  start_date      DateTime?
+  end_date        DateTime?
+  is_active       Boolean      @default(true)
+  created_at      DateTime     @default(now())
+  updated_at      DateTime     @updatedAt
+
+  organization    Organization @relation(fields: [organization_id], references: [id], onDelete: Cascade)
+  users           User[]
+
+  @@unique([organization_id, code])
+  @@index([organization_id])
+  @@map("cohorts")
 }
 
 model WorkSession {
@@ -209,18 +238,21 @@ model Project {
   members         ProjectMember[]
   documents       ProjectDocument[]
   work_items      WorkItem[]
+  sprints         Sprint[]
   forms           Form[]
   time_entries    TimeEntry[]
+  action_items    ActionItem[]
 
   @@map("projects")
 }
 
 model ProjectMember {
-  project_id String
-  user_id    String
+  project_id   String
+  user_id      String
+  project_role String?
 
-  project    Project @relation(fields: [project_id], references: [id], onDelete: Cascade)
-  user       User    @relation(fields: [user_id], references: [id], onDelete: Cascade)
+  project      Project @relation(fields: [project_id], references: [id], onDelete: Cascade)
+  user         User    @relation(fields: [user_id], references: [id], onDelete: Cascade)
 
   @@id([project_id, user_id])
   @@map("project_members")
@@ -263,10 +295,38 @@ enum WorkItemPriority {
   URGENT
 }
 
+enum SprintStatus {
+  PLANNED
+  ACTIVE
+  COMPLETED
+  CANCELLED
+}
+
+model Sprint {
+  id              String        @id @default(uuid())
+  organization_id String
+  project_id      String
+  name            String
+  goal            String?
+  start_date      DateTime?
+  end_date        DateTime?
+  status          SprintStatus  @default(PLANNED)
+  created_at      DateTime      @default(now())
+  updated_at      DateTime      @updatedAt
+
+  organization    Organization  @relation(fields: [organization_id], references: [id])
+  project         Project       @relation(fields: [project_id], references: [id], onDelete: Cascade)
+  work_items      WorkItem[]
+
+  @@index([organization_id, project_id])
+  @@map("sprints")
+}
+
 model WorkItem {
   id              String             @id @default(uuid())
   organization_id String
   project_id      String?
+  sprint_id       String?
   parent_id       String?
   created_by      String
   type            WorkItemType
@@ -279,9 +339,11 @@ model WorkItem {
   created_at      DateTime           @default(now())
   updated_at      DateTime           @updatedAt
   completed_at    DateTime?
+  story_points    Int?               @default(0)
 
   organization    Organization       @relation(fields: [organization_id], references: [id])
   project         Project?           @relation(fields: [project_id], references: [id], onDelete: Cascade)
+  sprint          Sprint?            @relation(fields: [sprint_id], references: [id], onDelete: SetNull)
   parent          WorkItem?          @relation("WorkItemHierarchy", fields: [parent_id], references: [id], onDelete: Restrict)
   children        WorkItem[]         @relation("WorkItemHierarchy")
   creator         User               @relation("WorkItemCreator", fields: [created_by], references: [id])
@@ -292,6 +354,7 @@ model WorkItem {
 
   @@index([organization_id])
   @@index([project_id])
+  @@index([sprint_id])
   @@index([created_by])
   @@index([parent_id])
   @@map("work_items")
@@ -456,4 +519,44 @@ model NotificationRecipient {
   @@index([user_id])
   @@index([user_id, read_at])
   @@map("notification_recipients")
+}
+
+enum ActionItemStatus {
+  OPEN
+  IN_PROGRESS
+  COMPLETED
+  CANCELLED
+}
+
+enum ActionItemPriority {
+  LOW
+  MEDIUM
+  HIGH
+  URGENT
+}
+
+model ActionItem {
+  id              String             @id @default(uuid())
+  organization_id String
+  project_id      String
+  title           String
+  description     String?
+  status          ActionItemStatus   @default(OPEN)
+  priority        ActionItemPriority @default(MEDIUM)
+  assignee_id     String?
+  creator_id      String             @map("creator_id")
+  due_date        DateTime?
+  created_at      DateTime           @default(now())
+  updated_at      DateTime           @updatedAt
+
+  organization    Organization       @relation(fields: [organization_id], references: [id], onDelete: Cascade)
+  project         Project            @relation(fields: [project_id], references: [id], onDelete: Cascade)
+  assignee        User?              @relation("ActionItemAssignee", fields: [assignee_id], references: [id], onDelete: SetNull)
+  creator         User               @relation("ActionItemCreator", fields: [creator_id], references: [id], onDelete: Cascade)
+
+  @@index([organization_id])
+  @@index([project_id])
+  @@index([assignee_id])
+  @@index([creator_id])
+  @@map("action_items")
 }

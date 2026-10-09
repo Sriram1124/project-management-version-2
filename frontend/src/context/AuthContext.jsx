@@ -33,6 +33,8 @@ export const AuthProvider = ({ children }) => {
           if (e.message?.includes('401') || e.message?.includes('Unauthorized') || e.message?.includes('Invalid access token')) {
             if (isMounted) {
               localStorage.removeItem('accessToken');
+              localStorage.removeItem('refreshToken');
+              localStorage.removeItem('sessionId');
               localStorage.removeItem('user');
               setUser(null);
             }
@@ -41,6 +43,9 @@ export const AuthProvider = ({ children }) => {
         }
       } else {
         if (isMounted) {
+          localStorage.removeItem('accessToken');
+          localStorage.removeItem('refreshToken');
+          localStorage.removeItem('sessionId');
           localStorage.removeItem('user');
           setUser(null);
         }
@@ -74,6 +79,8 @@ export const AuthProvider = ({ children }) => {
       // Ignore logout errors
     } finally {
       localStorage.removeItem('accessToken');
+      localStorage.removeItem('refreshToken');
+      localStorage.removeItem('sessionId');
       localStorage.removeItem('user');
       setUser(null);
     }

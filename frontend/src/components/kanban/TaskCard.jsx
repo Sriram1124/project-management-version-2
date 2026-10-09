@@ -62,6 +62,11 @@ export default function TaskCard({
               {task.type}
             </span>
           )}
+          {task.story_points > 0 && (
+            <span className="text-[9px] font-bold font-mono px-1 py-0.2 rounded bg-slate-100 text-slate-700 border border-slate-200">
+              {task.story_points} pts
+            </span>
+          )}
           <span className="text-[11px] font-mono font-medium text-slate-500 group-hover:text-purple-700 transition-colors">
             {task.id}
           </span>
@@ -81,7 +86,7 @@ export default function TaskCard({
       {/* Task Title */}
       <h4
         className={`text-xs font-semibold leading-snug text-slate-900 group-hover:text-purple-700 transition-colors line-clamp-2 ${
-          isCompleted ? 'text-slate-700 line-through' : ''
+          isCompleted ? 'text-slate-600' : ''
         }`}
       >
         {task.title}

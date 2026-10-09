@@ -44,6 +44,11 @@ export const projectsService = {
     return await api.delete(`/projects/${id}/members/${userId}`);
   },
 
+  async updateMemberRoles(id, roles) {
+    const res = await api.patch(`/projects/${id}/members/roles`, { roles });
+    return res.members || [];
+  },
+
   async getDocuments(id) {
     const res = await api.get(`/projects/${id}/documents`);
     return res.documents || [];
@@ -79,8 +84,13 @@ export const projectsService = {
     return await api.delete(`/projects/${id}/documents/${documentId}`);
   },
 
-  async getUsers() {
-    const res = await api.get('/users');
+  async getUsers(params = {}) {
+    const query = new URLSearchParams();
+    if (params.cohort_id) query.append('cohort_id', params.cohort_id);
+    if (params.batch) query.append('batch', params.batch);
+    if (params.type) query.append('type', params.type);
+    const qs = query.toString() ? `?${query.toString()}` : '';
+    const res = await api.get(`/users${qs}`);
     return res.users || [];
   },
 };
