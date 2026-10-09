@@ -17,8 +17,10 @@ import {
 } from 'lucide-react';
 import { workItemsService } from '../../services/workItems.service';
 import { projectsService } from '../../services/projects.service';
+import { sprintsService } from '../../services/sprints.service';
 import { timesheetService } from '../../services/timesheet.service';
 import { useAuth } from '../../context/AuthContext';
+import AddTaskModal from './AddTaskModal';
 
 const STATUS_OPTIONS = [
   { id: 'TODO', label: 'To Do' },
@@ -42,11 +44,10 @@ export default function TaskDetailModal({
   onTaskUpdated,
   onTaskDeleted,
   onToast,
+  hideAssignees = false,
 }) {
-  if (!isOpen || !task) return null;
-
   const { user: authUser } = useAuth();
-  const [liveTask, setLiveTask] = useState(task);
+  const [liveTask, setLiveTask] = useState(task || {});
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [deleting, setDeleting] = useState(false);
@@ -56,21 +57,27 @@ export default function TaskDetailModal({
 
   // Editable fields
   const [isEditing, setIsEditing] = useState(false);
-  const [title, setTitle] = useState(task.title || '');
-  const [description, setDescription] = useState(task.description || '');
-  const [status, setStatus] = useState(task.status || 'TODO');
-  const [priority, setPriority] = useState(task.priority || 'MEDIUM');
+  const [title, setTitle] = useState(task?.title || '');
+  const [description, setDescription] = useState(task?.description || '');
+  const [status, setStatus] = useState(task?.status || 'TODO');
+  const [priority, setPriority] = useState(task?.priority || 'MEDIUM');
   const [startDate, setStartDate] = useState(
-    task.start_date ? task.start_date.split('T')[0] : ''
+    task?.start_date ? task.start_date.split('T')[0] : ''
   );
   const [dueDate, setDueDate] = useState(
-    task.due_date ? task.due_date.split('T')[0] : ''
+    task?.due_date ? task.due_date.split('T')[0] : ''
   );
 
   // Assignees
   const [projectMembers, setProjectMembers] = useState([]);
   const [selectedNewAssignee, setSelectedNewAssignee] = useState('');
   const [assigneeSearch, setAssigneeSearch] = useState('');
+  const [projectSprints, setProjectSprints] = useState([]);
+  const [childModal, setChildModal] = useState({
+    isOpen: false,
+    initialType: 'STORY',
+    allowedTypes: ['STORY', 'BUG'],
+  });
 
   // Reload task details from backend
   const fetchTaskDetails = async (id) => {
@@ -100,13 +107,18 @@ export default function TaskDetailModal({
     }
   }, [isOpen, task?.id]);
 
-  // Load project members for assignee selection
+  // Load project members and sprints for assignee selection and child creation
   useEffect(() => {
     if (isOpen && liveTask?.project_id) {
       projectsService
         .getMembers(liveTask.project_id)
         .then((members) => setProjectMembers(members || []))
         .catch((err) => console.error('Failed to load project members:', err));
+
+      sprintsService
+        .getSprints(liveTask.project_id)
+        .then((s) => setProjectSprints(s || []))
+        .catch((err) => console.error('Failed to load project sprints:', err));
     }
   }, [isOpen, liveTask?.project_id]);
 
@@ -152,6 +164,38 @@ export default function TaskDetailModal({
     } catch (err) {
       setError(err.message || 'Failed to update priority');
     }
+  };
+
+  const handleStartDateChange = async (newDate) => {
+    try {
+      setStartDate(newDate);
+      const isoDate = newDate ? new Date(newDate).toISOString() : null;
+      const updated = await workItemsService.updateWorkItem(liveTask.id, { start_date: isoDate });
+      setLiveTask(updated);
+      onToast?.(newDate ? `Start date set to ${newDate}` : 'Start date cleared');
+      onTaskUpdated?.(updated);
+    } catch (err) {
+      setError(err.message || 'Failed to update start date');
+    }
+  };
+
+  const handleDueDateChange = async (newDate) => {
+    try {
+      setDueDate(newDate);
+      const isoDate = newDate ? new Date(newDate).toISOString() : null;
+      const updated = await workItemsService.updateWorkItem(liveTask.id, { due_date: isoDate });
+      setLiveTask(updated);
+      onToast?.(newDate ? `Due date set to ${newDate}` : 'Due date cleared');
+      onTaskUpdated?.(updated);
+    } catch (err) {
+      setError(err.message || 'Failed to update due date');
+    }
+  };
+
+  const handleToggleDone = async () => {
+    const isCurrentlyDone = (status === 'COMPLETED' || liveTask?.status === 'COMPLETED');
+    const nextStatus = isCurrentlyDone ? 'TODO' : 'COMPLETED';
+    await handleStatusChange(nextStatus);
   };
 
   const handleSaveEdits = async () => {
@@ -282,6 +326,8 @@ export default function TaskDetailModal({
     }
   };
 
+  if (!isOpen || !task) return null;
+
   return (
     <div
       className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs animate-in fade-in duration-150"
@@ -309,6 +355,19 @@ export default function TaskDetailModal({
           </div>
 
           <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={handleToggleDone}
+              className={`flex items-center gap-1.5 px-3 py-1 text-xs font-bold rounded-lg transition-colors cursor-pointer ${
+                (status === 'COMPLETED' || liveTask?.status === 'COMPLETED')
+                  ? 'bg-emerald-100 text-emerald-800 border border-emerald-300 hover:bg-emerald-200'
+                  : 'bg-emerald-600 text-white hover:bg-emerald-700 shadow-xs'
+              }`}
+            >
+              <CheckCircle2 className="w-3.5 h-3.5" />
+              <span>{(status === 'COMPLETED' || liveTask?.status === 'COMPLETED') ? 'Done' : 'Mark as Done'}</span>
+            </button>
+
             {!isEditing ? (
               <button
                 type="button"
@@ -450,61 +509,76 @@ export default function TaskDetailModal({
             )}
           </div>
 
-          {/* Timeline / Dates */}
+          {/* Timeline / Dates - Directly editable */}
           <div className="grid grid-cols-2 gap-3">
             <div>
-              <label className="block text-[11px] font-bold text-slate-700 uppercase tracking-wider mb-1 flex items-center gap-1">
-                <Calendar className="w-3.5 h-3.5 text-slate-400" />
-                <span>Start Date</span>
-              </label>
-              {isEditing ? (
-                <input
-                  type="date"
-                  value={startDate}
-                  onChange={(e) => setStartDate(e.target.value)}
-                  className="w-full px-3 py-1.5 rounded-lg border border-slate-200 bg-white text-slate-800"
-                />
-              ) : (
-                <div className="p-2 bg-slate-50 border border-slate-200 rounded-lg text-slate-700">
-                  {liveTask.start_date ? new Date(liveTask.start_date).toLocaleDateString() : 'Not set'}
-                </div>
-              )}
+              <div className="flex items-center justify-between mb-1">
+                <label className="text-[11px] font-bold text-slate-700 uppercase tracking-wider flex items-center gap-1">
+                  <Calendar className="w-3.5 h-3.5 text-slate-400" />
+                  <span>Start Date</span>
+                </label>
+                {startDate && (
+                  <button
+                    type="button"
+                    onClick={() => handleStartDateChange('')}
+                    className="text-[10px] font-semibold text-slate-400 hover:text-rose-600 transition-colors"
+                    title="Clear start date"
+                  >
+                    Clear
+                  </button>
+                )}
+              </div>
+              <input
+                type="date"
+                value={startDate}
+                onChange={(e) => handleStartDateChange(e.target.value)}
+                className="w-full px-2.5 py-1.5 rounded-lg border border-slate-200 bg-white text-slate-800 text-xs font-medium focus:outline-hidden focus:border-purple-600 focus:ring-2 focus:ring-purple-500/20"
+              />
             </div>
 
             <div>
-              <label className="block text-[11px] font-bold text-slate-700 uppercase tracking-wider mb-1 flex items-center gap-1">
-                <Calendar className="w-3.5 h-3.5 text-slate-400" />
-                <span>Due Date</span>
-              </label>
-              {isEditing ? (
-                <input
-                  type="date"
-                  value={dueDate}
-                  onChange={(e) => setDueDate(e.target.value)}
-                  className="w-full px-3 py-1.5 rounded-lg border border-slate-200 bg-white text-slate-800"
-                />
-              ) : (
-                <div className="p-2 bg-slate-50 border border-slate-200 rounded-lg text-slate-700">
-                  {liveTask.due_date ? new Date(liveTask.due_date).toLocaleDateString() : 'Not set'}
-                </div>
-              )}
+              <div className="flex items-center justify-between mb-1">
+                <label className="text-[11px] font-bold text-slate-700 uppercase tracking-wider flex items-center gap-1">
+                  <Calendar className="w-3.5 h-3.5 text-slate-400" />
+                  <span>Due Date</span>
+                </label>
+                {dueDate && (
+                  <button
+                    type="button"
+                    onClick={() => handleDueDateChange('')}
+                    className="text-[10px] font-semibold text-slate-400 hover:text-rose-600 transition-colors"
+                    title="Clear due date"
+                  >
+                    Clear
+                  </button>
+                )}
+              </div>
+              <input
+                type="date"
+                value={dueDate}
+                onChange={(e) => handleDueDateChange(e.target.value)}
+                className="w-full px-2.5 py-1.5 rounded-lg border border-slate-200 bg-white text-slate-800 text-xs font-medium focus:outline-hidden focus:border-purple-600 focus:ring-2 focus:ring-purple-500/20"
+              />
             </div>
           </div>
 
-          {/* Hierarchy Section: Parent & Children */}
-          {(parent || children.length > 0) && (
-            <div className="space-y-3 pt-2 border-t border-slate-100">
+          {/* Hierarchy Section: Parent & Children (Shown for project work items) */}
+          {Boolean(liveTask.project_id) && (
+            <div className="space-y-3 pt-3 border-t border-slate-100">
               {parent && (
                 <div>
                   <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block mb-1">
-                    Parent Work Item
+                    Parent Work Item (Click to open)
                   </span>
-                  <div className="p-2.5 bg-purple-50/60 border border-purple-100 rounded-xl flex items-center justify-between">
+                  <div
+                    onClick={() => fetchTaskDetails(parent.id)}
+                    className="p-2.5 bg-purple-50/70 border border-purple-200/80 rounded-xl flex items-center justify-between cursor-pointer hover:bg-purple-100/70 transition-colors"
+                  >
                     <div className="flex items-center gap-2 min-w-0">
                       <span className="px-1.5 py-0.5 rounded text-[10px] font-bold uppercase bg-purple-200 text-purple-900">
                         {parent.type}
                       </span>
-                      <span className="font-semibold text-slate-800 truncate">
+                      <span className="font-semibold text-slate-800 truncate text-xs">
                         {parent.title}
                       </span>
                     </div>
@@ -515,44 +589,154 @@ export default function TaskDetailModal({
                 </div>
               )}
 
-              {children.length > 0 && (
-                <div>
-                  <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block mb-1">
-                    Child Items ({children.length})
+              {/* Children Header with Context-Sensitive Actions */}
+              <div className="flex items-center justify-between flex-wrap gap-2">
+                <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">
+                  Child Items ({children.length})
+                </span>
+
+                {/* Context-Sensitive Actions based on Jira Hierarchy */}
+                {liveTask.type === 'EPIC' && (
+                  <div className="flex items-center gap-1.5">
+                    <button
+                      type="button"
+                      onClick={() =>
+                        setChildModal({
+                          isOpen: true,
+                          initialType: 'STORY',
+                          allowedTypes: ['STORY', 'BUG'],
+                        })
+                      }
+                      className="px-2.5 py-1 text-[11px] font-bold text-emerald-700 bg-emerald-50 hover:bg-emerald-100 border border-emerald-200 rounded-lg flex items-center gap-1 transition-colors cursor-pointer"
+                    >
+                      <Plus className="w-3 h-3" />
+                      <span>Create Story</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() =>
+                        setChildModal({
+                          isOpen: true,
+                          initialType: 'BUG',
+                          allowedTypes: ['STORY', 'BUG'],
+                        })
+                      }
+                      className="px-2.5 py-1 text-[11px] font-bold text-rose-700 bg-rose-50 hover:bg-rose-100 border border-rose-200 rounded-lg flex items-center gap-1 transition-colors cursor-pointer"
+                    >
+                      <Plus className="w-3 h-3" />
+                      <span>Create Bug</span>
+                    </button>
+                  </div>
+                )}
+
+                {liveTask.type === 'STORY' && (
+                  <div className="flex items-center gap-1.5">
+                    <button
+                      type="button"
+                      onClick={() =>
+                        setChildModal({
+                          isOpen: true,
+                          initialType: 'TASK',
+                          allowedTypes: ['TASK', 'BUG'],
+                        })
+                      }
+                      className="px-2.5 py-1 text-[11px] font-bold text-blue-700 bg-blue-50 hover:bg-blue-100 border border-blue-200 rounded-lg flex items-center gap-1 transition-colors cursor-pointer"
+                    >
+                      <Plus className="w-3 h-3" />
+                      <span>Create Task</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() =>
+                        setChildModal({
+                          isOpen: true,
+                          initialType: 'BUG',
+                          allowedTypes: ['TASK', 'BUG'],
+                        })
+                      }
+                      className="px-2.5 py-1 text-[11px] font-bold text-rose-700 bg-rose-50 hover:bg-rose-100 border border-rose-200 rounded-lg flex items-center gap-1 transition-colors cursor-pointer"
+                    >
+                      <Plus className="w-3 h-3" />
+                      <span>Create Bug</span>
+                    </button>
+                  </div>
+                )}
+
+                {liveTask.type === 'TASK' && (
+                  <button
+                    type="button"
+                    onClick={() =>
+                      setChildModal({
+                        isOpen: true,
+                        initialType: 'SUBTASK',
+                        allowedTypes: ['SUBTASK'],
+                      })
+                    }
+                    className="px-2.5 py-1 text-[11px] font-bold text-purple-700 bg-purple-50 hover:bg-purple-100 border border-purple-200 rounded-lg flex items-center gap-1 transition-colors cursor-pointer"
+                  >
+                    <Plus className="w-3 h-3" />
+                    <span>Create Subtask</span>
+                  </button>
+                )}
+
+                {(liveTask.type === 'SUBTASK' || liveTask.type === 'BUG') && (
+                  <span className="text-[10px] font-medium text-slate-400 italic">
+                    Leaf item · No child items allowed
                   </span>
-                  <div className="space-y-1.5">
-                    {children.map((child) => (
-                      <div
-                        key={child.id}
-                        className="p-2 bg-slate-50 border border-slate-200 rounded-lg flex items-center justify-between"
-                      >
-                        <div className="flex items-center gap-2 min-w-0">
-                          <span className="px-1.5 py-0.5 rounded text-[9px] font-bold uppercase bg-slate-200 text-slate-700">
-                            {child.type}
-                          </span>
-                          <span className="font-medium text-slate-800 truncate">
-                            {child.title}
-                          </span>
-                        </div>
-                        <span className="text-[10px] text-slate-500 font-semibold">
-                          {child.status}
+                )}
+              </div>
+
+              {/* Children List */}
+              {children.length === 0 ? (
+                <div className="p-3 text-center bg-slate-50 border border-dashed border-slate-200 rounded-xl text-slate-400 text-xs">
+                  No child items yet.
+                </div>
+              ) : (
+                <div className="space-y-1.5">
+                  {children.map((child) => (
+                    <div
+                      key={child.id}
+                      onClick={() => fetchTaskDetails(child.id)}
+                      className="p-2 bg-slate-50 hover:bg-slate-100 border border-slate-200 rounded-lg flex items-center justify-between cursor-pointer transition-colors"
+                      title="Click to view details"
+                    >
+                      <div className="flex items-center gap-2 min-w-0">
+                        <span
+                          className={`px-1.5 py-0.5 rounded text-[9px] font-bold uppercase ${
+                            child.type === 'BUG'
+                              ? 'bg-rose-100 text-rose-700 border border-rose-200'
+                              : child.type === 'STORY'
+                              ? 'bg-emerald-100 text-emerald-800 border border-emerald-200'
+                              : child.type === 'TASK'
+                              ? 'bg-blue-100 text-blue-800 border border-blue-200'
+                              : 'bg-purple-100 text-purple-800 border border-purple-200'
+                          }`}
+                        >
+                          {child.type}
+                        </span>
+                        <span className="font-medium text-slate-800 truncate text-xs">
+                          {child.title}
                         </span>
                       </div>
-                    ))}
-                  </div>
+                      <span className="text-[10px] text-slate-500 font-semibold uppercase">
+                        {child.status}
+                      </span>
+                    </div>
+                  ))}
                 </div>
               )}
             </div>
           )}
 
-          {/* Assignees Section */}
-          <div className="pt-2 border-t border-slate-100">
-            <div className="flex items-center justify-between mb-2">
-              <label className="text-[11px] font-bold text-slate-700 uppercase tracking-wider flex items-center gap-1.5">
-                <User className="w-3.5 h-3.5 text-slate-500" />
-                <span>Assignees ({currentAssignees.length})</span>
-              </label>
-            </div>
+          {/* Assignees Section - only shown for project tasks when hideAssignees is not true */}
+          {!hideAssignees && Boolean(liveTask.project_id) && (
+            <div className="pt-2 border-t border-slate-100">
+              <div className="flex items-center justify-between mb-2">
+                <label className="text-[11px] font-bold text-slate-700 uppercase tracking-wider flex items-center gap-1.5">
+                  <User className="w-3.5 h-3.5 text-slate-500" />
+                  <span>Assignees ({currentAssignees.length})</span>
+                </label>
+              </div>
 
             <div className="space-y-2">
               {currentAssignees.length === 0 ? (
@@ -626,8 +810,35 @@ export default function TaskDetailModal({
               )}
             </div>
           </div>
+          )}
         </div>
       </div>
+
+      {/* Context-sensitive Child Creation Submodal */}
+      {childModal.isOpen && (
+        <AddTaskModal
+          isOpen={childModal.isOpen}
+          onClose={() =>
+            setChildModal({
+              isOpen: false,
+              initialType: 'STORY',
+              allowedTypes: [],
+            })
+          }
+          projectId={liveTask.project_id}
+          parentItem={liveTask}
+          initialType={childModal.initialType}
+          allowedTypes={childModal.allowedTypes}
+          initialSprintId={liveTask.sprint_id || null}
+          sprints={projectSprints}
+          onTaskCreated={async (newChild) => {
+            await fetchTaskDetails(liveTask.id);
+            onTaskUpdated?.(newChild);
+            onToast?.(`Created child ${newChild.type.toLowerCase()}: "${newChild.title}"`);
+          }}
+          onToast={onToast}
+        />
+      )}
     </div>
   );
 }

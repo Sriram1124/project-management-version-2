@@ -9,16 +9,27 @@ import {
   User, 
   CheckCircle2,
   AlertCircle,
-  Loader2
+  Loader2,
+  ShieldCheck
 } from 'lucide-react';
 import { projectsService } from '../../../services/projects.service';
+import { useAuth } from '../../../context/AuthContext';
+import AssignProjectRolesModal, { PROJECT_ROLE_LABELS } from '../../modals/AssignProjectRolesModal';
 import TasksView from '../TasksView';
 
 export default function ProjectOverviewTab({ projectId, project, onToast }) {
+  const { user: authUser } = useAuth();
   const [members, setMembers] = useState([]);
   const [loadingMembers, setLoadingMembers] = useState(false);
+  const [isAssignRolesOpen, setIsAssignRolesOpen] = useState(false);
 
-  useEffect(() => {
+  const canAssignRoles = 
+    authUser?.role === 'MANAGER' || 
+    authUser?.role === 'ADMIN' || 
+    authUser?.role === 'SUPER_ADMIN' || 
+    authUser?.id === project?.owner_id;
+
+  const loadMembers = () => {
     if (projectId) {
       setLoadingMembers(true);
       projectsService.getMembers(projectId)
@@ -26,7 +37,20 @@ export default function ProjectOverviewTab({ projectId, project, onToast }) {
         .catch((err) => console.error('Failed to load project members:', err))
         .finally(() => setLoadingMembers(false));
     }
+  };
+
+  useEffect(() => {
+    loadMembers();
   }, [projectId]);
+
+  const handleRolesUpdated = (updatedList) => {
+    if (Array.isArray(updatedList) && updatedList.length > 0) {
+      setMembers(updatedList);
+    } else {
+      loadMembers();
+    }
+    onToast?.('Project member roles updated successfully');
+  };
 
   const projectName = project?.name || 'Project Details';
   const projectStatus = project?.status || 'PLANNED';
@@ -144,9 +168,21 @@ export default function ProjectOverviewTab({ projectId, project, onToast }) {
             <Users className="w-4 h-4 text-purple-600" />
             <span className="font-bold text-slate-800 uppercase tracking-wider text-[11px]">Project Members</span>
           </div>
-          <span className="text-slate-500 text-xs font-semibold">
-            {members.length} {members.length === 1 ? 'Member' : 'Members'}
-          </span>
+          <div className="flex items-center gap-2.5">
+            <span className="text-slate-500 text-xs font-semibold">
+              {members.length} {members.length === 1 ? 'Member' : 'Members'}
+            </span>
+            {canAssignRoles && (
+              <button
+                type="button"
+                onClick={() => setIsAssignRolesOpen(true)}
+                className="inline-flex items-center gap-1.5 px-3 py-1 bg-purple-50 hover:bg-purple-100 active:bg-purple-200 text-purple-700 text-xs font-bold rounded-lg border border-purple-200/80 transition-all cursor-pointer shadow-2xs"
+              >
+                <ShieldCheck className="w-3.5 h-3.5" />
+                <span>Assign Roles</span>
+              </button>
+            )}
+          </div>
         </div>
 
         {loadingMembers ? (
@@ -180,8 +216,8 @@ export default function ProjectOverviewTab({ projectId, project, onToast }) {
                       <div className="text-[10px] text-slate-400 truncate">{member.email}</div>
                     </div>
                   </div>
-                  <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-purple-100 text-purple-700 shrink-0 ml-1">
-                    Member
+                  <span className="px-2.5 py-0.5 rounded-md text-[10px] font-bold bg-purple-100 text-purple-700 border border-purple-200/60 shrink-0 ml-1">
+                    {PROJECT_ROLE_LABELS[member.project_role] || 'Member'}
                   </span>
                 </div>
               );
@@ -192,6 +228,16 @@ export default function ProjectOverviewTab({ projectId, project, onToast }) {
 
       {/* Work Management Section (Real Backend Tasks API) */}
       <TasksView projectId={projectId || project?.id} onToast={onToast} />
+
+      {/* Assign Roles Modal */}
+      <AssignProjectRolesModal
+        isOpen={isAssignRolesOpen}
+        onClose={() => setIsAssignRolesOpen(false)}
+        projectId={projectId || project?.id}
+        projectName={projectName}
+        members={members}
+        onSuccess={handleRolesUpdated}
+      />
     </div>
   );
 }

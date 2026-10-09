@@ -100,7 +100,7 @@ export default function HierarchyTreeView({
             <span
               className={`text-xs truncate ${
                 isCompleted
-                  ? 'line-through text-slate-400'
+                  ? 'text-slate-500 font-medium'
                   : 'text-slate-800 font-medium'
               }`}
             >

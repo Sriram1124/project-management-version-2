@@ -550,7 +550,8 @@ export class UserService {
     managerOrgId: string,
     typeFilter?: string,
     searchQuery?: string,
-    batchFilter?: string
+    batchFilter?: string,
+    cohortFilter?: string
   ) {
     if (!managerOrgId) {
       throw new Error('Manager organization context required.');
@@ -565,6 +566,10 @@ export class UserService {
         },
       },
     };
+
+    if (cohortFilter && cohortFilter.trim()) {
+      whereClause.cohort_id = cohortFilter.trim();
+    }
 
     if (searchQuery && searchQuery.trim()) {
       const q = searchQuery.trim();
@@ -587,6 +592,13 @@ export class UserService {
             role: true,
           },
         },
+        cohort: {
+          select: {
+            id: true,
+            name: true,
+            code: true,
+          },
+        },
       },
       orderBy: { created_at: 'desc' },
     });
@@ -599,6 +611,9 @@ export class UserService {
         name: u.name,
         email: u.email,
         batch: u.batch || null,
+        subbatch: u.subbatch || null,
+        cohort_id: u.cohort_id || null,
+        cohort: u.cohort || null,
         type: roleName,
         is_active: u.is_active,
         created_at: u.created_at,
@@ -865,5 +880,147 @@ export class UserService {
     });
 
     return { success: true, message: 'Password changed successfully.' };
+  }
+
+  /**
+   * Manager updates an organization member's permitted details (name, batch, subbatch)
+   */
+  static async updateMember(
+    managerOrgId: string,
+    targetUserId: string,
+    data: { name?: string; batch?: string; subbatch?: string }
+  ) {
+    if (!managerOrgId) {
+      const err: any = new Error('Manager organization context required.');
+      err.statusCode = 403;
+      throw err;
+    }
+    if (!targetUserId) {
+      const err: any = new Error('Target user ID is required.');
+      err.statusCode = 400;
+      throw err;
+    }
+
+    const targetUser = await prisma.user.findUnique({
+      where: { id: targetUserId },
+      include: {
+        roles: {
+          include: { role: true },
+        },
+        cohort: true,
+      },
+    });
+
+    if (!targetUser) {
+      const err: any = new Error('User not found.');
+      err.statusCode = 404;
+      throw err;
+    }
+
+    if (targetUser.organization_id !== managerOrgId) {
+      const err: any = new Error('Unauthorized: Target user does not belong to your organization.');
+      err.statusCode = 403;
+      throw err;
+    }
+
+    const isSuperAdmin = targetUser.roles.some((r) => r.role.name === 'SUPER_ADMIN');
+    if (isSuperAdmin) {
+      const err: any = new Error('Cannot edit details for Super Admin.');
+      err.statusCode = 403;
+      throw err;
+    }
+
+    const dataToUpdate: any = {};
+
+    // Validate Name
+    if (data.name !== undefined) {
+      if (!data.name || typeof data.name !== 'string' || !data.name.trim()) {
+        const err: any = new Error('Name cannot be empty.');
+        err.statusCode = 400;
+        throw err;
+      }
+      if (data.name.trim().length > 100) {
+        const err: any = new Error('Name cannot exceed 100 characters.');
+        err.statusCode = 400;
+        throw err;
+      }
+      dataToUpdate.name = data.name.trim();
+    }
+
+    // Validate Batch and Subbatch
+    const VALID_BATCH_SUBBATCH: Record<string, string[]> = {
+      A: ['A1', 'A2'],
+      B: ['B1', 'B2'],
+      C: ['C1', 'C2'],
+      D: ['D1', 'D2'],
+    };
+
+    if (data.batch !== undefined) {
+      const trimmedBatch = typeof data.batch === 'string' ? data.batch.trim().toUpperCase() : '';
+      if (!trimmedBatch || !['A', 'B', 'C', 'D'].includes(trimmedBatch)) {
+        const err: any = new Error('Batch must be one of A, B, C, D.');
+        err.statusCode = 400;
+        throw err;
+      }
+      dataToUpdate.batch = trimmedBatch;
+
+      // If subbatch is also provided, validate it matches the new batch
+      if (data.subbatch !== undefined) {
+        const trimmedSubbatch = typeof data.subbatch === 'string' ? data.subbatch.trim().toUpperCase() : '';
+        const allowedSubbatches = VALID_BATCH_SUBBATCH[trimmedBatch] || [];
+        if (!trimmedSubbatch || !allowedSubbatches.includes(trimmedSubbatch)) {
+          const err: any = new Error(`Subbatch must be one of ${allowedSubbatches.join(', ')} for Batch ${trimmedBatch}.`);
+          err.statusCode = 400;
+          throw err;
+        }
+        dataToUpdate.subbatch = trimmedSubbatch;
+      } else if (targetUser.subbatch) {
+        // If batch changed and subbatch was not provided, check if existing subbatch is valid for new batch
+        const allowedSubbatches = VALID_BATCH_SUBBATCH[trimmedBatch] || [];
+        if (!allowedSubbatches.includes(targetUser.subbatch.toUpperCase())) {
+          // Auto-select first valid subbatch for the new batch
+          dataToUpdate.subbatch = allowedSubbatches[0];
+        }
+      }
+    } else if (data.subbatch !== undefined) {
+      // Batch wasn't supplied, check against existing batch
+      const effectiveBatch = (targetUser.batch || '').trim().toUpperCase();
+      const allowedSubbatches = VALID_BATCH_SUBBATCH[effectiveBatch] || [];
+      const trimmedSubbatch = typeof data.subbatch === 'string' ? data.subbatch.trim().toUpperCase() : '';
+      if (!trimmedSubbatch || !allowedSubbatches.includes(trimmedSubbatch)) {
+        const err: any = new Error(`Subbatch must be one of ${allowedSubbatches.join(', ')} for Batch ${effectiveBatch || 'unassigned'}.`);
+        err.statusCode = 400;
+        throw err;
+      }
+      dataToUpdate.subbatch = trimmedSubbatch;
+    }
+
+    const updatedUser = await prisma.user.update({
+      where: { id: targetUserId },
+      data: dataToUpdate,
+      include: {
+        roles: {
+          include: { role: true },
+        },
+        cohort: true,
+      },
+    });
+
+    const roleName = updatedUser.roles[0]?.role?.name || 'MEMBER';
+
+    return {
+      id: updatedUser.id,
+      user_code: updatedUser.user_code,
+      name: updatedUser.name,
+      email: updatedUser.email,
+      batch: updatedUser.batch || null,
+      subbatch: updatedUser.subbatch || null,
+      cohort_id: updatedUser.cohort_id || null,
+      cohort: updatedUser.cohort || null,
+      type: roleName,
+      is_active: updatedUser.is_active,
+      created_at: updatedUser.created_at,
+      updated_at: updatedUser.updated_at,
+    };
   }
 }

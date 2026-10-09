@@ -176,7 +176,7 @@ export default function PersonalKanbanBoard({
                       {/* Task Title */}
                       <h4
                         className={`text-xs font-semibold leading-snug text-slate-900 group-hover:text-purple-700 transition-colors line-clamp-2 ${
-                          isCompleted ? 'line-through text-slate-400' : ''
+                          isCompleted ? 'text-slate-500' : ''
                         }`}
                       >
                         {task.title}

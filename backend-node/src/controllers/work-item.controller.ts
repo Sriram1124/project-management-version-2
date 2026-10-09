@@ -32,10 +32,18 @@ export class WorkItemController {
       msg.includes('must have') ||
       msg.includes('cannot have') ||
       msg.includes('cannot be') ||
+      msg.includes('Cannot assign') ||
+      msg.includes('Cannot change') ||
+      msg.includes('Cannot create') ||
+      msg.includes('cannot create') ||
+      msg.includes('can only contain') ||
+      msg.includes('Circular') ||
+      msg.includes('leaf') ||
       msg.includes('Cross-project') ||
       msg.includes('Cannot delete') ||
       msg.includes('is not a member') ||
-      msg.includes('standalone')
+      msg.includes('standalone') ||
+      msg.includes('must be of type TASK')
     ) {
       res.status(400).json({ error: msg });
       return;
@@ -57,10 +65,11 @@ export class WorkItemController {
   static async list(req: Request, res: Response): Promise<void> {
     try {
       const user = (req as any).fullUser;
-      const { project_id, type, status, priority, assigned_to_me, my_personal } = req.query;
+      const { project_id, sprint_id, type, status, priority, assigned_to_me, my_personal } = req.query;
 
       const workItems = await WorkItemService.listWorkItems(user, {
         project_id: project_id as string,
+        sprint_id: sprint_id as string,
         type: type as string,
         status: status as string,
         priority: priority as string,

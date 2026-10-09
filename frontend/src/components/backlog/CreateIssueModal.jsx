@@ -1,26 +1,210 @@
-import React, { useState } from 'react';
-import { X, Bookmark, CheckSquare, AlertCircle, Layers } from 'lucide-react';
-import { MOCK_ASSIGNEES } from '../../constants/kanban';
+import React, { useState, useEffect, useMemo } from 'react';
+import { X, Bookmark, CheckSquare, AlertCircle, Layers, GitFork, Loader2 } from 'lucide-react';
+import { workItemsService } from '../../services/workItems.service';
 
 export default function CreateIssueModal({
   isOpen,
   onClose,
+  projectId = null,
+  projectName = '',
   epics = [],
+  stories = [],
+  workItems = [],
   sprints = [],
-  initialSprintId = 'sprint-04',
+  members = [],
+  initialSprintId = 'backlog',
   initialEpicId = '',
+  initialIssueType = 'Story',
+  parentItem = null,
+  allowedTypes = null,
   onCreateIssue,
   onCreateEpic,
 }) {
-  const [issueType, setIssueType] = useState('Story'); // 'Epic' | 'Story' | 'Task' | 'Bug'
+  const [issueType, setIssueType] = useState(initialIssueType || 'Story'); // 'Story' | 'Task' | 'Bug' | 'Epic' | 'Subtask'
   const [summary, setSummary] = useState('');
   const [description, setDescription] = useState('');
-  const [epicId, setEpicId] = useState(initialEpicId || (epics[0]?.id || ''));
-  const [sprintId, setSprintId] = useState(initialSprintId || 'sprint-04');
+  const [parentId, setParentId] = useState('');
+  const [sprintId, setSprintId] = useState(initialSprintId || 'backlog');
   const [assigneeId, setAssigneeId] = useState('');
   const [priority, setPriority] = useState('Medium');
   const [storyPoints, setStoryPoints] = useState(3);
+  const [startDate, setStartDate] = useState('');
   const [dueDate, setDueDate] = useState('');
+  const [error, setError] = useState('');
+
+  const [projectItems, setProjectItems] = useState(workItems || []);
+  const [loadingItems, setLoadingItems] = useState(false);
+
+  // Load project items from backend to ensure real database parents
+  useEffect(() => {
+    if (isOpen && projectId) {
+      setLoadingItems(true);
+      workItemsService
+        .listWorkItems({ project_id: projectId })
+        .then((items) => {
+          setProjectItems(items || []);
+        })
+        .catch((err) => {
+          console.error('Failed to load project items for parent dropdown:', err);
+        })
+        .finally(() => {
+          setLoadingItems(false);
+        });
+    }
+  }, [isOpen, projectId]);
+
+  // Sync with prop when passed
+  useEffect(() => {
+    if (workItems && workItems.length > 0) {
+      setProjectItems((prev) => (prev.length === 0 ? workItems : prev));
+    }
+  }, [workItems]);
+
+  // Compute allowed types based on Jira hierarchy
+  const effectiveAllowedTypes = useMemo(() => {
+    if (allowedTypes && Array.isArray(allowedTypes) && allowedTypes.length > 0) {
+      return allowedTypes;
+    }
+    if (parentItem) {
+      if (parentItem.type === 'EPIC') return ['Story', 'Bug'];
+      if (parentItem.type === 'STORY') return ['Task', 'Bug'];
+      if (parentItem.type === 'TASK') return ['Subtask'];
+      return [];
+    }
+    return ['Story', 'Task', 'Bug', 'Epic'];
+  }, [allowedTypes, parentItem]);
+
+  // Compute available parents based on current issueType
+  const availableParents = useMemo(() => {
+    if (issueType === 'Epic' || parentItem) return [];
+
+    // Combine projectItems with fallback epics/stories if items not yet loaded
+    const allItems = [...projectItems];
+    if (epics && epics.length > 0) {
+      epics.forEach((ep) => {
+        if (!allItems.some((item) => item.id === ep.id)) {
+          allItems.push({ ...ep, type: 'EPIC', title: ep.name || ep.title });
+        }
+      });
+    }
+
+    return allItems.filter((item) => {
+      // Reject cross-project items
+      if (projectId && item.project_id && item.project_id !== projectId) {
+        return false;
+      }
+
+      if (issueType === 'Story') {
+        return item.type === 'EPIC';
+      }
+      if (issueType === 'Task') {
+        return item.type === 'STORY';
+      }
+      if (issueType === 'Subtask') {
+        return item.type === 'TASK';
+      }
+      if (issueType === 'Bug') {
+        return item.type === 'EPIC' || item.type === 'STORY';
+      }
+      return false;
+    });
+  }, [issueType, projectItems, epics, projectId, parentItem]);
+
+  // Handle issue type change: dynamically validate & clear parent if incompatible
+  const handleTypeChange = (newType) => {
+    setIssueType(newType);
+    setError('');
+
+    if (newType === 'Epic') {
+      setParentId('');
+      return;
+    }
+
+    if (parentItem) return;
+
+    if (!parentId) return;
+
+    // Check if current parent is valid for newType
+    const currentParent =
+      projectItems.find((p) => p.id === parentId) ||
+      epics.find((e) => e.id === parentId);
+
+    if (!currentParent) {
+      setParentId('');
+      return;
+    }
+
+    const pType = currentParent.type;
+    let isValid = false;
+    if (newType === 'Story' && pType === 'EPIC') isValid = true;
+    else if (newType === 'Task' && pType === 'STORY') isValid = true;
+    else if (newType === 'Subtask' && pType === 'TASK') isValid = true;
+    else if (newType === 'Bug' && (pType === 'EPIC' || pType === 'STORY')) isValid = true;
+
+    if (!isValid) {
+      setParentId('');
+    }
+  };
+
+  // Synchronize when modal opens
+  useEffect(() => {
+    if (isOpen) {
+      setError('');
+      setSummary('');
+      setDescription('');
+      setAssigneeId('');
+      setPriority('Medium');
+      setStoryPoints(3);
+      setStartDate('');
+      setDueDate('');
+      setSprintId(initialSprintId || 'backlog');
+
+      if (parentItem) {
+        setParentId(parentItem.id);
+        const defaultType =
+          parentItem.type === 'EPIC'
+            ? 'Story'
+            : parentItem.type === 'STORY'
+            ? 'Task'
+            : 'Subtask';
+        const chosen =
+          initialIssueType && effectiveAllowedTypes.includes(initialIssueType)
+            ? initialIssueType
+            : defaultType;
+        setIssueType(chosen);
+      } else {
+        const chosen =
+          initialIssueType && effectiveAllowedTypes.includes(initialIssueType)
+            ? initialIssueType
+            : effectiveAllowedTypes[0] || 'Story';
+        setIssueType(chosen);
+
+        // Only pre-fill initialEpicId if chosen type is Story or Bug
+        if (initialEpicId && (chosen === 'Story' || chosen === 'Bug')) {
+          setParentId(initialEpicId);
+        } else {
+          setParentId('');
+        }
+      }
+    }
+  }, [
+    isOpen,
+    initialIssueType,
+    initialEpicId,
+    initialSprintId,
+    parentItem,
+    effectiveAllowedTypes,
+  ]);
+
+  // Ensure parentId is cleared if it is no longer valid among available parents
+  useEffect(() => {
+    if (parentId && !parentItem && issueType !== 'Epic') {
+      const exists = availableParents.some((p) => p.id === parentId);
+      if (!exists && availableParents.length > 0) {
+        setParentId('');
+      }
+    }
+  }, [availableParents, parentId, parentItem, issueType]);
 
   if (!isOpen) return null;
 
@@ -28,34 +212,62 @@ export default function CreateIssueModal({
     e.preventDefault();
     if (!summary.trim()) return;
 
+    if (startDate && dueDate && new Date(startDate) > new Date(dueDate)) {
+      setError('Due date cannot be earlier than start date.');
+      return;
+    }
+
     if (issueType === 'Epic') {
-      const newEpic = {
-        id: `EPIC-${100 + epics.length + 1}`,
-        name: summary.trim(),
-        description: description.trim(),
-        color: '#7C3AED',
-        lead: assigneeId ? MOCK_ASSIGNEES.find(u => u.id === assigneeId)?.name : 'Priya Sharma',
-        status: 'To Do',
-        progress: 0,
-      };
-      onCreateEpic?.(newEpic);
-    } else {
-      const assignedUser = MOCK_ASSIGNEES.find(u => u.id === assigneeId) || null;
-      const newIssue = {
-        id: `SPS-${210 + Math.floor(Math.random() * 800)}`,
-        type: issueType,
+      onCreateEpic?.({
+        type: 'EPIC',
         title: summary.trim(),
         description: description.trim(),
-        epicId: epicId || null,
-        sprintId: sprintId || 'backlog',
-        assignee: assignedUser,
-        priority: priority,
-        status: 'TO DO',
-        storyPoints: Number(storyPoints) || 0,
-        dueDate: dueDate.trim() || 'Dec 24',
-        subtasks: [],
-      };
-      onCreateIssue?.(newIssue);
+        assignee_ids: assigneeId ? [assigneeId] : [],
+        priority: priority.toUpperCase(),
+        start_date: startDate ? new Date(startDate).toISOString() : null,
+        due_date: dueDate ? new Date(dueDate).toISOString() : null,
+      });
+    } else {
+      const effectiveParentId = parentItem ? parentItem.id : parentId;
+      if (!effectiveParentId) {
+        setError(`A parent work item is required for ${issueType}. Please select a valid parent.`);
+        return;
+      }
+
+      // Enforce hierarchy validation before submit
+      const selectedParent = parentItem || availableParents.find((p) => p.id === effectiveParentId);
+      if (selectedParent) {
+        const pType = selectedParent.type;
+        if (issueType === 'Story' && pType !== 'EPIC') {
+          setError('A Story must have an Epic as its parent.');
+          return;
+        }
+        if (issueType === 'Task' && pType !== 'STORY') {
+          setError('A Task must have a Story as its parent.');
+          return;
+        }
+        if (issueType === 'Subtask' && pType !== 'TASK') {
+          setError('A Subtask must have a Task as its parent.');
+          return;
+        }
+        if (issueType === 'Bug' && pType !== 'EPIC' && pType !== 'STORY') {
+          setError('A Bug must have an Epic or Story as its parent.');
+          return;
+        }
+      }
+
+      onCreateIssue?.({
+        type: issueType.toUpperCase(),
+        title: summary.trim(),
+        description: description.trim(),
+        parent_id: effectiveParentId,
+        sprint_id: sprintId === 'backlog' ? null : sprintId,
+        assignee_ids: assigneeId ? [assigneeId] : [],
+        priority: priority.toUpperCase(),
+        story_points: Number(storyPoints) || 0,
+        start_date: startDate ? new Date(startDate).toISOString() : null,
+        due_date: dueDate ? new Date(dueDate).toISOString() : null,
+      });
     }
 
     // Reset and close
@@ -71,14 +283,14 @@ export default function CreateIssueModal({
         <div className="flex items-center justify-between px-4 py-3 border-b border-slate-200 bg-slate-50/70">
           <div className="flex items-center gap-2">
             <h3 className="font-bold text-slate-900 text-sm">
-              Create Issue
+              {issueType === 'Epic' ? 'Create Epic' : 'Create Issue'}
             </h3>
             <span className="text-slate-400">·</span>
-            <span className="text-slate-500 font-medium">Student Management System</span>
+            <span className="text-slate-500 font-medium">{projectName || 'Project Workspace'}</span>
           </div>
           <button
             onClick={onClose}
-            className="p-1 rounded text-slate-400 hover:text-slate-700 hover:bg-slate-100 transition-colors"
+            className="p-1 rounded text-slate-400 hover:text-slate-700 hover:bg-slate-100 transition-colors cursor-pointer"
           >
             <X className="w-4 h-4" />
           </button>
@@ -86,6 +298,13 @@ export default function CreateIssueModal({
 
         {/* Modal Form */}
         <form onSubmit={handleSubmit} className="p-4 space-y-3.5 max-h-[calc(100vh-200px)] overflow-y-auto">
+          {error && (
+            <div className="p-2.5 bg-rose-50 border border-rose-200 text-rose-700 rounded-lg flex items-center gap-2 text-xs font-medium">
+              <AlertCircle className="w-3.5 h-3.5 shrink-0 text-rose-500" />
+              <span>{error}</span>
+            </div>
+          )}
+
           {/* Issue Type Selector */}
           <div>
             <label className="block text-slate-700 font-semibold mb-1">Issue Type</label>
@@ -95,28 +314,30 @@ export default function CreateIssueModal({
                 { type: 'Task', icon: CheckSquare, color: 'text-blue-600' },
                 { type: 'Bug', icon: AlertCircle, color: 'text-rose-600' },
                 { type: 'Epic', icon: Layers, color: 'text-purple-600' },
-              ].map(({ type, icon: Icon, color }) => (
-                <button
-                  key={type}
-                  type="button"
-                  onClick={() => setIssueType(type)}
-                  className={`px-2.5 py-1.5 rounded border flex items-center gap-1.5 transition-colors ${
-                    issueType === type
-                      ? 'border-purple-600 bg-purple-50 text-purple-700 font-semibold'
-                      : 'border-slate-200 text-slate-600 hover:bg-slate-50 bg-white'
-                  }`}
-                >
-                  <Icon className={`w-3.5 h-3.5 ${color}`} />
-                  <span>{type}</span>
-                </button>
-              ))}
+              ]
+                .filter(({ type }) => effectiveAllowedTypes.includes(type))
+                .map(({ type, icon: Icon, color }) => (
+                  <button
+                    key={type}
+                    type="button"
+                    onClick={() => handleTypeChange(type)}
+                    className={`px-2.5 py-1.5 rounded border flex items-center gap-1.5 transition-colors cursor-pointer ${
+                      issueType === type
+                        ? 'border-purple-600 bg-purple-50 text-purple-700 font-semibold'
+                        : 'border-slate-200 text-slate-600 hover:bg-slate-50 bg-white'
+                    }`}
+                  >
+                    <Icon className={`w-3.5 h-3.5 ${color}`} />
+                    <span>{type}</span>
+                  </button>
+                ))}
             </div>
           </div>
 
           {/* Summary / Title */}
           <div>
             <label className="block text-slate-700 font-semibold mb-1">
-              Summary <span className="text-rose-500">*</span>
+              {issueType === 'Epic' ? 'Epic Name' : 'Summary'} <span className="text-rose-500">*</span>
             </label>
             <input
               type="text"
@@ -124,7 +345,7 @@ export default function CreateIssueModal({
               autoFocus
               value={summary}
               onChange={(e) => setSummary(e.target.value)}
-              placeholder="What needs to be done?"
+              placeholder={issueType === 'Epic' ? 'e.g. Core Authentication & RBAC' : 'What needs to be done?'}
               className="w-full px-3 py-1.5 rounded border border-slate-200 focus:outline-none focus:border-purple-600 text-slate-900 text-xs font-medium"
             />
           </div>
@@ -141,21 +362,52 @@ export default function CreateIssueModal({
             />
           </div>
 
-          {issueType !== 'Epic' && (
+          {issueType !== 'Epic' ? (
             <div className="grid grid-cols-2 gap-3">
-              {/* Epic Selector */}
+              {/* Parent Selector */}
               <div>
-                <label className="block text-slate-700 font-semibold mb-1">Epic</label>
-                <select
-                  value={epicId}
-                  onChange={(e) => setEpicId(e.target.value)}
-                  className="w-full px-2.5 py-1.5 rounded border border-slate-200 bg-white text-slate-800 focus:outline-none focus:border-purple-600"
-                >
-                  <option value="">None</option>
-                  {epics.map((e) => (
-                    <option key={e.id} value={e.id}>{e.name}</option>
-                  ))}
-                </select>
+                <label className="block text-slate-700 font-semibold mb-1 flex items-center gap-1">
+                  <GitFork className="w-3 h-3 text-purple-600" />
+                  <span>{parentItem ? `Parent ${parentItem.type}` : 'Parent'}</span>
+                  <span className="text-rose-500">*</span>
+                </label>
+                {parentItem ? (
+                  <div className="p-2 rounded border border-purple-200 bg-purple-50 text-slate-800 text-xs flex items-center justify-between">
+                    <span className="font-semibold truncate">{parentItem.title}</span>
+                    <span className="text-[10px] font-mono text-purple-700 font-bold ml-1 uppercase">{parentItem.type}</span>
+                  </div>
+                ) : loadingItems ? (
+                  <div className="flex items-center gap-1.5 px-2.5 py-1.5 rounded border border-slate-200 bg-slate-50 text-slate-400 text-xs">
+                    <Loader2 className="w-3.5 h-3.5 animate-spin text-purple-600" />
+                    <span>Loading parents...</span>
+                  </div>
+                ) : availableParents.length === 0 ? (
+                  <div className="p-2 rounded border border-amber-200 bg-amber-50 text-amber-800 text-[11px] font-medium leading-tight">
+                    {issueType === 'Story'
+                      ? 'No Epics found in this project. Create an Epic first.'
+                      : issueType === 'Task'
+                      ? 'No Stories found in this project. Create a Story first.'
+                      : issueType === 'Subtask'
+                      ? 'No Tasks found in this project. Create a Task first.'
+                      : 'No Epics or Stories found in this project. Create an Epic or Story first.'}
+                  </div>
+                ) : (
+                  <select
+                    value={parentId}
+                    onChange={(e) => setParentId(e.target.value)}
+                    required
+                    className="w-full px-2.5 py-1.5 rounded border border-slate-200 bg-white text-slate-800 focus:outline-none focus:border-purple-600"
+                  >
+                    <option value="">
+                      Select Parent {issueType === 'Story' ? 'Epic' : issueType === 'Task' ? 'Story' : issueType === 'Subtask' ? 'Task' : 'Epic or Story'} *
+                    </option>
+                    {availableParents.map((p) => (
+                      <option key={p.id} value={p.id}>
+                        [{p.type}] {p.title || p.name}
+                      </option>
+                    ))}
+                  </select>
+                )}
               </div>
 
               {/* Sprint Selector */}
@@ -166,27 +418,44 @@ export default function CreateIssueModal({
                   onChange={(e) => setSprintId(e.target.value)}
                   className="w-full px-2.5 py-1.5 rounded border border-slate-200 bg-white text-slate-800 focus:outline-none focus:border-purple-600"
                 >
+                  <option value="backlog">Backlog</option>
                   {sprints.map((s) => (
                     <option key={s.id} value={s.id}>{s.name}</option>
                   ))}
                 </select>
               </div>
             </div>
+          ) : (
+            <div className="p-2.5 rounded border border-purple-100 bg-purple-50/70 text-purple-900 text-[11px] flex items-center gap-2">
+              <Layers className="w-4 h-4 text-purple-600 shrink-0" />
+              <span>
+                <strong>Epic:</strong> Sits at the root of the project hierarchy and cannot have a parent work item.
+              </span>
+            </div>
           )}
 
           <div className="grid grid-cols-2 gap-3">
             {/* Assignee */}
             <div>
-              <label className="block text-slate-700 font-semibold mb-1">Assignee</label>
+              <label className="block text-slate-700 font-semibold mb-1">
+                {issueType === 'Epic' ? 'Epic Lead' : 'Assignee'}
+              </label>
               <select
                 value={assigneeId}
                 onChange={(e) => setAssigneeId(e.target.value)}
                 className="w-full px-2.5 py-1.5 rounded border border-slate-200 bg-white text-slate-800 focus:outline-none focus:border-purple-600"
               >
                 <option value="">Unassigned</option>
-                {MOCK_ASSIGNEES.map((u) => (
-                  <option key={u.id} value={u.id}>{u.name}</option>
-                ))}
+                {members.map((u) => {
+                  const uid = u.user_id || u.id;
+                  const uName = u.name || u.email;
+                  const roleStr = u.project_role ? ` (${u.project_role})` : '';
+                  return (
+                    <option key={uid} value={uid}>
+                      {uName}{roleStr}
+                    </option>
+                  );
+                })}
               </select>
             </div>
 
@@ -198,6 +467,7 @@ export default function CreateIssueModal({
                 onChange={(e) => setPriority(e.target.value)}
                 className="w-full px-2.5 py-1.5 rounded border border-slate-200 bg-white text-slate-800 focus:outline-none focus:border-purple-600"
               >
+                <option value="Urgent">Urgent</option>
                 <option value="High">High</option>
                 <option value="Medium">Medium</option>
                 <option value="Low">Low</option>
@@ -205,32 +475,40 @@ export default function CreateIssueModal({
             </div>
           </div>
 
-          {issueType !== 'Epic' && (
-            <div className="grid grid-cols-2 gap-3">
-              {/* Story Points */}
-              <div>
-                <label className="block text-slate-700 font-semibold mb-1">Story Points</label>
-                <input
-                  type="number"
-                  min={0}
-                  max={50}
-                  value={storyPoints}
-                  onChange={(e) => setStoryPoints(e.target.value)}
-                  className="w-full px-2.5 py-1.5 rounded border border-slate-200 bg-white text-slate-800 focus:outline-none focus:border-purple-600 font-mono"
-                />
-              </div>
+          {/* Dates: Start Date & Due Date */}
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="block text-slate-700 font-semibold mb-1">Start Date</label>
+              <input
+                type="date"
+                value={startDate}
+                onChange={(e) => setStartDate(e.target.value)}
+                className="w-full px-2.5 py-1.5 rounded border border-slate-200 bg-white text-slate-800 focus:outline-none focus:border-purple-600"
+              />
+            </div>
+            <div>
+              <label className="block text-slate-700 font-semibold mb-1">Due Date</label>
+              <input
+                type="date"
+                value={dueDate}
+                onChange={(e) => setDueDate(e.target.value)}
+                className="w-full px-2.5 py-1.5 rounded border border-slate-200 bg-white text-slate-800 focus:outline-none focus:border-purple-600"
+              />
+            </div>
+          </div>
 
-              {/* Due Date */}
-              <div>
-                <label className="block text-slate-700 font-semibold mb-1">Due Date</label>
-                <input
-                  type="text"
-                  value={dueDate}
-                  onChange={(e) => setDueDate(e.target.value)}
-                  placeholder="e.g. Dec 24"
-                  className="w-full px-2.5 py-1.5 rounded border border-slate-200 bg-white text-slate-800 focus:outline-none focus:border-purple-600"
-                />
-              </div>
+          {/* Story Points (for non-epics) */}
+          {issueType !== 'Epic' && (
+            <div>
+              <label className="block text-slate-700 font-semibold mb-1">Story Points</label>
+              <input
+                type="number"
+                min={0}
+                max={100}
+                value={storyPoints}
+                onChange={(e) => setStoryPoints(e.target.value)}
+                className="w-full px-2.5 py-1.5 rounded border border-slate-200 bg-white text-slate-800 focus:outline-none focus:border-purple-600 font-mono"
+              />
             </div>
           )}
 
@@ -239,15 +517,15 @@ export default function CreateIssueModal({
             <button
               type="button"
               onClick={onClose}
-              className="px-3 py-1.5 rounded border border-slate-200 text-slate-600 hover:bg-slate-50 font-medium"
+              className="px-3 py-1.5 rounded border border-slate-200 text-slate-600 hover:bg-slate-50 font-medium cursor-pointer"
             >
               Cancel
             </button>
             <button
               type="submit"
-              className="px-3.5 py-1.5 rounded bg-[#7C3AED] hover:bg-[#6D28D9] text-white font-semibold transition-colors"
+              className="px-3.5 py-1.5 rounded bg-[#7C3AED] hover:bg-[#6D28D9] text-white font-semibold transition-colors cursor-pointer"
             >
-              Create
+              Create {issueType}
             </button>
           </div>
         </form>
@@ -255,4 +533,3 @@ export default function CreateIssueModal({
     </div>
   );
 }
-

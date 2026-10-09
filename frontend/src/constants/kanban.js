@@ -1,9 +1,9 @@
 export const KANBAN_STATUSES = {
-  TODO: 'todo',
-  IN_PROGRESS: 'in-progress',
-  IN_REVIEW: 'in-review',
-  BLOCKED: 'blocked',
-  COMPLETED: 'completed',
+  TODO: 'TODO',
+  IN_PROGRESS: 'IN_PROGRESS',
+  IN_REVIEW: 'IN_REVIEW',
+  BLOCKED: 'BLOCKED',
+  COMPLETED: 'COMPLETED',
 };
 
 export const KANBAN_PRIORITIES = {

@@ -195,19 +195,19 @@ export default function ProjectMomTab({ onToast }) {
             className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-purple-600 hover:bg-purple-700 text-white text-xs font-semibold shadow-2xs transition-colors cursor-pointer"
           >
             <Plus className="w-3.5 h-3.5" />
-            <span>Publish MoM</span>
+            <span>Add Action Item</span>
           </button>
         </div>
       </div>
 
-      {/* MoM Records List */}
+      {/* Action Items List */}
       <div className="space-y-3">
         {filteredMoMs.length === 0 ? (
           <div className="bg-white rounded-xl p-8 border border-slate-200 text-center space-y-2">
             <MessageSquare className="w-8 h-8 text-slate-300 mx-auto" />
-            <h4 className="text-sm font-semibold text-slate-700">No Minutes of Meeting found</h4>
+            <h4 className="text-sm font-semibold text-slate-700">No Action Items found</h4>
             <p className="text-xs text-slate-400 max-w-sm mx-auto">
-              No meeting notes match your search or filter criteria. Try clearing filters or publish a new MoM.
+              No action items match your search or filter criteria. Try clearing filters or add a new action item.
             </p>
           </div>
         ) : (
@@ -313,7 +313,7 @@ export default function ProjectMomTab({ onToast }) {
                 <div className="w-7 h-7 rounded-lg bg-purple-50 text-purple-600 flex items-center justify-center border border-purple-200">
                   <FileText className="w-4 h-4" />
                 </div>
-                <h3 className="text-sm font-bold text-slate-900">Publish Minutes of Meeting (MoM)</h3>
+                <h3 className="text-sm font-bold text-slate-900">Add Action Items & Meeting Decisions</h3>
               </div>
               <button
                 onClick={() => setIsModalOpen(false)}
@@ -423,9 +423,9 @@ export default function ProjectMomTab({ onToast }) {
                 </button>
                 <button
                   type="submit"
-                  className="px-4 py-1.5 rounded-lg bg-purple-600 hover:bg-purple-700 text-white font-semibold shadow-xs transition-colors"
+                  className="px-4 py-1.5 rounded-lg bg-purple-600 hover:bg-purple-700 text-white font-semibold shadow-xs transition-colors cursor-pointer"
                 >
-                  Publish MoM
+                  Save Action Items
                 </button>
               </div>
             </form>

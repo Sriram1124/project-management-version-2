@@ -126,9 +126,9 @@ export default function ScopedProjectView({
     { id: 'overview', label: 'Overview' },
     { id: 'documents', label: `Project Documents (${documents.length})` },
     { id: 'work', label: `Work Items (${projectWorkItems.length})` },
+    { id: 'action-items', label: 'Action Items' },
     { id: 'kanban', label: 'Kanban Board' },
-    { id: 'sprint', label: 'Sprint Workspace' },
-    { id: 'mom', label: 'Meeting Notes' }
+    { id: 'sprint', label: 'Sprint Workspace' }
   ];
 
   return (
@@ -554,7 +554,7 @@ export default function ScopedProjectView({
                             </span>
                             <span
                               className={`text-xs font-bold truncate ${
-                                isDone ? 'line-through text-slate-400' : 'text-slate-800'
+                                isDone ? 'text-slate-500' : 'text-slate-800'
                               }`}
                             >
                               {item.title}
@@ -631,15 +631,15 @@ export default function ScopedProjectView({
         </div>
       )}
 
-      {/* Tab 6: Meeting Notes Placeholder (Planned for V2) */}
-      {activeTab === 'mom' && (
+      {/* Tab 6: Action Items Placeholder (Planned for V2) */}
+      {activeTab === 'action-items' && (
         <div className="bg-white rounded-2xl p-12 border border-slate-200 shadow-card text-center max-w-lg mx-auto my-8 space-y-3">
           <div className="w-12 h-12 rounded-2xl bg-purple-50 text-purple-600 flex items-center justify-center mx-auto mb-1">
             <MessageSquare className="w-6 h-6" />
           </div>
-          <h3 className="text-base font-bold text-slate-900">Meeting Notes (MoM)</h3>
+          <h3 className="text-base font-bold text-slate-900">Action Items</h3>
           <p className="text-xs text-slate-500 leading-relaxed max-w-md mx-auto">
-            Minutes of Meeting (MoM) module will be available in V2.
+            Action Items module will be available in V2.
           </p>
           <span className="inline-flex items-center px-3 py-1 rounded-full text-[11px] font-semibold bg-purple-50 text-purple-700 border border-purple-200">
             Planned for V2

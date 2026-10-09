@@ -1,166 +1,346 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import BacklogToolbar from '../../backlog/BacklogToolbar';
 import SprintSection from '../../backlog/SprintSection';
-import EpicPanel from '../../backlog/EpicPanel';
+import HierarchicalIssueTable from '../../backlog/HierarchicalIssueTable';
 import IssueDetailDrawer from '../../backlog/IssueDetailDrawer';
 import CreateIssueModal from '../../backlog/CreateIssueModal';
-import IssueRow from '../../backlog/IssueRow';
-import { 
-  INITIAL_EPICS, 
-  INITIAL_SPRINTS, 
-  INITIAL_ISSUES 
-} from '../../../data/backlogData';
+import CreateSprintModal from '../../modals/CreateSprintModal';
+import { Loader2 } from 'lucide-react';
+import { workItemsService } from '../../../services/workItems.service';
+import { sprintsService } from '../../../services/sprints.service';
+import { projectsService } from '../../../services/projects.service';
 
-export default function ProjectBacklogTab({ onToast }) {
-  const [epics, setEpics] = useState(INITIAL_EPICS);
-  const [sprints, setSprints] = useState(INITIAL_SPRINTS);
-  const [issues, setIssues] = useState(INITIAL_ISSUES);
+export default function ProjectBacklogTab({ projectId, project = null, onToast }) {
+  const [currentProject, setCurrentProject] = useState(project);
+  const [loading, setLoading] = useState(true);
+  const [sprints, setSprints] = useState([]);
+  const [workItems, setWorkItems] = useState([]);
+  const [members, setMembers] = useState([]);
+
+  useEffect(() => {
+    if (project) {
+      setCurrentProject(project);
+    } else if (projectId) {
+      projectsService
+        .getProjectById(projectId)
+        .then((p) => setCurrentProject(p))
+        .catch(() => {});
+    }
+  }, [projectId, project]);
 
   // Filter States
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedAssignee, setSelectedAssignee] = useState(null);
   const [selectedPriority, setSelectedPriority] = useState(null);
-  const [selectedEpicId, setSelectedEpicId] = useState(null);
   const [selectedSprintId, setSelectedSprintId] = useState(null);
   const [selectedStatus, setSelectedStatus] = useState(null);
-  const [groupBy, setGroupBy] = useState('sprint'); // 'sprint' | 'epic' | 'none'
-  const [isEpicPanelOpen, setIsEpicPanelOpen] = useState(true);
+  const [groupBy, setGroupBy] = useState('epic'); // 'epic' (Hierarchy Tree) | 'sprint' (Sprint Groups) | 'none' (Flat)
 
   // Quick Filters
   const [quickFilterMyIssues, setQuickFilterMyIssues] = useState(false);
   const [quickFilterOverdue, setQuickFilterOverdue] = useState(false);
   const [quickFilterBlocked, setQuickFilterBlocked] = useState(false);
 
+  // Hierarchy Expansion State
+  const [expandedIds, setExpandedIds] = useState(new Set());
+
   // Drawer & Modal States
   const [selectedIssue, setSelectedIssue] = useState(null);
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
-  const [createInitialSprintId, setCreateInitialSprintId] = useState('sprint-04');
-  const [createInitialEpicId, setCreateInitialEpicId] = useState('');
+  const [isCreateSprintOpen, setIsCreateSprintOpen] = useState(false);
+  const [createInitialSprintId, setCreateInitialSprintId] = useState('backlog');
+  const [createInitialType, setCreateInitialType] = useState('Story');
+  const [createAllowedTypes, setCreateAllowedTypes] = useState(null);
+  const [createParentItem, setCreateParentItem] = useState(null);
 
-  // Drag and Drop
+  // Fetch live data from backend
+  const loadProjectData = useCallback(async () => {
+    if (!projectId) return;
+    try {
+      setLoading(true);
+      const [sprintsList, itemsList, membersList] = await Promise.all([
+        sprintsService.getSprints(projectId).catch(() => []),
+        workItemsService.listWorkItems({ project_id: projectId }).catch(() => []),
+        projectsService.getMembers(projectId).catch(() => []),
+      ]);
+
+      const items = itemsList || [];
+      setSprints(sprintsList || []);
+      setWorkItems(items);
+      setMembers(membersList || []);
+
+      // Auto-expand all Epics and Stories on initial load so user immediately sees hierarchy
+      setExpandedIds((prev) => {
+        const next = new Set(prev);
+        items.forEach((item) => {
+          if (item.type === 'EPIC' || item.type === 'STORY') {
+            next.add(item.id);
+          }
+        });
+        return next;
+      });
+    } catch (err) {
+      console.error('Failed to load backlog data:', err);
+      onToast?.('Failed to load project backlog data');
+    } finally {
+      setLoading(false);
+    }
+  }, [projectId]);
+
+  useEffect(() => {
+    loadProjectData();
+  }, [loadProjectData]);
+
+  // Derived Epics list (for filter dropdown and detail drawer)
+  const epics = useMemo(() => {
+    return workItems
+      .filter((w) => w.type === 'EPIC')
+      .map((e) => {
+        const childIssues = workItems.filter((w) => w.parent_id === e.id);
+        const completedCount = childIssues.filter((w) => w.status === 'COMPLETED').length;
+        const progress = childIssues.length > 0 ? Math.round((completedCount / childIssues.length) * 100) : 0;
+        return {
+          id: e.id,
+          name: e.title,
+          description: e.description,
+          status: e.status,
+          color: '#7C3AED',
+          lead: e.creator?.name || 'Lead',
+          progress,
+        };
+      });
+  }, [workItems]);
+
+  // Total Story Points across all project items
+  const totalSP = useMemo(() => {
+    return workItems.reduce((acc, curr) => acc + (Number(curr.story_points) || 0), 0);
+  }, [workItems]);
+
+  // Toggle single row expand
+  const handleToggleExpand = useCallback((id) => {
+    setExpandedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) {
+        next.delete(id);
+      } else {
+        next.add(id);
+      }
+      return next;
+    });
+  }, []);
+
+  // Expand all parent nodes
+  const handleExpandAll = useCallback(() => {
+    const parentIds = new Set();
+    workItems.forEach((w) => {
+      if (w.type === 'EPIC' || w.type === 'STORY' || w.type === 'TASK') {
+        parentIds.add(w.id);
+      }
+    });
+    setExpandedIds(parentIds);
+  }, [workItems]);
+
+  // Collapse all nodes
+  const handleCollapseAll = useCallback(() => {
+    setExpandedIds(new Set());
+  }, []);
+
+  // Inline update handlers connected directly to backend
+  const handleUpdateStatus = async (issueId, newStatus) => {
+    try {
+      setWorkItems((prev) =>
+        prev.map((item) => (item.id === issueId ? { ...item, status: newStatus } : item))
+      );
+      await workItemsService.updateWorkItem(issueId, { status: newStatus });
+      loadProjectData();
+      onToast?.(`Status updated to ${newStatus}`);
+    } catch (err) {
+      console.error('Failed to update status:', err);
+      onToast?.(err.message || 'Failed to update status');
+      loadProjectData();
+    }
+  };
+
+  const handleUpdatePriority = async (issueId, newPriority) => {
+    try {
+      setWorkItems((prev) =>
+        prev.map((item) => (item.id === issueId ? { ...item, priority: newPriority } : item))
+      );
+      await workItemsService.updateWorkItem(issueId, { priority: newPriority });
+      loadProjectData();
+      onToast?.(`Priority updated to ${newPriority}`);
+    } catch (err) {
+      console.error('Failed to update priority:', err);
+      onToast?.(err.message || 'Failed to update priority');
+      loadProjectData();
+    }
+  };
+
+  const handleUpdateAssignee = async (issueId, assigneeIds) => {
+    try {
+      await workItemsService.updateWorkItem(issueId, { assignee_ids: assigneeIds });
+      loadProjectData();
+      onToast?.('Assignee updated');
+    } catch (err) {
+      console.error('Failed to update assignee:', err);
+      onToast?.(err.message || 'Failed to update assignee');
+      loadProjectData();
+    }
+  };
+
+  const handleUpdateSprint = async (issueId, sprintId) => {
+    try {
+      const targetSprintId = sprintId === 'backlog' ? null : sprintId;
+      setWorkItems((prev) =>
+        prev.map((item) => (item.id === issueId ? { ...item, sprint_id: targetSprintId } : item))
+      );
+      await workItemsService.updateWorkItem(issueId, { sprint_id: targetSprintId });
+      loadProjectData();
+      const sprintName = targetSprintId ? sprints.find((s) => s.id === targetSprintId)?.name || 'Sprint' : 'Backlog';
+      onToast?.(`Moved issue to ${sprintName}`);
+    } catch (err) {
+      console.error('Failed to update sprint:', err);
+      onToast?.(err.message || 'Failed to update sprint');
+      loadProjectData();
+    }
+  };
+
+  const handleUpdateStoryPoints = async (issueId, points) => {
+    try {
+      setWorkItems((prev) =>
+        prev.map((item) => (item.id === issueId ? { ...item, story_points: points } : item))
+      );
+      await workItemsService.updateWorkItem(issueId, { story_points: points });
+      loadProjectData();
+      onToast?.('Story points updated');
+    } catch (err) {
+      console.error('Failed to update story points:', err);
+      onToast?.(err.message || 'Failed to update story points');
+      loadProjectData();
+    }
+  };
+
+  const handleUpdateDueDate = async (issueId, dueDate) => {
+    try {
+      setWorkItems((prev) =>
+        prev.map((item) => (item.id === issueId ? { ...item, due_date: dueDate } : item))
+      );
+      await workItemsService.updateWorkItem(issueId, { due_date: dueDate });
+      loadProjectData();
+      onToast?.('Due date updated');
+    } catch (err) {
+      console.error('Failed to update due date:', err);
+      onToast?.(err.message || 'Failed to update due date');
+      loadProjectData();
+    }
+  };
+
+  const handleDeleteIssue = async (issueId) => {
+    try {
+      await workItemsService.deleteWorkItem(issueId);
+      if (selectedIssue?.id === issueId) setSelectedIssue(null);
+      loadProjectData();
+      onToast?.('Issue deleted successfully');
+    } catch (err) {
+      console.error('Failed to delete issue:', err);
+      onToast?.(err.message || 'Failed to delete issue');
+    }
+  };
+
+  // Context-sensitive add child action from row
+  const handleAddChild = (parentItem) => {
+    const pType = String(parentItem.type || '').toUpperCase();
+    let initialType = 'Story';
+    let allowedTypes = null;
+
+    if (pType === 'EPIC') {
+      initialType = 'Story';
+      allowedTypes = ['Story', 'Bug'];
+    } else if (pType === 'STORY') {
+      initialType = 'Task';
+      allowedTypes = ['Task', 'Bug'];
+    } else if (pType === 'TASK') {
+      initialType = 'Subtask';
+      allowedTypes = ['Subtask'];
+    }
+
+    setCreateParentItem(parentItem);
+    setCreateInitialType(initialType);
+    setCreateAllowedTypes(allowedTypes);
+    setCreateInitialSprintId(parentItem.sprint_id || 'backlog');
+    setIsCreateModalOpen(true);
+  };
+
+  // Drag and drop to sprint
   const handleDragStart = (e, issueId) => {
     e.dataTransfer.setData('text/plain', issueId);
   };
 
-  const handleDragEnd = () => {
-    // cleanup
+  const handleDragEnd = () => {};
+
+  const handleDropIssue = async (issueId, targetSprintId) => {
+    await handleUpdateSprint(issueId, targetSprintId);
   };
 
-  const handleDropIssue = (issueId, targetSprintId) => {
-    setIssues(prev =>
-      prev.map(item => {
-        if (item.id === issueId) {
-          return { ...item, sprintId: targetSprintId };
-        }
-        return item;
-      })
-    );
-
-    const movedIssue = issues.find(i => i.id === issueId);
-    const targetSprint = sprints.find(s => s.id === targetSprintId);
-    onToast?.(`Moved ${movedIssue?.id || 'issue'} to ${targetSprint?.name || targetSprintId}`);
-  };
-
-  // Subtasks Handlers
-  const handleToggleSubtask = (issueId, subtaskId) => {
-    setIssues(prev =>
-      prev.map(item => {
-        if (item.id === issueId && item.subtasks) {
-          const updatedSubtasks = item.subtasks.map(st =>
-            st.id === subtaskId ? { ...st, done: !st.done } : st
-          );
-          return { ...item, subtasks: updatedSubtasks };
-        }
-        return item;
-      })
-    );
-
-    if (selectedIssue && selectedIssue.id === issueId) {
-      setSelectedIssue(prev => ({
-        ...prev,
-        subtasks: prev.subtasks.map(st =>
-          st.id === subtaskId ? { ...st, done: !st.done } : st
-        ),
-      }));
+  // Sprint lifecycle
+  const handleStartSprint = async (sprintId) => {
+    try {
+      await sprintsService.startSprint(projectId, sprintId);
+      loadProjectData();
+      onToast?.('Sprint started successfully');
+    } catch (err) {
+      console.error('Failed to start sprint:', err);
+      onToast?.(err?.response?.data?.error || err.message || 'Failed to start sprint');
     }
   };
 
-  const handleAddSubtask = (issueId, subtaskTitle) => {
-    const newSt = {
-      id: `${issueId}-S${Date.now().toString().slice(-2)}`,
-      title: subtaskTitle,
-      done: false,
-    };
-
-    setIssues(prev =>
-      prev.map(item => {
-        if (item.id === issueId) {
-          return {
-            ...item,
-            subtasks: [...(item.subtasks || []), newSt],
-          };
-        }
-        return item;
-      })
-    );
-
-    if (selectedIssue && selectedIssue.id === issueId) {
-      setSelectedIssue(prev => ({
-        ...prev,
-        subtasks: [...(prev.subtasks || []), newSt],
-      }));
+  const handleCompleteSprint = async (sprintId) => {
+    try {
+      await sprintsService.completeSprint(projectId, sprintId, {
+        unfinished_action: 'MOVE_TO_BACKLOG',
+      });
+      loadProjectData();
+      onToast?.('Sprint completed successfully');
+    } catch (err) {
+      console.error('Failed to complete sprint:', err);
+      onToast?.(err?.response?.data?.error || err.message || 'Failed to complete sprint');
     }
-
-    onToast?.(`Added subtask to ${issueId}`);
   };
 
-  // Issue CRUD
-  const handleCreateIssue = (newIssue) => {
-    setIssues(prev => [newIssue, ...prev]);
-    onToast?.(`Created ${newIssue.type} ${newIssue.id}: ${newIssue.title}`);
-  };
-
-  const handleCreateEpic = (newEpic) => {
-    setEpics(prev => [...prev, newEpic]);
-    onToast?.(`Created Epic ${newEpic.id}: ${newEpic.name}`);
-  };
-
-  const handleUpdateIssue = (updatedIssue) => {
-    setIssues(prev =>
-      prev.map(item => (item.id === updatedIssue.id ? updatedIssue : item))
-    );
-    setSelectedIssue(updatedIssue);
-    onToast?.(`Updated ${updatedIssue.id}`);
-  };
-
-  const handleDeleteIssue = (issueId) => {
-    setIssues(prev => prev.filter(item => item.id !== issueId));
-    if (selectedIssue?.id === issueId) {
-      setSelectedIssue(null);
+  // Create issue modal submissions
+  const handleCreateIssue = async (payload) => {
+    try {
+      await workItemsService.createWorkItem({
+        ...payload,
+        project_id: projectId,
+      });
+      loadProjectData();
+      onToast?.(`Created ${payload.type}: ${payload.title}`);
+    } catch (err) {
+      console.error('Failed to create issue:', err);
+      onToast?.(err.message || 'Failed to create issue');
     }
-    onToast?.(`Deleted issue ${issueId}`);
   };
 
-  // Sprint actions
-  const handleStartSprint = (sprintId) => {
-    setSprints(prev =>
-      prev.map(s => (s.id === sprintId ? { ...s, status: 'ACTIVE' } : s))
-    );
-    onToast?.(`Started sprint ${sprintId}`);
-  };
-
-  const handleCompleteSprint = (sprintId) => {
-    setSprints(prev =>
-      prev.map(s => (s.id === sprintId ? { ...s, status: 'COMPLETED' } : s))
-    );
-    onToast?.(`Completed sprint ${sprintId}`);
+  const handleCreateEpic = async (payload) => {
+    try {
+      await workItemsService.createWorkItem({
+        ...payload,
+        project_id: projectId,
+        type: 'EPIC',
+      });
+      loadProjectData();
+      onToast?.(`Created Epic: ${payload.title}`);
+    } catch (err) {
+      console.error('Failed to create epic:', err);
+      onToast?.(err.message || 'Failed to create epic');
+    }
   };
 
   const handleClearFilters = () => {
     setSearchQuery('');
     setSelectedAssignee(null);
     setSelectedPriority(null);
-    setSelectedEpicId(null);
     setSelectedSprintId(null);
     setSelectedStatus(null);
     setQuickFilterMyIssues(false);
@@ -168,63 +348,106 @@ export default function ProjectBacklogTab({ onToast }) {
     setQuickFilterBlocked(false);
   };
 
-  // Filtered Issues
-  const filteredIssues = issues.filter(issue => {
-    if (searchQuery.trim()) {
-      const q = searchQuery.toLowerCase().trim();
-      const matchId = issue.id.toLowerCase().includes(q);
-      const matchTitle = issue.title.toLowerCase().includes(q);
-      const matchDesc = issue.description?.toLowerCase().includes(q);
-      const matchAssignee = issue.assignee?.name?.toLowerCase().includes(q);
-      if (!matchId && !matchTitle && !matchDesc && !matchAssignee) {
+  // Filter evaluation logic
+  const filteredWorkItems = useMemo(() => {
+    return workItems.filter((item) => {
+      if (searchQuery.trim()) {
+        const q = searchQuery.toLowerCase().trim();
+        const matchId = item.id.toLowerCase().includes(q);
+        const matchTitle = item.title.toLowerCase().includes(q);
+        const matchDesc = item.description?.toLowerCase().includes(q);
+        const matchType = item.type?.toLowerCase().includes(q);
+        const matchAssignee = item.assignees?.some((a) =>
+          (a.name || a.user?.name || '').toLowerCase().includes(q)
+        );
+        if (!matchId && !matchTitle && !matchDesc && !matchType && !matchAssignee) {
+          return false;
+        }
+      }
+
+      if (selectedAssignee) {
+        const targetUid = selectedAssignee.user_id || selectedAssignee.id;
+        const isAssigned = item.assignees?.some((a) => a.user_id === targetUid);
+        if (!isAssigned) return false;
+      }
+
+      if (selectedPriority && item.priority !== selectedPriority.toUpperCase()) {
         return false;
       }
-    }
 
-    if (selectedAssignee && issue.assignee?.id !== selectedAssignee.id) {
-      return false;
-    }
-
-    if (selectedPriority && issue.priority !== selectedPriority) {
-      return false;
-    }
-
-    if (selectedEpicId && issue.epicId !== selectedEpicId) {
-      return false;
-    }
-
-    if (selectedSprintId && issue.sprintId !== selectedSprintId) {
-      return false;
-    }
-
-    if (selectedStatus && issue.status?.toUpperCase() !== selectedStatus.toUpperCase()) {
-      return false;
-    }
-
-    if (quickFilterMyIssues) {
-      if (!issue.assignee || (issue.assignee.name !== 'Priya Sharma' && issue.assignee.name !== 'Sarah Mitchell')) {
+      if (selectedStatus && item.status?.toUpperCase() !== selectedStatus.toUpperCase()) {
         return false;
       }
-    }
 
-    if (quickFilterOverdue && !issue.isOverdue) {
-      return false;
-    }
+      if (selectedSprintId) {
+        if (selectedSprintId === 'backlog') {
+          if (item.sprint_id !== null) return false;
+        } else if (item.sprint_id !== selectedSprintId) {
+          return false;
+        }
+      }
 
-    if (quickFilterBlocked && issue.status !== 'BLOCKED') {
-      return false;
-    }
+      if (quickFilterOverdue) {
+        const isOverdue = Boolean(
+          item.due_date &&
+            new Date(item.due_date) < new Date() &&
+            item.status !== 'COMPLETED'
+        );
+        if (!isOverdue) return false;
+      }
 
-    return true;
-  });
+      if (quickFilterBlocked && item.status !== 'BLOCKED') {
+        return false;
+      }
 
-  const totalSP = issues.reduce((acc, curr) => acc + (Number(curr.storyPoints) || 0), 0);
+      return true;
+    });
+  }, [
+    workItems,
+    searchQuery,
+    selectedAssignee,
+    selectedPriority,
+    selectedStatus,
+    selectedSprintId,
+    quickFilterOverdue,
+    quickFilterBlocked,
+  ]);
+
+  // Combined sprint sections list including the "Backlog" section
+  const sprintSections = useMemo(() => {
+    const list = sprints.map((s) => ({
+      id: s.id,
+      name: s.name,
+      goal: s.goal,
+      status: s.status,
+      startDate: s.start_date,
+      endDate: s.end_date,
+      isBacklog: false,
+    }));
+    // Append dedicated Backlog section
+    list.push({
+      id: 'backlog',
+      name: 'Backlog',
+      status: 'PLANNED',
+      isBacklog: true,
+    });
+    return list;
+  }, [sprints]);
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center py-20 text-slate-400">
+        <Loader2 className="w-6 h-6 text-purple-600 animate-spin mr-2.5" />
+        <span className="text-xs font-semibold text-slate-600">Loading project backlog &amp; epics...</span>
+      </div>
+    );
+  }
 
   return (
-    <div className="space-y-2.5">
-      {/* 1. BACKLOG PRODUCTIVITY TOOLBAR (INCLUDES COMPACT TITLE & STATS) */}
+    <div className="space-y-3">
+      {/* 1. BACKLOG TOOLBAR WITH REAL PROJECT MEMBERS AND STATS */}
       <BacklogToolbar
-        issuesCount={issues.length}
+        issuesCount={workItems.length}
         epicsCount={epics.length}
         totalSP={totalSP}
         searchQuery={searchQuery}
@@ -233,18 +456,15 @@ export default function ProjectBacklogTab({ onToast }) {
         onSelectAssignee={setSelectedAssignee}
         selectedPriority={selectedPriority}
         onSelectPriority={setSelectedPriority}
-        selectedEpicId={selectedEpicId}
-        onSelectEpicId={setSelectedEpicId}
         selectedSprintId={selectedSprintId}
         onSelectSprintId={setSelectedSprintId}
         selectedStatus={selectedStatus}
         onSelectStatus={setSelectedStatus}
         groupBy={groupBy}
         onSelectGroupBy={setGroupBy}
-        isEpicPanelOpen={isEpicPanelOpen}
-        onToggleEpicPanel={() => setIsEpicPanelOpen(!isEpicPanelOpen)}
         epics={epics}
-        sprints={sprints}
+        sprints={sprintSections.filter((s) => !s.isBacklog)}
+        members={members}
         quickFilterMyIssues={quickFilterMyIssues}
         onToggleMyIssues={() => setQuickFilterMyIssues(!quickFilterMyIssues)}
         quickFilterOverdue={quickFilterOverdue}
@@ -253,150 +473,199 @@ export default function ProjectBacklogTab({ onToast }) {
         onToggleBlocked={() => setQuickFilterBlocked(!quickFilterBlocked)}
         onClearFilters={handleClearFilters}
         onCreateClick={() => {
-          setCreateInitialSprintId('sprint-04');
-          setCreateInitialEpicId('');
+          setCreateInitialSprintId('backlog');
+          setCreateInitialType('Story');
+          setCreateAllowedTypes(null);
+          setCreateParentItem(null);
           setIsCreateModalOpen(true);
         }}
+        onCreateSprintClick={() => setIsCreateSprintOpen(true)}
+        onExpandAll={handleExpandAll}
+        onCollapseAll={handleCollapseAll}
+        allExpanded={expandedIds.size > 0}
       />
 
-      {/* 2. MAIN BACKLOG WORKSPACE (EPICS PANEL + SPRINT SECTIONS) */}
-      <div className="flex items-start gap-2.5">
-        {/* Collapsible Left Epic Panel */}
-        {isEpicPanelOpen && (
-          <EpicPanel
-            epics={epics}
-            selectedEpicId={selectedEpicId}
-            onSelectEpicId={setSelectedEpicId}
-            issues={issues}
-            onCreateEpic={() => {
-              setCreateInitialSprintId('sprint-04');
-              setIsCreateModalOpen(true);
-            }}
-          />
-        )}
+      {/* 2. MAIN WORKSPACE CONTENT */}
+      {/* VIEW MODE A: HIERARCHICAL TREE (EPICS AT ROOT EXPANDING DOWN) */}
+      {groupBy === 'epic' && (
+        <HierarchicalIssueTable
+          issues={filteredWorkItems}
+          allWorkItems={workItems}
+          sprints={sprints}
+          members={members}
+          selectedIssueId={selectedIssue?.id}
+          onSelectIssue={(issue) => setSelectedIssue(issue)}
+          onUpdateStatus={handleUpdateStatus}
+          onUpdatePriority={handleUpdatePriority}
+          onUpdateAssignee={handleUpdateAssignee}
+          onUpdateSprint={handleUpdateSprint}
+          onUpdateStoryPoints={handleUpdateStoryPoints}
+          onUpdateDueDate={handleUpdateDueDate}
+          onDeleteIssue={handleDeleteIssue}
+          onAddChild={handleAddChild}
+          expandedIds={expandedIds}
+          onToggleExpand={handleToggleExpand}
+          isHierarchical={true}
+          onDragStart={handleDragStart}
+          onDragEnd={handleDragEnd}
+          emptyMessage="No issues match the selected filters. Click + Create to add an Epic or Story."
+        />
+      )}
 
-        {/* Main Issue Lists Container */}
-        <div className="flex-1 min-w-0 space-y-2.5">
-          {/* GROUP BY SPRINT (DEFAULT JIRA BACKLOG VIEW) */}
-          {groupBy === 'sprint' && (
-            <>
-              {sprints.map((sprint) => {
-                const sprintIssues = filteredIssues.filter(i => i.sprintId === sprint.id);
-                return (
-                  <SprintSection
-                    key={sprint.id}
-                    sprint={sprint}
-                    issues={sprintIssues}
-                    epics={epics}
-                    selectedIssueId={selectedIssue?.id}
-                    onSelectIssue={(issue) => setSelectedIssue(issue)}
-                    onDragStart={handleDragStart}
-                    onDragEnd={handleDragEnd}
-                    onDropIssue={handleDropIssue}
-                    onToggleSubtask={handleToggleSubtask}
-                    onAddSubtask={handleAddSubtask}
-                    onCreateIssueInSprint={(sprintId) => {
-                      setCreateInitialSprintId(sprintId);
-                      setIsCreateModalOpen(true);
-                    }}
-                    onStartSprint={handleStartSprint}
-                    onCompleteSprint={handleCompleteSprint}
-                  />
-                );
-              })}
-            </>
-          )}
+      {/* VIEW MODE B: SPRINT SECTIONS (ACTIVE SPRINT, PLANNED SPRINTS, BACKLOG) */}
+      {groupBy === 'sprint' && (
+        <div className="space-y-3">
+          {sprintSections.map((sprint) => {
+            const sprintItems = sprint.isBacklog
+              ? filteredWorkItems.filter((i) => !i.sprint_id)
+              : filteredWorkItems.filter((i) => i.sprint_id === sprint.id);
 
-          {/* GROUP BY EPIC VIEW */}
-          {groupBy === 'epic' && (
-            <div className="space-y-2.5">
-              {epics.map((epic) => {
-                const epicIssues = filteredIssues.filter(i => i.epicId === epic.id);
-                return (
-                  <div key={epic.id} className="rounded-md border border-slate-200 bg-white overflow-hidden">
-                    <div className="p-2 bg-slate-50 border-b border-slate-200 flex items-center justify-between text-xs">
-                      <div className="flex items-center gap-2">
-                        <span className="w-2 h-2 rounded-full" style={{ backgroundColor: epic.color }} />
-                        <span className="font-mono font-bold text-xs text-slate-700">{epic.id}</span>
-                        <h3 className="font-bold text-xs text-slate-900">{epic.name}</h3>
-                        <span className="text-[11px] text-slate-400">({epicIssues.length} issues)</span>
-                      </div>
-                      <span className="text-xs font-semibold text-slate-500">{epic.progress}% complete</span>
-                    </div>
-
-                    <div className="divide-y divide-slate-100">
-                      {epicIssues.map((issue) => (
-                        <IssueRow
-                          key={issue.id}
-                          issue={issue}
-                          epic={epic}
-                          isSelected={selectedIssue?.id === issue.id}
-                          onSelectIssue={(issue) => setSelectedIssue(issue)}
-                          onDragStart={handleDragStart}
-                          onDragEnd={handleDragEnd}
-                          onToggleSubtask={handleToggleSubtask}
-                          onAddSubtask={handleAddSubtask}
-                        />
-                      ))}
-                      {epicIssues.length === 0 && (
-                        <div className="p-3 text-center text-xs text-slate-400">
-                          No issues assigned to this epic.
-                        </div>
-                      )}
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-          )}
-
-          {/* GROUP BY NONE (FLAT LIST) */}
-          {groupBy === 'none' && (
-            <div className="rounded-md border border-slate-200 bg-white overflow-hidden divide-y divide-slate-100">
-              {filteredIssues.map((issue) => {
-                const issueEpic = epics.find(e => e.id === issue.epicId);
-                return (
-                  <IssueRow
-                    key={issue.id}
-                    issue={issue}
-                    epic={issueEpic}
-                    isSelected={selectedIssue?.id === issue.id}
-                    onSelectIssue={(issue) => setSelectedIssue(issue)}
-                    onDragStart={handleDragStart}
-                    onDragEnd={handleDragEnd}
-                    onToggleSubtask={handleToggleSubtask}
-                    onAddSubtask={handleAddSubtask}
-                  />
-                );
-              })}
-            </div>
-          )}
+            return (
+              <SprintSection
+                key={sprint.id}
+                sprint={sprint}
+                issues={sprintItems}
+                allWorkItems={workItems}
+                sprints={sprints}
+                members={members}
+                selectedIssueId={selectedIssue?.id}
+                onSelectIssue={(issue) => setSelectedIssue(issue)}
+                onUpdateStatus={handleUpdateStatus}
+                onUpdatePriority={handleUpdatePriority}
+                onUpdateAssignee={handleUpdateAssignee}
+                onUpdateSprint={handleUpdateSprint}
+                onUpdateStoryPoints={handleUpdateStoryPoints}
+                onUpdateDueDate={handleUpdateDueDate}
+                onDeleteIssue={handleDeleteIssue}
+                onAddChild={handleAddChild}
+                expandedIds={expandedIds}
+                onToggleExpand={handleToggleExpand}
+                onDragStart={handleDragStart}
+                onDragEnd={handleDragEnd}
+                onDropIssue={handleDropIssue}
+                onCreateIssueInSprint={(sprintId) => {
+                  setCreateInitialSprintId(sprintId);
+                  setCreateInitialType('Story');
+                  setCreateAllowedTypes(null);
+                  setCreateParentItem(null);
+                  setIsCreateModalOpen(true);
+                }}
+                onStartSprint={handleStartSprint}
+                onCompleteSprint={handleCompleteSprint}
+              />
+            );
+          })}
         </div>
-      </div>
+      )}
 
-      {/* 3. RIGHT-SIDE ISSUE DETAIL DRAWER */}
-      <IssueDetailDrawer
-        issue={selectedIssue}
-        epics={epics}
-        sprints={sprints}
-        isOpen={Boolean(selectedIssue)}
-        onClose={() => setSelectedIssue(null)}
-        onUpdateIssue={handleUpdateIssue}
-        onDeleteIssue={handleDeleteIssue}
-        onToggleSubtask={handleToggleSubtask}
-        onAddSubtask={handleAddSubtask}
-      />
+      {/* VIEW MODE C: FLAT LIST */}
+      {groupBy === 'none' && (
+        <HierarchicalIssueTable
+          issues={filteredWorkItems}
+          allWorkItems={workItems}
+          sprints={sprints}
+          members={members}
+          selectedIssueId={selectedIssue?.id}
+          onSelectIssue={(issue) => setSelectedIssue(issue)}
+          onUpdateStatus={handleUpdateStatus}
+          onUpdatePriority={handleUpdatePriority}
+          onUpdateAssignee={handleUpdateAssignee}
+          onUpdateSprint={handleUpdateSprint}
+          onUpdateStoryPoints={handleUpdateStoryPoints}
+          onUpdateDueDate={handleUpdateDueDate}
+          onDeleteIssue={handleDeleteIssue}
+          onAddChild={handleAddChild}
+          expandedIds={expandedIds}
+          onToggleExpand={handleToggleExpand}
+          isHierarchical={false}
+          onDragStart={handleDragStart}
+          onDragEnd={handleDragEnd}
+          emptyMessage="No issues found."
+        />
+      )}
+
+      {/* 3. DETAIL DRAWER */}
+      {selectedIssue && (
+        <IssueDetailDrawer
+          issue={selectedIssue}
+          epics={epics}
+          sprints={sprints}
+          members={members}
+          isOpen={Boolean(selectedIssue)}
+          onClose={() => setSelectedIssue(null)}
+          onUpdateIssue={async (updated) => {
+            try {
+              await workItemsService.updateWorkItem(updated.id, {
+                title: updated.title,
+                description: updated.description,
+                status: updated.status,
+                priority: updated.priority,
+                story_points: updated.story_points,
+                due_date: updated.due_date,
+              });
+              loadProjectData();
+              setSelectedIssue((prev) => (prev ? { ...prev, ...updated } : null));
+              onToast?.('Issue updated');
+            } catch (err) {
+              console.error('Failed to update issue:', err);
+              onToast?.(err.message || 'Failed to update issue');
+            }
+          }}
+          onDeleteIssue={handleDeleteIssue}
+          onToggleSubtask={async (issueId, subtaskId) => {
+            const currentSubtask = workItems.find((w) => w.id === subtaskId);
+            if (!currentSubtask) return;
+            const newStatus = currentSubtask.status === 'COMPLETED' ? 'TODO' : 'COMPLETED';
+            await handleUpdateStatus(subtaskId, newStatus);
+          }}
+          onAddSubtask={async (parentIssueId, subtaskTitle, childType = 'SUBTASK') => {
+            try {
+              await workItemsService.createWorkItem({
+                project_id: projectId,
+                parent_id: parentIssueId,
+                type: childType,
+                title: subtaskTitle.trim(),
+              });
+              loadProjectData();
+              onToast?.(`Added ${childType.toLowerCase()}: "${subtaskTitle.trim()}"`);
+            } catch (err) {
+              console.error('Failed to add child item:', err);
+              onToast?.(err.message || 'Failed to add child item');
+            }
+          }}
+        />
+      )}
 
       {/* 4. CREATE ISSUE MODAL */}
       <CreateIssueModal
         isOpen={isCreateModalOpen}
-        onClose={() => setIsCreateModalOpen(false)}
-        epics={epics}
-        sprints={sprints}
+        onClose={() => {
+          setIsCreateModalOpen(false);
+          setCreateParentItem(null);
+          setCreateAllowedTypes(null);
+        }}
+        projectId={projectId}
+        initialIssueType={createInitialType}
         initialSprintId={createInitialSprintId}
-        initialEpicId={createInitialEpicId}
+        allowedTypes={createAllowedTypes}
+        parentItem={createParentItem}
+        members={members}
+        sprints={sprints}
+        workItems={workItems}
         onCreateIssue={handleCreateIssue}
         onCreateEpic={handleCreateEpic}
+      />
+
+      {/* 5. CREATE SPRINT MODAL */}
+      <CreateSprintModal
+        isOpen={isCreateSprintOpen}
+        onClose={() => setIsCreateSprintOpen(false)}
+        projectId={projectId}
+        projectName={currentProject?.name}
+        onSuccess={() => {
+          loadProjectData();
+          onToast?.('Sprint created successfully');
+        }}
       />
     </div>
   );

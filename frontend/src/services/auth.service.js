@@ -10,6 +10,12 @@ export const authService = {
     if (data.accessToken) {
       localStorage.setItem('accessToken', data.accessToken);
     }
+    if (data.refreshToken) {
+      localStorage.setItem('refreshToken', data.refreshToken);
+    }
+    if (data.sessionId) {
+      localStorage.setItem('sessionId', data.sessionId);
+    }
     return data;
   },
 
@@ -19,11 +25,15 @@ export const authService = {
 
   async logout() {
     try {
-      await api.post('/auth/logout');
+      const sessionId = localStorage.getItem('sessionId');
+      await api.post('/auth/logout', { sessionId });
     } catch (e) {
       // Ignore errors on logout
     }
     localStorage.removeItem('accessToken');
+    localStorage.removeItem('refreshToken');
+    localStorage.removeItem('sessionId');
+    localStorage.removeItem('user');
   },
 
   async getCurrentUser() {

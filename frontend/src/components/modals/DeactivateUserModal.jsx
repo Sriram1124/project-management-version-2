@@ -37,7 +37,7 @@ export default function DeactivateUserModal({ isOpen, user, onClose, onSuccess }
                 Deactivate User Account?
               </h3>
               <p className="text-[11px] text-slate-500">
-                {user.name} ({user.user_code || user.email})
+                {user.name} ({user.email})
               </p>
             </div>
           </div>

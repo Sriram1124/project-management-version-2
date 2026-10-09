@@ -2,10 +2,14 @@ import api from './api';
 
 export const usersService = {
   /**
-   * Get organization users with optional type filter (INTERN | EMPLOYEE)
+   * Get organization users with optional type filter (INTERN | EMPLOYEE) and cohort filter
    */
-  async getUsers(type) {
-    const url = type && type !== 'ALL' ? `/users?type=${encodeURIComponent(type)}` : '/users';
+  async getUsers(type, cohort) {
+    const params = new URLSearchParams();
+    if (type && type !== 'ALL') params.append('type', type);
+    if (cohort) params.append('cohort_id', cohort);
+    const queryString = params.toString();
+    const url = queryString ? `/users?${queryString}` : '/users';
     return await api.get(url);
   },
 
@@ -42,5 +46,12 @@ export const usersService = {
    */
   async deactivateUser(userId) {
     return await api.post(`/users/${encodeURIComponent(userId)}/deactivate`);
+  },
+
+  /**
+   * Manager updates member's details (name, batch, subbatch)
+   */
+  async updateMember(userId, data) {
+    return await api.patch(`/users/${encodeURIComponent(userId)}`, data);
   },
 };

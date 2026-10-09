@@ -1,7 +1,11 @@
 import React, { useState, useEffect } from 'react';
 import { FolderKanban } from 'lucide-react';
 import ProjectOverviewTab from './ProjectOverviewTab';
-import TasksView from '../TasksView';
+import ProjectRoadmapTab from './ProjectRoadmapTab';
+import ProjectSprintWorkspaceTab from './ProjectSprintWorkspaceTab';
+import ProjectBacklogTab from './ProjectBacklogTab';
+import KanbanBoard from '../../kanban/KanbanBoard';
+import ProjectMomTab from './ProjectMomTab';
 import { projectsService } from '../../../services/projects.service';
 
 export default function ProjectWorkspaceView({ 
@@ -43,7 +47,7 @@ export default function ProjectWorkspaceView({
     { id: 'sprint', label: 'Sprint Workspace' },
     { id: 'backlog', label: 'Backlog & Epics' },
     { id: 'kanban', label: 'Kanban Board' },
-    { id: 'mom', label: 'MoM' },
+    { id: 'action-items', label: 'Action Items' },
   ];
 
   const ownerName = liveProject?.owner
@@ -95,8 +99,34 @@ export default function ProjectWorkspaceView({
             project={liveProject} 
             onToast={onToast} 
           />
-        ) : currentTab === 'backlog' || currentTab === 'kanban' ? (
-          <TasksView projectId={projectId} onToast={onToast} />
+        ) : currentTab === 'roadmap' ? (
+          <ProjectRoadmapTab
+            projectId={projectId}
+            project={liveProject}
+            onToast={onToast}
+          />
+        ) : currentTab === 'sprint' ? (
+          <ProjectSprintWorkspaceTab
+            projectId={projectId}
+            onToast={onToast}
+          />
+        ) : currentTab === 'backlog' ? (
+          <ProjectBacklogTab
+            projectId={projectId}
+            project={liveProject}
+            onToast={onToast}
+          />
+        ) : currentTab === 'kanban' ? (
+          <KanbanBoard
+            projectId={projectId}
+            onToast={onToast}
+          />
+        ) : currentTab === 'action-items' || currentTab === 'mom' ? (
+          <ProjectMomTab
+            projectId={projectId}
+            projectName={liveProject?.name}
+            onToast={onToast}
+          />
         ) : (
           <div className="bg-white rounded-2xl p-12 border border-slate-200/80 shadow-xs text-center max-w-lg mx-auto my-8">
             <div className="w-12 h-12 rounded-2xl bg-purple-50 text-purple-600 flex items-center justify-center mx-auto mb-3">
@@ -106,13 +136,8 @@ export default function ProjectWorkspaceView({
               {tabs.find((t) => t.id === currentTab)?.label || 'Module'}
             </h3>
             <p className="text-xs text-slate-500 leading-relaxed max-w-md mx-auto mb-4">
-              {currentTab === 'mom'
-                ? 'Minutes of Meeting (MoM) module will be available in V2.'
-                : 'Advanced Sprint tracking and roadmap Gantt views will be available in V2.'}
+              Action Items module is active.
             </p>
-            <span className="inline-flex items-center px-3 py-1 rounded-full text-[11px] font-semibold bg-purple-50 text-purple-700 border border-purple-200">
-              Planned for V2
-            </span>
           </div>
         )}
       </div>

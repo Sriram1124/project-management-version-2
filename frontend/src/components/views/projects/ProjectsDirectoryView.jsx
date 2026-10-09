@@ -61,6 +61,8 @@ export default function ProjectsDirectoryView({ onSelectProject }) {
   const [loadingEditMembers, setLoadingEditMembers] = useState(false);
   const [editSubmitting, setEditSubmitting] = useState(false);
   const [editError, setEditError] = useState(null);
+  const [editMemberSearch, setEditMemberSearch] = useState('');
+  const [createMemberSearch, setCreateMemberSearch] = useState('');
 
   // Archive Confirmation Modal State
   const [archiveTarget, setArchiveTarget] = useState(null);
@@ -104,6 +106,25 @@ export default function ProjectsDirectoryView({ onSelectProject }) {
     fetchOrgUsers();
   }, []);
 
+  // Show ONLY interns in the project member pickers
+  const internUsers = orgUsers.filter((u) => u.type === 'INTERN' || u.role === 'INTERN');
+
+  const filteredCreateInterns = internUsers.filter((u) => {
+    if (!createMemberSearch.trim()) return true;
+    const term = createMemberSearch.toLowerCase().trim();
+    const matchesName = u.name && u.name.toLowerCase().includes(term);
+    const matchesEmail = u.email && u.email.toLowerCase().includes(term);
+    return matchesName || matchesEmail;
+  });
+
+  const filteredEditInterns = internUsers.filter((u) => {
+    if (!editMemberSearch.trim()) return true;
+    const term = editMemberSearch.toLowerCase().trim();
+    const matchesName = u.name && u.name.toLowerCase().includes(term);
+    const matchesEmail = u.email && u.email.toLowerCase().includes(term);
+    return matchesName || matchesEmail;
+  });
+
   const handleOpenCreate = () => {
     const defaultOwnerId = authUser?.id || (orgUsers.length > 0 ? orgUsers[0].id : '');
     setCreateForm({
@@ -115,6 +136,7 @@ export default function ProjectsDirectoryView({ onSelectProject }) {
       owner_id: defaultOwnerId,
     });
     setCreateSelectedMembers([]);
+    setCreateMemberSearch('');
     setCreateError(null);
     setIsCreateOpen(true);
   };
@@ -177,19 +199,22 @@ export default function ProjectsDirectoryView({ onSelectProject }) {
       owner_id: proj.owner?.id || proj.owner_id || '',
     });
     setEditError(null);
+    setEditMemberSearch('');
+    // Clear selections initially so no stale or default members appear
+    setEditInitialMembers([]);
+    setEditSelectedMembers([]);
     setIsEditOpen(true);
     setLoadingEditMembers(true);
 
     try {
       const members = await projectsService.getMembers(proj.id);
-      const memberIds = members.map((m) => m.user_id || m.id);
+      const memberIds = (members || []).map((m) => m.user_id || m.id).filter(Boolean);
       setEditInitialMembers(memberIds);
       setEditSelectedMembers(memberIds);
     } catch (err) {
       console.error('Failed to load project members for editing:', err);
-      const fallbackIds = (proj.members || []).map((m) => m.user_id || m.id || m.user?.id).filter(Boolean);
-      setEditInitialMembers(fallbackIds);
-      setEditSelectedMembers(fallbackIds);
+      setEditInitialMembers([]);
+      setEditSelectedMembers([]);
     } finally {
       setLoadingEditMembers(false);
     }
@@ -225,10 +250,18 @@ export default function ProjectsDirectoryView({ onSelectProject }) {
       const removedMembers = editInitialMembers.filter((id) => !editSelectedMembers.includes(id));
 
       for (const userId of addedMembers) {
-        await projectsService.addMember(editingProject.id, userId);
+        try {
+          await projectsService.addMember(editingProject.id, userId);
+        } catch (mErr) {
+          console.warn('Member already added or failed to add:', mErr);
+        }
       }
       for (const userId of removedMembers) {
-        await projectsService.removeMember(editingProject.id, userId);
+        try {
+          await projectsService.removeMember(editingProject.id, userId);
+        } catch (mErr) {
+          console.warn('Member already removed or failed to remove:', mErr);
+        }
       }
 
       // 3. Fetch fresh project from backend to keep state 100% accurate
@@ -626,45 +659,52 @@ export default function ProjectsDirectoryView({ onSelectProject }) {
 
               {/* Project Members Multi-Select Picker */}
               <div>
-                <div className="flex items-center justify-between mb-1">
+                <div className="flex items-center justify-between mb-1.5">
                   <label className="block text-xs font-semibold text-slate-700">
                     Project Members
                   </label>
-                  <span className="text-[11px] font-medium text-purple-600">
+                  <span className="text-[11px] font-semibold text-purple-600">
                     {createSelectedMembers.length} selected
                   </span>
                 </div>
 
-                {createSelectedMembers.length > 0 && (
-                  <div className="flex flex-wrap gap-1.5 mb-2">
-                    {createSelectedMembers.map((userId) => {
-                      const u = orgUsers.find((user) => user.id === userId);
-                      return (
-                        <span
-                          key={userId}
-                          className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-[11px] font-medium bg-purple-50 text-purple-700 border border-purple-200"
-                        >
-                          <span>{u?.name || u?.email || 'User'}</span>
-                          <button
-                            type="button"
-                            onClick={() => toggleCreateMember(userId)}
-                            className="hover:text-purple-900 text-purple-400 p-0.5"
-                          >
-                            <X className="w-3 h-3" />
-                          </button>
-                        </span>
-                      );
-                    })}
-                  </div>
-                )}
+                {/* Intern Search Field */}
+                <div className="relative mb-2">
+                  <Search className="w-3.5 h-3.5 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" />
+                  <input
+                    type="text"
+                    value={createMemberSearch}
+                    onChange={(e) => setCreateMemberSearch(e.target.value)}
+                    placeholder="Search interns by name or email..."
+                    className="w-full pl-8 pr-8 py-1.5 text-xs rounded-lg border border-slate-200 text-slate-800 placeholder-slate-400 focus:outline-hidden focus:border-purple-600 focus:ring-1 focus:ring-purple-600 bg-white shadow-2xs"
+                  />
+                  {createMemberSearch && (
+                    <button
+                      type="button"
+                      onClick={() => setCreateMemberSearch('')}
+                      className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 cursor-pointer p-0.5"
+                    >
+                      <X className="w-3.5 h-3.5" />
+                    </button>
+                  )}
+                </div>
 
-                <div className="max-h-36 overflow-y-auto border border-slate-200 rounded-xl divide-y divide-slate-100 bg-slate-50/50 p-1">
-                  {orgUsers.length === 0 ? (
-                    <div className="p-3 text-center text-xs text-slate-400">
-                      {loadingUsers ? 'Loading organization users...' : 'No organization users available'}
+                <div className="max-h-48 overflow-y-auto border border-slate-200 rounded-xl divide-y divide-slate-100 bg-slate-50/50 p-1">
+                  {loadingUsers ? (
+                    <div className="p-4 text-center text-xs text-slate-400 flex items-center justify-center gap-2">
+                      <Loader2 className="w-3.5 h-3.5 animate-spin text-purple-600" />
+                      <span>Loading interns...</span>
+                    </div>
+                  ) : internUsers.length === 0 ? (
+                    <div className="p-4 text-center text-xs text-slate-400">
+                      No interns available.
+                    </div>
+                  ) : filteredCreateInterns.length === 0 ? (
+                    <div className="p-4 text-center text-xs text-slate-400">
+                      No interns found matching "{createMemberSearch}".
                     </div>
                   ) : (
-                    orgUsers.map((u) => {
+                    filteredCreateInterns.map((u) => {
                       const isSelected = createSelectedMembers.includes(u.id);
                       return (
                         <div
@@ -674,18 +714,29 @@ export default function ProjectsDirectoryView({ onSelectProject }) {
                             isSelected ? 'bg-purple-100/70 text-purple-900' : 'hover:bg-white text-slate-700'
                           }`}
                         >
-                          <div className="flex items-center gap-2 min-w-0">
-                            <div className={`w-6 h-6 rounded-full flex items-center justify-center text-[10px] font-bold shrink-0 ${
-                              isSelected ? 'bg-purple-600 text-white' : 'bg-slate-200 text-slate-600'
+                          <div className="flex items-center gap-2.5 min-w-0">
+                            <div className={`w-7 h-7 rounded-full flex items-center justify-center text-[10px] font-bold shrink-0 shadow-2xs ${
+                              isSelected ? 'bg-purple-600 text-white' : 'bg-purple-100 text-purple-700'
                             }`}>
                               {(u.name || u.email || 'U').slice(0, 2).toUpperCase()}
                             </div>
                             <div className="truncate">
-                              <div className="text-xs font-medium leading-tight truncate">{u.name}</div>
-                              <div className="text-[10px] text-slate-400 leading-tight truncate">{u.email}</div>
+                              <div className="flex items-center gap-2">
+                                <span className="text-xs font-semibold text-slate-900 leading-tight truncate">
+                                  {u.name}
+                                </span>
+                                {u.batch && u.subbatch && (
+                                  <span className="font-mono text-[10px] font-bold text-purple-700 bg-purple-50 px-1.5 py-0.2 rounded border border-purple-200 shrink-0">
+                                    {u.batch} / {u.subbatch}
+                                  </span>
+                                )}
+                              </div>
+                              <div className="text-[11px] text-slate-500 font-mono leading-tight truncate">
+                                {u.email}
+                              </div>
                             </div>
                           </div>
-                          <div className={`w-4 h-4 rounded border flex items-center justify-center shrink-0 ml-2 ${
+                          <div className={`w-4 h-4 rounded border flex items-center justify-center shrink-0 ml-2 transition-colors ${
                             isSelected ? 'bg-purple-600 border-purple-600 text-white' : 'border-slate-300 bg-white'
                           }`}>
                             {isSelected && <Check className="w-3 h-3 stroke-[3]" />}
@@ -838,48 +889,56 @@ export default function ProjectsDirectoryView({ onSelectProject }) {
 
               {/* Project Members Multi-Select Picker */}
               <div>
-                <div className="flex items-center justify-between mb-1">
+                <div className="flex items-center justify-between mb-1.5">
                   <label className="block text-xs font-semibold text-slate-700">
                     Project Members
                   </label>
                   <div className="flex items-center gap-1.5">
                     {loadingEditMembers && <Loader2 className="w-3 h-3 animate-spin text-purple-600" />}
-                    <span className="text-[11px] font-medium text-purple-600">
+                    <span className="text-[11px] font-semibold text-purple-600">
                       {editSelectedMembers.length} selected
                     </span>
                   </div>
                 </div>
 
-                {editSelectedMembers.length > 0 && (
-                  <div className="flex flex-wrap gap-1.5 mb-2">
-                    {editSelectedMembers.map((userId) => {
-                      const u = orgUsers.find((user) => user.id === userId);
-                      return (
-                        <span
-                          key={userId}
-                          className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-[11px] font-medium bg-purple-50 text-purple-700 border border-purple-200"
-                        >
-                          <span>{u?.name || u?.email || 'User'}</span>
-                          <button
-                            type="button"
-                            onClick={() => toggleEditMember(userId)}
-                            className="hover:text-purple-900 text-purple-400 p-0.5"
-                          >
-                            <X className="w-3 h-3" />
-                          </button>
-                        </span>
-                      );
-                    })}
-                  </div>
-                )}
+                {/* Intern Search Field */}
+                <div className="relative mb-2">
+                  <Search className="w-3.5 h-3.5 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" />
+                  <input
+                    type="text"
+                    value={editMemberSearch}
+                    onChange={(e) => setEditMemberSearch(e.target.value)}
+                    placeholder="Search interns by name or email..."
+                    className="w-full pl-8 pr-8 py-1.5 text-xs rounded-lg border border-slate-200 text-slate-800 placeholder-slate-400 focus:outline-hidden focus:border-purple-600 focus:ring-1 focus:ring-purple-600 bg-white shadow-2xs"
+                  />
+                  {editMemberSearch && (
+                    <button
+                      type="button"
+                      onClick={() => setEditMemberSearch('')}
+                      className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 cursor-pointer p-0.5"
+                    >
+                      <X className="w-3.5 h-3.5" />
+                    </button>
+                  )}
+                </div>
 
-                <div className="max-h-36 overflow-y-auto border border-slate-200 rounded-xl divide-y divide-slate-100 bg-slate-50/50 p-1">
-                  {orgUsers.length === 0 ? (
-                    <div className="p-3 text-center text-xs text-slate-400">
-                      {loadingUsers ? 'Loading organization users...' : 'No organization users available'}
+                {/* Searchable Intern List */}
+                <div className="max-h-48 overflow-y-auto border border-slate-200 rounded-xl divide-y divide-slate-100 bg-slate-50/50 p-1">
+                  {loadingUsers || loadingEditMembers ? (
+                    <div className="p-4 text-center text-xs text-slate-400 flex items-center justify-center gap-2">
+                      <Loader2 className="w-3.5 h-3.5 animate-spin text-purple-600" />
+                      <span>Loading interns...</span>
+                    </div>
+                  ) : internUsers.length === 0 ? (
+                    <div className="p-4 text-center text-xs text-slate-400">
+                      No interns available.
+                    </div>
+                  ) : filteredEditInterns.length === 0 ? (
+                    <div className="p-4 text-center text-xs text-slate-400">
+                      No interns found matching "{editMemberSearch}".
                     </div>
                   ) : (
-                    orgUsers.map((u) => {
+                    filteredEditInterns.map((u) => {
                       const isSelected = editSelectedMembers.includes(u.id);
                       return (
                         <div
@@ -889,18 +948,29 @@ export default function ProjectsDirectoryView({ onSelectProject }) {
                             isSelected ? 'bg-purple-100/70 text-purple-900' : 'hover:bg-white text-slate-700'
                           }`}
                         >
-                          <div className="flex items-center gap-2 min-w-0">
-                            <div className={`w-6 h-6 rounded-full flex items-center justify-center text-[10px] font-bold shrink-0 ${
-                              isSelected ? 'bg-purple-600 text-white' : 'bg-slate-200 text-slate-600'
+                          <div className="flex items-center gap-2.5 min-w-0">
+                            <div className={`w-7 h-7 rounded-full flex items-center justify-center text-[10px] font-bold shrink-0 shadow-2xs ${
+                              isSelected ? 'bg-purple-600 text-white' : 'bg-purple-100 text-purple-700'
                             }`}>
                               {(u.name || u.email || 'U').slice(0, 2).toUpperCase()}
                             </div>
                             <div className="truncate">
-                              <div className="text-xs font-medium leading-tight truncate">{u.name}</div>
-                              <div className="text-[10px] text-slate-400 leading-tight truncate">{u.email}</div>
+                              <div className="flex items-center gap-2">
+                                <span className="text-xs font-semibold text-slate-900 leading-tight truncate">
+                                  {u.name}
+                                </span>
+                                {u.batch && u.subbatch && (
+                                  <span className="font-mono text-[10px] font-bold text-purple-700 bg-purple-50 px-1.5 py-0.2 rounded border border-purple-200 shrink-0">
+                                    {u.batch} / {u.subbatch}
+                                  </span>
+                                )}
+                              </div>
+                              <div className="text-[11px] text-slate-500 font-mono leading-tight truncate">
+                                {u.email}
+                              </div>
                             </div>
                           </div>
-                          <div className={`w-4 h-4 rounded border flex items-center justify-center shrink-0 ml-2 ${
+                          <div className={`w-4 h-4 rounded border flex items-center justify-center shrink-0 ml-2 transition-colors ${
                             isSelected ? 'bg-purple-600 border-purple-600 text-white' : 'border-slate-300 bg-white'
                           }`}>
                             {isSelected && <Check className="w-3 h-3 stroke-[3]" />}

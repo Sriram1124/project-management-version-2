@@ -33,53 +33,72 @@ export class AuthController {
 
       const result = await AuthService.login(userIdentifier, password, organization_id || null, userAgent, ipAddress);
 
+      const isProduction = process.env.NODE_ENV === 'production';
+
       // Set session cookie
       res.cookie('sessionId', result.sessionId, {
         httpOnly: true,
-        secure: process.env.NODE_ENV === 'production',
-        sameSite: 'lax',
-        maxAge: 7 * 24 * 60 * 60 * 1000 // 7 days
+        secure: isProduction,
+        sameSite: isProduction ? 'none' : 'lax',
+        maxAge: 30 * 24 * 60 * 60 * 1000 // 30 days
       });
       
       // Set refresh token cookie
       res.cookie('refreshToken', result.refreshToken, {
         httpOnly: true,
-        secure: process.env.NODE_ENV === 'production',
-        sameSite: 'lax',
-        maxAge: 7 * 24 * 60 * 60 * 1000 // 7 days
+        secure: isProduction,
+        sameSite: isProduction ? 'none' : 'lax',
+        maxAge: 30 * 24 * 60 * 60 * 1000 // 30 days
       });
 
       res.status(200).json({
         user: result.user,
         accessToken: result.accessToken,
+        refreshToken: result.refreshToken,
+        sessionId: result.sessionId,
       });
     } catch (error: any) {
+      console.error('[AuthController.login] Error during login:', error);
       if (error.message === 'Invalid credentials' || error.message === 'User is inactive') {
         res.status(401).json({ error: error.message });
       } else {
-        res.status(500).json({ error: 'Internal server error' });
+        res.status(500).json({ error: error.message || 'Internal server error' });
       }
     }
   }
 
   static async refresh(req: Request, res: Response): Promise<void> {
     try {
-      const { refreshToken, sessionId } = req.cookies;
+      const refreshToken = req.cookies?.refreshToken || req.body?.refreshToken;
+      const sessionId = req.cookies?.sessionId || req.body?.sessionId;
+
       if (!refreshToken || !sessionId) {
         res.status(401).json({ error: 'Refresh token and session ID required' });
         return;
       }
 
       const result = await AuthService.refresh(refreshToken, sessionId);
+      const isProduction = process.env.NODE_ENV === 'production';
 
       res.cookie('refreshToken', result.refreshToken, {
         httpOnly: true,
-        secure: process.env.NODE_ENV === 'production',
-        sameSite: 'lax',
-        maxAge: 7 * 24 * 60 * 60 * 1000
+        secure: isProduction,
+        sameSite: isProduction ? 'none' : 'lax',
+        maxAge: 30 * 24 * 60 * 60 * 1000
       });
 
-      res.status(200).json({ accessToken: result.accessToken });
+      res.cookie('sessionId', result.sessionId, {
+        httpOnly: true,
+        secure: isProduction,
+        sameSite: isProduction ? 'none' : 'lax',
+        maxAge: 30 * 24 * 60 * 60 * 1000
+      });
+
+      res.status(200).json({
+        accessToken: result.accessToken,
+        refreshToken: result.refreshToken,
+        sessionId: result.sessionId,
+      });
     } catch (error) {
       res.status(401).json({ error: 'Invalid or expired refresh token' });
     }
@@ -87,7 +106,7 @@ export class AuthController {
 
   static async logout(req: Request, res: Response): Promise<void> {
     try {
-      const { sessionId } = req.cookies;
+      const sessionId = req.cookies?.sessionId || req.body?.sessionId;
       if (sessionId) {
         await AuthService.logout(sessionId);
       }

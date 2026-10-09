@@ -37,4 +37,7 @@ router.post('/:id/reset-password', requireRole(['MANAGER']), UserController.rese
 // Manager deactivates an organization user
 router.post('/:id/deactivate', requireRole(['MANAGER']), UserController.deactivate);
 
+// Manager updates an organization member's permitted details (name, batch, subbatch)
+router.patch('/:id', requireRole(['MANAGER', 'ADMIN', 'SUPER_ADMIN']), UserController.updateMember);
+
 export { router as userRouter };
