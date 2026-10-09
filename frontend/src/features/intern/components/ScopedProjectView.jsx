@@ -10,7 +10,6 @@ import {
   Zap, 
   Download, 
   CheckCircle2, 
-  MessageSquare,
   ShieldCheck,
   ChevronRight,
   ListTodo,
@@ -19,18 +18,13 @@ import {
   Sparkles,
   Search,
   Check,
-  Loader2,
-  AlertCircle,
-  LayoutGrid,
-  List,
-  GitFork
+  Loader2
 } from 'lucide-react';
 import { useAuth } from '../../../context/AuthContext';
 import { projectsService } from '../../../services/projects.service';
 import { workItemsService } from '../../../services/workItems.service';
 import FilePreviewModal from '../../../components/views/projects/FilePreviewModal';
 import PersonalKanbanBoard from './PersonalKanbanBoard';
-import HierarchyTreeView from './HierarchyTreeView';
 
 export default function ScopedProjectView({
   project,
@@ -39,15 +33,14 @@ export default function ScopedProjectView({
   onToast
 }) {
   const { user: authUser } = useAuth();
-  const [activeTab, setActiveTab] = useState('overview'); // 'overview' | 'documents' | 'work' | 'sprint' | 'kanban' | 'mom'
+  const [activeTab, setActiveTab] = useState('overview'); // 'overview' | 'documents' | 'work' | 'sprint' | 'kanban'
   const [previewFile, setPreviewFile] = useState(null);
 
   // Project Work Items State
   const [projectWorkItems, setProjectWorkItems] = useState([]);
   const [loadingTasks, setLoadingTasks] = useState(false);
-  const [taskFilter, setTaskFilter] = useState('ALL'); // 'ALL' | 'ASSIGNED_TO_ME' | 'TODO' | 'IN_PROGRESS' | 'COMPLETED'
+  const [taskFilter, setTaskFilter] = useState('ALL'); // 'ALL' | 'ASSIGNED_TO_ME'
   const [taskSearch, setTaskSearch] = useState('');
-  const [workViewMode, setWorkViewMode] = useState('list'); // 'list' | 'hierarchy'
 
   const loadProjectWorkItems = async () => {
     if (!project?.id) return;
@@ -99,6 +92,12 @@ export default function ScopedProjectView({
   const documents = project.documents || [];
   const members = project.members || [];
   const ownerName = project.lead?.name || project.owner?.name || 'Project Owner';
+  const statusBadgeStyle = {
+    ACTIVE: 'bg-emerald-50 text-emerald-700 border-emerald-200',
+    PLANNED: 'bg-blue-50 text-blue-700 border-blue-200',
+    COMPLETED: 'bg-purple-50 text-purple-700 border-purple-200',
+    ARCHIVED: 'bg-slate-100 text-slate-600 border-slate-200'
+  }[project.status] || 'bg-slate-100 text-slate-700 border-slate-200';
 
   const handleDownloadDoc = async (doc) => {
     if (!project?.id) return;
@@ -126,22 +125,22 @@ export default function ScopedProjectView({
     { id: 'overview', label: 'Overview' },
     { id: 'documents', label: `Project Documents (${documents.length})` },
     { id: 'work', label: `Work Items (${projectWorkItems.length})` },
+    { id: 'action-items', label: 'Action Items' },
     { id: 'kanban', label: 'Kanban Board' },
-    { id: 'sprint', label: 'Sprint Workspace' },
-    { id: 'mom', label: 'Meeting Notes' }
+    { id: 'sprint', label: 'Sprint Workspace' }
   ];
 
   return (
     <div className="space-y-4">
       {/* Top Context & Navigation Bar */}
-      <div className="bg-white rounded-2xl border border-slate-200 p-4 shadow-card space-y-3">
+      <div className="bg-white border-b border-slate-200 -mt-2 -mx-2 px-6 pt-3 pb-0">
         {/* Row 1: Back Button & Project Metadata */}
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-100 pb-3">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-2.5">
           <div className="flex items-center gap-3">
             <button
               type="button"
               onClick={onBack}
-              className="p-1.5 rounded-lg border border-slate-200 hover:bg-slate-100 text-slate-600 transition-colors"
+              className="p-1.5 rounded-lg border border-slate-200 hover:bg-slate-50 text-slate-600 transition-colors"
               title="Back to My Projects"
             >
               <ArrowLeft className="w-4 h-4" />
@@ -152,7 +151,7 @@ export default function ScopedProjectView({
                 <span className="text-[10px] font-mono font-bold text-slate-400">
                   {project.code || (project.id ? project.id.slice(0, 8).toUpperCase() : 'PROJ')}
                 </span>
-                <span className="text-[10px] font-bold text-emerald-700 bg-emerald-50 border border-emerald-200 px-2 py-0.5 rounded">
+                <span className={`text-[10px] font-semibold border px-2.5 py-0.5 rounded-full ${statusBadgeStyle}`}>
                   {project.status || 'ACTIVE'}
                 </span>
               </div>
@@ -163,30 +162,30 @@ export default function ScopedProjectView({
           </div>
 
           {/* Intern's Role Context Callout */}
-          <div className="flex items-center gap-3 text-xs bg-purple-50/70 border border-purple-100 px-3.5 py-1.5 rounded-xl self-start sm:self-auto">
-            <div className="flex items-center gap-1.5 text-purple-900 font-semibold">
+          <div className="flex flex-wrap items-center gap-2 text-xs text-slate-600 self-start sm:self-auto">
+            <div className="flex items-center gap-1.5">
               <ShieldCheck className="w-3.5 h-3.5 text-purple-600" />
-              <span>Project Owner: {ownerName}</span>
+              <span>Project Owner: <strong className="font-semibold text-slate-800">{ownerName}</strong></span>
             </div>
-            <span className="text-purple-300">·</span>
-            <span className="text-purple-700 font-medium">
-              Role: {authUser?.role || 'Intern'}
+            <span className="text-slate-300">·</span>
+            <span>
+              Role: <strong className="font-semibold text-slate-800">{authUser?.role || 'Intern'}</strong>
             </span>
           </div>
         </div>
 
         {/* Row 2: Scoped Navigation Tabs */}
-        <div className="flex items-center gap-1 overflow-x-auto pt-1">
+        <div className="flex items-center gap-1 overflow-x-auto -mb-px">
           {tabs.map((tab) => {
             const isActive = activeTab === tab.id;
             return (
               <button
                 key={tab.id}
                 onClick={() => setActiveTab(tab.id)}
-                className={`px-3.5 py-1.5 text-xs font-semibold rounded-lg whitespace-nowrap transition-all ${
+                className={`px-4 py-2 text-sm font-medium whitespace-nowrap transition-colors border-b-2 cursor-pointer ${
                   isActive
-                    ? 'bg-purple-600 text-white shadow-2xs'
-                    : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100'
+                    ? 'border-purple-600 text-purple-700 font-bold'
+                    : 'border-transparent text-slate-600 hover:text-slate-900 hover:border-slate-300'
                 }`}
               >
                 {tab.label}
@@ -199,20 +198,20 @@ export default function ScopedProjectView({
       {/* Tab 1: Overview */}
       {activeTab === 'overview' && (
         <div className="space-y-4">
-          <div className="bg-white rounded-2xl p-6 border border-slate-200 shadow-card space-y-5">
+          <div className="bg-white rounded-xl p-5 border border-slate-200/80 shadow-xs space-y-5">
             {/* Scope */}
             <div>
               <h3 className="text-xs font-bold text-slate-900 uppercase tracking-wider mb-1.5">
                 Project Scope & Objective
               </h3>
-              <p className="text-xs text-slate-600 leading-relaxed bg-slate-50 p-3.5 rounded-xl border border-slate-200">
+              <p className="text-xs text-slate-600 leading-relaxed">
                 {project.description || 'No description provided.'}
               </p>
             </div>
 
             {/* Project Details Grid */}
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-              <div className="p-3.5 bg-slate-50 rounded-xl border border-slate-200">
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3.5 pt-4 border-t border-slate-100">
+              <div className="p-3 bg-slate-50/70 rounded-xl border border-slate-200/60">
                 <span className="text-[10px] font-bold text-slate-400 uppercase block">
                   Project Owner
                 </span>
@@ -222,7 +221,7 @@ export default function ScopedProjectView({
                 <span className="text-[10px] text-slate-500">Project Lead</span>
               </div>
 
-              <div className="p-3.5 bg-slate-50 rounded-xl border border-slate-200">
+              <div className="p-3 bg-slate-50/70 rounded-xl border border-slate-200/60">
                 <span className="text-[10px] font-bold text-slate-400 uppercase block">
                   Timeline
                 </span>
@@ -232,7 +231,7 @@ export default function ScopedProjectView({
                 <span className="text-[10px] text-slate-500">Scheduled Duration</span>
               </div>
 
-              <div className="p-3.5 bg-slate-50 rounded-xl border border-slate-200">
+              <div className="p-3 bg-slate-50/70 rounded-xl border border-slate-200/60">
                 <span className="text-[10px] font-bold text-slate-400 uppercase block">
                   Assigned Team
                 </span>
@@ -355,8 +354,8 @@ export default function ScopedProjectView({
         />
       )}
 
-      {/* Tab 3: Work Items (Live Data) */}
-      {activeTab === 'work' && (() => {
+      {/* Work Items and Action Items (Live Data) */}
+      {(activeTab === 'work' || activeTab === 'action-items') && (() => {
         const getTypeBadge = (type) => {
           switch (type) {
             case 'EPIC':
@@ -402,12 +401,6 @@ export default function ScopedProjectView({
               (a) => a.user_id === authUser?.id || a.email === authUser?.email
             );
             if (!isAssigned) return false;
-          } else if (taskFilter === 'TODO') {
-            if (item.status !== 'TODO') return false;
-          } else if (taskFilter === 'IN_PROGRESS') {
-            if (item.status !== 'IN_PROGRESS') return false;
-          } else if (taskFilter === 'COMPLETED') {
-            if (item.status !== 'COMPLETED') return false;
           }
           return true;
         });
@@ -433,9 +426,6 @@ export default function ScopedProjectView({
                   {[
                     { id: 'ALL', label: 'All' },
                     { id: 'ASSIGNED_TO_ME', label: 'Assigned to Me' },
-                    { id: 'TODO', label: 'To Do' },
-                    { id: 'IN_PROGRESS', label: 'In Progress' },
-                    { id: 'COMPLETED', label: 'Done' },
                   ].map((f) => (
                     <button
                       key={f.id}
@@ -450,34 +440,6 @@ export default function ScopedProjectView({
                     </button>
                   ))}
                 </div>
-              </div>
-
-              {/* View Mode Toggle */}
-              <div className="flex items-center gap-1 bg-slate-100 p-1 rounded-xl text-xs self-start sm:self-auto">
-                <button
-                  type="button"
-                  onClick={() => setWorkViewMode('list')}
-                  className={`p-1.5 rounded-lg transition-colors ${
-                    workViewMode === 'list'
-                      ? 'bg-white text-purple-700 shadow-2xs font-semibold'
-                      : 'text-slate-500 hover:text-slate-900'
-                  }`}
-                  title="List View"
-                >
-                  <List className="w-4 h-4" />
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setWorkViewMode('hierarchy')}
-                  className={`p-1.5 rounded-lg transition-colors ${
-                    workViewMode === 'hierarchy'
-                      ? 'bg-white text-purple-700 shadow-2xs font-semibold'
-                      : 'text-slate-500 hover:text-slate-900'
-                  }`}
-                  title="Hierarchy Tree View"
-                >
-                  <GitFork className="w-4 h-4" />
-                </button>
               </div>
             </div>
 
@@ -497,22 +459,15 @@ export default function ScopedProjectView({
                 <p className="text-xs text-slate-400 max-w-sm mx-auto">
                   {taskFilter === 'ASSIGNED_TO_ME'
                     ? 'You do not have any tasks assigned in this project yet.'
-                    : 'Work items added to this project will appear here.'}
+                    : activeTab === 'action-items'
+                      ? 'Action items added to this project will appear here.'
+                      : 'Work items added to this project will appear here.'}
                 </p>
               </div>
             )}
 
-            {/* Tree View */}
-            {!loadingTasks && filteredTasks.length > 0 && workViewMode === 'hierarchy' && (
-              <HierarchyTreeView
-                workItems={filteredTasks}
-                onTaskClick={onTaskClick}
-                onToggleTask={handleToggleTask}
-              />
-            )}
-
             {/* List View */}
-            {!loadingTasks && filteredTasks.length > 0 && workViewMode === 'list' && (
+            {!loadingTasks && filteredTasks.length > 0 && (
               <div className="space-y-2">
                 {filteredTasks.map((item) => {
                   const isDone = item.status === 'COMPLETED';
@@ -626,22 +581,6 @@ export default function ScopedProjectView({
             Advanced sprint planning, burndown metrics, and iteration tracking will be available in V2.
           </p>
           <span className="inline-flex items-center px-3 py-1 rounded-full text-[11px] font-semibold bg-indigo-50 text-indigo-700 border border-indigo-200">
-            Planned for V2
-          </span>
-        </div>
-      )}
-
-      {/* Tab 6: Meeting Notes Placeholder (Planned for V2) */}
-      {activeTab === 'mom' && (
-        <div className="bg-white rounded-2xl p-12 border border-slate-200 shadow-card text-center max-w-lg mx-auto my-8 space-y-3">
-          <div className="w-12 h-12 rounded-2xl bg-purple-50 text-purple-600 flex items-center justify-center mx-auto mb-1">
-            <MessageSquare className="w-6 h-6" />
-          </div>
-          <h3 className="text-base font-bold text-slate-900">Meeting Notes (MoM)</h3>
-          <p className="text-xs text-slate-500 leading-relaxed max-w-md mx-auto">
-            Minutes of Meeting (MoM) module will be available in V2.
-          </p>
-          <span className="inline-flex items-center px-3 py-1 rounded-full text-[11px] font-semibold bg-purple-50 text-purple-700 border border-purple-200">
             Planned for V2
           </span>
         </div>

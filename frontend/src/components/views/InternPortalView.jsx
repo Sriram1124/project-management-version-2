@@ -3,7 +3,6 @@ import {
   CheckCircle2, 
   Clock, 
   FileText, 
-  MessageSquare, 
   ArrowLeft, 
   Send, 
   Calendar,
@@ -137,8 +136,8 @@ export default function InternPortalView({ onSwitchToManager }) {
         </div>
       </div>
 
-      {/* Form Submission & Meeting Notes */}
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+      {/* Form Submission */}
+      <div className="grid grid-cols-1 gap-4">
         <div className="bg-white rounded-2xl p-5 border border-slate-200 shadow-card">
           <h4 className="text-xs font-bold text-slate-800 mb-3 flex items-center gap-1.5">
             <FileText className="w-4 h-4 text-purple-600" />
@@ -156,23 +155,7 @@ export default function InternPortalView({ onSwitchToManager }) {
           </div>
         </div>
 
-        <div className="bg-white rounded-2xl p-5 border border-slate-200 shadow-card">
-          <h4 className="text-xs font-bold text-slate-800 mb-3 flex items-center gap-1.5">
-            <MessageSquare className="w-4 h-4 text-purple-600" />
-            <span>Latest MoM: Sprint 2 Retrospective</span>
-          </h4>
-          <div className="p-3.5 rounded-xl bg-slate-50 border border-slate-200/70 space-y-1.5 text-xs text-slate-600">
-            <p className="font-semibold text-slate-800">Published by Sarah Mitchell (Program Manager)</p>
-            <p className="text-[11px] text-slate-500">Decisions: Accelerated Mobile API deadline, pairwise debugging sessions on Friday.</p>
-            <div className="pt-2">
-              <button className="text-xs font-bold text-purple-600 hover:text-purple-700">
-                Read full meeting notes →
-              </button>
-            </div>
-          </div>
-        </div>
       </div>
     </div>
   );
 }
-

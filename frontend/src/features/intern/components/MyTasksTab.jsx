@@ -26,7 +26,8 @@ export default function MyTasksTab({
   onOpenTaskModal,
   onOpenCreatePersonalTask,
   onToggleTask,
-  onToast
+  onToast,
+  showViewSwitcher = true
 }) {
   const [filterType, setFilterType] = useState('ALL'); // 'ALL' | 'DUE_TODAY' | 'OVERDUE' | 'IN_PROGRESS' | 'COMPLETED' | 'PERSONAL'
   const [search, setSearch] = useState('');
@@ -161,8 +162,8 @@ export default function MyTasksTab({
           ))}
         </div>
 
-        {/* 3-Way View Switcher: LIST, BOARD, HIERARCHY */}
-        <div className="flex items-center gap-1 bg-slate-100 p-0.5 rounded-lg text-xs self-start md:self-auto shrink-0">
+        {showViewSwitcher && (
+          <div className="flex items-center gap-1 bg-slate-100 p-0.5 rounded-lg text-xs self-start md:self-auto shrink-0">
           <button
             onClick={() => setViewMode('list')}
             className={`flex items-center gap-1.5 px-3 py-1 rounded-md font-semibold transition-all ${
@@ -198,7 +199,8 @@ export default function MyTasksTab({
             <GitFork className="w-3.5 h-3.5" />
             <span>HIERARCHY</span>
           </button>
-        </div>
+          </div>
+        )}
       </div>
 
       {loading ? (
