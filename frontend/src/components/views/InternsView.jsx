@@ -29,7 +29,7 @@ const BATCH_GROUPS = [
 
 const ALL_SUBBATCHES = ['A1', 'A2', 'B1', 'B2', 'C1', 'C2', 'D1', 'D2'];
 
-export default function InternsView() {
+export default function InternsView({ cohorts = [], selectedCohortId = null }) {
   const [users, setUsers] = useState([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
@@ -134,7 +134,10 @@ export default function InternsView() {
         (u.batch && u.batch.toLowerCase().includes(q)) ||
         (u.subbatch && u.subbatch.toLowerCase().includes(q)) ||
         (u.user_code && u.user_code.toLowerCase().includes(q)) ||
-        (u.type && u.type.toLowerCase().includes(q));
+        (u.type && u.type.toLowerCase().includes(q)) ||
+        (u.cohort?.name && u.cohort.name.toLowerCase().includes(q)) ||
+        (u.cohort?.code && u.cohort.code.toLowerCase().includes(q)) ||
+        (u.cohort_name && u.cohort_name.toLowerCase().includes(q));
       if (!matches) return false;
     }
 
@@ -449,6 +452,8 @@ export default function InternsView() {
         isOpen={isAddModalOpen}
         onClose={() => setIsAddModalOpen(false)}
         onSuccess={handleCreatedSuccess}
+        defaultCohortId={selectedCohortId}
+        cohorts={cohorts}
       />
 
       <CredentialModal

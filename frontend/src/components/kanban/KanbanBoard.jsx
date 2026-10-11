@@ -5,7 +5,7 @@ import AddTaskModal from './AddTaskModal';
 import TaskDetailModal from './TaskDetailModal';
 import LogWorkModal from './LogWorkModal';
 import CompleteSprintModal from './CompleteSprintModal';
-import { Plus, Clock, Check, Loader2 } from 'lucide-react';
+import { Plus, Check, Loader2 } from 'lucide-react';
 import { 
   COLUMNS_CONFIG, 
   KANBAN_STATUSES, 
@@ -15,8 +15,10 @@ import { workItemsService } from '../../services/workItems.service';
 import { sprintsService } from '../../services/sprints.service';
 import { projectsService } from '../../services/projects.service';
 import { timesheetService } from '../../services/timesheet.service';
+import { useAuth } from '../../context/AuthContext';
 
 export default function KanbanBoard({ projectId, onToast }) {
+  const { user: authUser } = useAuth();
   const [loading, setLoading] = useState(true);
   const [workItems, setWorkItems] = useState([]);
   const [sprints, setSprints] = useState([]);
@@ -235,8 +237,13 @@ export default function KanbanBoard({ projectId, onToast }) {
       }
 
       if (selectedAssignee) {
-        const hasAssignee = task.assignees?.some(
-          (a) => a.id === selectedAssignee.id || a.user_id === selectedAssignee.id
+        const targetAssigneeId = selectedAssignee.user_id || selectedAssignee.id;
+        if (!targetAssigneeId) return false;
+        const hasAssignee = Boolean(
+          task.assignees?.some((a) => {
+            const aId = a.user_id || a.id;
+            return Boolean(aId) && aId === targetAssigneeId;
+          })
         );
         if (!hasAssignee) return false;
       }
@@ -268,8 +275,15 @@ export default function KanbanBoard({ projectId, onToast }) {
       }
 
       if (quickFilterMyTasks) {
-        // Filter tasks assigned to current user if identifiable
-        if (!task.assignees || task.assignees.length === 0) return false;
+        const currentUserId = authUser?.id || authUser?.user_id;
+        if (!currentUserId) return false;
+        const isAssigned = Boolean(
+          task.assignees?.some((a) => {
+            const aId = a.user_id || a.id;
+            return Boolean(aId) && aId === currentUserId;
+          })
+        );
+        if (!isAssigned) return false;
       }
 
       if (quickFilterOverdue) {
@@ -293,6 +307,7 @@ export default function KanbanBoard({ projectId, onToast }) {
     selectedSprint,
     activeSprint,
     quickFilterMyTasks,
+    authUser,
     quickFilterOverdue,
     quickFilterBlocked,
   ]);
@@ -368,9 +383,9 @@ export default function KanbanBoard({ projectId, onToast }) {
   }
 
   return (
-    <div className="space-y-3">
+    <div className="space-y-2.5">
       {/* KANBAN BOARD HEADER */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-white p-3 rounded-md border border-slate-200">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 bg-white px-3 py-2 sm:py-2.5 rounded-md border border-slate-200">
         <div>
           <div className="flex items-center gap-2">
             <h2 className="text-base font-bold text-slate-900 tracking-tight">
@@ -398,8 +413,6 @@ export default function KanbanBoard({ projectId, onToast }) {
             <span className="text-emerald-700 font-semibold">{completedCount} completed</span>
             <span>•</span>
             <span className="text-rose-700 font-semibold">{blockedCount} blocked</span>
-            <span>•</span>
-            <span>{hoursLoggedFormatted} logged</span>
             {totalStoryPoints > 0 && (
               <>
                 <span>•</span>
@@ -411,14 +424,6 @@ export default function KanbanBoard({ projectId, onToast }) {
 
         {/* Action Buttons */}
         <div className="flex items-center gap-2 self-start sm:self-auto">
-          <button
-            onClick={() => setIsLogWorkOpen(true)}
-            className="px-2.5 py-1.5 rounded-md border border-slate-200 text-xs font-medium text-slate-700 bg-white hover:bg-slate-50 transition-colors flex items-center gap-1.5 cursor-pointer"
-          >
-            <Clock className="w-3.5 h-3.5 text-slate-400" />
-            <span>Log Work</span>
-          </button>
-
           {activeSprint && (
             <button
               onClick={() => setIsCompleteSprintOpen(true)}

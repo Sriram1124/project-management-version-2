@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { 
   X, 
   User, 
@@ -11,19 +12,13 @@ import {
   CheckCircle2, 
   Clock, 
   Loader2, 
-  RefreshCw, 
-  Edit3 
+  Edit3,
+  BarChart3,
+  GraduationCap
 } from 'lucide-react';
-import { timesheetService } from '../../services/timesheet.service';
 import { usersService } from '../../services/users.service';
+import { cohortsService } from '../../services/cohorts.service';
 import { useAuth } from '../../context/AuthContext';
-
-const formatMinutes = (minutes = 0) => {
-  const total = Number(minutes) || 0;
-  return `${Math.floor(total / 60)}h ${total % 60}m`;
-};
-
-const today = () => new Date().toISOString().slice(0, 10);
 
 const BATCH_OPTIONS = ['A', 'B', 'C', 'D'];
 const SUBBATCH_OPTIONS = {
@@ -39,6 +34,7 @@ export default function UserDetailModal({
   onClose,
   onOpenResetPassword,
   onOpenDeactivate,
+  onOpenPerformanceReport,
   onSuccess
 }) {
   const { user: authUser } = useAuth();
@@ -46,20 +42,32 @@ export default function UserDetailModal({
 
   const [currentUser, setCurrentUser] = useState(user);
   const [isEditing, setIsEditing] = useState(false);
+  const [cohorts, setCohorts] = useState([]);
   const [formData, setFormData] = useState({
     name: '',
     batch: 'A',
     subbatch: 'A1',
+    cohort_id: '',
   });
   const [saving, setSaving] = useState(false);
   const [editError, setEditError] = useState('');
   const [successMsg, setSuccessMsg] = useState('');
 
-  const [reportPeriod, setReportPeriod] = useState('day');
-  const [reportDate, setReportDate] = useState(today());
-  const [report, setReport] = useState(null);
-  const [reportLoading, setReportLoading] = useState(false);
-  const [reportError, setReportError] = useState('');
+  const navigate = useNavigate();
+
+  // Load cohorts when modal opens
+  useEffect(() => {
+    if (isOpen) {
+      cohortsService.getCohorts()
+        .then((res) => {
+          const list = Array.isArray(res) ? res : (res?.cohorts || []);
+          setCohorts(list);
+        })
+        .catch((err) => {
+          console.error('Failed to load cohorts:', err);
+        });
+    }
+  }, [isOpen]);
 
   // Sync internal user state when user prop changes
   useEffect(() => {
@@ -68,28 +76,6 @@ export default function UserDetailModal({
     setEditError('');
     setSuccessMsg('');
   }, [user, isOpen]);
-
-  const loadReport = async () => {
-    if (!currentUser?.id) return;
-    try {
-      setReportLoading(true);
-      setReportError('');
-      const response = await timesheetService.getUserReport(currentUser.id, {
-        period: reportPeriod,
-        date: reportDate,
-      });
-      setReport(response.report || null);
-    } catch (error) {
-      setReport(null);
-      setReportError(error.message || 'Unable to load timesheet report.');
-    } finally {
-      setReportLoading(false);
-    }
-  };
-
-  useEffect(() => {
-    if (isOpen && currentUser?.id && !isEditing) loadReport();
-  }, [isOpen, currentUser?.id, reportPeriod, reportDate, isEditing]);
 
   if (!isOpen || !currentUser) return null;
 
@@ -108,6 +94,7 @@ export default function UserDetailModal({
       name: currentUser.name || '',
       batch: initialBatch,
       subbatch: initialSubbatch,
+      cohort_id: currentUser.cohort_id || currentUser.cohort?.id || '',
     });
     setEditError('');
     setSuccessMsg('');
@@ -145,13 +132,17 @@ export default function UserDetailModal({
         name: formData.name.trim(),
         batch: formData.batch,
         subbatch: formData.subbatch,
+        cohort_id: formData.cohort_id || null,
       });
 
+      const selectedCohortObj = cohorts.find((c) => c.id === formData.cohort_id) || null;
       const updated = response?.user || {
         ...currentUser,
         name: formData.name.trim(),
         batch: formData.batch,
         subbatch: formData.subbatch,
+        cohort_id: formData.cohort_id || null,
+        cohort: selectedCohortObj,
         updated_at: new Date().toISOString(),
       };
 
@@ -178,43 +169,62 @@ export default function UserDetailModal({
     onClose();
   };
 
-  const totals = report?.totals || {};
+  const handlePerformanceReport = () => {
+    handleClose();
+    if (onOpenPerformanceReport) {
+      onOpenPerformanceReport(currentUser);
+    } else {
+      navigate('/manager/reports');
+    }
+  };
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs">
-      <div className="bg-white rounded-2xl border border-slate-200 shadow-2xl max-w-3xl w-full max-h-[92vh] overflow-y-auto animate-in fade-in zoom-in-95 duration-200">
+      <div className="bg-white rounded-2xl border border-slate-200 shadow-2xl max-w-xl w-full max-h-[90vh] overflow-y-auto animate-in fade-in zoom-in-95 duration-200">
         
         {/* Header */}
-        <div className="p-5 border-b border-slate-100 flex items-center justify-between bg-slate-50/50">
-          <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-xl bg-purple-100 text-purple-700 flex items-center justify-center font-bold text-sm shadow-xs">
+        <div className="p-5 border-b border-slate-100 flex items-center justify-between gap-4 bg-slate-50/50">
+          <div className="flex items-center gap-3 min-w-0">
+            <div className="w-10 h-10 rounded-xl bg-purple-100 text-purple-700 flex items-center justify-center font-bold text-sm shadow-xs shrink-0">
               {(currentUser.name || currentUser.email || 'U').charAt(0).toUpperCase()}
             </div>
-            <div>
-              <h2 className="text-base font-bold text-slate-900 tracking-tight">
+            <div className="min-w-0">
+              <h2 className="text-base font-bold text-slate-900 tracking-tight truncate">
                 {isEditing ? 'Edit Member Details' : 'Member Details'}
               </h2>
-              <p className="text-xs text-slate-500 mt-0.5">
+              <p className="text-xs text-slate-500 mt-0.5 truncate">
                 {isEditing ? 'Update profile information and batch allocation' : 'Account profile & security status'}
               </p>
             </div>
           </div>
           
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 shrink-0">
+            {!isEditing && (
+              <button
+                type="button"
+                onClick={handlePerformanceReport}
+                className="px-3 py-1.5 rounded-lg border border-purple-200 hover:bg-purple-50 text-purple-700 font-semibold text-xs flex items-center gap-1.5 transition-colors shadow-2xs cursor-pointer whitespace-nowrap"
+                title="View Performance Report"
+              >
+                <BarChart3 className="w-3.5 h-3.5 text-purple-600 shrink-0" />
+                <span>Performance Report</span>
+              </button>
+            )}
             {canEdit && !isEditing && (
               <button
                 type="button"
                 onClick={handleStartEdit}
-                className="px-3 py-1.5 rounded-lg border border-purple-200 hover:bg-purple-50 text-purple-700 font-semibold text-xs flex items-center gap-1.5 transition-colors shadow-2xs cursor-pointer"
+                className="px-3 py-1.5 rounded-lg border border-purple-200 hover:bg-purple-50 text-purple-700 font-semibold text-xs flex items-center gap-1.5 transition-colors shadow-2xs cursor-pointer whitespace-nowrap"
               >
-                <Edit3 className="w-3.5 h-3.5 text-purple-600" />
+                <Edit3 className="w-3.5 h-3.5 text-purple-600 shrink-0" />
                 <span>Edit Details</span>
               </button>
             )}
             <button
               type="button"
               onClick={handleClose}
-              className="w-8 h-8 rounded-lg text-slate-400 hover:text-slate-600 hover:bg-slate-100 flex items-center justify-center transition-colors cursor-pointer"
+              className="w-8 h-8 rounded-lg text-slate-400 hover:text-slate-600 hover:bg-slate-100 flex items-center justify-center transition-colors cursor-pointer shrink-0"
+              title="Close"
             >
               <X className="w-4 h-4" />
             </button>
@@ -265,6 +275,24 @@ export default function UserDetailModal({
                   required
                   className="w-full px-3 py-2 text-xs rounded-lg border border-slate-200 text-slate-900 font-medium focus:outline-none focus:border-purple-600 focus:ring-1 focus:ring-purple-600 shadow-2xs"
                 />
+              </div>
+
+              <div className="space-y-1">
+                <label className="block text-slate-700 font-bold text-xs">
+                  Cohort
+                </label>
+                <select
+                  value={formData.cohort_id}
+                  onChange={(e) => setFormData((prev) => ({ ...prev, cohort_id: e.target.value }))}
+                  className="w-full px-3 py-2 text-xs rounded-lg border border-slate-200 text-slate-900 font-medium bg-white focus:outline-none focus:border-purple-600 focus:ring-1 focus:ring-purple-600 shadow-2xs cursor-pointer"
+                >
+                  <option value="">-- No Cohort Assigned --</option>
+                  {cohorts.map((c) => (
+                    <option key={c.id} value={c.id}>
+                      {c.name}
+                    </option>
+                  ))}
+                </select>
               </div>
 
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
@@ -347,6 +375,20 @@ export default function UserDetailModal({
 
                 <div className="py-2.5 flex items-center justify-between">
                   <span className="text-slate-500 font-medium flex items-center gap-1.5">
+                    <GraduationCap className="w-3.5 h-3.5 text-slate-400" />
+                    Cohort
+                  </span>
+                  {currentUser.cohort?.name || currentUser.cohort_name ? (
+                    <span className="font-semibold text-xs text-slate-800">
+                      {currentUser.cohort?.name || currentUser.cohort_name}
+                    </span>
+                  ) : (
+                    <span className="text-slate-400 font-medium text-xs">Not assigned</span>
+                  )}
+                </div>
+
+                <div className="py-2.5 flex items-center justify-between">
+                  <span className="text-slate-500 font-medium flex items-center gap-1.5">
                     <Layers className="w-3.5 h-3.5 text-slate-400" />
                     Batch / Subbatch
                   </span>
@@ -409,57 +451,6 @@ export default function UserDetailModal({
                   </div>
                 )}
               </div>
-
-              {/* Timesheet / Work Report */}
-              <section className="mt-5 rounded-xl border border-violet-100 bg-violet-50/30 p-4 text-xs">
-                <div className="flex flex-wrap items-center justify-between gap-3">
-                  <div>
-                    <h3 className="flex items-center gap-2 text-sm font-bold text-slate-900"><Clock className="h-4 w-4 text-violet-600" /> Timesheet / Work Report</h3>
-                    <p className="mt-1 text-[11px] text-slate-500">Backend-recorded attendance and task time for this member.</p>
-                  </div>
-                  <div className="flex items-center gap-1 rounded-lg border border-violet-100 bg-white p-1">
-                    {['day', 'week', 'month'].map((period) => (
-                      <button key={period} type="button" onClick={() => setReportPeriod(period)} className={`rounded-md px-2.5 py-1 text-[11px] font-bold capitalize ${reportPeriod === period ? 'bg-violet-600 text-white' : 'text-slate-500 hover:bg-violet-50'}`}>
-                        {period}
-                      </button>
-                    ))}
-                    <input type="date" value={reportDate} onChange={(event) => setReportDate(event.target.value)} className="ml-1 rounded-md border border-slate-200 px-2 py-1 text-[11px] text-slate-600" />
-                    <button type="button" onClick={loadReport} disabled={reportLoading} title="Refresh timesheet" className="rounded-md p-1.5 text-slate-500 hover:bg-violet-50 hover:text-violet-700 disabled:opacity-50"><RefreshCw className={`h-3.5 w-3.5 ${reportLoading ? 'animate-spin' : ''}`} /></button>
-                  </div>
-                </div>
-
-                {reportLoading ? (
-                  <div className="flex items-center justify-center gap-2 py-8 text-slate-500"><Loader2 className="h-4 w-4 animate-spin text-violet-600" /> Loading report...</div>
-                ) : reportError ? (
-                  <div className="mt-3 flex items-center justify-between rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-rose-700"><span>{reportError}</span><button type="button" onClick={loadReport} title="Retry" className="rounded p-1 hover:bg-rose-100"><RefreshCw className="h-3.5 w-3.5" /></button></div>
-                ) : (
-                  <>
-                    <div className="mt-4 grid grid-cols-2 gap-2 sm:grid-cols-5">
-                      {[
-                        ['Gross', totals.gross_office_minutes],
-                        ['Break', totals.break_minutes],
-                        ['Net work', totals.net_working_minutes],
-                        ['Task time', totals.task_minutes],
-                        ['Unallocated', totals.unallocated_minutes],
-                      ].map(([label, value]) => <div key={label} className="rounded-lg border border-white bg-white p-2.5"><div className="text-[10px] font-semibold text-slate-400">{label}</div><div className="mt-1 font-bold text-slate-800">{formatMinutes(value)}</div></div>)}
-                    </div>
-
-                    <div className="mt-4 overflow-x-auto rounded-lg border border-slate-200 bg-white">
-                      <table className="w-full min-w-[560px] text-left text-[11px]"><thead className="bg-slate-50 text-[10px] uppercase tracking-wide text-slate-500"><tr><th className="px-3 py-2">Date</th><th className="px-3 py-2">Attendance</th><th className="px-3 py-2">Net Work</th><th className="px-3 py-2">Task Time</th><th className="px-3 py-2">Unallocated</th></tr></thead><tbody className="divide-y divide-slate-100">{report?.days?.length ? report.days.map((day) => <tr key={day.date}><td className="px-3 py-2 font-semibold text-slate-700">{day.date}</td><td className="px-3 py-2 text-slate-600">{formatMinutes(day.attendance_minutes)}</td><td className="px-3 py-2 text-slate-600">{formatMinutes(day.net_working_minutes)}</td><td className="px-3 py-2 text-slate-600">{formatMinutes(day.task_minutes)}</td><td className="px-3 py-2 text-slate-600">{formatMinutes(day.unallocated_minutes)}</td></tr>) : <tr><td colSpan="5" className="px-3 py-5 text-center text-slate-400">No recorded work for this period.</td></tr>}</tbody></table>
-                    </div>
-
-                    <div className="mt-4 overflow-x-auto rounded-lg border border-slate-200 bg-white">
-                      <table className="w-full min-w-[860px] text-left text-[11px]"><thead className="bg-slate-50 text-[10px] uppercase tracking-wide text-slate-500"><tr><th className="px-3 py-2">Task</th><th className="px-3 py-2">Project</th><th className="px-3 py-2">Assigned</th><th className="px-3 py-2">Completed</th><th className="px-3 py-2">Lifecycle</th><th className="px-3 py-2">Actual Work</th><th className="px-3 py-2">Status</th></tr></thead><tbody className="divide-y divide-slate-100">{report?.task_breakdown?.length ? report.task_breakdown.map((task) => <tr key={task.task_id}><td className="px-3 py-2 font-semibold text-slate-700">{task.task_title}</td><td className="px-3 py-2 text-slate-600">{task.project_name || 'Personal'}</td><td className="px-3 py-2 text-slate-600">{task.assigned_at ? new Date(task.assigned_at).toLocaleString([], { dateStyle: 'short', timeStyle: 'short' }) : '—'}</td><td className="px-3 py-2 text-slate-600">{task.completed_at ? new Date(task.completed_at).toLocaleString([], { dateStyle: 'short', timeStyle: 'short' }) : 'In Progress'}</td><td className="px-3 py-2 font-semibold text-violet-700">{formatMinutes(task.lifecycle_minutes)}</td><td className="px-3 py-2 font-semibold text-emerald-700">{formatMinutes(task.actual_work_minutes ?? task.minutes)}</td><td className="px-3 py-2 text-slate-600">{task.status || '—'}</td></tr>) : <tr><td colSpan="7" className="px-3 py-5 text-center text-slate-400">No tasks assigned in this period.</td></tr>}</tbody></table>
-                    </div>
-
-                    <div className="mt-4 overflow-x-auto rounded-lg border border-slate-200 bg-white">
-                      <table className="w-full min-w-[680px] text-left text-[11px]"><thead className="bg-slate-50 text-[10px] uppercase tracking-wide text-slate-500"><tr><th className="px-3 py-2">Recorded Work</th><th className="px-3 py-2">Date</th><th className="px-3 py-2">Start</th><th className="px-3 py-2">End</th><th className="px-3 py-2">Duration</th></tr></thead><tbody className="divide-y divide-slate-100">{report?.time_entries?.length ? report.time_entries.map((entry) => <tr key={entry.id}><td className="px-3 py-2 font-semibold text-slate-700">{entry.task_title}</td><td className="px-3 py-2 text-slate-600">{new Date(entry.date).toLocaleDateString()}</td><td className="px-3 py-2 text-slate-600">{new Date(entry.start_time).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</td><td className="px-3 py-2 text-slate-600">{new Date(entry.end_time).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</td><td className="px-3 py-2 text-slate-600">{formatMinutes(entry.duration_minutes)}</td></tr>) : <tr><td colSpan="5" className="px-3 py-5 text-center text-slate-400">No TimeEntries recorded for this period.</td></tr>}</tbody></table>
-                    </div>
-
-                    <div className="mt-4 rounded-lg border border-slate-200 bg-white p-3"><div className="mb-2 text-[10px] font-bold uppercase tracking-wide text-slate-500">Task timeline</div>{report?.timeline?.length ? <div className="space-y-2">{report.timeline.map((event, index) => <div key={`${event.type}-${event.task_id}-${event.timestamp}-${index}`} className="flex items-start gap-2 text-[11px]"><span className="mt-1 h-1.5 w-1.5 shrink-0 rounded-full bg-violet-500" /><div><span className="font-semibold text-slate-700">{event.type.replaceAll('_', ' ')}</span><span className="text-slate-500"> · {event.task_title}</span><span className="ml-2 text-slate-400">{new Date(event.timestamp).toLocaleString()}</span></div></div>)}</div> : <div className="text-[11px] text-slate-400">No task lifecycle events recorded for this period.</div>}</div>
-                  </>
-                )}
-              </section>
             </>
           )}
         </div>

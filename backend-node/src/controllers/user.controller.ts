@@ -31,13 +31,16 @@ export class UserController {
         return;
       }
 
-      const { name, email, type } = req.body;
+      const { name, email, type, batch, subbatch, cohort_id } = req.body;
 
       const result = await UserService.createUser({
         name,
         email,
         type,
         managerOrgId,
+        batch,
+        subbatch,
+        cohort_id,
       });
 
       res.status(201).json(result);
@@ -87,6 +90,29 @@ export class UserController {
       res.status(200).json(validation);
     } catch (error: any) {
       res.status(500).json({ error: error.message || 'Failed to validate CSV' });
+    }
+  }
+
+  /**
+   * GET /api/users/bulk/template
+   * Returns schema-aware CSV template for bulk user provisioning
+   */
+  static async getTemplate(req: Request, res: Response): Promise<void> {
+    try {
+      const fullUser = (req as any).fullUser;
+      const managerOrgId = fullUser?.organization_id;
+
+      if (!managerOrgId) {
+        res.status(403).json({ error: 'Manager organization context required' });
+        return;
+      }
+
+      const templateCsv = await UserService.generateBulkCsvTemplate(managerOrgId);
+      res.setHeader('Content-Type', 'text/csv');
+      res.setHeader('Content-Disposition', 'attachment; filename="members_import_template.csv"');
+      res.status(200).send(templateCsv);
+    } catch (error: any) {
+      res.status(500).json({ error: error.message || 'Failed to generate template' });
     }
   }
 
@@ -143,6 +169,7 @@ export class UserController {
       const result = await UserService.createUsersBulk(rowsToCreate, managerOrgId);
       res.status(201).json(result);
     } catch (error: any) {
+      console.error('createBulk error occurred:', error);
       const statusCode =
         error.statusCode ||
         (error.message?.includes('already exist') ||
@@ -277,20 +304,20 @@ export class UserController {
         req.body.password_hash !== undefined ||
         req.body.email !== undefined ||
         req.body.role !== undefined ||
-        req.body.roles !== undefined ||
-        req.body.cohort_id !== undefined
+        req.body.roles !== undefined
       ) {
-        res.status(400).json({ error: 'Security violation: Only name, batch, and subbatch may be updated' });
+        res.status(400).json({ error: 'Security violation: Only name, batch, subbatch, and cohort_id may be updated' });
         return;
       }
 
       const targetUserId = req.params.id;
-      const { name, batch, subbatch } = req.body;
+      const { name, batch, subbatch, cohort_id } = req.body;
 
       const updatedUser = await UserService.updateMember(managerOrgId, targetUserId, {
         name,
         batch,
         subbatch,
+        cohort_id,
       });
 
       res.status(200).json({

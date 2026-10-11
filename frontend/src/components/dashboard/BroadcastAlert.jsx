@@ -476,61 +476,87 @@ export default function BroadcastAlert({
             </p>
           </div>
         ) : (
-          <div className="max-h-44 overflow-y-auto rounded-lg border border-slate-200/90 divide-y divide-slate-100 bg-white">
-            {filteredUsers.map((user) => {
-              const isSelected = selectedIds.has(user.id);
-              const overdueData = internOverdueMap.get(user.id);
-              const overdueCount = overdueData?.count || 0;
+          <div className="rounded-lg border border-slate-200/90 overflow-hidden bg-white">
+            {/* Column Header */}
+            <div className="bg-slate-50/80 px-3 py-1.5 border-b border-slate-200 text-[10px] font-bold uppercase tracking-wider text-slate-500 grid grid-cols-12 gap-2 items-center select-none">
+              <div className="col-span-1 flex items-center">
+                <span className="sr-only">Select</span>
+              </div>
+              <div className="col-span-4">Name</div>
+              <div className="col-span-2 text-center">Batch</div>
+              <div className="col-span-3">Email</div>
+              <div className="col-span-2 text-right">Status</div>
+            </div>
 
-              return (
-                <div
-                  key={user.id}
-                  onClick={() => handleToggle(user.id)}
-                  className={`flex items-center gap-2.5 px-2.5 py-1.5 text-xs hover:bg-slate-50 transition-colors cursor-pointer select-none ${
-                    isSelected ? 'bg-purple-50/30' : ''
-                  }`}
-                >
-                  <input
-                    type="checkbox"
-                    checked={isSelected}
-                    onChange={() => handleToggle(user.id)}
-                    onClick={(e) => e.stopPropagation()}
-                    className="w-3.5 h-3.5 rounded text-purple-600 focus:ring-purple-500 cursor-pointer shrink-0"
-                  />
+            {/* Scrollable list items */}
+            <div className="max-h-48 overflow-y-auto divide-y divide-slate-100">
+              {filteredUsers.map((user) => {
+                const isSelected = selectedIds.has(user.id);
+                const overdueData = internOverdueMap.get(user.id);
+                const overdueCount = overdueData?.count || 0;
 
-                  <div className={`w-5 h-5 rounded-full flex items-center justify-center font-bold text-[10px] shrink-0 ${
-                    overdueCount > 0 ? 'bg-rose-100 text-rose-700' : 'bg-purple-100 text-purple-700'
-                  }`}>
-                    {(user.name || user.email || 'I').charAt(0).toUpperCase()}
+                return (
+                  <div
+                    key={user.id}
+                    onClick={() => handleToggle(user.id)}
+                    className={`grid grid-cols-12 gap-2 items-center px-3 py-2 text-xs hover:bg-slate-50 transition-colors cursor-pointer select-none ${
+                      isSelected ? 'bg-purple-50/30' : ''
+                    }`}
+                  >
+                    {/* Col 1: Checkbox & Avatar */}
+                    <div className="col-span-1 flex items-center gap-2">
+                      <input
+                        type="checkbox"
+                        checked={isSelected}
+                        onChange={() => handleToggle(user.id)}
+                        onClick={(e) => e.stopPropagation()}
+                        className="w-3.5 h-3.5 rounded text-purple-600 focus:ring-purple-500 cursor-pointer shrink-0"
+                      />
+                      <div className={`w-5 h-5 rounded-full flex items-center justify-center font-bold text-[10px] shrink-0 ${
+                        overdueCount > 0 ? 'bg-rose-100 text-rose-700' : 'bg-purple-100 text-purple-700'
+                      }`}>
+                        {(user.name || user.email || 'I').charAt(0).toUpperCase()}
+                      </div>
+                    </div>
+
+                    {/* Col 2: Name */}
+                    <div className="col-span-4 min-w-0 pr-1">
+                      <span className="font-semibold text-slate-900 truncate block text-xs" title={user.name || 'Intern'}>
+                        {user.name || 'Intern'}
+                      </span>
+                    </div>
+
+                    {/* Col 3: Batch / Subbatch Badge */}
+                    <div className="col-span-2 flex items-center justify-center">
+                      <span className="text-[10px] font-bold px-2 py-0.5 rounded bg-purple-50 text-purple-700 border border-purple-200/70 font-mono tracking-tight whitespace-nowrap">
+                        {user.batch || '—'} · {user.subbatch || '—'}
+                      </span>
+                    </div>
+
+                    {/* Col 4: Email */}
+                    <div className="col-span-3 min-w-0 pr-1">
+                      <span className="text-[11px] text-slate-500 truncate block" title={user.email}>
+                        {user.email}
+                      </span>
+                    </div>
+
+                    {/* Col 5: Status / Overdue Badge */}
+                    <div className="col-span-2 flex items-center justify-end">
+                      {overdueCount > 0 ? (
+                        <span className="px-1.5 py-0.5 rounded text-[9px] font-bold bg-rose-50 text-rose-700 border border-rose-200 flex items-center gap-1 whitespace-nowrap">
+                          <Clock className="w-2.5 h-2.5 shrink-0" />
+                          <span>{overdueCount} Overdue</span>
+                        </span>
+                      ) : (
+                        <span className="px-2 py-0.5 rounded text-[9px] font-bold bg-slate-50 text-slate-600 border border-slate-200 whitespace-nowrap">
+                          Active
+                        </span>
+                      )}
+                    </div>
                   </div>
-
-                  <div className="flex items-center gap-1.5 min-w-0 flex-1 truncate">
-                    <span className="font-semibold text-slate-900 truncate">
-                      {user.name || 'Intern'}
-                    </span>
-                    <span className="text-slate-300 shrink-0">·</span>
-                    <span className="text-[10px] font-bold px-1.5 py-0.2 rounded shrink-0 bg-purple-50 text-purple-700 border border-purple-200/70 font-mono">
-                      {user.batch || '—'} · {user.subbatch || '—'}
-                    </span>
-                    <span className="text-slate-300 shrink-0">·</span>
-                    <span className="text-[11px] text-slate-500 truncate">
-                      {user.email}
-                    </span>
-                  </div>
-
-                  {overdueCount > 0 ? (
-                    <span className="px-1.5 py-0.5 rounded text-[9px] font-bold shrink-0 bg-rose-50 text-rose-700 border border-rose-200 flex items-center gap-1">
-                      <Clock className="w-2.5 h-2.5" />
-                      <span>{overdueCount} Overdue Task{overdueCount > 1 ? 's' : ''}</span>
-                    </span>
-                  ) : (
-                    <span className="px-1.5 py-0.2 rounded text-[9px] font-bold shrink-0 bg-purple-50 text-purple-700 border border-purple-200">
-                      Intern
-                    </span>
-                  )}
-                </div>
-              );
-            })}
+                );
+              })}
+            </div>
           </div>
         )}
       </div>

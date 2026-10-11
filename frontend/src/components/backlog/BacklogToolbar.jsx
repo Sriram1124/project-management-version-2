@@ -41,19 +41,27 @@ export default function BacklogToolbar({
   allExpanded = false,
 }) {
   const [openDropdown, setOpenDropdown] = useState(null);
+  const [assigneeSearchQuery, setAssigneeSearchQuery] = useState('');
   const toolbarRef = useRef(null);
 
   const priorities = ['All Priorities', 'URGENT', 'HIGH', 'MEDIUM', 'LOW'];
   const statuses = ['All Statuses', 'TODO', 'IN_PROGRESS', 'IN_REVIEW', 'BLOCKED', 'COMPLETED'];
 
   const toggleDropdown = (name) => {
-    setOpenDropdown((prev) => (prev === name ? null : name));
+    setOpenDropdown((prev) => {
+      const next = prev === name ? null : name;
+      if (next !== 'assignee') {
+        setAssigneeSearchQuery('');
+      }
+      return next;
+    });
   };
 
   useEffect(() => {
     const handleClickOutside = (e) => {
       if (toolbarRef.current && !toolbarRef.current.contains(e.target)) {
         setOpenDropdown(null);
+        setAssigneeSearchQuery('');
       }
     };
     document.addEventListener('mousedown', handleClickOutside);
@@ -83,7 +91,6 @@ export default function BacklogToolbar({
             Project Backlog &amp; Epics
           </h2>
           <span className="hidden sm:inline-block text-[11px] text-slate-400 font-normal">
-            Jira-style work breakdown &amp; sprint planning
           </span>
         </div>
 
@@ -173,7 +180,11 @@ export default function BacklogToolbar({
             >
               <span className="text-slate-400 font-normal">View:</span>
               <span className="font-semibold text-purple-700">
-                {groupBy === 'sprint' ? 'Sprint Groups' : groupBy === 'epic' ? 'Hierarchy Tree' : 'Flat List'}
+                {groupBy === 'none'
+                  ? 'Stories & Tasks'
+                  : groupBy === 'sprint'
+                  ? 'Sprint Groups'
+                  : 'Backlog'}
               </span>
               <ChevronDown className="w-3.5 h-3.5 text-slate-400" />
             </button>
@@ -181,9 +192,9 @@ export default function BacklogToolbar({
             {openDropdown === 'groupby' && (
               <div className="absolute right-0 mt-1 w-44 bg-white rounded-md shadow-lg border border-slate-200 py-1 z-30">
                 {[
-                  { id: 'epic', label: 'Hierarchy Tree' },
+                  { id: 'none', label: 'Stories & Tasks (Flat)' },
                   { id: 'sprint', label: 'Sprint Groups' },
-                  { id: 'none', label: 'Flat List' },
+                  { id: 'epic', label: 'Backlog' },
                 ].map((mode) => (
                   <button
                     key={mode.id}
@@ -231,46 +242,97 @@ export default function BacklogToolbar({
             </button>
 
             {openDropdown === 'assignee' && (
-              <div className="absolute left-0 mt-1 w-52 bg-white rounded-md shadow-lg border border-slate-200 py-1 z-30 max-h-56 overflow-y-auto">
-                <button
-                  type="button"
-                  onClick={() => {
-                    onSelectAssignee?.(null);
-                    setOpenDropdown(null);
-                  }}
-                  className={`w-full text-left px-3 py-1.5 text-xs hover:bg-slate-50 transition-colors flex items-center justify-between ${
-                    !selectedAssignee ? 'text-purple-700 font-semibold bg-purple-50/40' : 'text-slate-700'
-                  }`}
-                >
-                  <span>All Assignees</span>
-                  {!selectedAssignee && <Check className="w-3 h-3 text-purple-600" />}
-                </button>
+              <div className="absolute left-0 mt-1 w-56 sm:w-64 bg-white rounded-md shadow-lg border border-slate-200 py-1.5 z-30 flex flex-col">
+                {/* Search Bar Input inside Assignee Dropdown */}
+                <div className="px-2 pb-1.5 pt-0.5 border-b border-slate-100">
+                  <div className="relative">
+                    <Search className="w-3.5 h-3.5 text-slate-400 absolute left-2 top-1/2 -translate-y-1/2 pointer-events-none" />
+                    <input
+                      type="text"
+                      value={assigneeSearchQuery}
+                      onChange={(e) => setAssigneeSearchQuery(e.target.value)}
+                      placeholder="Search assignees..."
+                      className="w-full pl-7 pr-6 py-1 text-xs rounded-md border border-slate-200 bg-slate-50 focus:bg-white focus:outline-none focus:ring-1 focus:ring-purple-600 focus:border-purple-600 transition-colors placeholder:text-slate-400"
+                      autoFocus
+                    />
+                    {assigneeSearchQuery && (
+                      <button
+                        type="button"
+                        onClick={() => setAssigneeSearchQuery('')}
+                        className="absolute right-1.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 p-0.5"
+                      >
+                        <X className="w-3 h-3" />
+                      </button>
+                    )}
+                  </div>
+                </div>
 
-                {members.map((member) => {
-                  const uid = member.user_id || member.id;
-                  const name = member.user?.name || member.name || 'Member';
-                  const avatar = member.user?.avatar || member.avatar || `https://ui-avatars.com/api/?name=${encodeURIComponent(name)}&background=7C3AED&color=fff`;
-                  const isSelected = selectedAssignee?.id === uid || selectedAssignee?.user_id === uid;
-                  return (
+                {/* Scrollable list of Assignees */}
+                <div className="max-h-60 overflow-y-auto divide-y divide-slate-50 pt-1">
+                  {!assigneeSearchQuery.trim() && (
                     <button
-                      key={uid}
                       type="button"
                       onClick={() => {
-                        onSelectAssignee?.({ id: uid, user_id: uid, name, avatar });
+                        onSelectAssignee?.(null);
                         setOpenDropdown(null);
+                        setAssigneeSearchQuery('');
                       }}
-                      className={`w-full text-left px-3 py-1.5 text-xs hover:bg-slate-50 transition-colors flex items-center justify-between ${
-                        isSelected ? 'text-purple-700 font-semibold bg-purple-50/40' : 'text-slate-700'
+                      className={`w-full text-left px-3 py-1.5 text-xs hover:bg-slate-50 transition-colors flex items-center justify-between cursor-pointer ${
+                        !selectedAssignee ? 'text-purple-700 font-semibold bg-purple-50/40' : 'text-slate-700'
                       }`}
                     >
-                      <div className="flex items-center gap-2 truncate">
-                        <img src={avatar} alt={name} className="w-4 h-4 rounded-full object-cover shrink-0" />
-                        <span className="truncate">{name}</span>
-                      </div>
-                      {isSelected && <Check className="w-3 h-3 text-purple-600" />}
+                      <span>All Assignees</span>
+                      {!selectedAssignee && <Check className="w-3 h-3 text-purple-600" />}
                     </button>
-                  );
-                })}
+                  )}
+
+                  {members.filter((m) => {
+                    if (!assigneeSearchQuery.trim()) return true;
+                    const q = assigneeSearchQuery.toLowerCase().trim();
+                    const name = (m.user?.name || m.name || '').toLowerCase();
+                    const email = (m.user?.email || m.email || '').toLowerCase();
+                    return name.includes(q) || email.includes(q);
+                  }).length > 0 ? (
+                    members
+                      .filter((m) => {
+                        if (!assigneeSearchQuery.trim()) return true;
+                        const q = assigneeSearchQuery.toLowerCase().trim();
+                        const name = (m.user?.name || m.name || '').toLowerCase();
+                        const email = (m.user?.email || m.email || '').toLowerCase();
+                        return name.includes(q) || email.includes(q);
+                      })
+                      .map((member) => {
+                        const uid = member.user_id || member.id;
+                        const name = member.user?.name || member.name || 'Member';
+                        const avatar = member.user?.avatar || member.avatar || `https://ui-avatars.com/api/?name=${encodeURIComponent(name)}&background=7C3AED&color=fff`;
+                        const isSelected = selectedAssignee?.id === uid || selectedAssignee?.user_id === uid;
+                        return (
+                          <button
+                            key={uid}
+                            type="button"
+                            onClick={() => {
+                              onSelectAssignee?.({ id: uid, user_id: uid, name, avatar });
+                              setOpenDropdown(null);
+                              setAssigneeSearchQuery('');
+                            }}
+                            className={`w-full text-left px-3 py-1.5 text-xs hover:bg-slate-50 transition-colors flex items-center justify-between cursor-pointer ${
+                              isSelected ? 'text-purple-700 font-semibold bg-purple-50/40' : 'text-slate-700'
+                            }`}
+                          >
+                            <div className="flex items-center gap-2 truncate">
+                              <img src={avatar} alt={name} className="w-4 h-4 rounded-full object-cover shrink-0" />
+                              <span className="truncate">{name}</span>
+                            </div>
+                            {isSelected && <Check className="w-3 h-3 text-purple-600" />}
+                          </button>
+                        );
+                      })
+                  ) : (
+                    <div className="px-3 py-3 text-center text-xs text-slate-400 italic">
+                      No assignees found
+                    </div>
+                  )}
+                </div>
               </div>
             )}
           </div>

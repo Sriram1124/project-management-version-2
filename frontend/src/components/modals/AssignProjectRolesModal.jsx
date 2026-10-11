@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useMemo } from 'react';
+import { createPortal } from 'react-dom';
 import { X, Search, ShieldCheck, Loader2, Users, AlertCircle, Check } from 'lucide-react';
 import { projectsService } from '../../services/projects.service';
 
@@ -54,13 +55,22 @@ export default function AssignProjectRolesModal({
 
   const filteredMembers = useMemo(() => {
     const q = searchQuery.trim().toLowerCase();
-    if (!q) return members;
-    return members.filter((m) => {
+    const list = q ? members.filter((m) => {
       const name = (m.name || m.user?.name || '').toLowerCase();
       const email = (m.email || m.user?.email || '').toLowerCase();
       return name.includes(q) || email.includes(q);
+    }) : [...members];
+
+    return list.sort((a, b) => {
+      const aIsLead = (roleMap[a.user_id] || a.project_role || a.role) === 'TECH_LEAD';
+      const bIsLead = (roleMap[b.user_id] || b.project_role || b.role) === 'TECH_LEAD';
+      if (aIsLead && !bIsLead) return -1;
+      if (!aIsLead && bIsLead) return 1;
+      const nameA = a.name || a.user?.name || a.email || '';
+      const nameB = b.name || b.user?.name || b.email || '';
+      return nameA.localeCompare(nameB, undefined, { sensitivity: 'base' });
     });
-  }, [members, searchQuery]);
+  }, [members, searchQuery, roleMap]);
 
   if (!isOpen) return null;
 
@@ -99,9 +109,15 @@ export default function AssignProjectRolesModal({
     }
   };
 
-  return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs">
-      <div className="bg-white rounded-2xl border border-slate-200 shadow-2xl max-w-2xl w-full overflow-hidden flex flex-col max-h-[90vh] animate-in fade-in zoom-in-95 duration-200">
+  const modalContent = (
+    <div 
+      className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs"
+      onClick={onClose}
+    >
+      <div 
+        className="bg-white rounded-2xl border border-slate-200 shadow-2xl max-w-2xl w-full overflow-hidden flex flex-col max-h-[90vh] animate-in fade-in zoom-in-95 duration-200"
+        onClick={(e) => e.stopPropagation()}
+      >
         
         {/* Header */}
         <div className="p-5 border-b border-slate-100 flex items-center justify-between bg-slate-50/60 shrink-0">
@@ -275,5 +291,7 @@ export default function AssignProjectRolesModal({
       </div>
     </div>
   );
+
+  return typeof document !== 'undefined' ? createPortal(modalContent, document.body) : modalContent;
 }
 

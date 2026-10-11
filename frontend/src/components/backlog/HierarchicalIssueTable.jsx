@@ -143,6 +143,149 @@ export function StatusBadge({ status }) {
 }
 
 /**
+ * Derives a read-only sprint summary for parent epics based on descendant work items.
+ * Rules:
+ * - All assigned descendants belong to one sprint: Show sprint name and count (e.g., "test1 · 3 items")
+ * - Descendants span multiple sprints: Show "Multiple sprints" with detail breakdown
+ * - Some assigned, some unassigned: Show assigned sprint breakdown and unassigned count
+ * - No descendants assigned to a sprint: Show "Backlog"
+ * - No descendants exist: Show "No child items"
+ * - Counts each descendant once (including nested), never counting the epic itself.
+ */
+export function getEpicSprintSummary(epic, allWorkItems = [], sprints = []) {
+  if (!epic) {
+    return {
+      type: 'NO_CHILDREN',
+      label: 'No child items',
+      badgeClass: 'bg-slate-50 text-slate-400 border-slate-200',
+      title: 'No child items',
+      details: [],
+    };
+  }
+
+  // Build parent -> children map from allWorkItems
+  const childrenMap = new Map();
+  allWorkItems.forEach((w) => {
+    if (w.parent_id) {
+      if (!childrenMap.has(w.parent_id)) {
+        childrenMap.set(w.parent_id, []);
+      }
+      childrenMap.get(w.parent_id).push(w);
+    }
+  });
+
+  // Breadth-first traversal to collect all descendants uniquely
+  const descendants = [];
+  const visited = new Set([epic.id]);
+  const queue = [...(childrenMap.get(epic.id) || [])];
+
+  while (queue.length > 0) {
+    const current = queue.shift();
+    if (!current || visited.has(current.id)) continue;
+    visited.add(current.id);
+    descendants.push(current);
+    const children = childrenMap.get(current.id) || [];
+    for (const c of children) {
+      if (!visited.has(c.id)) {
+        queue.push(c);
+      }
+    }
+  }
+
+  const totalDescendants = descendants.length;
+  if (totalDescendants === 0) {
+    return {
+      type: 'NO_CHILDREN',
+      label: 'No child items',
+      badgeClass: 'bg-slate-50 text-slate-400 border-slate-200',
+      title: 'No child items in this epic',
+      details: [],
+    };
+  }
+
+  const sprintNameMap = new Map();
+  sprints.forEach((s) => sprintNameMap.set(s.id, s.name));
+
+  const sprintCounts = new Map();
+  let unassignedCount = 0;
+  let assignedCount = 0;
+
+  descendants.forEach((d) => {
+    const sid = d.sprint_id;
+    if (!sid || sid === 'backlog') {
+      unassignedCount++;
+    } else {
+      assignedCount++;
+      const sName = sprintNameMap.get(sid) || d.sprint?.name || 'Sprint';
+      if (!sprintCounts.has(sid)) {
+        sprintCounts.set(sid, { id: sid, name: sName, count: 0 });
+      }
+      sprintCounts.get(sid).count++;
+    }
+  });
+
+  const distinctSprints = Array.from(sprintCounts.values());
+
+  // 1. No descendants assigned to any sprint
+  if (assignedCount === 0) {
+    return {
+      type: 'BACKLOG',
+      label: 'Backlog',
+      badgeClass: 'bg-slate-50 text-slate-500 border-slate-200',
+      title: `All ${totalDescendants} child items are in Backlog (unscheduled)`,
+      details: [{ name: 'Backlog (Unassigned)', count: unassignedCount, isBacklog: true }],
+    };
+  }
+
+  // 2. All assigned descendants belong to ONE sprint
+  if (distinctSprints.length === 1) {
+    const s = distinctSprints[0];
+    const itemWord = s.count === 1 ? 'item' : 'items';
+
+    if (unassignedCount === 0) {
+      // 100% of descendants in one sprint
+      return {
+        type: 'SINGLE_SPRINT',
+        label: `${s.name} · ${s.count} ${itemWord}`,
+        badgeClass: 'bg-purple-50 text-purple-700 border-purple-200 font-medium',
+        title: `${s.name}: ${s.count} ${itemWord}`,
+        details: [{ name: s.name, count: s.count, isBacklog: false }],
+      };
+    } else {
+      // Some assigned to one sprint, others unassigned
+      const unassignedWord = unassignedCount === 1 ? 'item' : 'items';
+      return {
+        type: 'PARTIAL_SPRINT',
+        label: `${s.name} · ${s.count} (${unassignedCount} unassigned)`,
+        badgeClass: 'bg-purple-50 text-purple-700 border-purple-200 font-medium',
+        title: `${s.name}: ${s.count} ${itemWord} · Backlog: ${unassignedCount} ${unassignedWord}`,
+        details: [
+          { name: s.name, count: s.count, isBacklog: false },
+          { name: 'Backlog (Unassigned)', count: unassignedCount, isBacklog: true },
+        ],
+      };
+    }
+  }
+
+  // 3. Descendants span MULTIPLE sprints
+  const parts = distinctSprints.map((s) => `${s.name}: ${s.count} ${s.count === 1 ? 'item' : 'items'}`);
+  if (unassignedCount > 0) {
+    parts.push(`Backlog: ${unassignedCount} ${unassignedCount === 1 ? 'item' : 'items'}`);
+  }
+
+  return {
+    type: 'MULTIPLE_SPRINTS',
+    label: `Multiple sprints (${distinctSprints.length})`,
+    badgeClass: 'bg-indigo-50 text-indigo-700 border-indigo-200 font-medium',
+    title: `Descendants span multiple sprints:\n${parts.join('\n')}`,
+    details: [
+      ...distinctSprints.map((s) => ({ name: s.name, count: s.count, isBacklog: false })),
+      ...(unassignedCount > 0 ? [{ name: 'Backlog (Unassigned)', count: unassignedCount, isBacklog: true }] : []),
+    ],
+  };
+}
+
+/**
  * Individual Interactive Row
  */
 function HierarchicalRow({
@@ -150,10 +293,13 @@ function HierarchicalRow({
   level = 0,
   children = [],
   allDescendants = [],
+  isContextualParent = false,
+  isFlatView = false,
   isExpanded,
   onToggleExpand,
   sprints = [],
   members = [],
+  allWorkItems = [],
   selectedIssueId,
   onSelectIssue,
   onUpdateStatus,
@@ -167,7 +313,7 @@ function HierarchicalRow({
   onDragStart,
   onDragEnd,
 }) {
-  const [menuOpen, setMenuOpen] = useState(null); // 'status' | 'priority' | 'assignee' | 'sprint' | 'points' | 'date' | 'more'
+  const [menuOpen, setMenuOpen] = useState(null); // 'status' | 'priority' | 'assignee' | 'sprint' | 'points' | 'date' | 'more' | 'epicSprint'
   const [editingPoints, setEditingPoints] = useState(false);
   const [pointsValue, setPointsValue] = useState(item.story_points ?? '');
   const rowRef = useRef(null);
@@ -191,6 +337,12 @@ function HierarchicalRow({
   const isStory = itemType === 'STORY';
   const isTask = itemType === 'TASK';
   const isLeaf = itemType === 'SUBTASK' || itemType === 'BUG';
+
+  // Derived read-only sprint summary for parent epics based on descendants
+  const epicSprintSummary = useMemo(() => {
+    if (!isEpic) return null;
+    return getEpicSprintSummary(item, allWorkItems, sprints);
+  }, [isEpic, item, allWorkItems, sprints]);
 
   // Points rollup
   const ownPoints = Number(item.story_points) || 0;
@@ -218,7 +370,7 @@ function HierarchicalRow({
       }
     : null;
 
-  // Current sprint
+  // Current sprint for individual stories, tasks, bugs
   const currentSprint = sprints.find((s) => s.id === item.sprint_id);
   const sprintLabel = currentSprint ? currentSprint.name : 'Backlog';
 
@@ -233,8 +385,8 @@ function HierarchicalRow({
     ? new Date(item.due_date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
     : null;
 
-  // Indentation style based on hierarchy level
-  const indentPaddingLeft = level === 0 ? 'pl-2' : level === 1 ? 'pl-7' : level === 2 ? 'pl-12' : 'pl-16';
+  // Indentation style based on hierarchy level (no indentation in flat view)
+  const indentPaddingLeft = isFlatView || level === 0 ? 'pl-2' : level === 1 ? 'pl-7' : level === 2 ? 'pl-12' : 'pl-16';
 
   const handlePointsSubmit = (e) => {
     e.preventDefault();
@@ -250,33 +402,37 @@ function HierarchicalRow({
         onDragStart={(e) => onDragStart?.(e, item.id)}
         onDragEnd={onDragEnd}
         onClick={() => onSelectIssue?.(item)}
-        className={`grid grid-cols-[minmax(280px,2.5fr)_95px_120px_100px_90px_60px_85px_100px_80px] items-center gap-2 px-3 py-2 text-xs transition-colors cursor-pointer select-none ${
+        className={`grid grid-cols-[minmax(260px,2.5fr)_90px_120px_110px_125px_60px_85px_95px_75px] items-center gap-2 px-3 py-2 text-xs transition-colors cursor-pointer select-none ${
           isSelected
             ? 'bg-purple-50/90 border-l-2 border-l-purple-600'
+            : isContextualParent && !isFlatView
+            ? 'bg-slate-50/60 hover:bg-purple-50/20 border-l-2 border-l-slate-300'
             : isEpic
-            ? 'bg-slate-50/50 hover:bg-purple-50/30'
+            ? 'bg-slate-50/40 hover:bg-purple-50/30'
             : 'hover:bg-slate-50/80 bg-white'
         }`}
       >
         {/* COL 1: HIERARCHY + EXPANDER + TYPE + KEY + SUMMARY */}
         <div className={`flex items-center gap-1.5 min-w-0 pr-2 ${indentPaddingLeft}`}>
-          {/* Expand/Collapse Toggle */}
-          <button
-            type="button"
-            onClick={(e) => {
-              e.stopPropagation();
-              onToggleExpand?.(item.id);
-            }}
-            className={`w-4 h-4 rounded flex items-center justify-center transition-colors text-slate-400 hover:text-slate-700 shrink-0 ${
-              !hasChildren ? 'invisible pointer-events-none' : ''
-            }`}
-          >
-            {isExpanded ? (
-              <ChevronDown className="w-3.5 h-3.5 text-slate-600" />
-            ) : (
-              <ChevronRight className="w-3.5 h-3.5 text-slate-500" />
-            )}
-          </button>
+          {/* Expand/Collapse Toggle (omitted in flat view) */}
+          {!isFlatView && (
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation();
+                onToggleExpand?.(item.id);
+              }}
+              className={`w-4 h-4 rounded flex items-center justify-center transition-colors text-slate-400 hover:text-slate-700 shrink-0 ${
+                !hasChildren ? 'invisible pointer-events-none' : ''
+              }`}
+            >
+              {isExpanded ? (
+                <ChevronDown className="w-3.5 h-3.5 text-slate-600" />
+              ) : (
+                <ChevronRight className="w-3.5 h-3.5 text-slate-500" />
+              )}
+            </button>
+          )}
 
           {/* Type Icon */}
           <IssueTypeIcon type={item.type} />
@@ -291,18 +447,30 @@ function HierarchicalRow({
             {keyLabel}
           </span>
 
+          {/* Contextual Parent Tag in key block if applicable and not flat view */}
+          {isContextualParent && !isFlatView && (
+            <span
+              className="text-[9px] font-bold uppercase tracking-wider text-purple-700 bg-purple-50 px-1.5 py-0.2 rounded border border-purple-200 shrink-0 select-none"
+              title="Parent issue context: included to preserve hierarchy for matching descendant issues"
+            >
+              Parent
+            </span>
+          )}
+
           {/* Summary / Title */}
           <span
             className={`font-medium truncate transition-colors flex-1 ${
               item.status === 'COMPLETED' ? 'text-slate-700' : 'text-slate-900 group-hover:text-purple-700'
-            } ${isEpic ? 'font-bold text-slate-900' : ''}`}
+            } ${isEpic ? 'font-bold text-slate-900' : ''} ${
+              isContextualParent && !isFlatView ? 'text-slate-600 italic' : ''
+            }`}
             title={item.title}
           >
             {item.title}
           </span>
 
-          {/* Child count badge */}
-          {hasChildren && (
+          {/* Child count badge (hidden in flat view) */}
+          {!isFlatView && hasChildren && (
             <span className="hidden sm:inline-flex items-center px-1.5 py-0.2 rounded text-[10px] font-semibold bg-slate-100 text-slate-500 shrink-0">
               {children.length} {children.length === 1 ? 'child' : 'children'}
             </span>
@@ -415,15 +583,25 @@ function HierarchicalRow({
           )}
         </div>
 
-        {/* COL 4: STATUS DROPDOWN */}
+        {/* COL 4: STATUS DROPDOWN + CONTEXTUAL PARENT INDICATOR */}
         <div className="relative text-left shrink-0" onClick={(e) => e.stopPropagation()}>
-          <button
-            type="button"
-            onClick={() => setMenuOpen(menuOpen === 'status' ? null : 'status')}
-            className="hover:opacity-80 p-0.5 rounded transition-opacity"
-          >
-            <StatusBadge status={item.status} />
-          </button>
+          <div className="flex items-center gap-1.5 flex-wrap">
+            <button
+              type="button"
+              onClick={() => setMenuOpen(menuOpen === 'status' ? null : 'status')}
+              className="hover:opacity-80 p-0.5 rounded transition-opacity cursor-pointer"
+            >
+              <StatusBadge status={item.status} />
+            </button>
+            {isContextualParent && !isFlatView && (
+              <span
+                className="px-1.5 py-0.5 rounded text-[9px] font-bold uppercase tracking-wider bg-slate-100 text-slate-600 border border-slate-200 select-none shadow-2xs"
+                title="Contextual parent included because child items match active filters"
+              >
+                Parent
+              </span>
+            )}
+          </div>
 
           {menuOpen === 'status' && (
             <div className="absolute left-0 mt-1 w-36 bg-white rounded-md shadow-lg border border-slate-200 py-1 z-40">
@@ -435,7 +613,7 @@ function HierarchicalRow({
                     onUpdateStatus?.(item.id, st);
                     setMenuOpen(null);
                   }}
-                  className={`w-full text-left px-2.5 py-1.5 text-xs hover:bg-slate-50 flex items-center justify-between ${
+                  className={`w-full text-left px-2.5 py-1.5 text-xs hover:bg-slate-50 flex items-center justify-between cursor-pointer ${
                     item.status === st ? 'bg-purple-50 text-purple-700 font-semibold' : 'text-slate-700'
                   }`}
                 >
@@ -447,54 +625,99 @@ function HierarchicalRow({
           )}
         </div>
 
-        {/* COL 5: SPRINT DROPDOWN */}
+        {/* COL 5: SPRINT DROPDOWN / READ-ONLY SUMMARY */}
         <div className="relative text-left shrink-0" onClick={(e) => e.stopPropagation()}>
-          <button
-            type="button"
-            onClick={() => setMenuOpen(menuOpen === 'sprint' ? null : 'sprint')}
-            className={`px-1.5 py-0.5 rounded text-[11px] font-medium border truncate max-w-[85px] block ${
-              item.sprint_id
-                ? 'bg-purple-50 text-purple-700 border-purple-200'
-                : 'bg-slate-50 text-slate-500 border-slate-200'
-            }`}
-            title={`Sprint: ${sprintLabel}`}
-          >
-            {sprintLabel}
-          </button>
-
-          {menuOpen === 'sprint' && (
-            <div className="absolute left-0 mt-1 w-44 bg-white rounded-md shadow-lg border border-slate-200 py-1 z-40 max-h-52 overflow-y-auto">
+          {isEpic ? (
+            /* Derived read-only sprint summary for parent Epics */
+            <div className="relative">
               <button
                 type="button"
                 onClick={() => {
-                  onUpdateSprint?.(item.id, null);
-                  setMenuOpen(null);
+                  if (epicSprintSummary?.details?.length > 1) {
+                    setMenuOpen(menuOpen === 'epicSprint' ? null : 'epicSprint');
+                  }
                 }}
-                className={`w-full text-left px-3 py-1.5 text-xs hover:bg-slate-50 flex items-center justify-between ${
-                  !item.sprint_id ? 'bg-purple-50 text-purple-700 font-semibold' : 'text-slate-700'
-                }`}
+                className={`px-1.5 py-0.5 rounded text-[11px] border truncate max-w-[120px] block select-none ${
+                  epicSprintSummary?.details?.length > 1 ? 'cursor-pointer hover:ring-1 hover:ring-purple-300' : 'cursor-default'
+                } ${epicSprintSummary?.badgeClass || 'bg-slate-50 text-slate-500 border-slate-200'}`}
+                title={epicSprintSummary?.title || 'Sprint summary'}
               >
-                <span>Backlog</span>
-                {!item.sprint_id && <Check className="w-3 h-3 text-purple-600" />}
+                {epicSprintSummary?.label || 'Backlog'}
               </button>
 
-              {sprints.map((sprint) => (
-                <button
-                  key={sprint.id}
-                  type="button"
-                  onClick={() => {
-                    onUpdateSprint?.(item.id, sprint.id);
-                    setMenuOpen(null);
-                  }}
-                  className={`w-full text-left px-3 py-1.5 text-xs hover:bg-slate-50 flex items-center justify-between ${
-                    item.sprint_id === sprint.id ? 'bg-purple-50 text-purple-700 font-semibold' : 'text-slate-700'
-                  }`}
-                >
-                  <span className="truncate">{sprint.name}</span>
-                  {item.sprint_id === sprint.id && <Check className="w-3 h-3 text-purple-600" />}
-                </button>
-              ))}
+              {/* Expandable breakdown popover for multiple sprints / partial assignments */}
+              {menuOpen === 'epicSprint' && epicSprintSummary?.details?.length > 1 && (
+                <div className="absolute left-0 mt-1 w-56 bg-white rounded-xl shadow-xl border border-slate-200 p-2.5 z-40 text-slate-800 animate-in fade-in duration-100">
+                  <div className="text-[10px] font-bold text-slate-400 uppercase tracking-wider pb-1.5 mb-1.5 border-b border-slate-100 flex items-center justify-between">
+                    <span>Sprint Breakdown</span>
+                    <span className="text-purple-700 font-bold">{totalDescendantsCount} items</span>
+                  </div>
+                  <div className="space-y-1">
+                    {epicSprintSummary.details.map((d) => (
+                      <div key={d.name} className="flex items-center justify-between text-xs py-0.5">
+                        <span className={`truncate max-w-[140px] ${d.isBacklog ? 'text-slate-500 italic' : 'text-slate-700 font-medium'}`}>
+                          {d.name}
+                        </span>
+                        <span className="font-mono font-bold text-purple-700 shrink-0 ml-2">
+                          {d.count} {d.count === 1 ? 'item' : 'items'}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
             </div>
+          ) : (
+            /* Standard interactive sprint dropdown for stories, tasks, bugs */
+            <>
+              <button
+                type="button"
+                onClick={() => setMenuOpen(menuOpen === 'sprint' ? null : 'sprint')}
+                className={`px-1.5 py-0.5 rounded text-[11px] font-medium border truncate max-w-[120px] block transition-colors cursor-pointer ${
+                  item.sprint_id
+                    ? 'bg-purple-50 text-purple-700 border-purple-200 hover:bg-purple-100'
+                    : 'bg-slate-50 text-slate-500 border-slate-200 hover:bg-slate-100'
+                }`}
+                title={`Sprint: ${sprintLabel}`}
+              >
+                {sprintLabel}
+              </button>
+
+              {menuOpen === 'sprint' && (
+                <div className="absolute left-0 mt-1 w-44 bg-white rounded-md shadow-lg border border-slate-200 py-1 z-40 max-h-52 overflow-y-auto">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      onUpdateSprint?.(item.id, null);
+                      setMenuOpen(null);
+                    }}
+                    className={`w-full text-left px-3 py-1.5 text-xs hover:bg-slate-50 flex items-center justify-between cursor-pointer ${
+                      !item.sprint_id ? 'bg-purple-50 text-purple-700 font-semibold' : 'text-slate-700'
+                    }`}
+                  >
+                    <span>Backlog</span>
+                    {!item.sprint_id && <Check className="w-3 h-3 text-purple-600" />}
+                  </button>
+
+                  {sprints.map((sprint) => (
+                    <button
+                      key={sprint.id}
+                      type="button"
+                      onClick={() => {
+                        onUpdateSprint?.(item.id, sprint.id);
+                        setMenuOpen(null);
+                      }}
+                      className={`w-full text-left px-3 py-1.5 text-xs hover:bg-slate-50 flex items-center justify-between cursor-pointer ${
+                        item.sprint_id === sprint.id ? 'bg-purple-50 text-purple-700 font-semibold' : 'text-slate-700'
+                      }`}
+                    >
+                      <span className="truncate">{sprint.name}</span>
+                      {item.sprint_id === sprint.id && <Check className="w-3 h-3 text-purple-600" />}
+                    </button>
+                  ))}
+                </div>
+              )}
+            </>
           )}
         </div>
 
@@ -651,7 +874,7 @@ function HierarchicalRow({
                     }}
                     className="w-full text-left px-2.5 py-1.5 text-xs text-slate-700 hover:bg-slate-50 flex items-center gap-1.5"
                   >
-                    <Plus className="w-3 h-3 text-purple-600" />
+                    <Plus className="w-3.5 h-3.5 text-purple-600" />
                     <span>
                       {isEpic ? 'Add Story/Bug' : isStory ? 'Add Task/Bug' : 'Add Subtask'}
                     </span>
@@ -692,6 +915,7 @@ function HierarchicalNode({
   onToggleExpand,
   sprints,
   members,
+  allWorkItems,
   selectedIssueId,
   onSelectIssue,
   onUpdateStatus,
@@ -704,6 +928,7 @@ function HierarchicalNode({
   onAddChild,
   onDragStart,
   onDragEnd,
+  isFlatView = false,
 }) {
   const isExpanded = expandedIds.has(node.item.id);
 
@@ -714,10 +939,13 @@ function HierarchicalNode({
         level={level}
         children={node.children.map((c) => c.item)}
         allDescendants={node.allDescendants}
+        isContextualParent={node.isContextualParent}
+        isFlatView={isFlatView}
         isExpanded={isExpanded}
         onToggleExpand={onToggleExpand}
         sprints={sprints}
         members={members}
+        allWorkItems={allWorkItems}
         selectedIssueId={selectedIssueId}
         onSelectIssue={onSelectIssue}
         onUpdateStatus={onUpdateStatus}
@@ -743,6 +971,7 @@ function HierarchicalNode({
               onToggleExpand={onToggleExpand}
               sprints={sprints}
               members={members}
+              allWorkItems={allWorkItems}
               selectedIssueId={selectedIssueId}
               onSelectIssue={onSelectIssue}
               onUpdateStatus={onUpdateStatus}
@@ -755,6 +984,7 @@ function HierarchicalNode({
               onAddChild={onAddChild}
               onDragStart={onDragStart}
               onDragEnd={onDragEnd}
+              isFlatView={isFlatView}
             />
           ))}
         </>
@@ -784,6 +1014,7 @@ export default function HierarchicalIssueTable({
   expandedIds = new Set(),
   onToggleExpand,
   isHierarchical = true,
+  hasActiveFilters = false,
   onDragStart,
   onDragEnd,
   emptyMessage = "No issues found in this view.",
@@ -793,55 +1024,89 @@ export default function HierarchicalIssueTable({
     if (!isHierarchical) {
       return issues.map((item) => ({
         item,
+        isContextualParent: false,
         children: [],
         allDescendants: [],
       }));
     }
 
-    // Map all work items by parent_id
-    const childrenByParent = new Map();
+    // Build an indexed lookup of all project items and issues in current view
     const itemMap = new Map();
-
     const pool = allWorkItems.length > 0 ? allWorkItems : issues;
     pool.forEach((item) => {
       itemMap.set(item.id, item);
-      if (item.parent_id) {
-        if (!childrenByParent.has(item.parent_id)) {
-          childrenByParent.set(item.parent_id, []);
-        }
-        childrenByParent.get(item.parent_id).push(item);
+    });
+
+    // 1. Directly matching issue IDs
+    const matchingIds = new Set(issues.map((i) => i.id));
+    const isFilteringActive = Boolean(
+      hasActiveFilters || (allWorkItems.length > 0 && matchingIds.size < pool.length)
+    );
+
+    // 2. Identify all required ancestors for directly matching issues
+    const requiredAncestorIds = new Set();
+    issues.forEach((item) => {
+      let curr = itemMap.get(item.parent_id);
+      while (curr) {
+        requiredAncestorIds.add(curr.id);
+        curr = itemMap.get(curr.parent_id);
       }
     });
 
-    // Helper to recursively build tree node
-    function buildNode(item) {
-      const children = childrenByParent.get(item.id) || [];
-      const childNodes = children.map(buildNode);
+    // 3. Determine visible items in this view:
+    // Only direct matches + required ancestors should ever be visible
+    const visibleIds = new Set([...matchingIds, ...requiredAncestorIds]);
 
-      let allDescendants = [...children];
+    // 4. Map visible children to each parent
+    const visibleChildrenByParent = new Map();
+    pool.forEach((item) => {
+      if (item.parent_id && visibleIds.has(item.id)) {
+        if (!visibleChildrenByParent.has(item.parent_id)) {
+          visibleChildrenByParent.set(item.parent_id, []);
+        }
+        visibleChildrenByParent.get(item.parent_id).push(item);
+      }
+    });
+
+    // 5. Recursive node builder
+    function buildNode(item) {
+      const childItems = visibleChildrenByParent.get(item.id) || [];
+      const childNodes = childItems.map(buildNode);
+
+      let allDescendants = [...childItems];
       childNodes.forEach((cn) => {
         allDescendants = allDescendants.concat(cn.allDescendants);
       });
 
+      // Contextual parent = included to preserve hierarchy, but did not match active filters or sprint scope directly
+      const isContextualParent = !matchingIds.has(item.id);
+
       return {
         item,
+        isContextualParent,
         children: childNodes,
         allDescendants,
       };
     }
 
-    // Root items: In this view, items without parent_id (or parent not in project)
-    // If 'issues' is filtered (e.g., by sprint), we display root items present in 'issues'
-    // or epics that have children in 'issues'.
-    const rootItems = issues.filter((item) => !item.parent_id || !itemMap.has(item.parent_id));
+    // 6. Identify root items for the visible hierarchy:
+    // An item is a root if:
+    // - It is visible (visibleIds.has(item.id)), AND
+    // - It has no parent_id, OR its parent is NOT in visibleIds
+    const rootItems = pool.filter((item) => {
+      if (!visibleIds.has(item.id)) return false;
+      if (!item.parent_id) return true;
+      if (!visibleIds.has(item.parent_id)) return true;
+      return false;
+    });
 
     return rootItems.map(buildNode);
-  }, [issues, allWorkItems, isHierarchical]);
+  }, [issues, allWorkItems, isHierarchical, hasActiveFilters]);
 
   return (
     <div className="rounded-md border border-slate-200 bg-white overflow-hidden shadow-xs">
       {/* Table Header: Precise columns matching Jira */}
-      <div className="grid grid-cols-[minmax(280px,2.5fr)_95px_120px_100px_90px_60px_85px_100px_80px] items-center gap-2 px-3 py-2 bg-slate-50 border-b border-slate-200 text-[11px] font-bold text-slate-500 uppercase tracking-wider select-none">
+      <div className="grid grid-cols-[minmax(260px,2.5fr)_90px_120px_110px_125px_60px_85px_95px_75px] items-center gap-2 px-3 py-2 bg-slate-50 border-b border-slate-200 text-[11px] font-bold text-slate-500 uppercase tracking-wider select-none">
         <div>Key &amp; Summary</div>
         <div>Priority</div>
         <div>Assignee</div>
@@ -865,6 +1130,7 @@ export default function HierarchicalIssueTable({
               onToggleExpand={onToggleExpand}
               sprints={sprints}
               members={members}
+              allWorkItems={allWorkItems}
               selectedIssueId={selectedIssueId}
               onSelectIssue={onSelectIssue}
               onUpdateStatus={onUpdateStatus}
@@ -877,6 +1143,7 @@ export default function HierarchicalIssueTable({
               onAddChild={onAddChild}
               onDragStart={onDragStart}
               onDragEnd={onDragEnd}
+              isFlatView={!isHierarchical}
             />
           ))
         ) : (

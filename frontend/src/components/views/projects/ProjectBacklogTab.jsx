@@ -9,8 +9,10 @@ import { Loader2 } from 'lucide-react';
 import { workItemsService } from '../../../services/workItems.service';
 import { sprintsService } from '../../../services/sprints.service';
 import { projectsService } from '../../../services/projects.service';
+import { useAuth } from '../../../context/AuthContext';
 
 export default function ProjectBacklogTab({ projectId, project = null, onToast }) {
+  const { user: authUser } = useAuth();
   const [currentProject, setCurrentProject] = useState(project);
   const [loading, setLoading] = useState(true);
   const [sprints, setSprints] = useState([]);
@@ -34,7 +36,7 @@ export default function ProjectBacklogTab({ projectId, project = null, onToast }
   const [selectedPriority, setSelectedPriority] = useState(null);
   const [selectedSprintId, setSelectedSprintId] = useState(null);
   const [selectedStatus, setSelectedStatus] = useState(null);
-  const [groupBy, setGroupBy] = useState('epic'); // 'epic' (Hierarchy Tree) | 'sprint' (Sprint Groups) | 'none' (Flat)
+  const [groupBy, setGroupBy] = useState('none'); // 'none' (Flat Stories & Tasks) | 'sprint' (Sprint Groups) | 'epic' (Hierarchy Tree)
 
   // Quick Filters
   const [quickFilterMyIssues, setQuickFilterMyIssues] = useState(false);
@@ -284,6 +286,14 @@ export default function ProjectBacklogTab({ projectId, project = null, onToast }
 
   // Sprint lifecycle
   const handleStartSprint = async (sprintId) => {
+    const activeSprint = sprints.find((s) => s.status === 'ACTIVE');
+    if (activeSprint && activeSprint.id !== sprintId) {
+      onToast?.(
+        `Cannot start sprint: Sprint "${activeSprint.name}" is currently active. Please complete or resolve it first.`
+      );
+      return;
+    }
+
     try {
       await sprintsService.startSprint(projectId, sprintId);
       loadProjectData();
@@ -348,9 +358,19 @@ export default function ProjectBacklogTab({ projectId, project = null, onToast }
     setQuickFilterBlocked(false);
   };
 
+  // Actionable Stories & Tasks (excludes EPICs from flat actionable view)
+  const actionableWorkItems = useMemo(() => {
+    return workItems.filter((w) => w.type !== 'EPIC');
+  }, [workItems]);
+
   // Filter evaluation logic
   const filteredWorkItems = useMemo(() => {
     return workItems.filter((item) => {
+      // In flat view (groupBy === 'none'), hide Epics so only actionable Stories, Tasks, Bugs, Subtasks show
+      if (groupBy === 'none' && item.type === 'EPIC') {
+        return false;
+      }
+
       if (searchQuery.trim()) {
         const q = searchQuery.toLowerCase().trim();
         const matchId = item.id.toLowerCase().includes(q);
@@ -367,7 +387,13 @@ export default function ProjectBacklogTab({ projectId, project = null, onToast }
 
       if (selectedAssignee) {
         const targetUid = selectedAssignee.user_id || selectedAssignee.id;
-        const isAssigned = item.assignees?.some((a) => a.user_id === targetUid);
+        if (!targetUid) return false;
+        const isAssigned = Boolean(
+          item.assignees?.some((a) => {
+            const aId = a.user_id || a.id;
+            return Boolean(aId) && aId === targetUid;
+          })
+        );
         if (!isAssigned) return false;
       }
 
@@ -387,6 +413,18 @@ export default function ProjectBacklogTab({ projectId, project = null, onToast }
         }
       }
 
+      if (quickFilterMyIssues && authUser) {
+        const myId = authUser.id || authUser.user_id;
+        if (!myId) return false;
+        const isAssigned = Boolean(
+          item.assignees?.some((a) => {
+            const aId = a.user_id || a.id;
+            return Boolean(aId) && aId === myId;
+          })
+        );
+        if (!isAssigned) return false;
+      }
+
       if (quickFilterOverdue) {
         const isOverdue = Boolean(
           item.due_date &&
@@ -404,14 +442,62 @@ export default function ProjectBacklogTab({ projectId, project = null, onToast }
     });
   }, [
     workItems,
+    groupBy,
     searchQuery,
     selectedAssignee,
     selectedPriority,
     selectedStatus,
     selectedSprintId,
+    quickFilterMyIssues,
+    authUser,
     quickFilterOverdue,
     quickFilterBlocked,
   ]);
+
+  // Determine whether any filtering criteria are currently active
+  const hasActiveFilters = useMemo(() => {
+    return Boolean(
+      searchQuery.trim() ||
+      selectedAssignee ||
+      selectedPriority ||
+      selectedStatus ||
+      selectedSprintId ||
+      quickFilterMyIssues ||
+      quickFilterOverdue ||
+      quickFilterBlocked
+    );
+  }, [
+    searchQuery,
+    selectedAssignee,
+    selectedPriority,
+    selectedStatus,
+    selectedSprintId,
+    quickFilterMyIssues,
+    quickFilterOverdue,
+    quickFilterBlocked,
+  ]);
+
+  // When filters are active or viewing sprint groups, automatically ensure all required ancestors are expanded so matching items are visible
+  useEffect(() => {
+    if ((hasActiveFilters || groupBy === 'sprint') && filteredWorkItems.length > 0) {
+      const itemMap = new Map(workItems.map((w) => [w.id, w]));
+      const ancestorIds = new Set();
+      filteredWorkItems.forEach((item) => {
+        let curr = itemMap.get(item.parent_id);
+        while (curr) {
+          ancestorIds.add(curr.id);
+          curr = itemMap.get(curr.parent_id);
+        }
+      });
+      if (ancestorIds.size > 0) {
+        setExpandedIds((prev) => {
+          const next = new Set(prev);
+          ancestorIds.forEach((id) => next.add(id));
+          return next;
+        });
+      }
+    }
+  }, [hasActiveFilters, groupBy, filteredWorkItems, workItems]);
 
   // Combined sprint sections list including the "Backlog" section
   const sprintSections = useMemo(() => {
@@ -447,7 +533,7 @@ export default function ProjectBacklogTab({ projectId, project = null, onToast }
     <div className="space-y-3">
       {/* 1. BACKLOG TOOLBAR WITH REAL PROJECT MEMBERS AND STATS */}
       <BacklogToolbar
-        issuesCount={workItems.length}
+        issuesCount={actionableWorkItems.length}
         epicsCount={epics.length}
         totalSP={totalSP}
         searchQuery={searchQuery}
@@ -506,9 +592,10 @@ export default function ProjectBacklogTab({ projectId, project = null, onToast }
           expandedIds={expandedIds}
           onToggleExpand={handleToggleExpand}
           isHierarchical={true}
+          hasActiveFilters={hasActiveFilters}
           onDragStart={handleDragStart}
           onDragEnd={handleDragEnd}
-          emptyMessage="No issues match the selected filters. Click + Create to add an Epic or Story."
+          emptyMessage="No issues match the selected filters. Click + Create Issue to add a Story or Task."
         />
       )}
 
@@ -517,7 +604,16 @@ export default function ProjectBacklogTab({ projectId, project = null, onToast }
         <div className="space-y-3">
           {sprintSections.map((sprint) => {
             const sprintItems = sprint.isBacklog
-              ? filteredWorkItems.filter((i) => !i.sprint_id)
+              ? filteredWorkItems.filter((i) => {
+                  if (i.sprint_id) return false;
+                  // If it's an epic with children, do not count directly in Backlog issues list;
+                  // it will be included as contextual parent if any of its children are in backlog
+                  if (i.type === 'EPIC') {
+                    const hasChildren = workItems.some((w) => w.parent_id === i.id);
+                    if (hasChildren) return false;
+                  }
+                  return true;
+                })
               : filteredWorkItems.filter((i) => i.sprint_id === sprint.id);
 
             return (
@@ -540,6 +636,7 @@ export default function ProjectBacklogTab({ projectId, project = null, onToast }
                 onAddChild={handleAddChild}
                 expandedIds={expandedIds}
                 onToggleExpand={handleToggleExpand}
+                hasActiveFilters={hasActiveFilters}
                 onDragStart={handleDragStart}
                 onDragEnd={handleDragEnd}
                 onDropIssue={handleDropIssue}
@@ -558,7 +655,7 @@ export default function ProjectBacklogTab({ projectId, project = null, onToast }
         </div>
       )}
 
-      {/* VIEW MODE C: FLAT LIST */}
+      {/* VIEW MODE C: FLAT LIST (DEFAULT STORIES & TASKS) */}
       {groupBy === 'none' && (
         <HierarchicalIssueTable
           issues={filteredWorkItems}
@@ -578,9 +675,10 @@ export default function ProjectBacklogTab({ projectId, project = null, onToast }
           expandedIds={expandedIds}
           onToggleExpand={handleToggleExpand}
           isHierarchical={false}
+          hasActiveFilters={hasActiveFilters}
           onDragStart={handleDragStart}
           onDragEnd={handleDragEnd}
-          emptyMessage="No issues found."
+          emptyMessage="No stories or tasks found matching the criteria. Click + Create Issue to get started."
         />
       )}
 
@@ -591,20 +689,49 @@ export default function ProjectBacklogTab({ projectId, project = null, onToast }
           epics={epics}
           sprints={sprints}
           members={members}
+          workItems={workItems}
           isOpen={Boolean(selectedIssue)}
           onClose={() => setSelectedIssue(null)}
           onUpdateIssue={async (updated) => {
             try {
-              await workItemsService.updateWorkItem(updated.id, {
+              const sprintIdToSave = updated.sprint_id !== undefined 
+                ? (updated.sprint_id === 'backlog' ? null : updated.sprint_id) 
+                : (updated.sprintId === 'backlog' ? null : updated.sprintId);
+
+              const parentIdToSave = updated.parent_id !== undefined 
+                ? (updated.parent_id === '' ? null : updated.parent_id) 
+                : (updated.epicId === '' ? null : updated.epicId);
+
+              const payload = {
                 title: updated.title,
                 description: updated.description,
                 status: updated.status,
                 priority: updated.priority,
                 story_points: updated.story_points,
                 due_date: updated.due_date,
-              });
+              };
+
+              if (sprintIdToSave !== undefined) {
+                payload.sprint_id = sprintIdToSave;
+              }
+              if (parentIdToSave !== undefined) {
+                payload.parent_id = parentIdToSave;
+              }
+              if (updated.assignee_ids !== undefined) {
+                payload.assignee_ids = updated.assignee_ids;
+              } else if (updated.assigneeId !== undefined) {
+                payload.assignee_ids = updated.assigneeId ? [updated.assigneeId] : [];
+              }
+
+              await workItemsService.updateWorkItem(updated.id, payload);
               loadProjectData();
-              setSelectedIssue((prev) => (prev ? { ...prev, ...updated } : null));
+              setSelectedIssue((prev) => (prev ? { 
+                ...prev, 
+                ...updated, 
+                sprint_id: sprintIdToSave,
+                sprintId: sprintIdToSave,
+                parent_id: parentIdToSave,
+              } : null));
               onToast?.('Issue updated');
             } catch (err) {
               console.error('Failed to update issue:', err);
@@ -618,13 +745,14 @@ export default function ProjectBacklogTab({ projectId, project = null, onToast }
             const newStatus = currentSubtask.status === 'COMPLETED' ? 'TODO' : 'COMPLETED';
             await handleUpdateStatus(subtaskId, newStatus);
           }}
-          onAddSubtask={async (parentIssueId, subtaskTitle, childType = 'SUBTASK') => {
+          onAddSubtask={async (parentIssueId, subtaskTitle, childType = 'SUBTASK', sprintId = null) => {
             try {
               await workItemsService.createWorkItem({
                 project_id: projectId,
                 parent_id: parentIssueId,
                 type: childType,
                 title: subtaskTitle.trim(),
+                sprint_id: sprintId || null,
               });
               loadProjectData();
               onToast?.(`Added ${childType.toLowerCase()}: "${subtaskTitle.trim()}"`);
@@ -662,6 +790,7 @@ export default function ProjectBacklogTab({ projectId, project = null, onToast }
         onClose={() => setIsCreateSprintOpen(false)}
         projectId={projectId}
         projectName={currentProject?.name}
+        existingSprints={sprints}
         onSuccess={() => {
           loadProjectData();
           onToast?.('Sprint created successfully');

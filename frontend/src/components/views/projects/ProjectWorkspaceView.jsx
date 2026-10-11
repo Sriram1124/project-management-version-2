@@ -20,6 +20,7 @@ export default function ProjectWorkspaceView({
 }) {
   const [currentTab, setCurrentTab] = useState(activeTab);
   const [liveProject, setLiveProject] = useState(null);
+  const [selectedSprintId, setSelectedSprintId] = useState(null);
 
   useEffect(() => {
     if (projectId) {
@@ -41,6 +42,11 @@ export default function ProjectWorkspaceView({
     onTabChange?.(tabId);
   };
 
+  const handleOpenSprintBoard = (sprintId) => {
+    setSelectedSprintId(sprintId);
+    handleTabClick('sprint');
+  };
+
   const tabs = [
     { id: 'overview', label: 'Overview' },
     { id: 'roadmap', label: 'Roadmap' },
@@ -58,11 +64,11 @@ export default function ProjectWorkspaceView({
   const statusStr = liveProject?.status || 'PLANNED';
 
   return (
-    <div className="space-y-3">
+    <div className="min-w-0 max-w-full">
       {/* PROJECT CONTEXT: METADATA & PROJECT NAVIGATION TABS */}
-      <div className="bg-white border-b border-slate-200 -mt-2 -mx-2 px-6 pt-3 pb-0 select-none">
+      <div className="sticky top-0 z-30 bg-white border-b border-slate-200 -mx-4 sm:-mx-6 px-4 sm:px-6 pt-3 pb-0 select-none shadow-xs">
         {/* ROW 1: Project Metadata */}
-        <div className="flex items-center gap-3 text-[15px] text-slate-600 pb-2.5">
+        <div className="flex flex-wrap items-center gap-2 sm:gap-3 text-xs sm:text-sm text-slate-600 pb-2.5">
           <span>Project Owner: <strong className="text-slate-800 font-semibold">{ownerName}</strong></span>
           <span className="text-slate-300 select-none">·</span>
           <span>Status: <strong className="text-purple-700 font-semibold">{statusStr}</strong></span>
@@ -71,7 +77,7 @@ export default function ProjectWorkspaceView({
         </div>
 
         {/* ROW 2: Project Navigation Tabs */}
-        <div className="flex items-center gap-1 overflow-x-auto -mb-px">
+        <div className="flex items-center gap-1 overflow-x-auto -mb-px min-w-0 max-w-full">
           {tabs.map((tab) => {
             const isActive = currentTab === tab.id;
             return (
@@ -92,7 +98,7 @@ export default function ProjectWorkspaceView({
       </div>
 
       {/* Render Current Tab Content */}
-      <div className="pt-1">
+      <div className="pt-2 sm:pt-2.5">
         {currentTab === 'overview' ? (
           <ProjectOverviewTab 
             projectId={projectId} 
@@ -103,11 +109,14 @@ export default function ProjectWorkspaceView({
           <ProjectRoadmapTab
             projectId={projectId}
             project={liveProject}
+            onOpenSprintBoard={handleOpenSprintBoard}
             onToast={onToast}
           />
         ) : currentTab === 'sprint' ? (
           <ProjectSprintWorkspaceTab
             projectId={projectId}
+            selectedSprintId={selectedSprintId}
+            onBackToRoadmap={() => handleTabClick('roadmap')}
             onToast={onToast}
           />
         ) : currentTab === 'backlog' ? (

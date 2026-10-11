@@ -187,14 +187,8 @@ export default function LoginView() {
       <div className="relative z-10 mx-auto flex min-h-screen max-w-7xl items-center justify-center px-4 py-10 sm:px-6 lg:px-12">
         <div className="grid w-full max-w-6xl overflow-hidden rounded-[32px] border border-violet-200 bg-white/80 shadow-[0_30px_80px_rgba(76,29,149,0.09)] backdrop-blur-xl lg:grid-cols-[1.05fr_0.95fr]">
           <div className="p-6 sm:p-8 lg:p-12">
-            <div className="mb-8 flex items-center gap-3">
-              <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-violet-600 text-sm font-black text-white shadow-lg shadow-violet-200">
-                D
-              </div>
-              <div>
-                <div className="text-[10px] font-bold uppercase tracking-[0.28em] text-violet-500">Dailoqa</div>
-                <div className="text-lg font-semibold text-slate-900">Workspace</div>
-              </div>
+            <div className="mb-8">
+              <div className="text-xl font-bold tracking-tight text-slate-900">Project Management</div>
             </div>
 
             {error && (

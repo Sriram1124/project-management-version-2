@@ -10,26 +10,50 @@ import {
   AlertTriangle,
   Loader2,
   Calendar,
-  ChevronDown
+  ChevronDown,
+  ArrowLeft,
+  Zap,
+  Bookmark,
+  Trash2,
+  Edit3,
+  TrendingUp,
+  TrendingDown,
+  Hourglass,
+  Target,
+  ChevronUp
 } from 'lucide-react';
 import { sprintsService } from '../../../services/sprints.service';
 import { workItemsService } from '../../../services/workItems.service';
 import { projectsService } from '../../../services/projects.service';
 import { timesheetService } from '../../../services/timesheet.service';
+import { useAuth } from '../../../context/AuthContext';
 import AddTaskModal from '../../kanban/AddTaskModal';
 import TaskDetailModal from '../../kanban/TaskDetailModal';
 import CompleteSprintModal from '../../kanban/CompleteSprintModal';
 import LogWorkModal from '../../kanban/LogWorkModal';
 import CreateSprintModal from '../../modals/CreateSprintModal';
+import EditSprintModal from '../../modals/EditSprintModal';
 
-export default function ProjectSprintWorkspaceTab({ projectId, onToast }) {
+export default function ProjectSprintWorkspaceTab({ 
+  projectId, 
+  selectedSprintId: propSelectedSprintId, 
+  onBackToRoadmap, 
+  onToast 
+}) {
+  const { user: authUser } = useAuth();
   const [loading, setLoading] = useState(true);
   const [sprints, setSprints] = useState([]);
   const [workItems, setWorkItems] = useState([]);
   const [members, setMembers] = useState([]);
 
-  // Selected sprint to display (defaults to active sprint if available, or first planned/completed)
-  const [selectedSprintId, setSelectedSprintId] = useState(null);
+  // Selected sprint to display (defaults to prop if provided, else active sprint if available, or first planned/completed)
+  const [selectedSprintId, setSelectedSprintId] = useState(propSelectedSprintId || null);
+
+  useEffect(() => {
+    if (propSelectedSprintId) {
+      setSelectedSprintId(propSelectedSprintId);
+    }
+  }, [propSelectedSprintId]);
   const [quickFilter, setQuickFilter] = useState('all'); // 'all' | 'my-tasks' | 'overdue' | 'blocked'
 
   // Drag and Drop State
@@ -43,7 +67,9 @@ export default function ProjectSprintWorkspaceTab({ projectId, onToast }) {
   const [isLogWorkOpen, setIsLogWorkOpen] = useState(false);
   const [isCompleteSprintOpen, setIsCompleteSprintOpen] = useState(false);
   const [isCreateSprintOpen, setIsCreateSprintOpen] = useState(false);
+  const [editingSprint, setEditingSprint] = useState(null);
   const [startingSprint, setStartingSprint] = useState(false);
+  const [showSummaryTable, setShowSummaryTable] = useState(true);
 
   const loadData = useCallback(async () => {
     if (!projectId) return;
@@ -58,12 +84,16 @@ export default function ProjectSprintWorkspaceTab({ projectId, onToast }) {
       setWorkItems(itemsList || []);
       setMembers(membersList || []);
 
-      // Auto-select active sprint, or planned, or first available
-      const active = (sprintsList || []).find((s) => s.status === 'ACTIVE');
-      if (active) {
-        setSelectedSprintId(active.id);
-      } else if (sprintsList && sprintsList.length > 0) {
-        setSelectedSprintId((prev) => prev || sprintsList[0].id);
+      // Auto-select propSelectedSprintId, active sprint, or planned, or first available
+      if (propSelectedSprintId && (sprintsList || []).some((s) => s.id === propSelectedSprintId)) {
+        setSelectedSprintId(propSelectedSprintId);
+      } else {
+        const active = (sprintsList || []).find((s) => s.status === 'ACTIVE');
+        if (active) {
+          setSelectedSprintId((prev) => prev || active.id);
+        } else if (sprintsList && sprintsList.length > 0) {
+          setSelectedSprintId((prev) => prev || sprintsList[0].id);
+        }
       }
     } catch (err) {
       console.error('Failed to load sprint workspace data:', err);
@@ -106,9 +136,18 @@ export default function ProjectSprintWorkspaceTab({ projectId, onToast }) {
 
   // Filter sprint tasks by quick filter
   const filteredTasks = useMemo(() => {
+    const currentUserId = authUser?.id || authUser?.user_id;
+
     return sprintTasks.filter((t) => {
       if (quickFilter === 'my-tasks') {
-        if (!t.assignees || t.assignees.length === 0) return false;
+        if (!currentUserId) return false;
+        const isAssigned = Boolean(
+          t.assignees?.some((a) => {
+            const aId = a.user_id || a.id;
+            return Boolean(aId) && aId === currentUserId;
+          })
+        );
+        if (!isAssigned) return false;
       }
       if (quickFilter === 'overdue') {
         if (!t.due_date || new Date(t.due_date) >= new Date() || t.status === 'COMPLETED') {
@@ -120,7 +159,7 @@ export default function ProjectSprintWorkspaceTab({ projectId, onToast }) {
       }
       return true;
     });
-  }, [sprintTasks, quickFilter]);
+  }, [sprintTasks, quickFilter, authUser]);
 
   // Metrics calculation
   const totalCount = sprintTasks.length;
@@ -234,6 +273,14 @@ export default function ProjectSprintWorkspaceTab({ projectId, onToast }) {
 
   // Start Sprint Handler
   const handleStartSprint = async (sprintId) => {
+    const activeSprint = sprints.find((s) => s.status === 'ACTIVE');
+    if (activeSprint && activeSprint.id !== sprintId) {
+      onToast?.(
+        `Cannot start sprint: Sprint "${activeSprint.name}" is currently active. Please complete or resolve it first.`
+      );
+      return;
+    }
+
     try {
       setStartingSprint(true);
       await sprintsService.startSprint(projectId, sprintId);
@@ -241,7 +288,7 @@ export default function ProjectSprintWorkspaceTab({ projectId, onToast }) {
       loadData();
     } catch (err) {
       console.error('Failed to start sprint:', err);
-      onToast?.(err.message || 'Failed to start sprint');
+      onToast?.(err?.response?.data?.error || err.message || 'Failed to start sprint');
     } finally {
       setStartingSprint(false);
     }
@@ -330,6 +377,7 @@ export default function ProjectSprintWorkspaceTab({ projectId, onToast }) {
           isOpen={isCreateSprintOpen}
           onClose={() => setIsCreateSprintOpen(false)}
           projectId={projectId}
+          existingSprints={sprints}
           onSuccess={() => {
             onToast?.('Sprint created successfully');
             loadData();
@@ -348,6 +396,7 @@ export default function ProjectSprintWorkspaceTab({ projectId, onToast }) {
 
   return (
     <div className="space-y-6">
+
       {/* SPRINT WORKSPACE HEADER & SUMMARY */}
       <div className="bg-white rounded-lg border border-slate-200 p-5">
         <div className="flex flex-col lg:flex-row lg:items-start justify-between gap-4">
@@ -457,14 +506,6 @@ export default function ProjectSprintWorkspaceTab({ projectId, onToast }) {
               </button>
             )}
 
-            <button
-              onClick={() => setIsLogWorkOpen(true)}
-              className="px-3 py-1.5 rounded-md bg-purple-700 hover:bg-purple-800 text-white text-xs font-semibold transition-colors flex items-center gap-1.5 shadow-xs cursor-pointer"
-            >
-              <Plus className="w-3.5 h-3.5" />
-              <span>Log Work</span>
-            </button>
-
             {currentSprint?.status === 'ACTIVE' && (
               <button
                 onClick={() => setIsCompleteSprintOpen(true)}
@@ -472,6 +513,17 @@ export default function ProjectSprintWorkspaceTab({ projectId, onToast }) {
               >
                 <Check className="w-3.5 h-3.5 text-slate-500" />
                 <span>Complete Sprint</span>
+              </button>
+            )}
+
+            {currentSprint && (
+              <button
+                onClick={() => setEditingSprint(currentSprint)}
+                className="px-2.5 py-1.5 rounded-md border border-slate-200 hover:bg-slate-50 text-slate-700 text-xs font-medium transition-colors flex items-center gap-1.5 cursor-pointer"
+                title="Edit or delete current sprint"
+              >
+                <Edit3 className="w-3.5 h-3.5 text-slate-500" />
+                <span>Edit Sprint</span>
               </button>
             )}
 
@@ -568,6 +620,277 @@ export default function ProjectSprintWorkspaceTab({ projectId, onToast }) {
             </div>
           </div>
         </div>
+      </div>
+
+      {/* SPRINT PERFORMANCE & SCHEDULE SUMMARY TABLE */}
+      <div className="bg-white rounded-lg border border-slate-200 overflow-hidden shadow-2xs">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 p-3.5 bg-slate-50/80 border-b border-slate-200">
+          <div className="flex items-center gap-2">
+            <span className="w-2.5 h-2.5 rounded-full bg-purple-600 shrink-0" />
+            <h3 className="text-xs font-bold uppercase tracking-wider text-slate-800">
+              Sprint Schedule & Completion Summary
+            </h3>
+            <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-purple-100 text-purple-700 border border-purple-200/80">
+              {sprints.length} {sprints.length === 1 ? 'Sprint' : 'Sprints'}
+            </span>
+          </div>
+
+          <div className="flex items-center gap-2 text-xs">
+            <span className="text-slate-400 text-[11px] hidden sm:inline">
+              Track schedule adherence and whether sprints ended early, on-time, or late
+            </span>
+            <button
+              type="button"
+              onClick={() => setShowSummaryTable(!showSummaryTable)}
+              className="px-2.5 py-1 text-xs font-semibold text-slate-600 hover:text-purple-700 hover:bg-white rounded-md border border-slate-200/80 transition-colors flex items-center gap-1 cursor-pointer ml-auto"
+            >
+              <span>{showSummaryTable ? 'Hide Table' : 'Show Table'}</span>
+              {showSummaryTable ? <ChevronUp className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />}
+            </button>
+          </div>
+        </div>
+
+        {showSummaryTable && (
+          <div className="overflow-x-auto min-w-0 max-w-full">
+            <table className="w-full text-left text-xs border-collapse">
+              <thead className="bg-slate-50/60 border-b border-slate-200 text-slate-500 font-semibold uppercase tracking-wider text-[10px]">
+                <tr>
+                  <th className="py-2.5 px-3.5">Sprint</th>
+                  <th className="py-2.5 px-3.5">Status</th>
+                  <th className="py-2.5 px-3.5">Planned Schedule</th>
+                  <th className="py-2.5 px-3.5">Actual End / Updated</th>
+                  <th className="py-2.5 px-3.5">Schedule Variance</th>
+                  <th className="py-2.5 px-3.5">Scope & Points</th>
+                  <th className="py-2.5 px-3.5">Completion Rate</th>
+                  <th className="py-2.5 px-3.5 text-right">Actions</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-100">
+                {sprints.map((s) => {
+                  const isCurrent = s.id === currentSprint?.id;
+                  const sprintWorkItems = workItems.filter((w) => w.sprint_id === s.id && w.type !== 'EPIC');
+                  const sTotalItems = s.total_items ?? sprintWorkItems.length;
+                  const sCompletedItems = s.completed_items ?? sprintWorkItems.filter((w) => w.status === 'COMPLETED').length;
+                  const sTotalPoints = s.total_points ?? sprintWorkItems.reduce((acc, w) => acc + (Number(w.story_points) || 0), 0);
+                  const sCompletedPoints = s.completed_points ?? sprintWorkItems.filter((w) => w.status === 'COMPLETED').reduce((acc, w) => acc + (Number(w.story_points) || 0), 0);
+                  const sCompletionRate = sTotalItems > 0 ? Math.round((sCompletedItems / sTotalItems) * 100) : (s.completion_percentage ?? 0);
+
+                  const startDate = s.start_date ? new Date(s.start_date) : null;
+                  const endDate = s.end_date ? new Date(s.end_date) : null;
+                  const updatedAt = s.updated_at ? new Date(s.updated_at) : null;
+
+                  const startFormatted = startDate
+                    ? startDate.toLocaleDateString([], { month: 'short', day: 'numeric', year: 'numeric' })
+                    : 'Not set';
+                  const endFormatted = endDate
+                    ? endDate.toLocaleDateString([], { month: 'short', day: 'numeric', year: 'numeric' })
+                    : 'Not set';
+
+                  // Calculate schedule status and variance
+                  let varianceBadge = null;
+                  let actualEndDisplay = '-';
+
+                  if (s.status === 'COMPLETED') {
+                    const finishDate = updatedAt || endDate;
+                    actualEndDisplay = finishDate
+                      ? finishDate.toLocaleDateString([], { month: 'short', day: 'numeric', year: 'numeric' })
+                      : '-';
+
+                    if (endDate && finishDate) {
+                      const diffTime = finishDate.getTime() - endDate.getTime();
+                      const diffDays = Math.round(diffTime / (1000 * 60 * 60 * 24));
+
+                      if (diffDays < -1) {
+                        varianceBadge = (
+                          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-200">
+                            <TrendingUp className="w-3 h-3 text-emerald-600" />
+                            <span>Ended Early ({Math.abs(diffDays)}d early)</span>
+                          </span>
+                        );
+                      } else if (diffDays > 1) {
+                        varianceBadge = (
+                          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-bold bg-rose-50 text-rose-700 border border-rose-200">
+                            <TrendingDown className="w-3 h-3 text-rose-600" />
+                            <span>Ended Late (+{diffDays}d delay)</span>
+                          </span>
+                        );
+                      } else {
+                        varianceBadge = (
+                          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-bold bg-blue-50 text-blue-700 border border-blue-200">
+                            <Check className="w-3 h-3 text-blue-600" />
+                            <span>On Time</span>
+                          </span>
+                        );
+                      }
+                    } else {
+                      varianceBadge = (
+                        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-bold bg-slate-100 text-slate-700 border border-slate-200">
+                          <Check className="w-3 h-3" />
+                          <span>Completed</span>
+                        </span>
+                      );
+                    }
+                  } else if (s.status === 'ACTIVE') {
+                    if (endDate) {
+                      const now = new Date();
+                      const diffTime = now.getTime() - endDate.getTime();
+                      const diffDays = Math.round(diffTime / (1000 * 60 * 60 * 24));
+
+                      if (diffDays > 0) {
+                        varianceBadge = (
+                          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-bold bg-rose-50 text-rose-700 border border-rose-200">
+                            <AlertTriangle className="w-3 h-3 text-rose-600" />
+                            <span>Overdue (+{diffDays}d past target)</span>
+                          </span>
+                        );
+                      } else {
+                        const daysRemaining = Math.max(0, Math.abs(diffDays));
+                        varianceBadge = (
+                          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-bold bg-purple-50 text-purple-700 border border-purple-200">
+                            <Clock className="w-3 h-3 text-purple-600" />
+                            <span>In Progress ({daysRemaining}d left)</span>
+                          </span>
+                        );
+                      }
+                    } else {
+                      varianceBadge = (
+                        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-bold bg-purple-50 text-purple-700 border border-purple-200">
+                          <Clock className="w-3 h-3" />
+                          <span>Active</span>
+                        </span>
+                      );
+                    }
+                  } else {
+                    varianceBadge = (
+                      <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-bold bg-slate-100 text-slate-600 border border-slate-200">
+                        <Hourglass className="w-3 h-3 text-slate-400" />
+                        <span>Planned (Not Started)</span>
+                      </span>
+                    );
+                  }
+
+                  return (
+                    <tr
+                      key={s.id}
+                      onClick={() => setSelectedSprintId(s.id)}
+                      className={`transition-colors cursor-pointer ${
+                        isCurrent
+                          ? 'bg-purple-50/60 font-medium'
+                          : 'hover:bg-slate-50/80'
+                      }`}
+                    >
+                      {/* Sprint Name */}
+                      <td className="py-3 px-3.5">
+                        <div className="flex items-center gap-2">
+                          {isCurrent && (
+                            <span className="w-1.5 h-1.5 rounded-full bg-purple-600 shrink-0" />
+                          )}
+                          <div>
+                            <div className="font-bold text-slate-900 flex items-center gap-1.5">
+                              <span>{s.name}</span>
+                              {isCurrent && (
+                                <span className="text-[10px] font-semibold text-purple-600 bg-purple-100 px-1.5 py-0.2 rounded">
+                                  Current
+                                </span>
+                              )}
+                            </div>
+                            {s.goal && (
+                              <div className="text-[11px] text-slate-400 max-w-xs truncate mt-0.5">
+                                {s.goal}
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                      </td>
+
+                      {/* Status */}
+                      <td className="py-3 px-3.5">
+                        <span
+                          className={`inline-flex px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider ${
+                            s.status === 'ACTIVE'
+                              ? 'bg-purple-100 text-purple-700 border border-purple-200'
+                              : s.status === 'COMPLETED'
+                              ? 'bg-emerald-100 text-emerald-700 border border-emerald-200'
+                              : 'bg-slate-100 text-slate-700 border border-slate-200'
+                          }`}
+                        >
+                          {s.status}
+                        </span>
+                      </td>
+
+                      {/* Planned Schedule */}
+                      <td className="py-3 px-3.5 text-slate-600">
+                        <div className="flex items-center gap-1 text-[11px]">
+                          <Calendar className="w-3 h-3 text-slate-400 shrink-0" />
+                          <span>{startFormatted} &ndash; {endFormatted}</span>
+                        </div>
+                      </td>
+
+                      {/* Actual End / Completed */}
+                      <td className="py-3 px-3.5 text-slate-700 text-[11px] font-medium">
+                        {actualEndDisplay}
+                      </td>
+
+                      {/* Schedule Variance Badge (Ended Early / Late / On Time) */}
+                      <td className="py-3 px-3.5">
+                        {varianceBadge}
+                      </td>
+
+                      {/* Scope & Points */}
+                      <td className="py-3 px-3.5 text-[11px] text-slate-700">
+                        <div>
+                          <span className="font-semibold text-slate-900">{sCompletedItems}</span>
+                          <span className="text-slate-400">/{sTotalItems} tasks</span>
+                        </div>
+                        {sTotalPoints > 0 && (
+                          <div className="text-[10px] text-slate-400 mt-0.5">
+                            {sCompletedPoints}/{sTotalPoints} SP
+                          </div>
+                        )}
+                      </td>
+
+                      {/* Progress Bar & Rate */}
+                      <td className="py-3 px-3.5">
+                        <div className="w-28 space-y-1">
+                          <div className="flex items-center justify-between text-[10px] font-semibold text-slate-700">
+                            <span>{sCompletionRate}%</span>
+                            <span className="text-slate-400">done</span>
+                          </div>
+                          <div className="w-full bg-slate-100 rounded-full h-1.5 overflow-hidden">
+                            <div
+                              className={`h-full rounded-full transition-all ${
+                                sCompletionRate === 100
+                                  ? 'bg-emerald-600'
+                                  : sCompletionRate >= 50
+                                  ? 'bg-purple-600'
+                                  : 'bg-amber-500'
+                              }`}
+                              style={{ width: `${sCompletionRate}%` }}
+                            />
+                          </div>
+                        </div>
+                      </td>
+
+                      {/* Action buttons */}
+                      <td className="py-3 px-3.5 text-right">
+                        <div className="flex items-center justify-end gap-1.5" onClick={(e) => e.stopPropagation()}>
+                          <button
+                            type="button"
+                            onClick={() => setEditingSprint(s)}
+                            className="p-1 text-slate-400 hover:text-slate-700 hover:bg-slate-100 rounded transition-colors"
+                            title="Edit or Delete Sprint"
+                          >
+                            <Edit3 className="w-3.5 h-3.5" />
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        )}
       </div>
 
       {/* TASK STATUS OVERVIEW (5 COLUMNS) */}
@@ -703,11 +1026,16 @@ export default function ProjectSprintWorkspaceTab({ projectId, onToast }) {
                           {card.title}
                         </h5>
 
-                        {card.parent?.title && (
-                          <div className="text-[10px] text-slate-400 mt-1 truncate">
-                            {card.parent.title}
-                          </div>
-                        )}
+                        {(() => {
+                          const epicTitle = card.parent?.title || workItems.find((w) => w.id === card.parent_id)?.title;
+                          if (!epicTitle) return null;
+                          return (
+                            <div className="flex items-center gap-1 text-[10px] font-semibold text-purple-700 bg-purple-50/80 border border-purple-200/60 rounded px-1.5 py-0.5 mt-1 max-w-full truncate">
+                              <Zap className="w-2.5 h-2.5 shrink-0 fill-purple-600 text-purple-600" />
+                              <span className="truncate">{epicTitle}</span>
+                            </div>
+                          );
+                        })()}
 
                         {/* Card Footer: Due & Assignee */}
                         <div className="mt-2 pt-2 border-t border-slate-100 flex items-center justify-between text-xs">
@@ -805,8 +1133,26 @@ export default function ProjectSprintWorkspaceTab({ projectId, onToast }) {
         isOpen={isCreateSprintOpen}
         onClose={() => setIsCreateSprintOpen(false)}
         projectId={projectId}
+        existingSprints={sprints}
         onSuccess={() => {
           onToast?.('Sprint created successfully');
+          loadData();
+        }}
+      />
+
+      <EditSprintModal
+        isOpen={Boolean(editingSprint)}
+        onClose={() => setEditingSprint(null)}
+        projectId={projectId}
+        sprint={editingSprint}
+        allSprints={sprints}
+        onSuccess={(updated) => {
+          onToast?.(`Sprint "${updated?.name || 'Sprint'}" updated successfully`);
+          loadData();
+        }}
+        onDelete={(deleted) => {
+          onToast?.(`Sprint "${deleted?.name || 'Sprint'}" deleted successfully`);
+          setSelectedSprintId(null);
           loadData();
         }}
       />

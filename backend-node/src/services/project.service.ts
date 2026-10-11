@@ -1,7 +1,7 @@
-import path from 'path';
-import { ProjectStatus } from '@prisma/client';
+import { ProjectStatus, RequirementStatus } from '@prisma/client';
 import { prisma } from '../lib/prisma';
 import { StorageService } from './storage.service';
+import { DocumentParserService } from './document-parser.service';
 
 export interface CreateProjectInput {
   name: string;
@@ -464,12 +464,22 @@ export class ProjectService {
       },
     });
 
-    return members.map((m) => ({
+    const result = members.map((m) => ({
       user_id: m.user.id,
       name: m.user.name,
       email: m.user.email,
       project_role: m.project_role || null,
     }));
+
+    return result.sort((a, b) => {
+      const aIsLead = a.project_role === 'TECH_LEAD';
+      const bIsLead = b.project_role === 'TECH_LEAD';
+      if (aIsLead && !bIsLead) return -1;
+      if (!aIsLead && bIsLead) return 1;
+      const nameA = a.name || a.email || '';
+      const nameB = b.name || b.email || '';
+      return nameA.localeCompare(nameB, undefined, { sensitivity: 'base' });
+    });
   }
 
   static readonly ALLOWED_PROJECT_ROLES = [
@@ -636,7 +646,7 @@ export class ProjectService {
   }
 
   /**
-   * List documents for a project
+   * List documents for a project including requirements and progress metrics
    */
   static async getProjectDocuments(projectId: string, user: any) {
     const orgId = this.getUserOrgId(user);
@@ -650,12 +660,17 @@ export class ProjectService {
 
     return await prisma.projectDocument.findMany({
       where: { project_id: projectId },
+      include: {
+        requirements: {
+          orderBy: { created_at: 'asc' },
+        },
+      },
       orderBy: { created_at: 'desc' },
     });
   }
 
   /**
-   * Upload actual document file and save metadata
+   * Upload actual document file, save metadata, and automatically parse actionable requirements
    */
   static async uploadProjectDocumentWithFile(
     projectId: string,
@@ -675,7 +690,8 @@ export class ProjectService {
       throw new Error('Valid file is required for upload');
     }
 
-    const ext = path.extname(file.originalname).replace('.', '').toLowerCase() || 'bin';
+    const extMatch = file.originalname.split('.').pop();
+    const ext = extMatch ? extMatch.toLowerCase() : 'bin';
     
     // Save physical file to persistent storage
     const { storageKey } = await StorageService.saveProjectFile(
@@ -684,8 +700,9 @@ export class ProjectService {
       file.buffer
     );
 
+    let createdDoc;
     try {
-      return await prisma.projectDocument.create({
+      createdDoc = await prisma.projectDocument.create({
         data: {
           project_id: projectId,
           name: file.originalname.trim(),
@@ -698,6 +715,37 @@ export class ProjectService {
       await StorageService.deleteFile(storageKey);
       throw err;
     }
+
+    // Automatically parse actionable requirements from supported formats
+    try {
+      const filePath = StorageService.getFilePath(storageKey);
+      const text = await DocumentParserService.extractText(filePath, ext, file.buffer);
+      const extracted = DocumentParserService.extractRequirements(text);
+
+      if (extracted && extracted.length > 0) {
+        await prisma.documentRequirement.createMany({
+          data: extracted.map((req) => ({
+            document_id: createdDoc.id,
+            code: req.code,
+            title: req.title,
+            description: req.description,
+            section: req.section,
+            status: RequirementStatus.PENDING,
+          })),
+        });
+      }
+    } catch (parseErr: any) {
+      console.warn(`[DocumentParser] Notice: Could not parse requirements from ${file.originalname}:`, parseErr.message);
+    }
+
+    return await prisma.projectDocument.findUnique({
+      where: { id: createdDoc.id },
+      include: {
+        requirements: {
+          orderBy: { created_at: 'asc' },
+        },
+      },
+    });
   }
 
   /**
@@ -838,5 +886,97 @@ export class ProjectService {
     }
 
     return { message: 'Document deleted successfully' };
+  }
+
+  /**
+   * Update an individual requirement status, progress note, or current activity
+   */
+  static async updateRequirement(
+    projectId: string,
+    documentId: string,
+    requirementId: string,
+    data: { status?: RequirementStatus; progress_note?: string; current_activity?: string },
+    user: any
+  ) {
+    const orgId = this.getUserOrgId(user);
+
+    const project = await prisma.project.findFirst({
+      where: { id: projectId, organization_id: orgId },
+    });
+    if (!project) throw new Error('Project not found');
+
+    const requirement = await prisma.documentRequirement.findFirst({
+      where: { id: requirementId, document_id: documentId },
+    });
+    if (!requirement) throw new Error('Requirement not found');
+
+    const updateData: any = {
+      updated_by_user_id: user.id,
+    };
+    if (data.status !== undefined) {
+      if (!Object.values(RequirementStatus).includes(data.status)) {
+        throw new Error(`Invalid requirement status: ${data.status}`);
+      }
+      updateData.status = data.status;
+    }
+    if (data.progress_note !== undefined) updateData.progress_note = data.progress_note;
+    if (data.current_activity !== undefined) updateData.current_activity = data.current_activity;
+
+    return await prisma.documentRequirement.update({
+      where: { id: requirementId },
+      data: updateData,
+    });
+  }
+
+  /**
+   * Reparse document requirements manually or for existing documents
+   */
+  static async reparseDocumentRequirements(
+    projectId: string,
+    documentId: string,
+    user: any
+  ) {
+    const orgId = this.getUserOrgId(user);
+
+    const project = await prisma.project.findFirst({
+      where: { id: projectId, organization_id: orgId },
+    });
+    if (!project) throw new Error('Project not found');
+
+    const doc = await prisma.projectDocument.findFirst({
+      where: { id: documentId, project_id: projectId },
+    });
+    if (!doc) throw new Error('Document not found');
+
+    const filePath = StorageService.getFilePath(doc.storage_key);
+    const text = await DocumentParserService.extractText(filePath, doc.document_type);
+    const extracted = DocumentParserService.extractRequirements(text);
+
+    if (extracted && extracted.length > 0) {
+      // Remove previous requirements to prevent duplicates
+      await prisma.documentRequirement.deleteMany({
+        where: { document_id: documentId },
+      });
+
+      await prisma.documentRequirement.createMany({
+        data: extracted.map((req) => ({
+          document_id: documentId,
+          code: req.code,
+          title: req.title,
+          description: req.description,
+          section: req.section,
+          status: RequirementStatus.PENDING,
+        })),
+      });
+    }
+
+    return await prisma.projectDocument.findUnique({
+      where: { id: documentId },
+      include: {
+        requirements: {
+          orderBy: { created_at: 'asc' },
+        },
+      },
+    });
   }
 }

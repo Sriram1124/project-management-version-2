@@ -330,7 +330,7 @@ export default function ProjectsDirectoryView({ onSelectProject }) {
   });
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-6 min-w-0 max-w-full">
       {/* Toast Feedback */}
       {toastMessage && (
         <div className="fixed bottom-6 right-6 z-50 flex items-center gap-2 px-4 py-2.5 rounded-xl bg-slate-900 text-white text-xs font-semibold shadow-xl border border-slate-800 animate-in fade-in slide-in-from-bottom-2 duration-200">
@@ -415,7 +415,7 @@ export default function ProjectsDirectoryView({ onSelectProject }) {
 
       {/* Main Table Card */}
       {!loading && !error && (
-        <div className="bg-white rounded-2xl border border-slate-200/80 shadow-card overflow-hidden">
+        <div className="bg-white rounded-2xl border border-slate-200/80 shadow-card overflow-hidden min-w-0 max-w-full">
           {filteredProjects.length === 0 ? (
             <div className="flex flex-col items-center justify-center p-16 text-center">
               <div className="w-12 h-12 bg-purple-50 text-purple-600 rounded-2xl flex items-center justify-center mb-3">
@@ -429,7 +429,7 @@ export default function ProjectsDirectoryView({ onSelectProject }) {
               </p>
             </div>
           ) : (
-            <div className="overflow-x-auto">
+            <div className="overflow-x-auto min-w-0 max-w-full">
               <table className="w-full text-left text-xs">
                 <thead className="bg-slate-50/70 border-b border-slate-200/80 text-slate-400 font-semibold uppercase tracking-wider text-[10px]">
                   <tr>

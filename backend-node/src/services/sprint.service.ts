@@ -13,6 +13,7 @@ export interface UpdateSprintInput {
   goal?: string | null;
   start_date?: string | Date | null;
   end_date?: string | Date | null;
+  status?: SprintStatus | string;
 }
 
 export class SprintService {
@@ -182,46 +183,89 @@ export class SprintService {
   static async updateSprint(projectId: string, sprintId: string, data: UpdateSprintInput, user: any) {
     const orgId = this.getUserOrgId(user);
 
-    const existing = await prisma.sprint.findFirst({
-      where: { id: sprintId, project_id: projectId, organization_id: orgId },
-    });
-    if (!existing) {
-      throw new Error('Sprint not found in this project');
-    }
-
-    const updateData: any = {};
-    if (data.name !== undefined) {
-      if (!data.name || typeof data.name !== 'string' || !data.name.trim()) {
-        throw new Error('Sprint name cannot be empty');
+    return await prisma.$transaction(async (tx) => {
+      // If activating a sprint, lock project row to serialize concurrent sprint lifecycle requests
+      if (data.status === SprintStatus.ACTIVE) {
+        await tx.$executeRaw`SELECT id FROM "projects" WHERE id = ${projectId} FOR UPDATE;`;
       }
-      updateData.name = data.name.trim();
-    }
 
-    if (data.goal !== undefined) {
-      updateData.goal = data.goal ? data.goal.trim() : null;
-    }
+      const existing = await tx.sprint.findFirst({
+        where: { id: sprintId, project_id: projectId, organization_id: orgId },
+      });
+      if (!existing) {
+        throw new Error('Sprint not found in this project');
+      }
 
-    if (data.start_date !== undefined || data.end_date !== undefined) {
-      const finalStart = data.start_date !== undefined ? data.start_date : existing.start_date;
-      const finalEnd = data.end_date !== undefined ? data.end_date : existing.end_date;
-      const { startDate, endDate } = this.validateDates(finalStart, finalEnd);
-      updateData.start_date = startDate;
-      updateData.end_date = endDate;
-    }
+      const updateData: any = {};
+      if (data.name !== undefined) {
+        if (!data.name || typeof data.name !== 'string' || !data.name.trim()) {
+          throw new Error('Sprint name cannot be empty');
+        }
+        updateData.name = data.name.trim();
+      }
 
-    return await prisma.sprint.update({
-      where: { id: sprintId },
-      data: updateData,
+      if (data.goal !== undefined) {
+        updateData.goal = data.goal ? data.goal.trim() : null;
+      }
+
+      if (data.start_date !== undefined || data.end_date !== undefined) {
+        const finalStart = data.start_date !== undefined ? data.start_date : existing.start_date;
+        const finalEnd = data.end_date !== undefined ? data.end_date : existing.end_date;
+        const { startDate, endDate } = this.validateDates(finalStart, finalEnd);
+        updateData.start_date = startDate;
+        updateData.end_date = endDate;
+      }
+
+      if (data.status !== undefined && data.status !== existing.status) {
+        const validStatuses = Object.values(SprintStatus) as string[];
+        if (!validStatuses.includes(data.status)) {
+          throw new Error(`Invalid sprint status: ${data.status}`);
+        }
+
+        if (data.status === SprintStatus.ACTIVE) {
+          const activeSprint = await tx.sprint.findFirst({
+            where: {
+              project_id: projectId,
+              status: SprintStatus.ACTIVE,
+              id: { not: sprintId },
+            },
+          });
+          if (activeSprint) {
+            throw new Error(
+              `Cannot activate sprint: Sprint "${activeSprint.name}" is currently active. Please complete or resolve it first.`
+            );
+          }
+          if (!existing.start_date && !updateData.start_date) {
+            updateData.start_date = new Date();
+          }
+        }
+
+        if (data.status === SprintStatus.COMPLETED) {
+          if (!existing.end_date && !updateData.end_date) {
+            updateData.end_date = new Date();
+          }
+        }
+
+        updateData.status = data.status as SprintStatus;
+      }
+
+      return await tx.sprint.update({
+        where: { id: sprintId },
+        data: updateData,
+      });
     });
   }
 
   /**
-   * Start a sprint (transactional with single active sprint guarantee)
+   * Start a sprint (transactional with single active sprint guarantee and concurrency protection)
    */
   static async startSprint(projectId: string, sprintId: string, user: any) {
     const orgId = this.getUserOrgId(user);
 
     return await prisma.$transaction(async (tx) => {
+      // Acquire exclusive lock on the project to serialize concurrent sprint activation requests
+      await tx.$executeRaw`SELECT id FROM "projects" WHERE id = ${projectId} FOR UPDATE;`;
+
       const targetSprint = await tx.sprint.findFirst({
         where: { id: sprintId, project_id: projectId, organization_id: orgId },
       });
@@ -247,7 +291,7 @@ export class SprintService {
 
       if (activeSprint) {
         throw new Error(
-          `Cannot start sprint: Sprint "${activeSprint.name}" is currently active. Complete it before starting a new sprint.`
+          `Cannot start sprint: Sprint "${activeSprint.name}" is currently active. Please complete or resolve it first.`
         );
       }
 

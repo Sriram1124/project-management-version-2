@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { 
   MessageSquare, 
   Calendar, 
@@ -13,7 +13,9 @@ import {
   Tag, 
   Share2,
   ChevronDown,
-  ChevronUp
+  ChevronUp,
+  Trash2,
+  AlertTriangle
 } from 'lucide-react';
 
 const initialMoMs = [
@@ -84,12 +86,33 @@ const initialMoMs = [
   }
 ];
 
-export default function ProjectMomTab({ onToast }) {
-  const [moms, setMoms] = useState(initialMoMs);
+export default function ProjectMomTab({ projectId, projectName, onToast }) {
+  const storageKey = `moms_project_${projectId || 'default'}`;
+
+  const [moms, setMoms] = useState(() => {
+    try {
+      const saved = localStorage.getItem(storageKey);
+      if (saved) return JSON.parse(saved);
+    } catch (e) {
+      console.warn('Failed to parse saved MoMs:', e);
+    }
+    return initialMoMs;
+  });
+
+  useEffect(() => {
+    try {
+      localStorage.setItem(storageKey, JSON.stringify(moms));
+    } catch (e) {
+      console.warn('Failed to persist MoMs:', e);
+    }
+  }, [moms, storageKey]);
+
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedType, setSelectedType] = useState('All');
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [expandedMomId, setExpandedMomId] = useState(null);
+  const [newQuickItem, setNewQuickItem] = useState({});
+  const [itemToDelete, setItemToDelete] = useState(null); // { momId, itemIndex, itemText }
 
   // New MoM Form state
   const [newTitle, setNewTitle] = useState('');
@@ -104,15 +127,49 @@ export default function ProjectMomTab({ onToast }) {
   const meetingTypes = ['All', 'Sprint Planning', 'Architecture Review', 'Retrospective', 'Kickoff'];
 
   const filteredMoMs = moms.filter((mom) => {
+    const q = searchQuery.toLowerCase().trim();
     const matchesSearch = 
-      mom.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      mom.agenda.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      mom.organizer.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      mom.keyDecisions.some(d => d.toLowerCase().includes(searchQuery.toLowerCase()));
+      !q ||
+      mom.title.toLowerCase().includes(q) ||
+      mom.agenda.toLowerCase().includes(q) ||
+      mom.organizer.toLowerCase().includes(q) ||
+      mom.keyDecisions.some((d) => d.toLowerCase().includes(q));
     
     const matchesType = selectedType === 'All' || mom.type === selectedType;
     return matchesSearch && matchesType;
   });
+
+  const handleConfirmDeleteActionItem = () => {
+    if (!itemToDelete) return;
+    const { momId, itemIndex } = itemToDelete;
+    setMoms((prev) =>
+      prev.map((mom) => {
+        if (mom.id !== momId) return mom;
+        const updated = mom.keyDecisions.filter((_, idx) => idx !== itemIndex);
+        return { ...mom, keyDecisions: updated };
+      })
+    );
+    setItemToDelete(null);
+    onToast?.('Action item deleted');
+  };
+
+  const handleAddQuickActionItem = (momId) => {
+    const text = (newQuickItem[momId] || '').trim();
+    if (!text) return;
+    setMoms((prev) =>
+      prev.map((mom) => {
+        if (mom.id !== momId) return mom;
+        return { ...mom, keyDecisions: [...mom.keyDecisions, text] };
+      })
+    );
+    setNewQuickItem((prev) => ({ ...prev, [momId]: '' }));
+    onToast?.('Action item added');
+  };
+
+  const handleDeleteMoM = (momId) => {
+    setMoms((prev) => prev.filter((m) => m.id !== momId));
+    onToast?.(`Deleted meeting record ${momId}`);
+  };
 
   const handleCreateMoM = (e) => {
     e.preventDefault();
@@ -156,28 +213,41 @@ export default function ProjectMomTab({ onToast }) {
   return (
     <div className="space-y-4">
       {/* Top Toolbar: Search, Type Filters, and Publish MoM Button */}
-      <div className="bg-white rounded-xl border border-slate-200/80 p-3.5 shadow-2xs flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-        <div className="flex items-center gap-2.5 flex-1 max-w-lg">
-          <div className="relative flex-1">
+      <div className="bg-white rounded-xl border border-slate-200/80 p-3 shadow-2xs flex flex-col md:flex-row md:items-center justify-between gap-3">
+        <div className="flex flex-wrap items-center gap-2.5 flex-1 min-w-0">
+          {/* Search Box - Dedicated responsive width, never crushed */}
+          <div className="relative w-full sm:w-64 md:w-80 shrink-0">
             <Search className="w-3.5 h-3.5 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
             <input
               type="text"
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              placeholder="Search meetings, decisions, organizers..."
-              className="w-full pl-8 pr-3 py-1.5 text-xs rounded-lg bg-slate-50 border border-slate-200 text-slate-800 placeholder-slate-400 focus:outline-none focus:ring-1 focus:ring-purple-500 focus:border-purple-500"
+              placeholder="Search meetings, action items, organizers..."
+              className="w-full pl-8 pr-7 py-1.5 text-xs rounded-lg bg-slate-50 border border-slate-200 text-slate-800 placeholder-slate-400 focus:outline-none focus:ring-1 focus:ring-purple-500 focus:border-purple-500 transition-colors"
             />
+            {searchQuery && (
+              <button
+                type="button"
+                onClick={() => setSearchQuery('')}
+                className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 p-0.5"
+                title="Clear search"
+              >
+                <X className="w-3 h-3" />
+              </button>
+            )}
           </div>
 
-          <div className="flex items-center gap-1 overflow-x-auto">
+          {/* Type Filter Buttons */}
+          <div className="flex items-center gap-1 overflow-x-auto py-0.5">
             {meetingTypes.map((type) => (
               <button
                 key={type}
+                type="button"
                 onClick={() => setSelectedType(type)}
-                className={`px-2.5 py-1 text-xs font-medium rounded-md whitespace-nowrap transition-colors ${
+                className={`px-2.5 py-1 text-xs font-medium rounded-lg whitespace-nowrap transition-colors cursor-pointer ${
                   selectedType === type
-                    ? 'bg-purple-100 text-purple-700 font-semibold'
-                    : 'text-slate-600 hover:bg-slate-100 hover:text-slate-900'
+                    ? 'bg-purple-100 text-purple-700 font-semibold border border-purple-200/80'
+                    : 'text-slate-600 hover:bg-slate-100 hover:text-slate-900 border border-transparent'
                 }`}
               >
                 {type}
@@ -186,11 +256,13 @@ export default function ProjectMomTab({ onToast }) {
           </div>
         </div>
 
-        <div className="flex items-center gap-2 shrink-0">
+        {/* Right CTA */}
+        <div className="flex items-center gap-2.5 shrink-0 self-end md:self-auto">
           <span className="text-xs text-slate-400 font-medium">
             {filteredMoMs.length} {filteredMoMs.length === 1 ? 'Record' : 'Records'}
           </span>
           <button
+            type="button"
             onClick={() => setIsModalOpen(true)}
             className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-purple-600 hover:bg-purple-700 text-white text-xs font-semibold shadow-2xs transition-colors cursor-pointer"
           >
@@ -244,6 +316,16 @@ export default function ProjectMomTab({ onToast }) {
                       <Clock className="w-3.5 h-3.5 text-slate-400" />
                       {mom.time}
                     </span>
+                    <span className="text-slate-300">·</span>
+                    {/* Option to delete entire meeting record */}
+                    <button
+                      type="button"
+                      onClick={() => handleDeleteMoM(mom.id)}
+                      title={`Delete meeting record ${mom.id}`}
+                      className="p-1 rounded text-slate-400 hover:text-rose-600 hover:bg-rose-50 transition-colors cursor-pointer"
+                    >
+                      <Trash2 className="w-3.5 h-3.5" />
+                    </button>
                   </div>
                 </div>
 
@@ -272,6 +354,7 @@ export default function ProjectMomTab({ onToast }) {
                       Key Decisions & Agreed Action Items ({mom.keyDecisions.length})
                     </span>
                     <button
+                      type="button"
                       onClick={() => setExpandedMomId(isExpanded ? null : mom.id)}
                       className="text-xs text-purple-600 hover:text-purple-800 font-medium flex items-center gap-0.5 cursor-pointer"
                     >
@@ -280,22 +363,70 @@ export default function ProjectMomTab({ onToast }) {
                     </button>
                   </div>
 
-                  <ul className="space-y-1.5 text-xs">
-                    {(isExpanded ? mom.keyDecisions : mom.keyDecisions.slice(0, 2)).map((dec, i) => (
-                      <li key={i} className="flex items-start gap-2 text-slate-700">
-                        <CheckCircle2 className="w-3.5 h-3.5 text-purple-600 shrink-0 mt-0.5" />
-                        <span className="leading-snug">{dec}</span>
-                      </li>
-                    ))}
-                  </ul>
+                  {mom.keyDecisions.length === 0 ? (
+                    <p className="text-xs text-slate-400 italic py-1">No action items recorded for this meeting.</p>
+                  ) : (
+                    <ul className="space-y-1 text-xs">
+                      {(isExpanded ? mom.keyDecisions : mom.keyDecisions.slice(0, 2)).map((dec, i) => (
+                        <li 
+                          key={i} 
+                          className="group/item flex items-center justify-between gap-2 p-1.5 rounded-lg hover:bg-slate-50 transition-colors"
+                        >
+                          <div className="flex items-start gap-2 min-w-0 flex-1">
+                            <CheckCircle2 className="w-3.5 h-3.5 text-purple-600 shrink-0 mt-0.5" />
+                            <span className="leading-snug text-slate-700 break-words">{dec}</span>
+                          </div>
+                          {/* Option to delete individual action item */}
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setItemToDelete({ momId: mom.id, itemIndex: i, itemText: dec });
+                            }}
+                            title="Delete this action item"
+                            className="opacity-70 sm:opacity-0 group-hover/item:opacity-100 hover:!opacity-100 p-1 rounded text-slate-400 hover:text-rose-600 hover:bg-rose-50 transition-all shrink-0 cursor-pointer"
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </button>
+                        </li>
+                      ))}
+                    </ul>
+                  )}
 
                   {!isExpanded && mom.keyDecisions.length > 2 && (
                     <button
+                      type="button"
                       onClick={() => setExpandedMomId(mom.id)}
-                      className="text-[11px] text-slate-400 hover:text-purple-600 mt-1 font-medium cursor-pointer"
+                      className="text-[11px] text-slate-400 hover:text-purple-600 mt-1.5 font-medium cursor-pointer"
                     >
                       +{mom.keyDecisions.length - 2} more action items
                     </button>
+                  )}
+
+                  {/* Inline quick-add for individual action items when expanded */}
+                  {isExpanded && (
+                    <div className="mt-2.5 pt-2 border-t border-slate-100 flex items-center gap-2">
+                      <input
+                        type="text"
+                        placeholder="Add a new action item to this meeting..."
+                        value={newQuickItem[mom.id] || ''}
+                        onChange={(e) => setNewQuickItem({ ...newQuickItem, [mom.id]: e.target.value })}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter') {
+                            e.preventDefault();
+                            handleAddQuickActionItem(mom.id);
+                          }
+                        }}
+                        className="flex-1 px-2.5 py-1 text-xs rounded-lg bg-slate-50 border border-slate-200 text-slate-800 placeholder-slate-400 focus:outline-none focus:ring-1 focus:ring-purple-500 focus:border-purple-500"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => handleAddQuickActionItem(mom.id)}
+                        className="px-2.5 py-1 text-xs font-semibold rounded-lg bg-purple-50 hover:bg-purple-100 text-purple-700 border border-purple-200 transition-colors cursor-pointer shrink-0"
+                      >
+                        Add Item
+                      </button>
+                    </div>
                   )}
                 </div>
               </div>
@@ -429,6 +560,51 @@ export default function ProjectMomTab({ onToast }) {
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* Delete Action Item Confirmation Modal */}
+      {itemToDelete && (
+        <div 
+          className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/50 backdrop-blur-xs animate-in fade-in duration-100"
+          onClick={() => setItemToDelete(null)}
+        >
+          <div 
+            className="bg-white rounded-2xl shadow-xl border border-slate-200 p-5 w-full max-w-sm animate-in fade-in zoom-in-95 duration-150"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center gap-3 text-rose-600 mb-3">
+              <div className="w-8 h-8 rounded-lg bg-rose-50 text-rose-600 flex items-center justify-center border border-rose-100 shrink-0">
+                <AlertTriangle className="w-4 h-4" />
+              </div>
+              <h3 className="text-sm font-bold text-slate-900">Delete Action Item</h3>
+            </div>
+            <p className="text-xs text-slate-600 leading-relaxed">
+              Are you sure you want to delete this action item?
+            </p>
+            {itemToDelete.itemText && (
+              <div className="mt-2.5 p-2.5 bg-slate-50 rounded-lg border border-slate-100 text-xs text-slate-700 italic break-words line-clamp-3">
+                "{itemToDelete.itemText}"
+              </div>
+            )}
+            <div className="flex items-center justify-end gap-2 mt-5">
+              <button
+                type="button"
+                onClick={() => setItemToDelete(null)}
+                className="px-3.5 py-1.5 text-xs font-semibold text-slate-600 hover:text-slate-800 rounded-lg hover:bg-slate-100 transition-colors cursor-pointer"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={handleConfirmDeleteActionItem}
+                className="px-3.5 py-1.5 text-xs font-semibold text-white bg-rose-600 hover:bg-rose-700 rounded-lg transition-colors shadow-xs flex items-center gap-1.5 cursor-pointer"
+              >
+                <Trash2 className="w-3.5 h-3.5" />
+                <span>Delete</span>
+              </button>
+            </div>
           </div>
         </div>
       )}

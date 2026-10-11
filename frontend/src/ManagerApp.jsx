@@ -298,7 +298,7 @@ export default function ManagerApp() {
       />
 
       {/* Main Content Area */}
-      <div className="flex-1 flex flex-col min-w-0 min-h-0">
+      <div className="flex-1 flex flex-col min-w-0 min-h-0 overflow-hidden">
         {/* Header */}
         <Header
           breadcrumbs={getBreadcrumbs()}
@@ -320,7 +320,7 @@ export default function ManagerApp() {
         />
 
         {/* Page Content Container */}
-        <main className="flex-1 min-h-0 p-4 sm:p-6 overflow-y-auto">
+        <main className={`flex-1 min-h-0 min-w-0 overflow-y-auto overflow-x-hidden ${activeProjectId ? 'px-4 sm:px-6 pb-4 sm:pb-6 pt-0' : 'p-4 sm:p-6'}`}>
           {currentRole === 'intern' ? (
             <InternPortalView onSwitchToManager={() => setCurrentRole('manager')} />
           ) : activeProjectId ? (
@@ -356,6 +356,8 @@ export default function ManagerApp() {
               )}
               {currentView === 'interns' && (
                 <InternsView
+                  cohorts={cohorts}
+                  selectedCohortId={selectedCohortId}
                   onPingIntern={(intern) =>
                     triggerToast(`Message prompt opened for ${intern.name}`)
                   }

@@ -19,6 +19,9 @@ router.get('/', requirePermission('USER_READ'), UserController.list);
 // Manager provisions individual user
 router.post('/', requireRole(['MANAGER']), UserController.create);
 
+// Manager downloads schema-aware CSV template
+router.get('/bulk/template', requireRole(['MANAGER']), UserController.getTemplate);
+
 // Manager validates CSV for bulk preview
 router.post('/bulk/validate', requireRole(['MANAGER']), upload.single('file'), UserController.validateCsv);
 

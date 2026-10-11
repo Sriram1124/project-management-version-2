@@ -16,8 +16,15 @@ export const usersService = {
   /**
    * Manager provisions individual user
    */
-  async createUser({ name, email, type }) {
-    return await api.post('/users', { name, email, type });
+  async createUser({ name, email, type, batch, subbatch, cohort_id }) {
+    return await api.post('/users', { name, email, type, batch, subbatch, cohort_id });
+  },
+
+  /**
+   * Download schema-aware CSV template for bulk user provisioning
+   */
+  async getBulkTemplate() {
+    return await api.get('/users/bulk/template', { responseType: 'text' });
   },
 
   /**

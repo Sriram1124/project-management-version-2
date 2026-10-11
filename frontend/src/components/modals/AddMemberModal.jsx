@@ -1,15 +1,60 @@
-import React, { useState } from 'react';
-import { X, User, Mail, ShieldAlert, Loader2, Sparkles, Building2, UserPlus, Info } from 'lucide-react';
+import React, { useState, useEffect } from 'react';
+import { X, User, Mail, ShieldAlert, Loader2, Sparkles, Building2, UserPlus, Info, Layers, GraduationCap } from 'lucide-react';
 import { usersService } from '../../services/users.service';
+import { cohortsService } from '../../services/cohorts.service';
 
-export default function AddMemberModal({ isOpen, onClose, onSuccess }) {
+const BATCH_OPTIONS = ['A', 'B', 'C', 'D'];
+const SUBBATCH_OPTIONS = {
+  A: ['A1', 'A2'],
+  B: ['B1', 'B2'],
+  C: ['C1', 'C2'],
+  D: ['D1', 'D2'],
+};
+
+export default function AddMemberModal({ isOpen, onClose, onSuccess, defaultCohortId = null, cohorts: initialCohorts = [] }) {
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
   const [type, setType] = useState('INTERN');
+  const [batch, setBatch] = useState('');
+  const [subbatch, setSubbatch] = useState('');
+  const [cohortId, setCohortId] = useState('');
+  const [cohorts, setCohorts] = useState(initialCohorts);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState('');
 
+  // Load cohorts and set default whenever modal opens or defaultCohortId changes
+  useEffect(() => {
+    if (isOpen) {
+      if (initialCohorts && initialCohorts.length > 0) {
+        setCohorts(initialCohorts);
+        const chosen = defaultCohortId || localStorage.getItem('selected_cohort_id') || (initialCohorts[0]?.id || '');
+        setCohortId(chosen);
+      }
+
+      cohortsService.getCohorts()
+        .then((res) => {
+          const list = Array.isArray(res) ? res : (res?.cohorts || []);
+          if (list.length > 0) {
+            setCohorts(list);
+            const chosen = defaultCohortId || localStorage.getItem('selected_cohort_id') || (list[0]?.id || '');
+            setCohortId(chosen);
+          }
+        })
+        .catch((err) => console.error('Failed to load cohorts:', err));
+    }
+  }, [isOpen, defaultCohortId, initialCohorts]);
+
   if (!isOpen) return null;
+
+  const handleBatchChange = (newBatch) => {
+    setBatch(newBatch);
+    if (!newBatch) {
+      setSubbatch('');
+    } else {
+      const validSubs = SUBBATCH_OPTIONS[newBatch] || [];
+      setSubbatch(validSubs[0] || '');
+    }
+  };
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -17,16 +62,30 @@ export default function AddMemberModal({ isOpen, onClose, onSuccess }) {
     setIsSubmitting(true);
 
     try {
-      const result = await usersService.createUser({
-        name,
-        email,
+      const payload = {
+        name: name.trim(),
+        email: email.trim(),
         type,
-      });
+      };
+
+      if (type === 'INTERN') {
+        if (batch) {
+          payload.batch = batch;
+          if (subbatch) {
+            payload.subbatch = subbatch;
+          }
+        }
+        payload.cohort_id = cohortId || null;
+      }
+
+      const result = await usersService.createUser(payload);
 
       // Clear fields
       setName('');
       setEmail('');
       setType('INTERN');
+      setBatch('');
+      setSubbatch('');
 
       // Call parent onSuccess with created user and temporary credentials
       onSuccess(result);
@@ -121,9 +180,6 @@ export default function AddMemberModal({ isOpen, onClose, onSuccess }) {
                 <div>
                   <div className="flex items-center gap-1.5">
                     <span className="text-xs font-bold text-slate-900">Intern</span>
-                    <span className="px-1.5 py-0.5 rounded text-[9px] font-bold bg-purple-100 text-purple-700">
-                      INT
-                    </span>
                   </div>
                   <p className="text-[11px] text-slate-500 mt-1">Project task assignee</p>
                 </div>
@@ -146,9 +202,6 @@ export default function AddMemberModal({ isOpen, onClose, onSuccess }) {
                 <div>
                   <div className="flex items-center gap-1.5">
                     <span className="text-xs font-bold text-slate-900">Employee</span>
-                    <span className="px-1.5 py-0.5 rounded text-[9px] font-bold bg-indigo-100 text-indigo-700">
-                      EMP
-                    </span>
                   </div>
                   <p className="text-[11px] text-slate-500 mt-1">Full team contributor</p>
                 </div>
@@ -160,6 +213,75 @@ export default function AddMemberModal({ isOpen, onClose, onSuccess }) {
               </button>
             </div>
           </div>
+
+          {/* Intern Allocation: Batch, Subbatch, and Automatically Assigned Cohort */}
+          {type === 'INTERN' && (
+            <div className="p-3.5 bg-slate-50 rounded-xl border border-slate-200/90 space-y-3">
+              <div className="flex items-center justify-between">
+                <span className="text-xs font-bold text-slate-800 flex items-center gap-1.5">
+                  <Layers className="w-3.5 h-3.5 text-purple-600" />
+                  Intern Allocation &amp; Cohort
+                </span>
+                <span className="text-[11px] text-purple-700 bg-purple-100/70 font-semibold px-2 py-0.5 rounded-md">
+                  Auto-assigned
+                </span>
+              </div>
+
+              {/* Automatically assigned Cohort */}
+              <div>
+                <label className="block text-slate-600 font-semibold text-[11px] mb-1">
+                  Assigned Cohort
+                </label>
+                <div className="flex items-center justify-between px-3 py-2 text-xs rounded-lg border border-purple-200 bg-white font-semibold text-slate-800 shadow-2xs">
+                  <div className="flex items-center gap-2">
+                    <GraduationCap className="w-4 h-4 text-purple-600 shrink-0" />
+                    <span>{cohorts.find((c) => c.id === cohortId)?.name || 'Default Cohort'}</span>
+                  </div>
+                  <span className="text-[10px] text-slate-400 font-normal">Active Selection</span>
+                </div>
+              </div>
+
+              {/* Batch & Subbatch selectors */}
+              <div className="grid grid-cols-2 gap-3">
+                <div className="space-y-1">
+                  <label className="block text-slate-600 font-semibold text-[11px]">
+                    Batch <span className="text-slate-400 font-normal">(Optional)</span>
+                  </label>
+                  <select
+                    value={batch}
+                    onChange={(e) => handleBatchChange(e.target.value)}
+                    className="w-full px-3 py-1.5 text-xs rounded-lg border border-slate-200 bg-white text-slate-800 font-medium focus:outline-none focus:border-purple-600 shadow-2xs cursor-pointer"
+                  >
+                    <option value="">-- None (Optional) --</option>
+                    {BATCH_OPTIONS.map((b) => (
+                      <option key={b} value={b}>
+                        Batch {b}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                <div className="space-y-1">
+                  <label className="block text-slate-600 font-semibold text-[11px]">
+                    Subbatch <span className="text-slate-400 font-normal">(Optional)</span>
+                  </label>
+                  <select
+                    value={subbatch}
+                    disabled={!batch}
+                    onChange={(e) => setSubbatch(e.target.value)}
+                    className="w-full px-3 py-1.5 text-xs rounded-lg border border-slate-200 bg-white text-slate-800 font-medium focus:outline-none focus:border-purple-600 shadow-2xs cursor-pointer disabled:bg-slate-100 disabled:text-slate-400"
+                  >
+                    <option value="">-- None (Optional) --</option>
+                    {(SUBBATCH_OPTIONS[batch] || []).map((sb) => (
+                      <option key={sb} value={sb}>
+                        Subbatch {sb}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+            </div>
+          )}
 
           {/* Automated System Notice */}
           <div className="p-3 bg-slate-50 rounded-xl border border-slate-200/80 flex items-start gap-2.5 text-slate-600">
