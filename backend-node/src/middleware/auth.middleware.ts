@@ -82,6 +82,64 @@ export const requireRole = (allowedRoles: string[]) => {
   };
 };
 
+const PROJECT_MANAGEMENT_PERMISSIONS = [
+  'PROJECT_READ',
+  'PROJECT_UPDATE',
+  'TASK_READ',
+  'TASK_CREATE',
+  'TASK_UPDATE',
+  'TASK_DELETE',
+  'TASK_ASSIGN',
+  'DOCUMENT_UPLOAD',
+];
+
+async function checkProjectLeadPermission(fullUser: any, req: Request, permissionToCheck: string): Promise<boolean> {
+  if (!PROJECT_MANAGEMENT_PERMISSIONS.includes(permissionToCheck)) {
+    return false;
+  }
+
+  const projectId =
+    req.params.id ||
+    req.params.projectId ||
+    req.body?.project_id ||
+    req.body?.projectId ||
+    (req.query?.project_id as string) ||
+    (req.query?.projectId as string);
+
+  if (!projectId || typeof projectId !== 'string') {
+    return false;
+  }
+
+  try {
+    const membership = await prisma.projectMember.findFirst({
+      where: {
+        project_id: projectId,
+        user_id: fullUser.id,
+      },
+      include: {
+        project: {
+          select: { owner_id: true },
+        },
+      },
+    });
+
+    if (!membership) {
+      return false;
+    }
+
+    const isOrgTechLead = Array.isArray(fullUser.roles) && fullUser.roles.some((ur: any) => ur.role?.name === 'TECH_LEAD');
+    const isLeadOrOwner =
+      membership.project_role === 'TECH_LEAD' ||
+      membership.project_role === 'MANAGER' ||
+      membership.project?.owner_id === fullUser.id ||
+      isOrgTechLead;
+
+    return Boolean(isLeadOrOwner);
+  } catch (err) {
+    return false;
+  }
+}
+
 export const requirePermission = (requiredPermission: string) => {
   return async (req: Request, res: Response, next: NextFunction): Promise<void> => {
     const fullUser = (req as any).fullUser;
@@ -99,6 +157,10 @@ export const requirePermission = (requiredPermission: string) => {
           break;
         }
       }
+    }
+
+    if (!hasPermission) {
+      hasPermission = await checkProjectLeadPermission(fullUser, req, requiredPermission);
     }
 
     if (!hasPermission) {
@@ -128,6 +190,15 @@ export const requireAnyPermission = (...requiredPermissions: string[]) => {
         }
       }
       if (hasPermission) break;
+    }
+
+    if (!hasPermission) {
+      for (const perm of requiredPermissions) {
+        if (await checkProjectLeadPermission(fullUser, req, perm)) {
+          hasPermission = true;
+          break;
+        }
+      }
     }
 
     if (!hasPermission) {

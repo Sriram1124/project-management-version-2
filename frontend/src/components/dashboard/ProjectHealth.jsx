@@ -31,7 +31,8 @@ export default function ProjectHealth({ projects, onViewAll }) {
     }
   };
 
-  const getProgressBarColor = (type) => {
+  const getProgressBarColor = (type, progress = 0) => {
+    if (progress === 100) return 'bg-emerald-500';
     switch (type) {
       case 'success':
         return 'bg-emerald-500';
@@ -96,11 +97,11 @@ export default function ProjectHealth({ projects, onViewAll }) {
             <div className="flex items-center gap-4 min-w-[240px] justify-between sm:justify-end">
               <div className="flex items-center gap-3 flex-1 max-w-[180px]">
                 <span className="text-[10px] font-semibold text-slate-400 shrink-0">
-                  Progress (Weighted)
+                  Progress
                 </span>
                 <div className="w-full bg-slate-100 rounded-full h-2 overflow-hidden">
                   <div
-                    className={`h-full rounded-full transition-all duration-500 ${getProgressBarColor(proj.statusType)}`}
+                    className={`h-full rounded-full transition-all duration-500 ${getProgressBarColor(proj.statusType, proj.progress)}`}
                     style={{ width: `${proj.progress}%` }}
                   />
                 </div>

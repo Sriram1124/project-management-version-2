@@ -11,12 +11,13 @@ import {
   X, 
   FileText, 
   Tag, 
-  Share2,
-  ChevronDown,
-  ChevronUp,
-  Trash2,
-  AlertTriangle
+  Share2, 
+  ChevronDown, 
+  ChevronUp, 
+  Trash2, 
+  AlertTriangle 
 } from 'lucide-react';
+import { useAuth } from '../../../context/AuthContext';
 
 const initialMoMs = [
   {
@@ -87,6 +88,12 @@ const initialMoMs = [
 ];
 
 export default function ProjectMomTab({ projectId, projectName, onToast, readOnly = false }) {
+  const { user: authUser } = useAuth();
+  const authRole = String(authUser?.role?.name || authUser?.role || authUser?.type || authUser?.user_type || '').toUpperCase();
+  const isIntern = authRole === 'INTERN';
+  const canDelete = !isIntern && !readOnly;
+  const canCreate = !isIntern && !readOnly;
+
   const storageKey = `moms_project_${projectId || 'default'}`;
 
   const [moms, setMoms] = useState(() => {
@@ -140,7 +147,7 @@ export default function ProjectMomTab({ projectId, projectName, onToast, readOnl
   });
 
   const handleConfirmDeleteActionItem = () => {
-    if (!itemToDelete) return;
+    if (!itemToDelete || !canDelete) return;
     const { momId, itemIndex } = itemToDelete;
     setMoms((prev) =>
       prev.map((mom) => {
@@ -154,6 +161,7 @@ export default function ProjectMomTab({ projectId, projectName, onToast, readOnl
   };
 
   const handleAddQuickActionItem = (momId) => {
+    if (!canCreate) return;
     const text = (newQuickItem[momId] || '').trim();
     if (!text) return;
     setMoms((prev) =>
@@ -167,13 +175,14 @@ export default function ProjectMomTab({ projectId, projectName, onToast, readOnl
   };
 
   const handleDeleteMoM = (momId) => {
+    if (!canDelete) return;
     setMoms((prev) => prev.filter((m) => m.id !== momId));
     onToast?.(`Deleted meeting record ${momId}`);
   };
 
   const handleCreateMoM = (e) => {
     e.preventDefault();
-    if (!newTitle.trim()) return;
+    if (!canCreate || !newTitle.trim()) return;
 
     const decisionsArray = newDecisions
       .split('\n')
@@ -261,7 +270,7 @@ export default function ProjectMomTab({ projectId, projectName, onToast, readOnl
           <span className="text-xs text-slate-400 font-medium">
             {filteredMoMs.length} {filteredMoMs.length === 1 ? 'Record' : 'Records'}
           </span>
-          {!readOnly && (
+          {!readOnly && canCreate && (
             <button
               type="button"
               onClick={() => setIsModalOpen(true)}
@@ -318,16 +327,20 @@ export default function ProjectMomTab({ projectId, projectName, onToast, readOnl
                       <Clock className="w-3.5 h-3.5 text-slate-400" />
                       {mom.time}
                     </span>
-                    <span className="text-slate-300">·</span>
-                    {/* Option to delete entire meeting record */}
-                    <button
-                      type="button"
-                      onClick={() => handleDeleteMoM(mom.id)}
-                      title={`Delete meeting record ${mom.id}`}
-                      className="p-1 rounded text-slate-400 hover:text-rose-600 hover:bg-rose-50 transition-colors cursor-pointer"
-                    >
-                      <Trash2 className="w-3.5 h-3.5" />
-                    </button>
+                    {canDelete && (
+                      <>
+                        <span className="text-slate-300">·</span>
+                        {/* Option to delete entire meeting record */}
+                        <button
+                          type="button"
+                          onClick={() => handleDeleteMoM(mom.id)}
+                          title={`Delete meeting record ${mom.id}`}
+                          className="p-1 rounded text-slate-400 hover:text-rose-600 hover:bg-rose-50 transition-colors cursor-pointer"
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </button>
+                      </>
+                    )}
                   </div>
                 </div>
 
@@ -379,7 +392,7 @@ export default function ProjectMomTab({ projectId, projectName, onToast, readOnl
                             <span className="leading-snug text-slate-700 break-words">{dec}</span>
                           </div>
                           {/* Option to delete individual action item */}
-                          {!readOnly && (
+                          {canDelete && (
                             <button
                               type="button"
                               onClick={(e) => {
@@ -408,7 +421,7 @@ export default function ProjectMomTab({ projectId, projectName, onToast, readOnl
                   )}
 
                   {/* Inline quick-add for individual action items when expanded */}
-                  {isExpanded && !readOnly && (
+                  {isExpanded && canCreate && (
                     <div className="mt-2.5 pt-2 border-t border-slate-100 flex items-center gap-2">
                       <input
                         type="text"

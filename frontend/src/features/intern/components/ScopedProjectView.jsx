@@ -62,11 +62,30 @@ export default function ScopedProjectView({
     }
   };
 
+  const authRole = String(authUser?.role?.name || authUser?.role || authUser?.type || authUser?.user_type || '').toUpperCase();
+  const authUserId = authUser?.id || authUser?.user_id || authUser?.userId || authUser?.user?.id;
+  const isIntern = authRole === 'INTERN';
+
+  const canToggleItem = (item) => {
+    if (!isIntern) return true;
+    const assignees = item.assignees || item.work_item_assignees || [];
+    const assignedUserIds = [
+      ...assignees.map((a) => a.user_id || a.userId || a.assignee_id || a.user?.id || a.id),
+      ...(item.assignee_ids || item.assigneeIds || []),
+    ].filter(Boolean).map(String);
+    return Boolean(authUserId) && assignedUserIds.includes(String(authUserId));
+  };
+
   useEffect(() => {
     loadProjectWorkItems();
   }, [project?.id]);
 
   const handleToggleTask = async (taskOrId) => {
+    const targetItem = typeof taskOrId === 'object' ? taskOrId : projectWorkItems.find((w) => w.id === taskOrId);
+    if (targetItem && !canToggleItem(targetItem)) {
+      onToast?.('You can only update status for tasks assigned to you.');
+      return;
+    }
     try {
       const updated = await workItemsService.toggleComplete(taskOrId);
       loadProjectWorkItems();
@@ -518,6 +537,8 @@ export default function ScopedProjectView({
                   const isDone = item.status === 'COMPLETED';
                   const isOverdue = workItemsService.isOverdue(item);
 
+                  const canToggle = canToggleItem(item);
+
                   return (
                     <div
                       key={item.id}
@@ -530,11 +551,15 @@ export default function ScopedProjectView({
                       <div className="flex items-center gap-3 min-w-0">
                         <button
                           type="button"
+                          disabled={!canToggle}
+                          title={!canToggle ? 'Only the assigned intern or manager can update status' : undefined}
                           onClick={(e) => {
                             e.stopPropagation();
                             handleToggleTask(item);
                           }}
                           className={`w-5 h-5 rounded-lg border flex items-center justify-center transition-colors shrink-0 ${
+                            !canToggle ? 'opacity-40 cursor-not-allowed ' : 'cursor-pointer '
+                          }${
                             isDone
                               ? 'bg-emerald-500 border-emerald-500 text-white'
                               : 'border-slate-300 hover:border-purple-500'

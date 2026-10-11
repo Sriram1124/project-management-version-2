@@ -10,6 +10,7 @@ router.use(authenticate);
 // ── WorkItem CRUD ─────────────────────────────────────────────────────────────
 router.post('/', WorkItemController.create);
 router.get('/', WorkItemController.list);
+router.get('/analytics', WorkItemController.getAnalytics);
 router.get('/:id', WorkItemController.getById);
 router.patch('/:id', WorkItemController.update);
 router.put('/:id', WorkItemController.update);

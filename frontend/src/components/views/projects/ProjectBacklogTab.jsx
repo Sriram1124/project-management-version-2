@@ -92,6 +92,22 @@ export default function ProjectBacklogTab({ projectId, project = null, onToast, 
     loadProjectData();
   }, [loadProjectData]);
 
+  // Keep selectedIssue in sync with live workItems when refreshed
+  useEffect(() => {
+    if (selectedIssue?.id && workItems.length > 0) {
+      const fresh = workItems.find((w) => w.id === selectedIssue.id);
+      if (fresh) {
+        setSelectedIssue((prev) => {
+          if (!prev) return null;
+          if (JSON.stringify(prev) !== JSON.stringify(fresh)) {
+            return fresh;
+          }
+          return prev;
+        });
+      }
+    }
+  }, [workItems, selectedIssue?.id]);
+
   // Derived Epics list (for filter dropdown and detail drawer)
   const epics = useMemo(() => {
     return workItems
@@ -713,15 +729,20 @@ export default function ProjectBacklogTab({ projectId, project = null, onToast, 
                 payload.assignee_ids = updated.assigneeId ? [updated.assigneeId] : [];
               }
 
-              await workItemsService.updateWorkItem(updated.id, payload);
+              const saved = await workItemsService.updateWorkItem(updated.id, payload);
+              if (saved) {
+                setWorkItems((prev) => prev.map((item) => (item.id === updated.id ? saved : item)));
+                setSelectedIssue(saved);
+              } else {
+                setSelectedIssue((prev) => (prev ? { 
+                  ...prev, 
+                  ...updated, 
+                  sprint_id: sprintIdToSave,
+                  sprintId: sprintIdToSave,
+                  parent_id: parentIdToSave,
+                } : null));
+              }
               loadProjectData();
-              setSelectedIssue((prev) => (prev ? { 
-                ...prev, 
-                ...updated, 
-                sprint_id: sprintIdToSave,
-                sprintId: sprintIdToSave,
-                parent_id: parentIdToSave,
-              } : null));
               onToast?.('Issue updated');
             } catch (err) {
               console.error('Failed to update issue:', err);

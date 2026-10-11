@@ -19,6 +19,7 @@ import {
   ArrowDown,
   Minus
 } from 'lucide-react';
+import { useAuth } from '../../context/AuthContext';
 
 /**
  * Jira Type Icon helper with appropriate branding colors
@@ -313,6 +314,29 @@ function HierarchicalRow({
   onDragStart,
   onDragEnd,
 }) {
+  const { user: authUser } = useAuth();
+  const isIntern = authUser?.role === 'INTERN';
+  const currentUserId = authUser?.id || authUser?.user_id;
+
+  const isAssignedToMe = useMemo(() => {
+    if (!item || !currentUserId) return false;
+    if (Array.isArray(item.assignees)) {
+      return item.assignees.some((a) => (a.user_id === currentUserId || a.id === currentUserId));
+    }
+    if (item.assignee && (item.assignee.id === currentUserId || item.assignee.user_id === currentUserId)) return true;
+    if (item.assigneeId === currentUserId) return true;
+    return false;
+  }, [item, currentUserId]);
+
+  const canDrag = !isIntern || isAssignedToMe;
+  const canChangeStatus = !isIntern || isAssignedToMe;
+  const canChangePriority = !isIntern;
+  const canChangeAssignee = !isIntern;
+  const canChangeSprint = !isIntern;
+  const canChangeStoryPoints = !isIntern;
+  const canChangeDueDate = !isIntern;
+  const canDelete = !isIntern;
+
   const [menuOpen, setMenuOpen] = useState(null); // 'status' | 'priority' | 'assignee' | 'sprint' | 'points' | 'date' | 'more' | 'epicSprint'
   const [editingPoints, setEditingPoints] = useState(false);
   const [pointsValue, setPointsValue] = useState(item.story_points ?? '');
@@ -364,11 +388,15 @@ function HierarchicalRow({
   // Current assignee
   const assignedUser = item.assignees?.[0]
     ? {
-        id: item.assignees[0].user_id,
-        name: item.assignees[0].name || item.assignees[0].user?.name,
+        id: item.assignees[0].user_id || item.assignees[0].id,
+        name: item.assignees[0].name || item.assignees[0].user?.name || item.assignees[0].email,
         email: item.assignees[0].email || item.assignees[0].user?.email,
       }
-    : null;
+    : (item.assignee ? {
+        id: item.assignee.user_id || item.assignee.id,
+        name: item.assignee.name || item.assignee.user?.name || item.assignee.email,
+        email: item.assignee.email || item.assignee.user?.email,
+      } : null);
 
   // Current sprint for individual stories, tasks, bugs
   const currentSprint = sprints.find((s) => s.id === item.sprint_id);
@@ -398,8 +426,8 @@ function HierarchicalRow({
   return (
     <div ref={rowRef} className="group border-b border-slate-100 last:border-b-0">
       <div
-        draggable
-        onDragStart={(e) => onDragStart?.(e, item.id)}
+        draggable={canDrag}
+        onDragStart={(e) => canDrag && onDragStart?.(e, item.id)}
         onDragEnd={onDragEnd}
         onClick={() => onSelectIssue?.(item)}
         className={`grid grid-cols-[minmax(260px,2.5fr)_90px_120px_110px_125px_60px_85px_95px_75px] items-center gap-2 px-3 py-2 text-xs transition-colors cursor-pointer select-none ${
@@ -481,13 +509,17 @@ function HierarchicalRow({
         <div className="relative text-left shrink-0" onClick={(e) => e.stopPropagation()}>
           <button
             type="button"
-            onClick={() => setMenuOpen(menuOpen === 'priority' ? null : 'priority')}
-            className="hover:bg-slate-100 p-1 rounded transition-colors"
+            onClick={() => {
+              if (canChangePriority) {
+                setMenuOpen(menuOpen === 'priority' ? null : 'priority');
+              }
+            }}
+            className={`p-1 rounded transition-colors ${canChangePriority ? 'hover:bg-slate-100 cursor-pointer' : 'cursor-default'}`}
           >
             <PriorityBadge priority={item.priority} />
           </button>
 
-          {menuOpen === 'priority' && (
+          {canChangePriority && menuOpen === 'priority' && (
             <div className="absolute left-0 mt-1 w-32 bg-white rounded-md shadow-lg border border-slate-200 py-1 z-40">
               {['LOW', 'MEDIUM', 'HIGH', 'URGENT'].map((p) => (
                 <button
@@ -497,7 +529,7 @@ function HierarchicalRow({
                     onUpdatePriority?.(item.id, p);
                     setMenuOpen(null);
                   }}
-                  className={`w-full text-left px-2.5 py-1.5 text-xs hover:bg-slate-50 flex items-center justify-between ${
+                  className={`w-full text-left px-2.5 py-1.5 text-xs hover:bg-slate-50 flex items-center justify-between cursor-pointer ${
                     item.priority === p ? 'bg-purple-50 text-purple-700 font-semibold' : 'text-slate-700'
                   }`}
                 >
@@ -513,8 +545,12 @@ function HierarchicalRow({
         <div className="relative flex items-center min-w-0 shrink-0" onClick={(e) => e.stopPropagation()}>
           <button
             type="button"
-            onClick={() => setMenuOpen(menuOpen === 'assignee' ? null : 'assignee')}
-            className="flex items-center gap-1.5 p-1 rounded hover:bg-slate-100 transition-colors max-w-full truncate"
+            onClick={() => {
+              if (canChangeAssignee) {
+                setMenuOpen(menuOpen === 'assignee' ? null : 'assignee');
+              }
+            }}
+            className={`flex items-center gap-1.5 p-1 rounded transition-colors max-w-full truncate ${canChangeAssignee ? 'hover:bg-slate-100 cursor-pointer' : 'cursor-default'}`}
           >
             {assignedUser ? (
               <>
@@ -535,7 +571,7 @@ function HierarchicalRow({
             )}
           </button>
 
-          {menuOpen === 'assignee' && (
+          {canChangeAssignee && menuOpen === 'assignee' && (
             <div className="absolute left-0 mt-1 w-48 bg-white rounded-md shadow-lg border border-slate-200 py-1 z-40 max-h-56 overflow-y-auto">
               <button
                 type="button"
@@ -543,7 +579,7 @@ function HierarchicalRow({
                   onUpdateAssignee?.(item.id, []);
                   setMenuOpen(null);
                 }}
-                className={`w-full text-left px-3 py-1.5 text-xs hover:bg-slate-50 flex items-center justify-between ${
+                className={`w-full text-left px-3 py-1.5 text-xs hover:bg-slate-50 flex items-center justify-between cursor-pointer ${
                   !assignedUser ? 'bg-purple-50 text-purple-700 font-semibold' : 'text-slate-600'
                 }`}
               >
@@ -563,7 +599,7 @@ function HierarchicalRow({
                       onUpdateAssignee?.(item.id, [uid]);
                       setMenuOpen(null);
                     }}
-                    className={`w-full text-left px-3 py-1.5 text-xs hover:bg-slate-50 flex items-center justify-between ${
+                    className={`w-full text-left px-3 py-1.5 text-xs hover:bg-slate-50 flex items-center justify-between cursor-pointer ${
                       isSelectedMember ? 'bg-purple-50 text-purple-700 font-semibold' : 'text-slate-700'
                     }`}
                   >
@@ -588,8 +624,12 @@ function HierarchicalRow({
           <div className="flex items-center gap-1.5 flex-wrap">
             <button
               type="button"
-              onClick={() => setMenuOpen(menuOpen === 'status' ? null : 'status')}
-              className="hover:opacity-80 p-0.5 rounded transition-opacity cursor-pointer"
+              onClick={() => {
+                if (canChangeStatus) {
+                  setMenuOpen(menuOpen === 'status' ? null : 'status');
+                }
+              }}
+              className={`p-0.5 rounded transition-opacity ${canChangeStatus ? 'hover:opacity-80 cursor-pointer' : 'cursor-default'}`}
             >
               <StatusBadge status={item.status} />
             </button>
@@ -603,7 +643,7 @@ function HierarchicalRow({
             )}
           </div>
 
-          {menuOpen === 'status' && (
+          {canChangeStatus && menuOpen === 'status' && (
             <div className="absolute left-0 mt-1 w-36 bg-white rounded-md shadow-lg border border-slate-200 py-1 z-40">
               {['TODO', 'IN_PROGRESS', 'IN_REVIEW', 'BLOCKED', 'COMPLETED'].map((st) => (
                 <button
@@ -672,18 +712,22 @@ function HierarchicalRow({
             <>
               <button
                 type="button"
-                onClick={() => setMenuOpen(menuOpen === 'sprint' ? null : 'sprint')}
-                className={`px-1.5 py-0.5 rounded text-[11px] font-medium border truncate max-w-[120px] block transition-colors cursor-pointer ${
+                onClick={() => {
+                  if (canChangeSprint) {
+                    setMenuOpen(menuOpen === 'sprint' ? null : 'sprint');
+                  }
+                }}
+                className={`px-1.5 py-0.5 rounded text-[11px] font-medium border truncate max-w-[120px] block transition-colors ${
                   item.sprint_id
-                    ? 'bg-purple-50 text-purple-700 border-purple-200 hover:bg-purple-100'
-                    : 'bg-slate-50 text-slate-500 border-slate-200 hover:bg-slate-100'
-                }`}
+                    ? 'bg-purple-50 text-purple-700 border-purple-200'
+                    : 'bg-slate-50 text-slate-500 border-slate-200'
+                } ${canChangeSprint ? 'hover:bg-purple-100 cursor-pointer' : 'cursor-default'}`}
                 title={`Sprint: ${sprintLabel}`}
               >
                 {sprintLabel}
               </button>
 
-              {menuOpen === 'sprint' && (
+              {canChangeSprint && menuOpen === 'sprint' && (
                 <div className="absolute left-0 mt-1 w-44 bg-white rounded-md shadow-lg border border-slate-200 py-1 z-40 max-h-52 overflow-y-auto">
                   <button
                     type="button"
@@ -723,7 +767,7 @@ function HierarchicalRow({
 
         {/* COL 6: STORY POINTS */}
         <div className="flex justify-center shrink-0" onClick={(e) => e.stopPropagation()}>
-          {editingPoints ? (
+          {canChangeStoryPoints && editingPoints ? (
             <form onSubmit={handlePointsSubmit} className="w-12">
               <input
                 type="number"
@@ -740,15 +784,19 @@ function HierarchicalRow({
             <button
               type="button"
               onClick={() => {
-                setPointsValue(item.story_points ?? '');
-                setEditingPoints(true);
+                if (canChangeStoryPoints) {
+                  setPointsValue(item.story_points ?? '');
+                  setEditingPoints(true);
+                }
               }}
               title={
                 hasChildren
                   ? `Own: ${ownPoints} SP, Total (with descendants): ${totalRolledUpPoints} SP`
-                  : 'Click to edit Story Points'
+                  : canChangeStoryPoints ? 'Click to edit Story Points' : 'Story Points'
               }
-              className="inline-flex items-center justify-center px-1.5 py-0.5 rounded bg-slate-100 hover:bg-purple-100 text-slate-700 hover:text-purple-800 font-mono font-bold text-[11px] transition-colors"
+              className={`inline-flex items-center justify-center px-1.5 py-0.5 rounded bg-slate-100 font-mono font-bold text-[11px] transition-colors ${
+                canChangeStoryPoints ? 'hover:bg-purple-100 text-slate-700 hover:text-purple-800 cursor-pointer' : 'text-slate-600 cursor-default'
+              }`}
             >
               {totalRolledUpPoints > 0 ? (
                 <span>{totalRolledUpPoints}</span>
@@ -763,15 +811,21 @@ function HierarchicalRow({
         <div className="relative text-left shrink-0" onClick={(e) => e.stopPropagation()}>
           <button
             type="button"
-            onClick={() => setMenuOpen(menuOpen === 'date' ? null : 'date')}
-            className={`text-[11px] font-medium p-1 rounded hover:bg-slate-100 transition-colors ${
+            onClick={() => {
+              if (canChangeDueDate) {
+                setMenuOpen(menuOpen === 'date' ? null : 'date');
+              }
+            }}
+            className={`text-[11px] font-medium p-1 rounded transition-colors ${
+              canChangeDueDate ? 'hover:bg-slate-100 cursor-pointer' : 'cursor-default'
+            } ${
               isOverdue ? 'text-rose-600 font-bold' : item.due_date ? 'text-slate-600' : 'text-slate-300'
             }`}
           >
             {formattedDueDate || '-'}
           </button>
 
-          {menuOpen === 'date' && (
+          {canChangeDueDate && menuOpen === 'date' && (
             <div className="absolute right-0 mt-1 w-44 bg-white rounded-md shadow-lg border border-slate-200 p-2 z-40">
               <label className="block text-[10px] font-bold text-slate-500 uppercase mb-1">
                 Set Due Date
@@ -792,7 +846,7 @@ function HierarchicalRow({
                     onUpdateDueDate?.(item.id, null);
                     setMenuOpen(null);
                   }}
-                  className="mt-1.5 w-full text-[10px] text-rose-600 font-semibold hover:underline text-center"
+                  className="mt-1.5 w-full text-[10px] text-rose-600 font-semibold hover:underline text-center cursor-pointer"
                 >
                   Clear date
                 </button>
@@ -823,8 +877,8 @@ function HierarchicalRow({
 
         {/* COL 9: CONTEXT-SENSITIVE ACTIONS (+ child, ...) */}
         <div className="flex items-center justify-end gap-1 shrink-0" onClick={(e) => e.stopPropagation()}>
-          {/* Quick Add Child Button (Only for non-leaf items: Epic, Story, Task) */}
-          {!isLeaf && (
+          {/* Quick Add Child Button (Only for non-leaf items: Epic, Story, Task; Interns cannot create stories on Epics) */}
+          {!isLeaf && (!isIntern || isStory || isTask) && (
             <button
               type="button"
               onClick={() => onAddChild?.(item)}
@@ -835,7 +889,7 @@ function HierarchicalRow({
                   ? 'Add Task or Bug under this Story'
                   : 'Add Subtask under this Task'
               }
-              className="w-5 h-5 rounded hover:bg-purple-100 hover:text-purple-700 text-slate-400 flex items-center justify-center transition-colors"
+              className="w-5 h-5 rounded hover:bg-purple-100 hover:text-purple-700 text-slate-400 flex items-center justify-center transition-colors cursor-pointer"
             >
               <Plus className="w-3.5 h-3.5" />
             </button>
@@ -846,7 +900,7 @@ function HierarchicalRow({
             <button
               type="button"
               onClick={() => setMenuOpen(menuOpen === 'more' ? null : 'more')}
-              className="w-5 h-5 rounded hover:bg-slate-200 text-slate-400 hover:text-slate-700 flex items-center justify-center transition-colors"
+              className="w-5 h-5 rounded hover:bg-slate-200 text-slate-400 hover:text-slate-700 flex items-center justify-center transition-colors cursor-pointer"
             >
               <MoreHorizontal className="w-3.5 h-3.5" />
             </button>
@@ -859,20 +913,20 @@ function HierarchicalRow({
                     onSelectIssue?.(item);
                     setMenuOpen(null);
                   }}
-                  className="w-full text-left px-2.5 py-1.5 text-xs text-slate-700 hover:bg-slate-50 flex items-center gap-1.5"
+                  className="w-full text-left px-2.5 py-1.5 text-xs text-slate-700 hover:bg-slate-50 flex items-center gap-1.5 cursor-pointer"
                 >
                   <ExternalLink className="w-3 h-3 text-slate-400" />
                   <span>View Details</span>
                 </button>
 
-                {!isLeaf && (
+                {!isLeaf && (!isIntern || isStory || isTask) && (
                   <button
                     type="button"
                     onClick={() => {
                       onAddChild?.(item);
                       setMenuOpen(null);
                     }}
-                    className="w-full text-left px-2.5 py-1.5 text-xs text-slate-700 hover:bg-slate-50 flex items-center gap-1.5"
+                    className="w-full text-left px-2.5 py-1.5 text-xs text-slate-700 hover:bg-slate-50 flex items-center gap-1.5 cursor-pointer"
                   >
                     <Plus className="w-3.5 h-3.5 text-purple-600" />
                     <span>
@@ -881,21 +935,24 @@ function HierarchicalRow({
                   </button>
                 )}
 
-                <div className="my-1 border-t border-slate-100" />
-
-                <button
-                  type="button"
-                  onClick={() => {
-                    if (window.confirm(`Are you sure you want to delete "${item.title}"?`)) {
-                      onDeleteIssue?.(item.id);
-                    }
-                    setMenuOpen(null);
-                  }}
-                  className="w-full text-left px-2.5 py-1.5 text-xs text-rose-600 hover:bg-rose-50 flex items-center gap-1.5 font-medium"
-                >
-                  <Trash2 className="w-3 h-3 text-rose-500" />
-                  <span>Delete Issue</span>
-                </button>
+                {canDelete && (
+                  <>
+                    <div className="my-1 border-t border-slate-100" />
+                    <button
+                      type="button"
+                      onClick={() => {
+                        if (window.confirm(`Are you sure you want to delete "${item.title}"?`)) {
+                          onDeleteIssue?.(item.id);
+                        }
+                        setMenuOpen(null);
+                      }}
+                      className="w-full text-left px-2.5 py-1.5 text-xs text-rose-600 hover:bg-rose-50 flex items-center gap-1.5 font-medium cursor-pointer"
+                    >
+                      <Trash2 className="w-3 h-3 text-rose-500" />
+                      <span>Delete Issue</span>
+                    </button>
+                  </>
+                )}
               </div>
             )}
           </div>

@@ -40,6 +40,14 @@ export interface WorkItemFilter {
   my_personal?: boolean;
 }
 
+export interface WorkItemAnalyticsFilter {
+  user_id?: string;
+  project_id?: string;
+  sprint_id?: string;
+  start_date?: string;
+  end_date?: string;
+}
+
 export class WorkItemService {
   /**
    * Helper to ensure user belongs to an organization
@@ -72,11 +80,12 @@ export class WorkItemService {
    * Helper to verify if user has authority to assign tasks
    * (Admins, Managers, Tech Leads, Project Owners, or users with TASK_ASSIGN permission)
    */
-  private static isAuthorizedToAssign(
+  private static async isAuthorizedToAssign(
     user: any,
     projectOwnerId?: string | null,
-    creatorId?: string | null
-  ): boolean {
+    creatorId?: string | null,
+    projectId?: string | null
+  ): Promise<boolean> {
     if (this.isManagerOrAdmin(user)) return true;
 
     // Project owner or task creator
@@ -94,6 +103,11 @@ export class WorkItemService {
     }
     if (roleNames.includes('TECH_LEAD') || roleNames.includes('PROJECT_MANAGER')) {
       return true;
+    }
+
+    if (projectId) {
+      const canManage = await this.canManageProject(user, projectId);
+      if (canManage) return true;
     }
 
     // Check permissions
@@ -131,6 +145,73 @@ export class WorkItemService {
       },
     });
     return Boolean(member);
+  }
+
+  /**
+   * Helper to check if a user is an authorized manager or tech lead for a project.
+   */
+  static async canManageProject(
+    user: any,
+    projectId?: string | null,
+    orgId?: string
+  ): Promise<boolean> {
+    if (this.isManagerOrAdmin(user)) return true;
+
+    // Check organization-level role for TECH_LEAD
+    const roleNames: string[] = [];
+    if (user.role) roleNames.push(user.role);
+    if (Array.isArray(user.roles)) {
+      user.roles.forEach((ur: any) => {
+        if (ur.role?.name) roleNames.push(ur.role.name);
+        if (ur.name) roleNames.push(ur.name);
+      });
+    }
+
+    if (projectId) {
+      const actualOrgId = orgId || this.getUserOrgId(user);
+      const project = await prisma.project.findFirst({
+        where: { id: projectId, organization_id: actualOrgId },
+        select: { owner_id: true },
+      });
+      if (project && project.owner_id === user.id) {
+        return true;
+      }
+
+      const membership = await prisma.projectMember.findFirst({
+        where: {
+          project_id: projectId,
+          user_id: user.id,
+        },
+      });
+      if (
+        membership &&
+        (membership.project_role === 'TECH_LEAD' ||
+          membership.project_role === 'MANAGER' ||
+          roleNames.includes('TECH_LEAD') ||
+          roleNames.includes('PROJECT_MANAGER'))
+      ) {
+        return true;
+      }
+    } else if (roleNames.includes('TECH_LEAD') || roleNames.includes('PROJECT_MANAGER')) {
+      return true;
+    }
+
+    return false;
+  }
+
+  /**
+   * Check if user is an INTERN
+   */
+  private static isIntern(user: any): boolean {
+    const role = String(user.role || '').toUpperCase();
+    if (role === 'INTERN') return true;
+    if (Array.isArray(user.roles)) {
+      const hasIntern = user.roles.some(
+        (ur: any) => (ur.role?.name || ur.name || '').toUpperCase() === 'INTERN'
+      );
+      if (hasIntern && !this.isManagerOrAdmin(user)) return true;
+    }
+    return false;
   }
 
   /**
@@ -275,9 +356,10 @@ export class WorkItemService {
 
     const formattedAssignees = Array.isArray(item.assignees)
       ? item.assignees.map((a: any) => ({
+          id: a.user_id,
           user_id: a.user_id,
-          name: a.user?.name || null,
-          email: a.user?.email || null,
+          name: a.user?.name || a.name || null,
+          email: a.user?.email || a.email || null,
         }))
       : [];
 
@@ -289,11 +371,15 @@ export class WorkItemService {
       ? item.time_entries.reduce((sum: number, entry: any) => sum + (Number(entry.duration_minutes) || 0), 0)
       : 0;
 
+    const primaryAssignee = formattedAssignees[0] || null;
+
     return {
       ...item,
       is_overdue,
       logged_minutes,
       assignees: formattedAssignees,
+      assignee: primaryAssignee,
+      assignee_id: primaryAssignee?.user_id || null,
       children: formattedChildren,
     };
   }
@@ -346,6 +432,20 @@ export class WorkItemService {
     // Validate hierarchy
     await this.validateHierarchy(data.type, parentId, projectId, orgId);
 
+    // Intern workflow permission check:
+    // Interns can only create child Tasks, Subtasks, or Bugs under an existing parent unless they can manage the project
+    if (this.isIntern(user) && projectId) {
+      const canManage = await this.canManageProject(user, projectId, orgId);
+      if (!canManage) {
+        if (!parentId) {
+          throw new Error('Forbidden: interns cannot create root work items. Only child tasks or bugs are permitted.');
+        }
+        if (data.type === WorkItemType.EPIC || data.type === WorkItemType.STORY) {
+          throw new Error(`Forbidden: interns cannot create ${data.type} items. Only child tasks or bugs are permitted.`);
+        }
+      }
+    }
+
     // Validate assignees if provided
     let assigneeIds = Array.isArray(data.assignee_ids)
       ? [...new Set(data.assignee_ids.map((id) => id.trim()))].filter(Boolean)
@@ -387,7 +487,7 @@ export class WorkItemService {
         const project = projectId
           ? await prisma.project.findUnique({ where: { id: projectId }, select: { owner_id: true } })
           : null;
-        if (!this.isAuthorizedToAssign(user, project?.owner_id, user.id)) {
+        if (!(await this.isAuthorizedToAssign(user, project?.owner_id, user.id, projectId))) {
           throw new Error('Forbidden: you do not have permission to assign tasks to other users');
         }
       }
@@ -705,6 +805,50 @@ export class WorkItemService {
       }
     }
 
+    // Role-based field level permissions check for INTERN role
+    const isInternUser = this.isIntern(user);
+    if (isInternUser) {
+      const canManage = currentItem.project_id
+        ? await this.canManageProject(user, currentItem.project_id, orgId)
+        : false;
+
+      if (!canManage) {
+        const isAssignedToUser = currentItem.assignees.some((a) => a.user_id === user.id);
+        if (!isAssignedToUser) {
+          throw new Error('Forbidden: you can only update tasks assigned to you');
+        }
+
+        // Interns cannot modify restricted fields
+        if (input.assignee_ids !== undefined) {
+          throw new Error('Forbidden: interns cannot reassign tasks');
+        }
+        if (input.sprint_id !== undefined) {
+          throw new Error('Forbidden: interns cannot change sprint assignments');
+        }
+        if (input.parent_id !== undefined) {
+          throw new Error('Forbidden: interns cannot alter parent-child or epic assignments');
+        }
+        if (input.story_points !== undefined) {
+          throw new Error('Forbidden: interns cannot modify story points');
+        }
+        if (input.priority !== undefined) {
+          throw new Error('Forbidden: interns cannot modify task priority');
+        }
+        if (input.due_date !== undefined || input.start_date !== undefined) {
+          throw new Error('Forbidden: interns cannot modify task due dates or schedules');
+        }
+        if (input.title !== undefined) {
+          throw new Error('Forbidden: interns cannot modify task title');
+        }
+        if (input.description !== undefined) {
+          throw new Error('Forbidden: interns cannot modify task description');
+        }
+        if (input.type !== undefined) {
+          throw new Error('Forbidden: interns cannot modify task type');
+        }
+      }
+    }
+
     const dataToUpdate: any = {};
 
     if (input.title !== undefined) {
@@ -875,7 +1019,7 @@ export class WorkItemService {
               select: { owner_id: true },
             })
           : null;
-        if (!this.isAuthorizedToAssign(user, project?.owner_id, currentItem.created_by)) {
+        if (!(await this.isAuthorizedToAssign(user, project?.owner_id, currentItem.created_by, currentItem.project_id))) {
           throw new Error('Forbidden: you do not have permission to assign tasks to other users');
         }
       }
@@ -971,11 +1115,15 @@ export class WorkItemService {
     }
 
     if (item.project_id) {
-      if (!isMgr && item.created_by !== user.id) {
+      const canManage = await this.canManageProject(user, item.project_id, orgId);
+      if (!isMgr && !canManage && item.created_by !== user.id) {
         throw new Error('Forbidden: you do not have permission to delete this work item');
       }
     } else {
-      if (item.created_by !== user.id) {
+      if (this.isIntern(user)) {
+        throw new Error('Forbidden: interns do not have permission to delete work items');
+      }
+      if (item.created_by !== user.id && !isMgr) {
         throw new Error('Forbidden: only the creator can delete this personal task');
       }
     }
@@ -1010,18 +1158,28 @@ export class WorkItemService {
       throw new Error('Work item not found');
     }
 
+    // Interns cannot assign or reassign work items unless they can manage the project
+    if (this.isIntern(user)) {
+      const canManage = item.project_id
+        ? await this.canManageProject(user, item.project_id, orgId)
+        : false;
+      if (!canManage) {
+        throw new Error('Forbidden: interns cannot assign work items');
+      }
+    }
+
     // Permission check
     if (item.project_id) {
       const project = await prisma.project.findUnique({
         where: { id: item.project_id },
         select: { owner_id: true },
       });
-      const canAssign = this.isAuthorizedToAssign(user, project?.owner_id, item.created_by);
+      const canAssign = await this.isAuthorizedToAssign(user, project?.owner_id, item.created_by, item.project_id);
       if (!canAssign) {
         throw new Error('Forbidden: you do not have permission to assign tasks in this project');
       }
     } else {
-      if (item.created_by !== user.id && !this.isAuthorizedToAssign(user, null, item.created_by)) {
+      if (item.created_by !== user.id && !(await this.isAuthorizedToAssign(user, null, item.created_by))) {
         throw new Error('Forbidden: only creator or authorized manager can assign users to this personal task');
       }
     }
@@ -1094,6 +1252,16 @@ export class WorkItemService {
       throw new Error('Work item not found');
     }
 
+    // Interns cannot modify assignees unless authorized to manage the project
+    if (this.isIntern(user)) {
+      const canManage = item.project_id
+        ? await this.canManageProject(user, item.project_id, orgId)
+        : false;
+      if (!canManage) {
+        throw new Error('Forbidden: interns cannot reassign work items');
+      }
+    }
+
     // Permission check
     if (item.project_id) {
       const isSelf = user.id === targetUserId;
@@ -1133,5 +1301,423 @@ export class WorkItemService {
     });
 
     return { message: 'Assignee removed successfully' };
+  }
+
+  /**
+   * Helper to check if user has organization-level TECH_LEAD role
+   */
+  private static isOrgTechLead(user: any): boolean {
+    const roleNames: string[] = [];
+    if (user.role) roleNames.push(String(user.role).toUpperCase());
+    if (Array.isArray(user.roles)) {
+      user.roles.forEach((ur: any) => {
+        if (ur.role?.name) roleNames.push(String(ur.role.name).toUpperCase());
+        if (ur.name) roleNames.push(String(ur.name).toUpperCase());
+      });
+    }
+    return roleNames.includes('TECH_LEAD');
+  }
+
+  /**
+   * Get all project IDs that the user is explicitly authorized to lead or manage
+   */
+  static async getAuthorizedLeadProjectIds(user: any, orgId: string): Promise<string[]> {
+    if (this.isManagerOrAdmin(user)) {
+      const allProjects = await prisma.project.findMany({
+        where: { organization_id: orgId },
+        select: { id: true },
+      });
+      return allProjects.map((p) => p.id);
+    }
+
+    const orgTechLead = this.isOrgTechLead(user);
+
+    const [leadMemberships, ownedProjects] = await Promise.all([
+      prisma.projectMember.findMany({
+        where: {
+          user_id: user.id,
+          project: { organization_id: orgId },
+          ...(orgTechLead ? {} : { project_role: { in: ['TECH_LEAD', 'MANAGER'] } }),
+        },
+        select: { project_id: true, project_role: true },
+      }),
+      prisma.project.findMany({
+        where: {
+          owner_id: user.id,
+          organization_id: orgId,
+        },
+        select: { id: true },
+      }),
+    ]);
+
+    const projectIds = new Set<string>();
+    for (const m of leadMemberships) {
+      if (orgTechLead || m.project_role === 'TECH_LEAD' || m.project_role === 'MANAGER') {
+        projectIds.add(m.project_id);
+      }
+    }
+    for (const p of ownedProjects) {
+      projectIds.add(p.id);
+    }
+
+    return Array.from(projectIds);
+  }
+
+  /**
+   * Get comprehensive task analytics scoped to the authenticated user or requested scope
+   */
+  static async getAnalytics(user: any, filters?: WorkItemAnalyticsFilter) {
+    const orgId = this.getUserOrgId(user);
+    const isMgr = this.isManagerOrAdmin(user);
+    const authorizedLeadProjects = await this.getAuthorizedLeadProjectIds(user, orgId);
+    const isLeadAnyProject = authorizedLeadProjects.length > 0;
+
+    let targetUserId: string | null = null;
+    let isActingAsLead = false;
+
+    if (filters?.project_id) {
+      const project = await prisma.project.findFirst({
+        where: { id: filters.project_id, organization_id: orgId },
+        select: { id: true, name: true },
+      });
+      if (!project) {
+        throw new Error('Project not found in your organization');
+      }
+
+      if (isMgr || authorizedLeadProjects.includes(filters.project_id)) {
+        // Authorized Manager or Tech Lead for this project
+        isActingAsLead = true;
+        if (filters?.user_id) {
+          const isMember = await prisma.projectMember.findFirst({
+            where: { project_id: filters.project_id, user_id: filters.user_id },
+          });
+          if (!isMember && !isMgr) {
+            throw new Error('Forbidden: requested user is not a member of your authorized project');
+          }
+          targetUserId = filters.user_id;
+        }
+      } else {
+        // Regular intern or user not authorized to lead this project
+        const isMember = await this.verifyProjectMembership(filters.project_id, user.id, orgId);
+        if (!isMember) {
+          throw new Error('Forbidden: you are not authorized to access analytics for this project');
+        }
+        if (filters?.user_id && filters.user_id !== user.id) {
+          throw new Error('Forbidden: interns can only view their own performance analytics');
+        }
+        targetUserId = user.id;
+      }
+    } else {
+      // No specific project provided in filters
+      if (isMgr) {
+        isActingAsLead = true;
+        if (filters?.user_id) {
+          targetUserId = filters.user_id;
+        }
+      } else if (isLeadAnyProject) {
+        isActingAsLead = true;
+        if (filters?.user_id) {
+          const isMemberOfLeadProject = await prisma.projectMember.findFirst({
+            where: {
+              project_id: { in: authorizedLeadProjects },
+              user_id: filters.user_id,
+            },
+          });
+          if (!isMemberOfLeadProject && filters.user_id !== user.id) {
+            throw new Error('Forbidden: requested user is not a member of your authorized projects');
+          }
+          targetUserId = filters.user_id;
+        }
+      } else {
+        // Regular intern with no lead projects
+        if (filters?.user_id && filters.user_id !== user.id) {
+          throw new Error('Forbidden: interns can only view their own performance analytics');
+        }
+        targetUserId = user.id;
+      }
+    }
+
+    const where: any = { organization_id: orgId };
+    if (targetUserId) {
+      where.assignees = { some: { user_id: targetUserId } };
+    }
+    if (filters?.project_id) {
+      where.project_id = filters.project_id;
+    } else if (isMgr) {
+      // Manager across all projects in org
+    } else if (isLeadAnyProject) {
+      where.project_id = { in: authorizedLeadProjects };
+    } else {
+      where.OR = [
+        { project_id: null },
+        { project: { members: { some: { user_id: user.id } } } },
+      ];
+    }
+    if (filters?.sprint_id && filters.sprint_id !== 'ALL' && filters.sprint_id !== 'null') {
+      where.sprint_id = filters.sprint_id;
+    }
+
+    // Work items
+    const items = await prisma.workItem.findMany({
+      where,
+      include: {
+        project: { select: { id: true, name: true } },
+        sprint: { select: { id: true, name: true } },
+        assignees: {
+          include: {
+            user: { select: { id: true, name: true, email: true } },
+          },
+        },
+        time_entries: targetUserId
+          ? {
+              where: { user_id: targetUserId },
+              select: { id: true, duration_minutes: true, date: true, start_time: true, end_time: true },
+            }
+          : {
+              select: { id: true, duration_minutes: true, date: true, start_time: true, end_time: true },
+            },
+      },
+      orderBy: { created_at: 'desc' },
+    });
+
+    // Time entries for actual work time
+    const timeWhere: any = { organization_id: orgId };
+    if (targetUserId) {
+      timeWhere.user_id = targetUserId;
+    }
+    if (filters?.project_id) {
+      timeWhere.project_id = filters.project_id;
+    }
+    if (filters?.start_date && filters?.end_date) {
+      timeWhere.date = {
+        gte: new Date(filters.start_date),
+        lte: new Date(filters.end_date),
+      };
+    }
+    const timeEntries = await prisma.timeEntry.findMany({
+      where: timeWhere,
+      select: {
+        id: true,
+        task_id: true,
+        duration_minutes: true,
+        date: true,
+        start_time: true,
+        end_time: true,
+      },
+      orderBy: { start_time: 'desc' },
+    });
+
+    const now = new Date();
+    const total = items.length;
+    const completed = items.filter((w) => w.status === WorkItemStatus.COMPLETED).length;
+    const in_progress = items.filter((w) => w.status === WorkItemStatus.IN_PROGRESS).length;
+    const in_review = items.filter((w) => w.status === WorkItemStatus.IN_REVIEW).length;
+    const todo = items.filter((w) => w.status === WorkItemStatus.TODO).length;
+    const blocked = items.filter((w) => w.status === WorkItemStatus.BLOCKED).length;
+
+    const past_due = items.filter((w) => {
+      if (w.status === WorkItemStatus.COMPLETED) return false;
+      if (!w.due_date) return false;
+      return new Date(w.due_date) < now;
+    }).length;
+
+    const completed_on_time = items.filter((w) => {
+      if (w.status !== WorkItemStatus.COMPLETED) return false;
+      if (!w.due_date) return true;
+      return new Date(w.completed_at || w.updated_at || w.due_date) <= new Date(w.due_date);
+    }).length;
+
+    const completion_rate = total > 0 ? Math.round((completed / total) * 100) : 0;
+    const on_time_rate = completed > 0
+      ? Math.round((completed_on_time / completed) * 100)
+      : (total > 0 && past_due === 0 ? 100 : 0);
+
+    const status_counts = {
+      COMPLETED: completed,
+      IN_PROGRESS: in_progress,
+      IN_REVIEW: in_review,
+      TODO: todo,
+      BLOCKED: blocked,
+    };
+
+    const priority_counts = {
+      URGENT: items.filter((w) => w.priority === WorkItemPriority.URGENT).length,
+      HIGH: items.filter((w) => w.priority === WorkItemPriority.HIGH).length,
+      MEDIUM: items.filter((w) => w.priority === WorkItemPriority.MEDIUM).length,
+      LOW: items.filter((w) => w.priority === WorkItemPriority.LOW).length,
+    };
+
+    const type_counts = {
+      EPIC: items.filter((w) => w.type === WorkItemType.EPIC).length,
+      STORY: items.filter((w) => w.type === WorkItemType.STORY).length,
+      TASK: items.filter((w) => w.type === WorkItemType.TASK).length,
+      SUBTASK: items.filter((w) => w.type === WorkItemType.SUBTASK).length,
+      BUG: items.filter((w) => w.type === WorkItemType.BUG).length,
+    };
+
+    const story_points_total = items.reduce((sum, w) => sum + (Number(w.story_points) || 0), 0);
+    const story_points_completed = items
+      .filter((w) => w.status === WorkItemStatus.COMPLETED)
+      .reduce((sum, w) => sum + (Number(w.story_points) || 0), 0);
+
+    const total_logged_minutes = timeEntries.reduce((sum, e) => sum + (Number(e.duration_minutes) || 0), 0);
+    const total_logged_hours = +(total_logged_minutes / 60).toFixed(1);
+
+    // Map time entries by task for accurate individual task effort
+    const taskLoggedMinutesMap = new Map<string, number>();
+    for (const e of timeEntries) {
+      if (e.task_id) {
+        taskLoggedMinutesMap.set(
+          e.task_id,
+          (taskLoggedMinutesMap.get(e.task_id) || 0) + Number(e.duration_minutes || 0)
+        );
+      }
+    }
+
+    // Formatted work item details for individual performance records
+    const task_breakdown = items.map((w) => {
+      const is_past_due = Boolean(w.due_date && new Date(w.due_date) < now && w.status !== WorkItemStatus.COMPLETED);
+      const was_completed_on_time = Boolean(
+        w.status === WorkItemStatus.COMPLETED &&
+          (!w.due_date || new Date(w.completed_at || w.updated_at || w.due_date) <= new Date(w.due_date))
+      );
+      const logged_minutes = taskLoggedMinutesMap.get(w.id) || 0;
+
+      return {
+        id: w.id,
+        title: w.title,
+        type: w.type,
+        status: w.status,
+        priority: w.priority,
+        due_date: w.due_date,
+        completed_at: w.completed_at,
+        updated_at: w.updated_at,
+        story_points: w.story_points || 0,
+        project_id: w.project_id,
+        project_name: w.project?.name || null,
+        sprint_id: w.sprint_id,
+        sprint_name: w.sprint?.name || null,
+        is_past_due,
+        was_completed_on_time,
+        logged_minutes,
+        logged_hours: +(logged_minutes / 60).toFixed(1),
+      };
+    });
+
+    // Daily trends over the last 14 days
+    const trends: { date: string; completed: number; logged_hours: number }[] = [];
+    const dateCursor = new Date();
+    dateCursor.setHours(0, 0, 0, 0);
+    for (let i = 13; i >= 0; i--) {
+      const d = new Date(dateCursor);
+      d.setDate(d.getDate() - i);
+      const dStr = d.toISOString().split('T')[0];
+      const nextD = new Date(d);
+      nextD.setDate(nextD.getDate() + 1);
+
+      const dayCompleted = items.filter((w) => {
+        if (w.status !== WorkItemStatus.COMPLETED) return false;
+        const compDate = w.completed_at || w.updated_at;
+        return compDate && new Date(compDate) >= d && new Date(compDate) < nextD;
+      }).length;
+
+      const dayMinutes = timeEntries
+        .filter((e) => e.date && new Date(e.date) >= d && new Date(e.date) < nextD)
+        .reduce((sum, e) => sum + (Number(e.duration_minutes) || 0), 0);
+
+      trends.push({
+        date: dStr,
+        completed: dayCompleted,
+        logged_hours: +(dayMinutes / 60).toFixed(1),
+      });
+    }
+
+    // Projects accessible for filtering
+    const accessibleProjects = isMgr
+      ? await prisma.project.findMany({
+          where: { organization_id: orgId },
+          select: { id: true, name: true },
+          orderBy: { name: 'asc' },
+        })
+      : isLeadAnyProject
+      ? await prisma.project.findMany({
+          where: {
+            organization_id: orgId,
+            id: { in: authorizedLeadProjects },
+          },
+          select: { id: true, name: true },
+          orderBy: { name: 'asc' },
+        })
+      : await prisma.project.findMany({
+          where: {
+            organization_id: orgId,
+            members: { some: { user_id: user.id } },
+          },
+          select: { id: true, name: true },
+          orderBy: { name: 'asc' },
+        });
+
+    // Sprints for selected project
+    let accessibleSprints: { id: string; name: string }[] = [];
+    if (filters?.project_id) {
+      accessibleSprints = await prisma.sprint.findMany({
+        where: {
+          organization_id: orgId,
+          project_id: filters.project_id,
+        },
+        select: { id: true, name: true },
+        orderBy: { created_at: 'asc' },
+      });
+    }
+
+    // Members for selected project or single lead project
+    let projectMembers: any[] = [];
+    const targetProjectForMembers = filters?.project_id || (isLeadAnyProject && authorizedLeadProjects.length === 1 ? authorizedLeadProjects[0] : null);
+    if (targetProjectForMembers) {
+      const pMembers = await prisma.projectMember.findMany({
+        where: { project_id: targetProjectForMembers },
+        include: {
+          user: {
+            select: { id: true, name: true, email: true },
+          },
+        },
+      });
+      projectMembers = pMembers.map((pm) => ({
+        id: pm.user.id,
+        user_id: pm.user.id,
+        name: pm.user.name,
+        email: pm.user.email,
+        project_role: pm.project_role,
+      }));
+    }
+
+    return {
+      is_tech_lead: isActingAsLead || isLeadAnyProject,
+      lead_project_ids: authorizedLeadProjects,
+      total,
+      completed,
+      in_progress,
+      in_review,
+      todo,
+      blocked,
+      past_due,
+      completed_on_time,
+      completion_rate,
+      on_time_rate,
+      status_counts,
+      priority_counts,
+      type_counts,
+      story_points_total,
+      story_points_completed,
+      total_logged_minutes,
+      total_logged_hours,
+      task_breakdown,
+      trends,
+      members: projectMembers,
+      filters: {
+        projects: accessibleProjects,
+        sprints: accessibleSprints,
+      },
+    };
   }
 }

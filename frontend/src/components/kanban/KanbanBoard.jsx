@@ -91,8 +91,21 @@ export default function KanbanBoard({ projectId, onToast, readOnly = false }) {
       .map((e) => ({ id: e.id, name: e.title }));
   }, [workItems]);
 
+  const isIntern = authUser?.role === 'INTERN';
+  const canManage = !readOnly && !isIntern;
+
   // Drag and drop handlers
   const handleDragStart = (e, taskId) => {
+    if (isIntern) {
+      const task = workItems.find((t) => t.id === taskId);
+      const currentUserId = authUser?.id || authUser?.user_id;
+      const isAssigned = (task?.assignees || []).some((a) => (a.user_id || a.id) === currentUserId) ||
+                         (task?.assignee && (task.assignee.user_id || task.assignee.id) === currentUserId);
+      if (!isAssigned) {
+        e.preventDefault();
+        return;
+      }
+    }
     setDraggedTaskId(taskId);
     e.dataTransfer.setData('text/plain', taskId);
   };
@@ -104,6 +117,16 @@ export default function KanbanBoard({ projectId, onToast, readOnly = false }) {
   const handleDropTask = async (taskId, targetColumnId) => {
     const task = workItems.find((t) => t.id === taskId);
     if (!task || task.status === targetColumnId) return;
+
+    if (isIntern) {
+      const currentUserId = authUser?.id || authUser?.user_id;
+      const isAssigned = (task.assignees || []).some((a) => (a.user_id || a.id) === currentUserId) ||
+                         (task.assignee && (task.assignee.user_id || task.assignee.id) === currentUserId);
+      if (!isAssigned) {
+        onToast?.('You can only update the status of your own assigned work items');
+        return;
+      }
+    }
 
     const prevStatus = task.status;
     const targetCol = COLUMNS_CONFIG.find((c) => c.id === targetColumnId);
@@ -423,7 +446,7 @@ export default function KanbanBoard({ projectId, onToast, readOnly = false }) {
         </div>
 
         {/* Action Buttons */}
-        {!readOnly && (
+        {canManage && (
           <div className="flex items-center gap-2 self-start sm:self-auto">
             {activeSprint && (
               <button
@@ -480,7 +503,7 @@ export default function KanbanBoard({ projectId, onToast, readOnly = false }) {
                 key={col.id}
                 column={col}
                 tasks={colTasks}
-                onAddTask={readOnly ? undefined : handleOpenAddTask}
+                onAddTask={canManage ? handleOpenAddTask : undefined}
                 onTaskClick={handleTaskClick}
                 onDragStart={readOnly ? undefined : handleDragStart}
                 onDragEnd={readOnly ? undefined : handleDragEnd}

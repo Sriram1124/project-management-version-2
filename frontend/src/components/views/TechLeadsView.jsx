@@ -10,7 +10,6 @@ import {
   TrendingUp, 
   Search, 
   Filter, 
-  ArrowUpRight,
   Target,
   Layers,
   ChevronDown,
@@ -54,7 +53,7 @@ export default function TechLeadsView({ onRebalanceLead }) {
       if (statusFilter === 'HIGH_PERFORMER') {
         if ((lead.performance_score || 0) < 70) return false;
       } else if (statusFilter === 'AT_RISK') {
-        if ((lead.performance_score || 0) >= 50) return false;
+        if ((lead.performance_score || 0) >= 50 || (lead.total_project_tasks || 0) === 0) return false;
       } else if (statusFilter === 'ACTIVE_PROJECTS') {
         if (!lead.project_count || lead.project_count === 0) return false;
       }
@@ -344,17 +343,6 @@ export default function TechLeadsView({ onRebalanceLead }) {
                   <span className="text-[11px] text-slate-400">
                     Direct Tasks: <strong className="text-slate-700">{lead.direct_completed_tasks || 0}/{lead.direct_assigned_tasks || 0}</strong>
                   </span>
-
-                  {onRebalanceLead && (
-                    <button
-                      type="button"
-                      onClick={() => onRebalanceLead(lead)}
-                      className="text-xs font-semibold text-purple-700 hover:text-purple-800 hover:underline flex items-center gap-1 cursor-pointer"
-                    >
-                      <span>Manage Role</span>
-                      <ArrowUpRight className="w-3.5 h-3.5" />
-                    </button>
-                  )}
                 </div>
               </div>
             );

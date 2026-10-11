@@ -9,12 +9,30 @@ import {
   FolderGit2
 } from 'lucide-react';
 import { workItemsService } from '../services/workItemsService';
+import { useAuth } from '../../../context/AuthContext';
 
 export default function HierarchyTreeView({
   workItems = [],
   onTaskClick,
   onToggleTask
 }) {
+  const { user: authUser } = useAuth();
+  const authRole = String(authUser?.role?.name || authUser?.role || authUser?.type || authUser?.user_type || '').toUpperCase();
+  const authUserId = authUser?.id || authUser?.user_id || authUser?.userId || authUser?.user?.id;
+  const isIntern = authRole === 'INTERN';
+
+  const canToggleItem = (item) => {
+    if (!isIntern) return true;
+    const assignees = item.assignees || item.work_item_assignees || [];
+    const assignedUserIds = [
+      ...assignees.map((a) => a.user_id || a.userId || a.assignee_id || a.user?.id || a.id),
+      ...(item.assignee_ids || item.assigneeIds || []),
+      ...(item.assignee ? [item.assignee.user_id || item.assignee.id] : []),
+      ...(item.assignee_id ? [item.assignee_id] : []),
+    ].filter(Boolean).map(String);
+    return Boolean(authUserId) && assignedUserIds.includes(String(authUserId));
+  };
+
   // Group work items by their hierarchy
   // Root items are Epics or items without parent_id
   const epics = workItems.filter((w) => w.type === 'EPIC');
@@ -45,6 +63,7 @@ export default function HierarchyTreeView({
     const isCompleted = item.status === 'COMPLETED';
     const isOverdue = workItemsService.isOverdue(item);
     const children = getChildren(item.id);
+    const canToggle = canToggleItem(item);
 
     return (
       <div key={item.id} className="space-y-1">
@@ -66,17 +85,21 @@ export default function HierarchyTreeView({
             {/* Checkbox button */}
             <button
               type="button"
+              disabled={!canToggle}
+              title={!canToggle ? 'Only the assigned intern or manager can update status' : undefined}
               onClick={(e) => {
                 e.stopPropagation();
                 onToggleTask?.(item.id);
               }}
               className={`w-4 h-4 rounded border flex items-center justify-center transition-colors shrink-0 ${
+                !canToggle ? 'opacity-40 cursor-not-allowed ' : 'cursor-pointer '
+              }${
                 isCompleted
                   ? 'bg-emerald-600 border-emerald-600 text-white'
                   : 'border-slate-300 hover:border-purple-500 bg-white'
               }`}
             >
-              {isCompleted && <Check className="w-3 h-3 stroke-[3]" />}
+              {isCompleted && <Check className="w-3.5 h-3.5 stroke-[3]" />}
             </button>
 
             <span className="text-[10px] font-mono text-slate-400 font-bold">
@@ -158,4 +181,3 @@ export default function HierarchyTreeView({
     </div>
   );
 }
-

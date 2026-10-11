@@ -107,7 +107,77 @@ export class ActionItemService {
     return item;
   }
 
-  static async create(data: CreateActionItemInput) {
+  private static isManagerOrAdmin(user: any): boolean {
+    if (user.role === 'ADMIN' || user.role === 'MANAGER') return true;
+    if (Array.isArray(user.roles)) {
+      return user.roles.some(
+        (ur: any) =>
+          ur.role?.name === 'ADMIN' ||
+          ur.role?.name === 'MANAGER' ||
+          ur.name === 'ADMIN' ||
+          ur.name === 'MANAGER'
+      );
+    }
+    return false;
+  }
+
+  private static isIntern(user: any): boolean {
+    const role = String(user.role || '').toUpperCase();
+    if (role === 'INTERN') return true;
+    if (Array.isArray(user.roles)) {
+      const hasIntern = user.roles.some(
+        (ur: any) => (ur.role?.name || ur.name || '').toUpperCase() === 'INTERN'
+      );
+      if (hasIntern && !this.isManagerOrAdmin(user)) return true;
+    }
+    return false;
+  }
+
+  private static async canManageProject(
+    user: any,
+    projectId: string,
+    orgId: string
+  ): Promise<boolean> {
+    if (this.isManagerOrAdmin(user)) return true;
+
+    const roleNames: string[] = [];
+    if (user.role) roleNames.push(user.role);
+    if (Array.isArray(user.roles)) {
+      user.roles.forEach((ur: any) => {
+        if (ur.role?.name) roleNames.push(ur.role.name);
+        if (ur.name) roleNames.push(ur.name);
+      });
+    }
+    if (roleNames.includes('TECH_LEAD') || roleNames.includes('PROJECT_MANAGER')) {
+      return true;
+    }
+
+    const project = await prisma.project.findFirst({
+      where: { id: projectId, organization_id: orgId },
+      select: { owner_id: true },
+    });
+    if (project && project.owner_id === user.id) {
+      return true;
+    }
+
+    const membership = await prisma.projectMember.findFirst({
+      where: {
+        project_id: projectId,
+        user_id: user.id,
+      },
+    });
+    if (membership && (membership.project_role === 'TECH_LEAD' || membership.project_role === 'MANAGER')) {
+      return true;
+    }
+
+    return false;
+  }
+
+  static async create(data: CreateActionItemInput, user?: any) {
+    if (user && this.isIntern(user)) {
+      throw new Error('Forbidden: interns do not have permission to create action items');
+    }
+
     return prisma.actionItem.create({
       data: {
         title: data.title,
@@ -145,8 +215,20 @@ export class ActionItemService {
     });
   }
 
-  static async update(id: string, organization_id: string, data: UpdateActionItemInput) {
-    await this.getById(id, organization_id);
+  static async update(id: string, organization_id: string, data: UpdateActionItemInput, user?: any) {
+    const existing = await this.getById(id, organization_id);
+
+    if (user && this.isIntern(user)) {
+      // Intern can only update their own assigned action item
+      if (existing.assignee_id !== user.id) {
+        throw new Error('Forbidden: you can only update action items assigned to you');
+      }
+
+      // Interns cannot modify title, description, assignee, priority, or due_date
+      if (data.title !== undefined || data.description !== undefined || data.assignee_id !== undefined || data.priority !== undefined || data.due_date !== undefined) {
+        throw new Error('Forbidden: interns can only update progress or status of assigned action items');
+      }
+    }
 
     const updateData: any = {};
     if (data.title !== undefined) updateData.title = data.title;
@@ -186,8 +268,21 @@ export class ActionItemService {
     });
   }
 
-  static async delete(id: string, organization_id: string) {
-    await this.getById(id, organization_id);
+  static async delete(id: string, organization_id: string, user?: any) {
+    const existing = await this.getById(id, organization_id);
+
+    // Interns must NEVER be able to delete action items
+    if (user && this.isIntern(user)) {
+      throw new Error('Forbidden: interns are not permitted to delete action items');
+    }
+
+    if (user) {
+      const canManage = await this.canManageProject(user, existing.project_id, organization_id);
+      if (!this.isManagerOrAdmin(user) && !canManage && existing.creator_id !== user.id) {
+        throw new Error('Forbidden: you do not have permission to delete this action item');
+      }
+    }
+
     return prisma.actionItem.delete({
       where: { id },
     });

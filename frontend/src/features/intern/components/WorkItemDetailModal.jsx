@@ -89,7 +89,22 @@ export default function WorkItemDetailModal({
     ...assignees.map((assignee) => assignee.user_id || assignee.userId || assignee.assignee_id || assignee.user?.id || assignee.user?.user_id || assignee.id),
     ...(item.assignee_ids || item.assigneeIds || []),
   ].filter(Boolean).map(String);
+  const isIntern = authRole === 'INTERN';
   const isAssignedIntern = ['INTERN', 'EMPLOYEE'].includes(authRole) && Boolean(authUserId) && assignedUserIds.includes(String(authUserId));
+  const isManagerOrAdmin = authUser?.role === 'MANAGER' || authUser?.role === 'ADMIN' || authUser?.role === 'TECH_LEAD';
+  const canDelete = !isIntern && isManagerOrAdmin;
+  const canUpdateStatus = !isIntern || isAssignedIntern;
+  const canEditFields = !isIntern;
+
+  const canToggleChild = (child) => {
+    if (!isIntern) return true;
+    const childAssignees = child.assignees || [];
+    const childAssignedIds = [
+      ...childAssignees.map((a) => a.user_id || a.userId || a.assignee_id || a.user?.id || a.id),
+      ...(child.assignee_ids || child.assigneeIds || []),
+    ].filter(Boolean).map(String);
+    return childAssignedIds.includes(String(authUserId)) || (childAssignedIds.length === 0 && isAssignedIntern);
+  };
 
   const handleStartWork = async () => {
     try {
@@ -145,9 +160,10 @@ export default function WorkItemDetailModal({
     }
   };
 
-  const handleToggleChild = async (childId) => {
+  const handleToggleChild = async (child) => {
+    if (!canToggleChild(child)) return;
     try {
-      await workItemsService.toggleComplete(childId);
+      await workItemsService.toggleComplete(child.id);
       const updated = await workItemsService.getWorkItem(item.id);
       setLiveItem(updated);
       onTaskUpdated?.();
@@ -258,20 +274,22 @@ export default function WorkItemDetailModal({
           </div>
 
           <div className="flex items-center gap-2 shrink-0">
-            <button
-              type="button"
-              onClick={handleDelete}
-              disabled={deleting}
-              className="flex items-center gap-1 px-2.5 py-1 text-xs font-semibold text-rose-700 bg-rose-50 border border-rose-200 hover:bg-rose-100 rounded-lg transition-colors cursor-pointer disabled:opacity-50"
-              title="Delete this work item"
-            >
-              {deleting ? (
-                <Loader2 className="w-3.5 h-3.5 animate-spin" />
-              ) : (
-                <Trash2 className="w-3.5 h-3.5 text-rose-600" />
-              )}
-              <span>Delete</span>
-            </button>
+            {canDelete && (
+              <button
+                type="button"
+                onClick={handleDelete}
+                disabled={deleting}
+                className="flex items-center gap-1 px-2.5 py-1 text-xs font-semibold text-rose-700 bg-rose-50 border border-rose-200 hover:bg-rose-100 rounded-lg transition-colors cursor-pointer disabled:opacity-50"
+                title="Delete this work item"
+              >
+                {deleting ? (
+                  <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                ) : (
+                  <Trash2 className="w-3.5 h-3.5 text-rose-600" />
+                )}
+                <span>Delete</span>
+              </button>
+            )}
 
             <button
               onClick={onClose}
@@ -332,33 +350,45 @@ export default function WorkItemDetailModal({
                   <label className="block text-[11px] font-bold text-slate-700 mb-1">
                     Status
                   </label>
-                  <select
-                    value={status}
-                    onChange={(e) => handleStatusChange(e.target.value)}
-                    className="w-full px-3 py-1.5 rounded-lg border border-purple-200 bg-white font-semibold text-xs text-slate-900 focus:outline-none focus:border-purple-600"
-                  >
-                    <option value="TODO">To Do</option>
-                    <option value="IN_PROGRESS">In Progress</option>
-                    <option value="IN_REVIEW">In Review</option>
-                    <option value="BLOCKED">Blocked</option>
-                    <option value="COMPLETED">Completed</option>
-                  </select>
+                  {canUpdateStatus ? (
+                    <select
+                      value={status}
+                      onChange={(e) => handleStatusChange(e.target.value)}
+                      className="w-full px-3 py-1.5 rounded-lg border border-purple-200 bg-white font-semibold text-xs text-slate-900 focus:outline-none focus:border-purple-600"
+                    >
+                      <option value="TODO">To Do</option>
+                      <option value="IN_PROGRESS">In Progress</option>
+                      <option value="IN_REVIEW">In Review</option>
+                      <option value="BLOCKED">Blocked</option>
+                      <option value="COMPLETED">Completed</option>
+                    </select>
+                  ) : (
+                    <div className="w-full px-3 py-1.5 rounded-lg border border-slate-200 bg-slate-100 font-semibold text-xs text-slate-800">
+                      {status.replace('_', ' ')}
+                    </div>
+                  )}
                 </div>
 
                 <div>
                   <label className="block text-[11px] font-bold text-slate-700 mb-1">
                     Priority
                   </label>
-                  <select
-                    value={priority}
-                    onChange={(e) => handlePriorityChange(e.target.value)}
-                    className="w-full px-3 py-1.5 rounded-lg border border-purple-200 bg-white font-semibold text-xs text-slate-900 focus:outline-none focus:border-purple-600"
-                  >
-                    <option value="LOW">Low</option>
-                    <option value="MEDIUM">Medium</option>
-                    <option value="HIGH">High</option>
-                    <option value="URGENT">Urgent</option>
-                  </select>
+                  {canEditFields ? (
+                    <select
+                      value={priority}
+                      onChange={(e) => handlePriorityChange(e.target.value)}
+                      className="w-full px-3 py-1.5 rounded-lg border border-purple-200 bg-white font-semibold text-xs text-slate-900 focus:outline-none focus:border-purple-600"
+                    >
+                      <option value="LOW">Low</option>
+                      <option value="MEDIUM">Medium</option>
+                      <option value="HIGH">High</option>
+                      <option value="URGENT">Urgent</option>
+                    </select>
+                  ) : (
+                    <div className="w-full px-3 py-1.5 rounded-lg border border-slate-200 bg-slate-100 font-semibold text-xs text-slate-800">
+                      {priority}
+                    </div>
+                  )}
                 </div>
               </div>
 
@@ -468,12 +498,16 @@ export default function WorkItemDetailModal({
                         <div className="flex items-center gap-2.5">
                           <button
                             type="button"
-                            onClick={() => handleToggleChild(child.id)}
+                            onClick={() => handleToggleChild(child)}
+                            disabled={!canToggleChild(child)}
                             className={`w-4 h-4 rounded border flex items-center justify-center ${
+                              !canToggleChild(child) ? 'opacity-50 cursor-not-allowed ' : 'cursor-pointer '
+                            }${
                               child.status === 'COMPLETED'
                                 ? 'bg-emerald-600 border-emerald-600 text-white'
                                 : 'border-slate-300'
                             }`}
+                            title={!canToggleChild(child) ? 'Only the assigned intern or manager can update this task' : undefined}
                           >
                             {child.status === 'COMPLETED' && <Check className="w-3 h-3" />}
                           </button>

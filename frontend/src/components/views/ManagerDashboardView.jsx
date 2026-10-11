@@ -124,13 +124,33 @@ export default function ManagerDashboardView({
   const dynamicProjectHealth = projects.map((proj) => {
     const ownerName = proj.owner ? (proj.owner.name || proj.owner.email) : 'Unassigned';
     const memberCount = proj._count?.members ?? (proj.members?.length ?? 0);
+
+    // Filter work items belonging to this project (verifying project_id or project.id)
+    const projItems = workItems.filter(
+      (w) => w.project_id === proj.id || w.project?.id === proj.id
+    );
+
+    // Eligible leaf deliverables: Stories, Tasks, Bugs, Subtasks (exclude parent Epics to avoid double counting)
+    const eligibleDeliverables = projItems.filter(
+      (item) => String(item.type || '').toUpperCase() !== 'EPIC'
+    );
+
+    const completedDeliverables = eligibleDeliverables.filter(
+      (item) => String(item.status || '').toUpperCase() === 'COMPLETED'
+    );
+
+    // If 0 eligible deliverables, return 0% (never default to arbitrary percentage)
+    const progress = eligibleDeliverables.length > 0
+      ? Math.round((completedDeliverables.length / eligibleDeliverables.length) * 100)
+      : 0;
+
     return {
       id: proj.id,
       name: proj.name,
       lead: ownerName,
       section: proj.status,
       internsCount: memberCount,
-      progress: proj.status === 'COMPLETED' ? 100 : (proj.status === 'ACTIVE' ? 50 : 10),
+      progress,
       status: proj.status,
       statusType: proj.status === 'ACTIVE' ? 'success' : (proj.status === 'PLANNED' ? 'warning' : 'default'),
     };

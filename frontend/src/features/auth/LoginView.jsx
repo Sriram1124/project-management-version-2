@@ -69,7 +69,7 @@ export default function LoginView() {
       navigate('/super-admin/dashboard');
     } else if (role === 'MANAGER') {
       navigate('/manager/dashboard');
-    } else if (role === 'INTERN' || role === 'EMPLOYEE') {
+    } else if (role === 'INTERN' || role === 'EMPLOYEE' || role === 'TECH_LEAD') {
       navigate('/intern/dashboard');
     } else {
       navigate('/unauthorized');

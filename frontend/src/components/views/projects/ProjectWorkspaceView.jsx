@@ -7,6 +7,7 @@ import ProjectBacklogTab from './ProjectBacklogTab';
 import KanbanBoard from '../../kanban/KanbanBoard';
 import ProjectMomTab from './ProjectMomTab';
 import { projectsService } from '../../../services/projects.service';
+import { useAuth } from '../../../context/AuthContext';
 
 export default function ProjectWorkspaceView({ 
   projectId,
@@ -20,9 +21,31 @@ export default function ProjectWorkspaceView({
   readOnly = false,
   userRole = null,
 }) {
+  const { user: authUser } = useAuth();
+  const currentUserId = authUser?.id || authUser?.user_id;
+  const authRole = String(authUser?.role?.name || authUser?.role || authUser?.type || authUser?.user_type || '').toUpperCase();
+
   const [currentTab, setCurrentTab] = useState(activeTab);
   const [liveProject, setLiveProject] = useState(null);
+  const [members, setMembers] = useState([]);
   const [selectedSprintId, setSelectedSprintId] = useState(null);
+
+  const isTechLeadOnProject = 
+    authRole === 'TECH_LEAD' || 
+    Boolean(authUser?.is_tech_lead && (authUser?.lead_project_ids?.includes(projectId) || !authUser?.lead_project_ids?.length)) ||
+    members.some((m) => 
+      (m.user_id === currentUserId || m.id === currentUserId) && 
+      (m.project_role === 'TECH_LEAD' || m.role === 'TECH_LEAD')
+    );
+
+  const canManageProject = 
+    authRole === 'MANAGER' || 
+    authRole === 'ADMIN' || 
+    authRole === 'SUPER_ADMIN' || 
+    authUser?.id === liveProject?.owner_id ||
+    isTechLeadOnProject;
+
+  const effectiveReadOnly = readOnly && !canManageProject;
 
   useEffect(() => {
     if (projectId) {
@@ -32,6 +55,10 @@ export default function ProjectWorkspaceView({
           onProjectLoaded?.(proj);
         })
         .catch((err) => console.error('Failed to load project details in workspace:', err));
+
+      projectsService.getMembers(projectId)
+        .then((mList) => setMembers(mList || []))
+        .catch((err) => console.error('Failed to load project members in workspace:', err));
     }
   }, [projectId]);
 
@@ -96,7 +123,7 @@ export default function ProjectWorkspaceView({
             <span className="text-slate-300 select-none">·</span>
             <span><strong className="text-slate-800 font-semibold">{memberCount}</strong> {memberCount === 1 ? 'Member' : 'Members'}</span>
           </div>
-          {readOnly && (
+          {effectiveReadOnly && (
             <span className="px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider bg-slate-100 text-slate-600 border border-slate-200">
               Contributor View (Read-Only)
             </span>
@@ -131,7 +158,7 @@ export default function ProjectWorkspaceView({
             projectId={projectId} 
             project={liveProject} 
             onToast={onToast}
-            readOnly={readOnly}
+            readOnly={effectiveReadOnly}
           />
         ) : currentTab === 'roadmap' ? (
           <ProjectRoadmapTab
@@ -139,7 +166,7 @@ export default function ProjectWorkspaceView({
             project={liveProject}
             onOpenSprintBoard={handleOpenSprintBoard}
             onToast={onToast}
-            readOnly={readOnly}
+            readOnly={effectiveReadOnly}
           />
         ) : currentTab === 'sprint' ? (
           <ProjectSprintWorkspaceTab
@@ -147,27 +174,27 @@ export default function ProjectWorkspaceView({
             selectedSprintId={selectedSprintId}
             onBackToRoadmap={() => handleTabClick('roadmap')}
             onToast={onToast}
-            readOnly={readOnly}
+            readOnly={effectiveReadOnly}
           />
         ) : currentTab === 'backlog' ? (
           <ProjectBacklogTab
             projectId={projectId}
             project={liveProject}
             onToast={onToast}
-            readOnly={readOnly}
+            readOnly={effectiveReadOnly}
           />
         ) : currentTab === 'kanban' ? (
           <KanbanBoard
             projectId={projectId}
             onToast={onToast}
-            readOnly={readOnly}
+            readOnly={effectiveReadOnly}
           />
         ) : currentTab === 'action-items' || currentTab === 'mom' ? (
           <ProjectMomTab
             projectId={projectId}
             projectName={liveProject?.name}
             onToast={onToast}
-            readOnly={readOnly}
+            readOnly={effectiveReadOnly}
           />
         ) : (
           <div className="bg-white rounded-2xl p-12 border border-slate-200/80 shadow-xs text-center max-w-lg mx-auto my-8">

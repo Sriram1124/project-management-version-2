@@ -151,6 +151,23 @@ export const workItemsService = {
     );
   },
 
+  /**
+   * Get server-calculated analytics scoped to user / filters
+   */
+  async getAnalytics(filters = {}) {
+    const params = new URLSearchParams();
+    if (filters.project_id) params.append('project_id', filters.project_id);
+    if (filters.sprint_id && filters.sprint_id !== 'ALL') params.append('sprint_id', filters.sprint_id);
+    if (filters.user_id) params.append('user_id', filters.user_id);
+    if (filters.start_date) params.append('start_date', filters.start_date);
+    if (filters.end_date) params.append('end_date', filters.end_date);
+
+    const qs = params.toString();
+    const endpoint = `/work-items/analytics${qs ? `?${qs}` : ''}`;
+    const data = await api.get(endpoint);
+    return data.analytics || null;
+  },
+
   // Backward compatibility alias
   async getWorkItemById(id) {
     return await this.getWorkItem(id);

@@ -1234,21 +1234,23 @@ export class ProjectService {
 
       // Overall Performance Score (0-100)
       // Calculated from project completion progress (60% weight) and lead's direct task execution (40% weight)
+      // Condition: if 0 active project tasks, score should be 0%
       let performanceScore = 0;
-      if (totalProjectTasks > 0 && totalAssignedTasks > 0) {
-        performanceScore = Math.round(projectCompletionRate * 0.6 + directCompletionRate * 0.4);
-      } else if (totalProjectTasks > 0) {
-        performanceScore = projectCompletionRate;
+      if (totalProjectTasks === 0) {
+        performanceScore = 0;
       } else if (totalAssignedTasks > 0) {
-        performanceScore = directCompletionRate;
+        performanceScore = Math.round(projectCompletionRate * 0.6 + directCompletionRate * 0.4);
       } else {
-        performanceScore = 100; // Fresh lead / clean slate
+        performanceScore = projectCompletionRate;
       }
 
       // Performance rating label
       let performanceLabel = 'Exceptional';
       let performanceColor = 'text-emerald-700 bg-emerald-50 border-emerald-200';
-      if (performanceScore >= 85) {
+      if (totalProjectTasks === 0) {
+        performanceLabel = 'No Tasks';
+        performanceColor = 'text-slate-600 bg-slate-100 border-slate-200';
+      } else if (performanceScore >= 85) {
         performanceLabel = 'Exceptional';
         performanceColor = 'text-emerald-700 bg-emerald-50 border-emerald-200';
       } else if (performanceScore >= 70) {

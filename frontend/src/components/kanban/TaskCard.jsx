@@ -1,6 +1,7 @@
 import React from 'react';
 import { Clock, CheckCircle2, User, Lock } from 'lucide-react';
 import { KANBAN_STATUSES, KANBAN_PRIORITIES } from '../../constants/kanban';
+import { useAuth } from '../../context/AuthContext';
 
 export default function TaskCard({
   task,
@@ -8,6 +9,13 @@ export default function TaskCard({
   onDragStart,
   onDragEnd,
 }) {
+  const { user: authUser } = useAuth();
+  const isIntern = authUser?.role === 'INTERN';
+  const currentUserId = authUser?.id || authUser?.user_id;
+  const isAssignedToMe = (task.assignees || []).some((a) => (a.user_id || a.id) === currentUserId) ||
+                         (task.assignee && (task.assignee.user_id || task.assignee.id) === currentUserId);
+  const canDrag = !isIntern || isAssignedToMe;
+
   const isBlocked = task.status === KANBAN_STATUSES.BLOCKED || task.status === 'BLOCKED';
   const isCompleted = task.status === KANBAN_STATUSES.COMPLETED || task.status === 'COMPLETED';
   const isOverdue = Boolean(task.is_overdue || task.isOverdue);
@@ -42,11 +50,13 @@ export default function TaskCard({
 
   return (
     <div
-      draggable
-      onDragStart={(e) => onDragStart?.(e, task.id)}
+      draggable={canDrag}
+      onDragStart={(e) => canDrag && onDragStart?.(e, task.id)}
       onDragEnd={onDragEnd}
       onClick={() => onClick?.(task)}
-      className={`p-2.5 rounded-md bg-white select-none group border transition-colors cursor-grab active:cursor-grabbing ${
+      className={`p-2.5 rounded-md bg-white select-none group border transition-colors ${
+        canDrag ? 'cursor-grab active:cursor-grabbing' : 'cursor-pointer'
+      } ${
         isBlocked
           ? 'border-rose-300 bg-rose-50/20'
           : isCompleted

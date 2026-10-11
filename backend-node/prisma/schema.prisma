@@ -9,76 +9,77 @@ datasource db {
 }
 
 model Organization {
-  id         String    @id @default(uuid())
+  id         String   @id @default(uuid())
   name       String
-  is_active  Boolean   @default(true)
-  created_at DateTime  @default(now())
-  updated_at DateTime  @updatedAt
+  is_active  Boolean  @default(true)
+  created_at DateTime @default(now())
+  updated_at DateTime @updatedAt
 
-  users      User[]
-  projects   Project[]
-  work_items WorkItem[]
-  sprints    Sprint[]
-  forms      Form[]
+  users         User[]
+  projects      Project[]
+  work_items    WorkItem[]
+  sprints       Sprint[]
+  forms         Form[]
   notifications Notification[]
-  cohorts    Cohort[]
-  action_items ActionItem[]
-  work_policy OrganizationWorkPolicy?
-  audit_logs  AuditLog[]
+  cohorts       Cohort[]
+  action_items  ActionItem[]
+  work_policy   OrganizationWorkPolicy?
+  audit_logs    AuditLog[]
 
   @@map("organizations")
 }
 
 model OrganizationWorkPolicy {
-  id                   String    @id @default(uuid())
-  organization_id       String    @unique
-  office_start_time    String    @default("09:00")
-  office_end_time      String    @default("17:30")
-  break_start_time     String?
-  break_end_time       String?
-  lunch_break_minutes  Int       @default(60)
-  timezone             String    @default("Asia/Kolkata")
-  overtime_enabled     Boolean   @default(false)
-  overtime_start_time  String?   @default("17:30")
-  created_at           DateTime  @default(now())
-  updated_at           DateTime  @updatedAt
+  id                  String   @id @default(uuid())
+  organization_id     String   @unique
+  office_start_time   String   @default("09:00")
+  office_end_time     String   @default("17:30")
+  break_start_time    String?
+  break_end_time      String?
+  lunch_break_minutes Int      @default(60)
+  timezone            String   @default("Asia/Kolkata")
+  overtime_enabled    Boolean  @default(false)
+  overtime_start_time String?  @default("17:30")
+  created_at          DateTime @default(now())
+  updated_at          DateTime @updatedAt
 
-  organization         Organization @relation(fields: [organization_id], references: [id], onDelete: Cascade)
+  organization Organization @relation(fields: [organization_id], references: [id], onDelete: Cascade)
 
   @@map("organization_work_policies")
 }
 
 model User {
-  id              String        @id @default(uuid())
-  organization_id String?
-  name            String
-  email           String        @unique
-  user_code       String?
-  cohort_id       String?
-  batch           String?
-  subbatch        String?
-  must_change_password Boolean    @default(true)
-  password_hash   String
-  is_active       Boolean       @default(true)
-  created_at      DateTime      @default(now())
-  updated_at      DateTime      @updatedAt
+  id                   String   @id @default(uuid())
+  organization_id      String?
+  name                 String
+  email                String   @unique
+  user_code            String?
+  cohort_id            String?
+  batch                String?
+  subbatch             String?
+  must_change_password Boolean  @default(true)
+  password_hash        String
+  is_active            Boolean  @default(true)
+  created_at           DateTime @default(now())
+  updated_at           DateTime @updatedAt
 
-  organization        Organization?   @relation(fields: [organization_id], references: [id])
-  cohort              Cohort?         @relation(fields: [cohort_id], references: [id], onDelete: SetNull)
-  roles               UserRole[]
-  sessions            UserSession[]
-  work_sessions       WorkSession[]
-  time_entries        TimeEntry[]
-  owned_projects        Project[]          @relation("ProjectOwner")
-  project_memberships   ProjectMember[]
-  created_work_items    WorkItem[]         @relation("WorkItemCreator")
-  work_item_assignments WorkItemAssignee[]
-  created_forms      Form[]             @relation("FormCreator")
-  form_submissions   FormSubmission[]   @relation("FormSubmitter")
-  sent_notifications Notification[]     @relation("SentNotifications")
+  organization           Organization?           @relation(fields: [organization_id], references: [id])
+  cohort                 Cohort?                 @relation(fields: [cohort_id], references: [id], onDelete: SetNull)
+  roles                  UserRole[]
+  sessions               UserSession[]
+  work_sessions          WorkSession[]
+  time_entries           TimeEntry[]
+  owned_projects         Project[]               @relation("ProjectOwner")
+  project_memberships    ProjectMember[]
+  created_work_items     WorkItem[]              @relation("WorkItemCreator")
+  work_item_assignments  WorkItemAssignee[]
+  created_forms          Form[]                  @relation("FormCreator")
+  form_submissions       FormSubmission[]        @relation("FormSubmitter")
+  sent_notifications     Notification[]          @relation("SentNotifications")
   received_notifications NotificationRecipient[] @relation("ReceivedNotifications")
   assigned_action_items  ActionItem[]            @relation("ActionItemAssignee")
   created_action_items   ActionItem[]            @relation("ActionItemCreator")
+  work_item_comments     WorkItemComment[]       @relation("WorkItemCommentAuthor")
   audit_logs             AuditLog[]
 
   @@unique([organization_id, user_code])
@@ -87,19 +88,19 @@ model User {
 }
 
 model Cohort {
-  id              String       @id @default(uuid())
+  id              String    @id @default(uuid())
   organization_id String
   name            String
   code            String
   description     String?
   start_date      DateTime?
   end_date        DateTime?
-  is_active       Boolean      @default(true)
-  created_at      DateTime     @default(now())
-  updated_at      DateTime     @updatedAt
+  is_active       Boolean   @default(true)
+  created_at      DateTime  @default(now())
+  updated_at      DateTime  @updatedAt
 
-  organization    Organization @relation(fields: [organization_id], references: [id], onDelete: Cascade)
-  users           User[]
+  organization Organization @relation(fields: [organization_id], references: [id], onDelete: Cascade)
+  users        User[]
 
   @@unique([organization_id, code])
   @@index([organization_id])
@@ -118,9 +119,9 @@ model WorkSession {
   created_at      DateTime  @default(now())
   updated_at      DateTime  @updatedAt
 
-  user            User      @relation(fields: [user_id], references: [id], onDelete: Cascade)
-  task            WorkItem? @relation(fields: [task_id], references: [id], onDelete: SetNull)
-  time_entries    TimeEntry[]
+  user         User        @relation(fields: [user_id], references: [id], onDelete: Cascade)
+  task         WorkItem?   @relation(fields: [task_id], references: [id], onDelete: SetNull)
+  time_entries TimeEntry[]
 
   @@index([organization_id, user_id])
   @@index([user_id, started_at])
@@ -129,24 +130,24 @@ model WorkSession {
 }
 
 model TimeEntry {
-  id              String    @id @default(uuid())
-  organization_id String
-  user_id         String
-  task_id         String
-  project_id      String?
-  work_session_id String?
-  date            DateTime
-  start_time      DateTime
-  end_time        DateTime
+  id               String   @id @default(uuid())
+  organization_id  String
+  user_id          String
+  task_id          String
+  project_id       String?
+  work_session_id  String?
+  date             DateTime
+  start_time       DateTime
+  end_time         DateTime
   duration_minutes Int      @default(0)
-  notes           String?
-  created_at      DateTime  @default(now())
-  updated_at      DateTime  @updatedAt
+  notes            String?
+  created_at       DateTime @default(now())
+  updated_at       DateTime @updatedAt
 
-  user            User      @relation(fields: [user_id], references: [id], onDelete: Cascade)
-  task            WorkItem  @relation(fields: [task_id], references: [id], onDelete: Cascade)
-  project         Project?  @relation(fields: [project_id], references: [id], onDelete: SetNull)
-  work_session    WorkSession? @relation(fields: [work_session_id], references: [id], onDelete: SetNull)
+  user         User         @relation(fields: [user_id], references: [id], onDelete: Cascade)
+  task         WorkItem     @relation(fields: [task_id], references: [id], onDelete: Cascade)
+  project      Project?     @relation(fields: [project_id], references: [id], onDelete: SetNull)
+  work_session WorkSession? @relation(fields: [work_session_id], references: [id], onDelete: SetNull)
 
   @@index([organization_id, user_id, date])
   @@index([task_id])
@@ -155,11 +156,11 @@ model TimeEntry {
 }
 
 model Role {
-  id          String           @id @default(uuid())
-  name        String           @unique
+  id          String   @id @default(uuid())
+  name        String   @unique
   description String?
-  created_at  DateTime         @default(now())
-  updated_at  DateTime         @updatedAt
+  created_at  DateTime @default(now())
+  updated_at  DateTime @updatedAt
 
   users       UserRole[]
   permissions RolePermission[]
@@ -168,13 +169,13 @@ model Role {
 }
 
 model Permission {
-  id          String           @id @default(uuid())
-  name        String           @unique
+  id          String   @id @default(uuid())
+  name        String   @unique
   description String?
-  created_at  DateTime         @default(now())
-  updated_at  DateTime         @updatedAt
+  created_at  DateTime @default(now())
+  updated_at  DateTime @updatedAt
 
-  roles       RolePermission[]
+  roles RolePermission[]
 
   @@map("permissions")
 }
@@ -183,8 +184,8 @@ model UserRole {
   user_id String
   role_id String
 
-  user    User @relation(fields: [user_id], references: [id], onDelete: Cascade)
-  role    Role @relation(fields: [role_id], references: [id], onDelete: Cascade)
+  user User @relation(fields: [user_id], references: [id], onDelete: Cascade)
+  role Role @relation(fields: [role_id], references: [id], onDelete: Cascade)
 
   @@id([user_id, role_id])
   @@map("user_roles")
@@ -212,7 +213,7 @@ model UserSession {
   user_agent         String?
   ip_address         String?
 
-  user               User      @relation(fields: [user_id], references: [id], onDelete: Cascade)
+  user User @relation(fields: [user_id], references: [id], onDelete: Cascade)
 
   @@index([user_id])
   @@map("user_sessions")
@@ -226,26 +227,26 @@ enum ProjectStatus {
 }
 
 model Project {
-  id              String            @id @default(uuid())
+  id              String        @id @default(uuid())
   organization_id String
   owner_id        String
   name            String
   description     String?
   start_date      DateTime?
   end_date        DateTime?
-  status          ProjectStatus     @default(PLANNED)
-  created_at      DateTime          @default(now())
-  updated_at      DateTime          @updatedAt
+  status          ProjectStatus @default(PLANNED)
+  created_at      DateTime      @default(now())
+  updated_at      DateTime      @updatedAt
 
-  organization    Organization      @relation(fields: [organization_id], references: [id])
-  owner           User              @relation("ProjectOwner", fields: [owner_id], references: [id])
-  members         ProjectMember[]
-  documents       ProjectDocument[]
-  work_items      WorkItem[]
-  sprints         Sprint[]
-  forms           Form[]
-  time_entries    TimeEntry[]
-  action_items    ActionItem[]
+  organization Organization      @relation(fields: [organization_id], references: [id])
+  owner        User              @relation("ProjectOwner", fields: [owner_id], references: [id])
+  members      ProjectMember[]
+  documents    ProjectDocument[]
+  work_items   WorkItem[]
+  sprints      Sprint[]
+  forms        Form[]
+  time_entries TimeEntry[]
+  action_items ActionItem[]
 
   @@map("projects")
 }
@@ -255,8 +256,8 @@ model ProjectMember {
   user_id      String
   project_role String?
 
-  project      Project @relation(fields: [project_id], references: [id], onDelete: Cascade)
-  user         User    @relation(fields: [user_id], references: [id], onDelete: Cascade)
+  project Project @relation(fields: [project_id], references: [id], onDelete: Cascade)
+  user    User    @relation(fields: [user_id], references: [id], onDelete: Cascade)
 
   @@id([project_id, user_id])
   @@map("project_members")
@@ -271,8 +272,8 @@ model ProjectDocument {
   created_at    DateTime @default(now())
   updated_at    DateTime @updatedAt
 
-  project       Project  @relation(fields: [project_id], references: [id], onDelete: Cascade)
-  requirements  DocumentRequirement[]
+  project      Project               @relation(fields: [project_id], references: [id], onDelete: Cascade)
+  requirements DocumentRequirement[]
 
   @@map("project_documents")
 }
@@ -285,20 +286,20 @@ enum RequirementStatus {
 }
 
 model DocumentRequirement {
-  id                  String             @id @default(uuid())
-  document_id         String
-  code                String?            // e.g. "REQ-1", "FR-2", "UI-3"
-  title               String
-  description         String?
-  section             String?            // e.g. "Phase 1 - Audit", "Manager Dashboard"
-  status              RequirementStatus  @default(PENDING)
-  progress_note       String?
-  current_activity    String?
+  id                 String            @id @default(uuid())
+  document_id        String
+  code               String? // e.g. "REQ-1", "FR-2", "UI-3"
+  title              String
+  description        String?
+  section            String? // e.g. "Phase 1 - Audit", "Manager Dashboard"
+  status             RequirementStatus @default(PENDING)
+  progress_note      String?
+  current_activity   String?
   updated_by_user_id String?
-  created_at          DateTime           @default(now())
-  updated_at          DateTime           @updatedAt
+  created_at         DateTime          @default(now())
+  updated_at         DateTime          @updatedAt
 
-  document            ProjectDocument    @relation(fields: [document_id], references: [id], onDelete: Cascade)
+  document ProjectDocument @relation(fields: [document_id], references: [id], onDelete: Cascade)
 
   @@index([document_id])
   @@map("document_requirements")
@@ -335,27 +336,27 @@ enum SprintStatus {
 }
 
 model Sprint {
-  id              String        @id @default(uuid())
+  id              String       @id @default(uuid())
   organization_id String
   project_id      String
   name            String
   goal            String?
   start_date      DateTime?
   end_date        DateTime?
-  status          SprintStatus  @default(PLANNED)
-  created_at      DateTime      @default(now())
-  updated_at      DateTime      @updatedAt
+  status          SprintStatus @default(PLANNED)
+  created_at      DateTime     @default(now())
+  updated_at      DateTime     @updatedAt
 
-  organization    Organization  @relation(fields: [organization_id], references: [id])
-  project         Project       @relation(fields: [project_id], references: [id], onDelete: Cascade)
-  work_items      WorkItem[]
+  organization Organization @relation(fields: [organization_id], references: [id])
+  project      Project      @relation(fields: [project_id], references: [id], onDelete: Cascade)
+  work_items   WorkItem[]
 
   @@index([organization_id, project_id])
   @@map("sprints")
 }
 
 model WorkItem {
-  id              String             @id @default(uuid())
+  id              String           @id @default(uuid())
   organization_id String
   project_id      String?
   sprint_id       String?
@@ -364,25 +365,26 @@ model WorkItem {
   type            WorkItemType
   title           String
   description     String?
-  status          WorkItemStatus     @default(TODO)
-  priority        WorkItemPriority   @default(MEDIUM)
+  status          WorkItemStatus   @default(TODO)
+  priority        WorkItemPriority @default(MEDIUM)
   start_date      DateTime?
   due_date        DateTime?
-  created_at      DateTime           @default(now())
-  updated_at      DateTime           @updatedAt
+  created_at      DateTime         @default(now())
+  updated_at      DateTime         @updatedAt
   completed_at    DateTime?
-  story_points    Int?               @default(0)
+  story_points    Int?             @default(0)
 
-  organization    Organization       @relation(fields: [organization_id], references: [id])
-  project         Project?           @relation(fields: [project_id], references: [id], onDelete: Cascade)
-  sprint          Sprint?            @relation(fields: [sprint_id], references: [id], onDelete: SetNull)
-  parent          WorkItem?          @relation("WorkItemHierarchy", fields: [parent_id], references: [id], onDelete: Restrict)
-  children        WorkItem[]         @relation("WorkItemHierarchy")
-  creator         User               @relation("WorkItemCreator", fields: [created_by], references: [id])
-  assignees       WorkItemAssignee[]
-  attachments     WorkItemAttachment[]
-  time_entries    TimeEntry[]
-  work_sessions   WorkSession[]
+  organization  Organization         @relation(fields: [organization_id], references: [id])
+  project       Project?             @relation(fields: [project_id], references: [id], onDelete: Cascade)
+  sprint        Sprint?              @relation(fields: [sprint_id], references: [id], onDelete: SetNull)
+  parent        WorkItem?            @relation("WorkItemHierarchy", fields: [parent_id], references: [id], onDelete: Restrict)
+  children      WorkItem[]           @relation("WorkItemHierarchy")
+  creator       User                 @relation("WorkItemCreator", fields: [created_by], references: [id])
+  assignees     WorkItemAssignee[]
+  attachments   WorkItemAttachment[]
+  comments      WorkItemComment[]
+  time_entries  TimeEntry[]
+  work_sessions WorkSession[]
 
   @@index([organization_id])
   @@index([project_id])
@@ -392,13 +394,29 @@ model WorkItem {
   @@map("work_items")
 }
 
+model WorkItemComment {
+  id           String   @id @default(uuid())
+  work_item_id String
+  author_id    String
+  content      String   @db.Text
+  created_at   DateTime @default(now())
+  updated_at   DateTime @updatedAt
+
+  work_item WorkItem @relation(fields: [work_item_id], references: [id], onDelete: Cascade)
+  author    User     @relation("WorkItemCommentAuthor", fields: [author_id], references: [id], onDelete: Cascade)
+
+  @@index([work_item_id])
+  @@index([author_id])
+  @@map("work_item_comments")
+}
+
 model WorkItemAssignee {
   work_item_id String
   user_id      String
   created_at   DateTime @default(now())
 
-  work_item    WorkItem @relation(fields: [work_item_id], references: [id], onDelete: Cascade)
-  user         User     @relation(fields: [user_id], references: [id], onDelete: Cascade)
+  work_item WorkItem @relation(fields: [work_item_id], references: [id], onDelete: Cascade)
+  user      User     @relation(fields: [user_id], references: [id], onDelete: Cascade)
 
   @@id([work_item_id, user_id])
   @@map("work_item_assignees")
@@ -412,7 +430,7 @@ model WorkItemAttachment {
   created_at   DateTime @default(now())
   updated_at   DateTime @updatedAt
 
-  work_item    WorkItem @relation(fields: [work_item_id], references: [id], onDelete: Cascade)
+  work_item WorkItem @relation(fields: [work_item_id], references: [id], onDelete: Cascade)
 
   @@index([work_item_id])
   @@map("work_item_attachments")
@@ -435,23 +453,23 @@ enum QuestionType {
 }
 
 model Form {
-  id              String       @id @default(uuid())
+  id              String     @id @default(uuid())
   organization_id String
   project_id      String?
   creator_id      String
   title           String
   description     String?
-  status          FormStatus   @default(DRAFT)
-  target_roles    String[]     // e.g. ["INTERN"]
+  status          FormStatus @default(DRAFT)
+  target_roles    String[] // e.g. ["INTERN"]
   deadline        DateTime?
-  created_at      DateTime     @default(now())
-  updated_at      DateTime     @updatedAt
+  created_at      DateTime   @default(now())
+  updated_at      DateTime   @updatedAt
 
-  organization    Organization @relation(fields: [organization_id], references: [id])
-  project         Project?     @relation(fields: [project_id], references: [id], onDelete: SetNull)
-  creator         User         @relation("FormCreator", fields: [creator_id], references: [id])
-  questions       FormQuestion[]
-  submissions     FormSubmission[]
+  organization Organization     @relation(fields: [organization_id], references: [id])
+  project      Project?         @relation(fields: [project_id], references: [id], onDelete: SetNull)
+  creator      User             @relation("FormCreator", fields: [creator_id], references: [id])
+  questions    FormQuestion[]
+  submissions  FormSubmission[]
 
   @@index([organization_id])
   @@index([project_id])
@@ -466,25 +484,25 @@ model FormQuestion {
   description String?
   is_required Boolean      @default(true)
   order_index Int
-  options     String[]     // For select type questions
+  options     String[] // For select type questions
 
-  form        Form         @relation(fields: [form_id], references: [id], onDelete: Cascade)
-  answers     SubmissionAnswer[]
+  form    Form               @relation(fields: [form_id], references: [id], onDelete: Cascade)
+  answers SubmissionAnswer[]
 
   @@index([form_id])
   @@map("form_questions")
 }
 
 model FormSubmission {
-  id           String             @id @default(uuid())
+  id           String   @id @default(uuid())
   form_id      String
   submitter_id String
-  created_at   DateTime           @default(now())
-  updated_at   DateTime           @updatedAt
+  created_at   DateTime @default(now())
+  updated_at   DateTime @updatedAt
 
-  form         Form               @relation(fields: [form_id], references: [id], onDelete: Cascade)
-  submitter    User               @relation("FormSubmitter", fields: [submitter_id], references: [id])
-  answers      SubmissionAnswer[]
+  form      Form               @relation(fields: [form_id], references: [id], onDelete: Cascade)
+  submitter User               @relation("FormSubmitter", fields: [submitter_id], references: [id])
+  answers   SubmissionAnswer[]
 
   @@index([form_id])
   @@index([submitter_id])
@@ -492,16 +510,16 @@ model FormSubmission {
 }
 
 model SubmissionAnswer {
-  id             String         @id @default(uuid())
-  submission_id  String
-  question_id    String
-  value_string   String?        
-  value_number   Float?
-  value_boolean  Boolean?
-  value_array    String[]       
+  id            String   @id @default(uuid())
+  submission_id String
+  question_id   String
+  value_string  String?
+  value_number  Float?
+  value_boolean Boolean?
+  value_array   String[]
 
-  submission     FormSubmission @relation(fields: [submission_id], references: [id], onDelete: Cascade)
-  question       FormQuestion   @relation(fields: [question_id], references: [id], onDelete: Cascade)
+  submission FormSubmission @relation(fields: [submission_id], references: [id], onDelete: Cascade)
+  question   FormQuestion   @relation(fields: [question_id], references: [id], onDelete: Cascade)
 
   @@index([submission_id])
   @@index([question_id])
@@ -526,9 +544,9 @@ model Notification {
   created_at      DateTime         @default(now())
   updated_at      DateTime         @updatedAt
 
-  organization    Organization     @relation(fields: [organization_id], references: [id], onDelete: Cascade)
-  sender          User             @relation("SentNotifications", fields: [sender_id], references: [id], onDelete: Cascade)
-  recipients      NotificationRecipient[]
+  organization Organization            @relation(fields: [organization_id], references: [id], onDelete: Cascade)
+  sender       User                    @relation("SentNotifications", fields: [sender_id], references: [id], onDelete: Cascade)
+  recipients   NotificationRecipient[]
 
   @@index([organization_id])
   @@index([sender_id])
@@ -536,15 +554,15 @@ model Notification {
 }
 
 model NotificationRecipient {
-  id              String       @id @default(uuid())
+  id              String    @id @default(uuid())
   notification_id String
   user_id         String
   read_at         DateTime?
-  delivered       Boolean      @default(false)
-  created_at      DateTime     @default(now())
+  delivered       Boolean   @default(false)
+  created_at      DateTime  @default(now())
 
-  notification    Notification @relation(fields: [notification_id], references: [id], onDelete: Cascade)
-  user            User         @relation("ReceivedNotifications", fields: [user_id], references: [id], onDelete: Cascade)
+  notification Notification @relation(fields: [notification_id], references: [id], onDelete: Cascade)
+  user         User         @relation("ReceivedNotifications", fields: [user_id], references: [id], onDelete: Cascade)
 
   @@unique([notification_id, user_id])
   @@index([notification_id])
@@ -581,10 +599,10 @@ model ActionItem {
   created_at      DateTime           @default(now())
   updated_at      DateTime           @updatedAt
 
-  organization    Organization       @relation(fields: [organization_id], references: [id], onDelete: Cascade)
-  project         Project            @relation(fields: [project_id], references: [id], onDelete: Cascade)
-  assignee        User?              @relation("ActionItemAssignee", fields: [assignee_id], references: [id], onDelete: SetNull)
-  creator         User               @relation("ActionItemCreator", fields: [creator_id], references: [id], onDelete: Cascade)
+  organization Organization @relation(fields: [organization_id], references: [id], onDelete: Cascade)
+  project      Project      @relation(fields: [project_id], references: [id], onDelete: Cascade)
+  assignee     User?        @relation("ActionItemAssignee", fields: [assignee_id], references: [id], onDelete: SetNull)
+  creator      User         @relation("ActionItemCreator", fields: [creator_id], references: [id], onDelete: Cascade)
 
   @@index([organization_id])
   @@index([project_id])
@@ -594,7 +612,7 @@ model ActionItem {
 }
 
 model AuditLog {
-  id              String        @id @default(uuid())
+  id              String   @id @default(uuid())
   actor_id        String?
   organization_id String?
   action          String
@@ -603,10 +621,10 @@ model AuditLog {
   metadata        Json?
   ip_address      String?
   user_agent      String?
-  created_at      DateTime      @default(now())
+  created_at      DateTime @default(now())
 
-  actor           User?         @relation(fields: [actor_id], references: [id], onDelete: SetNull)
-  organization    Organization? @relation(fields: [organization_id], references: [id], onDelete: SetNull)
+  actor        User?         @relation(fields: [actor_id], references: [id], onDelete: SetNull)
+  organization Organization? @relation(fields: [organization_id], references: [id], onDelete: SetNull)
 
   @@index([actor_id])
   @@index([organization_id])

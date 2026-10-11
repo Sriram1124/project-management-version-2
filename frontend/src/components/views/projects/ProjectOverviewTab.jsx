@@ -20,18 +20,29 @@ import ProjectTaskCharts from './ProjectTaskCharts';
 
 export default function ProjectOverviewTab({ projectId, project, onToast, readOnly = false }) {
   const { user: authUser } = useAuth();
+  const currentUserId = authUser?.id || authUser?.user_id;
+  const authRole = String(authUser?.role?.name || authUser?.role || authUser?.type || authUser?.user_type || '').toUpperCase();
   const [members, setMembers] = useState([]);
   const [loadingMembers, setLoadingMembers] = useState(false);
   const [isAssignRolesOpen, setIsAssignRolesOpen] = useState(false);
   const [isAllMembersOpen, setIsAllMembersOpen] = useState(false);
 
-  const canAssignRoles = 
-    !readOnly && (
-      authUser?.role === 'MANAGER' || 
-      authUser?.role === 'ADMIN' || 
-      authUser?.role === 'SUPER_ADMIN' || 
-      authUser?.id === project?.owner_id
+  const isTechLeadOnProject = 
+    authRole === 'TECH_LEAD' || 
+    Boolean(authUser?.is_tech_lead && (authUser?.lead_project_ids?.includes(projectId) || !authUser?.lead_project_ids?.length)) ||
+    members.some((m) => 
+      (m.user_id === currentUserId || m.id === currentUserId) && 
+      (m.project_role === 'TECH_LEAD' || m.role === 'TECH_LEAD')
     );
+
+  const canManageProject = 
+    authRole === 'MANAGER' || 
+    authRole === 'ADMIN' || 
+    authRole === 'SUPER_ADMIN' || 
+    authUser?.id === project?.owner_id ||
+    isTechLeadOnProject;
+
+  const canAssignRoles = canManageProject;
 
   const loadMembers = () => {
     if (projectId) {
@@ -278,7 +289,7 @@ export default function ProjectOverviewTab({ projectId, project, onToast, readOn
       <ProjectTaskCharts 
         projectId={projectId || project?.id} 
         members={members}
-        readOnly={readOnly}
+        readOnly={readOnly && !canManageProject}
       />
 
       {/* View All Members Modal (Floating rectangular modal with search & role filter) */}

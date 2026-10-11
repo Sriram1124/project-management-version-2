@@ -15,7 +15,8 @@ import {
   ChevronRight,
   ShieldAlert,
   ArrowRightLeft,
-  Menu
+  Menu,
+  BarChart3
 } from 'lucide-react';
 
 import InternDashboardTab from './components/InternDashboardTab';
@@ -23,6 +24,7 @@ import MyProjectsTab from './components/MyProjectsTab';
 import ScopedProjectView from './components/ScopedProjectView';
 import ProjectsDirectoryView from '../../components/views/projects/ProjectsDirectoryView';
 import ProjectWorkspaceView from '../../components/views/projects/ProjectWorkspaceView';
+import ProjectTaskCharts from '../../components/views/projects/ProjectTaskCharts';
 import MyTasksTab from './components/MyTasksTab';
 import AssignedFormsTab from './components/AssignedFormsTab';
 import InternAttendanceTab from './components/InternAttendanceTab';
@@ -49,7 +51,7 @@ export default function InternApp({ onLogout, onSelectProject, onToast }) {
     const clean = pathname.replace(/^\/intern\/?/, '');
     if (!clean || clean === 'dashboard') return 'dashboard';
     if (clean === 'tasks' || clean === 'my-tasks') return 'tasks';
-    if (['alerts', 'projects', 'forms', 'attendance', 'profile'].includes(clean)) {
+    if (['alerts', 'projects', 'tasks', 'analytics', 'forms', 'attendance', 'profile'].includes(clean)) {
       return clean;
     }
     return 'dashboard';
@@ -166,11 +168,17 @@ export default function InternApp({ onLogout, onSelectProject, onToast }) {
     }
   };
 
+  const isTechLead = 
+    authUser?.role === 'TECH_LEAD' || 
+    Boolean(authUser?.is_tech_lead) || 
+    (Array.isArray(authUser?.lead_project_ids) && authUser.lead_project_ids.length > 0);
+
   const navItems = [
     { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard },
     { id: 'alerts', label: 'Alerts & Notices', icon: Bell, badge: unreadCount, badgeColor: 'bg-rose-500' },
     { id: 'projects', label: 'My Projects', icon: FolderKanban },
     { id: 'tasks', label: 'My Tasks', icon: CheckSquare, badge: workItems.filter(w => w.status !== 'COMPLETED').length },
+    ...(isTechLead ? [{ id: 'analytics', label: 'Task Analytics', icon: BarChart3 }] : []),
     { id: 'forms', label: 'Forms', icon: FileText, badge: pendingFormsCount, badgeColor: 'bg-amber-500' },
     { id: 'attendance', label: 'Attendance', icon: CalendarCheck },
     { id: 'profile', label: 'Profile', icon: User },
@@ -190,6 +198,8 @@ export default function InternApp({ onLogout, onSelectProject, onToast }) {
         return 'My Assigned Projects';
       case 'tasks':
         return 'Task & Subtask Board';
+      case 'analytics':
+        return 'Task Analytics & Work Distribution';
       case 'forms':
         return 'Assigned Evaluations & Forms';
       case 'attendance':
@@ -387,7 +397,7 @@ export default function InternApp({ onLogout, onSelectProject, onToast }) {
                 <ProjectWorkspaceView
                   projectId={selectedProjectId}
                   onBackToDirectory={() => setSelectedProjectId(null)}
-                  readOnly={true}
+                  readOnly={!isTechLead}
                   onToast={onToast}
                 />
               ) : (
@@ -409,6 +419,10 @@ export default function InternApp({ onLogout, onSelectProject, onToast }) {
                 onToast={onToast}
                 showViewSwitcher={false}
               />
+            )}
+
+            {currentTab === 'analytics' && (
+              <ProjectTaskCharts />
             )}
 
             {currentTab === 'forms' && (

@@ -157,6 +157,17 @@ export class AuthController {
         ? []
         : (primaryRole?.permissions.map((rp: any) => rp.permission.name) || []);
 
+      // Determine Tech Lead status and lead projects
+      const leadMemberships = await prisma.projectMember.findMany({
+        where: {
+          user_id: user.id,
+          project_role: 'TECH_LEAD',
+        },
+        select: { project_id: true },
+      });
+      const leadProjectIds = leadMemberships.map((m) => m.project_id);
+      const isTechLead = roleName === 'TECH_LEAD' || leadProjectIds.length > 0;
+
       res.status(200).json({
         id: user.id,
         name: user.name,
@@ -166,6 +177,8 @@ export class AuthController {
         must_change_password: user.must_change_password,
         organization_id: user.organization_id,
         role: roleName,
+        is_tech_lead: isTechLead,
+        lead_project_ids: leadProjectIds,
         permissions,
       });
     } catch (error) {

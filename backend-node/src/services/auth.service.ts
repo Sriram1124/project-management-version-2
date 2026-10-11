@@ -112,6 +112,16 @@ export class AuthService {
       },
     });
 
+    const leadMemberships = await prisma.projectMember.findMany({
+      where: {
+        user_id: user.id,
+        project_role: 'TECH_LEAD',
+      },
+      select: { project_id: true },
+    });
+    const leadProjectIds = leadMemberships.map((m) => m.project_id);
+    const isTechLead = primaryRole?.name === 'TECH_LEAD' || leadProjectIds.length > 0;
+
     return {
       user: {
         id: user.id,
@@ -121,6 +131,8 @@ export class AuthService {
         must_change_password: user.must_change_password,
         organization_id: user.organization_id,
         role: primaryRole?.name || 'USER',
+        is_tech_lead: isTechLead,
+        lead_project_ids: leadProjectIds,
         permissions,
       },
       accessToken,

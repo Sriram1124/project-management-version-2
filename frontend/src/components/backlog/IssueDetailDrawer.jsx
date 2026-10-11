@@ -17,6 +17,7 @@ import {
   GitFork
 } from 'lucide-react';
 import { getEpicSprintSummary } from './HierarchicalIssueTable';
+import { useAuth } from '../../context/AuthContext';
 
 export default function IssueDetailDrawer({
   issue,
@@ -31,6 +32,58 @@ export default function IssueDetailDrawer({
   onToggleSubtask,
   onAddSubtask,
 }) {
+  const { user: authUser } = useAuth();
+  const isIntern = authUser?.role === 'INTERN';
+  const currentUserId = authUser?.id || authUser?.user_id;
+
+  const isAssignedToMe = useMemo(() => {
+    if (!issue || !currentUserId) return false;
+    if (issue.assignee && (issue.assignee.id === currentUserId || issue.assignee.user_id === currentUserId)) return true;
+    if (issue.assigneeId === currentUserId || issue.assignee_id === currentUserId) return true;
+    if (Array.isArray(issue.assignees)) {
+      return issue.assignees.some((a) => (a.id === currentUserId || a.user_id === currentUserId));
+    }
+    return false;
+  }, [issue, currentUserId]);
+
+  const currentAssigneeId = useMemo(() => {
+    if (!issue) return '';
+    if (issue.assignee?.user_id) return String(issue.assignee.user_id);
+    if (issue.assignee?.id) return String(issue.assignee.id);
+    if (Array.isArray(issue.assignees) && issue.assignees.length > 0) {
+      const first = issue.assignees[0];
+      return String(first.user_id || first.id || '');
+    }
+    if (issue.assignee_id) return String(issue.assignee_id);
+    if (issue.assigneeId) return String(issue.assigneeId);
+    return '';
+  }, [issue]);
+
+  const currentAssignee = useMemo(() => {
+    if (!issue) return null;
+    if (issue.assignee && (issue.assignee.name || issue.assignee.user?.name)) {
+      return issue.assignee;
+    }
+    if (Array.isArray(issue.assignees) && issue.assignees.length > 0) {
+      return issue.assignees[0];
+    }
+    if (currentAssigneeId) {
+      const match = members.find((m) => (m.user_id || m.id) === currentAssigneeId);
+      if (match) return match;
+    }
+    return null;
+  }, [issue, currentAssigneeId, members]);
+
+  const canDelete = !isIntern;
+  const canEditTitleAndDesc = !isIntern;
+  const canChangeStatus = !isIntern || isAssignedToMe;
+  const canChangePriority = !isIntern;
+  const canChangeAssignee = !isIntern;
+  const canChangeSprint = !isIntern;
+  const canChangeEpic = !isIntern;
+  const canChangeStoryPoints = !isIntern;
+  const canChangeDueDate = !isIntern;
+
   const [activeTab, setActiveTab] = useState('comments'); // 'comments' | 'worklog' | 'history'
   const [editedTitle, setEditedTitle] = useState(issue?.title || '');
   const [editedDesc, setEditedDesc] = useState(issue?.description || '');
@@ -43,11 +96,16 @@ export default function IssueDetailDrawer({
 
   const allowedChildTypes = React.useMemo(() => {
     const t = String(issue?.type || '').toUpperCase();
+    if (isIntern) {
+      if (t === 'STORY') return ['TASK', 'BUG'];
+      if (t === 'TASK') return ['SUBTASK'];
+      return [];
+    }
     if (t === 'EPIC') return ['STORY', 'BUG'];
     if (t === 'STORY') return ['TASK', 'BUG'];
     if (t === 'TASK') return ['SUBTASK'];
     return [];
-  }, [issue?.type]);
+  }, [issue?.type, isIntern]);
 
   useEffect(() => {
     if (allowedChildTypes.length > 0) {
@@ -129,10 +187,23 @@ export default function IssueDetailDrawer({
 
   const handleAssigneeChange = (assigneeId) => {
     const user = members.find((u) => (u.user_id || u.id) === assigneeId) || null;
+    const newAssignees = user
+      ? [
+          {
+            id: user.user_id || user.id,
+            user_id: user.user_id || user.id,
+            name: user.name || user.user?.name || user.email || 'Member',
+            email: user.email || user.user?.email || '',
+          },
+        ]
+      : [];
+
     onUpdateIssue?.({
       ...issue,
       assignee: user,
       assigneeId: assigneeId || null,
+      assignee_id: assigneeId || null,
+      assignees: newAssignees,
       assignee_ids: assigneeId ? [assigneeId] : [],
     });
   };
@@ -241,16 +312,18 @@ export default function IssueDetailDrawer({
         </div>
 
         <div className="flex items-center gap-1.5">
-          <button
-            onClick={() => onDeleteIssue?.(issue.id)}
-            title="Delete Issue"
-            className="p-1 rounded text-slate-400 hover:text-rose-600 hover:bg-rose-50 transition-colors"
-          >
-            <Trash2 className="w-3.5 h-3.5" />
-          </button>
+          {canDelete && (
+            <button
+              onClick={() => onDeleteIssue?.(issue.id)}
+              title="Delete Issue"
+              className="p-1 rounded text-slate-400 hover:text-rose-600 hover:bg-rose-50 transition-colors cursor-pointer"
+            >
+              <Trash2 className="w-3.5 h-3.5" />
+            </button>
+          )}
           <button
             onClick={onClose}
-            className="p-1 rounded text-slate-400 hover:text-slate-700 hover:bg-slate-100 transition-colors"
+            className="p-1 rounded text-slate-400 hover:text-slate-700 hover:bg-slate-100 transition-colors cursor-pointer"
           >
             <X className="w-4 h-4" />
           </button>
@@ -261,14 +334,20 @@ export default function IssueDetailDrawer({
       <div className="flex-1 overflow-y-auto p-4 space-y-4">
         {/* Title Input */}
         <div>
-          <textarea
-            rows={2}
-            value={editedTitle}
-            onChange={(e) => setEditedTitle(e.target.value)}
-            onBlur={handleTitleBlur}
-            placeholder="Issue summary..."
-            className="w-full text-sm font-bold text-slate-900 border border-transparent hover:border-slate-200 focus:border-purple-500 focus:bg-white p-1.5 rounded-md resize-none transition-colors outline-none"
-          />
+          {canEditTitleAndDesc ? (
+            <textarea
+              rows={2}
+              value={editedTitle}
+              onChange={(e) => setEditedTitle(e.target.value)}
+              onBlur={handleTitleBlur}
+              placeholder="Issue summary..."
+              className="w-full text-sm font-bold text-slate-900 border border-transparent hover:border-slate-200 focus:border-purple-500 focus:bg-white p-1.5 rounded-md resize-none transition-colors outline-none"
+            />
+          ) : (
+            <div className="w-full text-sm font-bold text-slate-900 p-1.5 select-text">
+              {issue.title || 'Untitled'}
+            </div>
+          )}
         </div>
 
         {/* Status / Priority / Assignee Attributes Grid */}
@@ -276,53 +355,71 @@ export default function IssueDetailDrawer({
           {/* Status */}
           <div className="flex items-center justify-between">
             <span className="text-slate-500 font-medium">Status</span>
-            <select
-              value={issue.status || 'TODO'}
-              onChange={(e) => handleStatusChange(e.target.value)}
-              className="px-2 py-1 rounded border border-slate-200 text-xs font-semibold bg-white text-slate-800 focus:outline-none focus:border-purple-600"
-            >
-              <option value="TODO">To Do</option>
-              <option value="IN_PROGRESS">In Progress</option>
-              <option value="IN_REVIEW">In Review</option>
-              <option value="BLOCKED">Blocked</option>
-              <option value="COMPLETED">Completed</option>
-            </select>
+            {canChangeStatus ? (
+              <select
+                value={issue.status || 'TODO'}
+                onChange={(e) => handleStatusChange(e.target.value)}
+                className="px-2 py-1 rounded border border-slate-200 text-xs font-semibold bg-white text-slate-800 focus:outline-none focus:border-purple-600 cursor-pointer"
+              >
+                <option value="TODO">To Do</option>
+                <option value="IN_PROGRESS">In Progress</option>
+                <option value="IN_REVIEW">In Review</option>
+                <option value="BLOCKED">Blocked</option>
+                <option value="COMPLETED">Completed</option>
+              </select>
+            ) : (
+              <span className="px-2 py-1 rounded border border-slate-200 text-xs font-semibold bg-slate-50 text-slate-700 select-none">
+                {issue.status === 'IN_PROGRESS' ? 'In Progress' : issue.status === 'IN_REVIEW' ? 'In Review' : issue.status === 'COMPLETED' ? 'Completed' : issue.status === 'BLOCKED' ? 'Blocked' : 'To Do'}
+              </span>
+            )}
           </div>
 
           {/* Priority */}
           <div className="flex items-center justify-between">
             <span className="text-slate-500 font-medium">Priority</span>
-            <select
-              value={issue.priority || 'MEDIUM'}
-              onChange={(e) => handlePriorityChange(e.target.value)}
-              className="px-2 py-1 rounded border border-slate-200 text-xs font-medium bg-white text-slate-800 focus:outline-none focus:border-purple-600"
-            >
-              <option value="URGENT">Urgent</option>
-              <option value="HIGH">High</option>
-              <option value="MEDIUM">Medium</option>
-              <option value="LOW">Low</option>
-            </select>
+            {canChangePriority ? (
+              <select
+                value={issue.priority || 'MEDIUM'}
+                onChange={(e) => handlePriorityChange(e.target.value)}
+                className="px-2 py-1 rounded border border-slate-200 text-xs font-medium bg-white text-slate-800 focus:outline-none focus:border-purple-600 cursor-pointer"
+              >
+                <option value="URGENT">Urgent</option>
+                <option value="HIGH">High</option>
+                <option value="MEDIUM">Medium</option>
+                <option value="LOW">Low</option>
+              </select>
+            ) : (
+              <span className="px-2 py-1 rounded border border-slate-200 text-xs font-medium bg-slate-50 text-slate-700 select-none">
+                {issue.priority || 'Medium'}
+              </span>
+            )}
           </div>
 
           {/* Assignee */}
           <div className="flex items-center justify-between">
             <span className="text-slate-500 font-medium">Assignee</span>
-            <select
-              value={issue.assignee?.id || issue.assignee?.user_id || ''}
-              onChange={(e) => handleAssigneeChange(e.target.value)}
-              className="px-2 py-1 rounded border border-slate-200 text-xs font-medium bg-white text-slate-800 focus:outline-none focus:border-purple-600 max-w-[180px]"
-            >
-              <option value="">Unassigned</option>
-              {members.map((u) => {
-                const uid = u.user_id || u.id;
-                const uName = u.name || u.user?.name || u.email || u.user?.email || 'Member';
-                return (
-                  <option key={uid} value={uid}>
-                    {uName}
-                  </option>
-                );
-              })}
-            </select>
+            {canChangeAssignee ? (
+              <select
+                value={currentAssigneeId}
+                onChange={(e) => handleAssigneeChange(e.target.value)}
+                className="px-2 py-1 rounded border border-slate-200 text-xs font-medium bg-white text-slate-800 focus:outline-none focus:border-purple-600 max-w-[180px] cursor-pointer"
+              >
+                <option value="">Unassigned</option>
+                {members.map((u) => {
+                  const uid = u.user_id || u.id;
+                  const uName = u.name || u.user?.name || u.email || u.user?.email || 'Member';
+                  return (
+                    <option key={uid} value={uid}>
+                      {uName}
+                    </option>
+                  );
+                })}
+              </select>
+            ) : (
+              <span className="px-2 py-1 rounded border border-slate-200 text-xs font-medium bg-slate-50 text-slate-700 select-none truncate max-w-[180px]">
+                {currentAssignee?.name || currentAssignee?.user?.name || currentAssignee?.email || 'Unassigned'}
+              </span>
+            )}
           </div>
 
           {/* Sprint */}
@@ -337,11 +434,11 @@ export default function IssueDetailDrawer({
               >
                 {epicSprintSummary?.label || 'Backlog'}
               </span>
-            ) : (
+            ) : canChangeSprint ? (
               <select
                 value={issue.sprint_id || issue.sprintId || 'backlog'}
                 onChange={(e) => handleSprintChange(e.target.value)}
-                className="px-2 py-1 rounded border border-slate-200 text-xs font-medium bg-white text-slate-800 focus:outline-none focus:border-purple-600 max-w-[180px]"
+                className="px-2 py-1 rounded border border-slate-200 text-xs font-medium bg-white text-slate-800 focus:outline-none focus:border-purple-600 max-w-[180px] cursor-pointer"
               >
                 <option value="backlog">Backlog (No Sprint)</option>
                 {sprints.map((s) => (
@@ -350,35 +447,51 @@ export default function IssueDetailDrawer({
                   </option>
                 ))}
               </select>
+            ) : (
+              <span className="px-2 py-1 rounded border text-xs font-medium bg-slate-50 text-slate-600 border-slate-200 select-none truncate max-w-[180px]">
+                {currentSprint ? currentSprint.name : 'Backlog'}
+              </span>
             )}
           </div>
 
           {/* Epic */}
           <div className="flex items-center justify-between">
             <span className="text-slate-500 font-medium">Epic</span>
-            <select
-              value={currentEpic?.id || issue.parent_id || issue.epicId || ''}
-              onChange={(e) => handleEpicChange(e.target.value)}
-              className="px-2 py-1 rounded border border-slate-200 text-xs font-medium bg-white text-slate-800 focus:outline-none focus:border-purple-600 max-w-[180px]"
-            >
-              <option value="">None (No Epic)</option>
-              {epics.map((e) => (
-                <option key={e.id} value={e.id}>{e.name || e.title}</option>
-              ))}
-            </select>
+            {canChangeEpic ? (
+              <select
+                value={currentEpic?.id || issue.parent_id || issue.epicId || ''}
+                onChange={(e) => handleEpicChange(e.target.value)}
+                className="px-2 py-1 rounded border border-slate-200 text-xs font-medium bg-white text-slate-800 focus:outline-none focus:border-purple-600 max-w-[180px] cursor-pointer"
+              >
+                <option value="">None (No Epic)</option>
+                {epics.map((e) => (
+                  <option key={e.id} value={e.id}>{e.name || e.title}</option>
+                ))}
+              </select>
+            ) : (
+              <span className="px-2 py-1 rounded border border-slate-200 text-xs font-medium bg-slate-50 text-slate-700 select-none truncate max-w-[180px]">
+                {currentEpic?.name || 'None'}
+              </span>
+            )}
           </div>
 
           {/* Story Points */}
           <div className="flex items-center justify-between">
             <span className="text-slate-500 font-medium">Story Points</span>
-            <input
-              type="number"
-              min={0}
-              max={100}
-              value={issue.storyPoints ?? 0}
-              onChange={(e) => handleSPChange(e.target.value)}
-              className="w-16 px-2 py-0.5 rounded border border-slate-200 text-xs font-mono font-semibold bg-white text-slate-800 text-right focus:outline-none focus:border-purple-600"
-            />
+            {canChangeStoryPoints ? (
+              <input
+                type="number"
+                min={0}
+                max={100}
+                value={issue.storyPoints ?? 0}
+                onChange={(e) => handleSPChange(e.target.value)}
+                className="w-16 px-2 py-0.5 rounded border border-slate-200 text-xs font-mono font-semibold bg-white text-slate-800 text-right focus:outline-none focus:border-purple-600 cursor-pointer"
+              />
+            ) : (
+              <span className="px-2 py-0.5 text-xs font-mono font-semibold text-slate-700 select-none">
+                {issue.storyPoints ?? issue.story_points ?? 0}
+              </span>
+            )}
           </div>
 
           {/* Due Date */}
@@ -387,42 +500,54 @@ export default function IssueDetailDrawer({
               <Calendar className="w-3.5 h-3.5 text-slate-400" />
               <span>Due Date</span>
             </span>
-            <div className="flex items-center gap-1.5">
-              <input
-                type="date"
-                value={formattedDueDateForInput}
-                onChange={(e) => {
-                  const val = e.target.value;
-                  const isoDate = val ? new Date(val).toISOString() : null;
-                  handleDueDateChange(isoDate);
-                }}
-                className="px-2 py-0.5 rounded border border-slate-200 text-xs font-medium bg-white text-slate-800 focus:outline-none focus:border-purple-600 cursor-pointer shadow-2xs"
-              />
-              {formattedDueDateForInput && (
-                <button
-                  type="button"
-                  onClick={() => handleDueDateChange(null)}
-                  title="Clear due date"
-                  className="p-1 rounded hover:bg-slate-200 text-slate-400 hover:text-slate-600 cursor-pointer transition-colors"
-                >
-                  <X className="w-3 h-3" />
-                </button>
-              )}
-            </div>
+            {canChangeDueDate ? (
+              <div className="flex items-center gap-1.5">
+                <input
+                  type="date"
+                  value={formattedDueDateForInput}
+                  onChange={(e) => {
+                    const val = e.target.value;
+                    const isoDate = val ? new Date(val).toISOString() : null;
+                    handleDueDateChange(isoDate);
+                  }}
+                  className="px-2 py-0.5 rounded border border-slate-200 text-xs font-medium bg-white text-slate-800 focus:outline-none focus:border-purple-600 cursor-pointer shadow-2xs"
+                />
+                {formattedDueDateForInput && (
+                  <button
+                    type="button"
+                    onClick={() => handleDueDateChange(null)}
+                    title="Clear due date"
+                    className="p-1 rounded hover:bg-slate-200 text-slate-400 hover:text-slate-600 cursor-pointer transition-colors"
+                  >
+                    <X className="w-3 h-3" />
+                  </button>
+                )}
+              </div>
+            ) : (
+              <span className="text-xs font-medium text-slate-700 select-none">
+                {formattedDueDateForInput ? new Date(formattedDueDateForInput).toLocaleDateString([], { month: 'short', day: 'numeric', year: 'numeric' }) : 'No due date'}
+              </span>
+            )}
           </div>
         </div>
 
         {/* Description */}
         <div className="space-y-1">
           <label className="text-xs font-semibold text-slate-700">Description</label>
-          <textarea
-            rows={3}
-            value={editedDesc}
-            onChange={(e) => setEditedDesc(e.target.value)}
-            onBlur={handleDescBlur}
-            placeholder="Add a detailed description..."
-            className="w-full text-xs text-slate-800 p-2.5 rounded-md border border-slate-200 focus:border-purple-500 focus:outline-none resize-y"
-          />
+          {canEditTitleAndDesc ? (
+            <textarea
+              rows={3}
+              value={editedDesc}
+              onChange={(e) => setEditedDesc(e.target.value)}
+              onBlur={handleDescBlur}
+              placeholder="Add a detailed description..."
+              className="w-full text-xs text-slate-800 p-2.5 rounded-md border border-slate-200 focus:border-purple-500 focus:outline-none resize-y"
+            />
+          ) : (
+            <div className="w-full text-xs text-slate-800 p-2.5 rounded-md border border-slate-200 bg-slate-50/50 whitespace-pre-wrap min-h-[50px] select-text">
+              {issue.description || <span className="text-slate-400 italic">No description provided.</span>}
+            </div>
+          )}
         </div>
 
         {/* Child Items Section */}
@@ -460,10 +585,15 @@ export default function IssueDetailDrawer({
                 <div className="flex items-center gap-2 min-w-0 flex-1">
                   <button
                     type="button"
-                    onClick={() => onToggleSubtask?.(issue.id, st.id)}
+                    onClick={() => {
+                      if (!isIntern || canChangeStatus) {
+                        onToggleSubtask?.(issue.id, st.id);
+                      }
+                    }}
+                    disabled={isIntern && !canChangeStatus}
                     className={`w-3.5 h-3.5 rounded border flex items-center justify-center transition-colors shrink-0 ${
                       st.done ? 'bg-purple-600 border-purple-600 text-white' : 'border-slate-300 bg-white'
-                    }`}
+                    } ${isIntern && !canChangeStatus ? 'cursor-not-allowed opacity-60' : 'cursor-pointer'}`}
                   >
                     {st.done && <Check className="w-2.5 h-2.5 stroke-[3]" />}
                   </button>

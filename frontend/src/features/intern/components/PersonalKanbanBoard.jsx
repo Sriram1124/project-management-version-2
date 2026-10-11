@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { Clock, Lock, CheckCircle2, AlertCircle, Plus, Sparkles, User } from 'lucide-react';
 import { workItemsService } from '../services/workItemsService';
+import { useAuth } from '../../../context/AuthContext';
 
 const COLUMNS = [
   { id: 'TODO', title: 'TO DO', dotColor: 'bg-slate-400' },
@@ -16,12 +17,33 @@ export default function PersonalKanbanBoard({
   onTaskUpdated,
   onToast
 }) {
+  const { user: authUser } = useAuth();
+  const authRole = String(authUser?.role?.name || authUser?.role || authUser?.type || authUser?.user_type || '').toUpperCase();
+  const authUserId = authUser?.id || authUser?.user_id || authUser?.userId || authUser?.user?.id;
+  const isIntern = authRole === 'INTERN';
+
+  const canDragTask = (task) => {
+    if (!isIntern) return true;
+    const assignees = task.assignees || task.work_item_assignees || [];
+    const assignedUserIds = [
+      ...assignees.map((a) => a.user_id || a.userId || a.assignee_id || a.user?.id || a.id),
+      ...(task.assignee_ids || task.assigneeIds || []),
+      ...(task.assignee ? [task.assignee.user_id || task.assignee.id] : []),
+      ...(task.assignee_id ? [task.assignee_id] : []),
+    ].filter(Boolean).map(String);
+    return Boolean(authUserId) && assignedUserIds.includes(String(authUserId));
+  };
+
   const [draggedId, setDraggedId] = useState(null);
   const [dragOverCol, setDragOverCol] = useState(null);
 
-  const handleDragStart = (e, taskId) => {
-    setDraggedId(taskId);
-    e.dataTransfer.setData('text/plain', taskId);
+  const handleDragStart = (e, task) => {
+    if (!canDragTask(task)) {
+      e.preventDefault();
+      return;
+    }
+    setDraggedId(task.id);
+    e.dataTransfer.setData('text/plain', task.id);
   };
 
   const handleDragEnd = () => {
@@ -50,6 +72,7 @@ export default function PersonalKanbanBoard({
     if (!taskId) return;
 
     const task = workItems.find((w) => w.id === taskId);
+    if (!task || !canDragTask(task)) return;
     if (task && task.status !== targetStatus) {
       try {
         await workItemsService.updateWorkItem(taskId, { status: targetStatus });
@@ -134,14 +157,18 @@ export default function PersonalKanbanBoard({
                   const isCompleted = task.status === 'COMPLETED';
                   const assignees = task.assignees || task.work_item_assignees || [];
 
+                  const canDrag = canDragTask(task);
+
                   return (
                     <div
                       key={task.id}
-                      draggable
-                      onDragStart={(e) => handleDragStart(e, task.id)}
+                      draggable={canDrag}
+                      onDragStart={(e) => handleDragStart(e, task)}
                       onDragEnd={handleDragEnd}
                       onClick={() => onTaskClick?.(task)}
-                      className={`p-3 rounded-xl bg-white border transition-all cursor-grab active:cursor-grabbing hover:border-purple-300 hover:shadow-xs group ${
+                      className={`p-3 rounded-xl bg-white border transition-all ${
+                        canDrag ? 'cursor-grab active:cursor-grabbing' : 'cursor-pointer'
+                      } hover:border-purple-300 hover:shadow-xs group ${
                         isBlocked
                           ? 'border-rose-300 bg-rose-50/20'
                           : isCompleted

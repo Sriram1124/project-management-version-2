@@ -85,12 +85,16 @@ export class ActionItemController {
         due_date,
         organization_id,
         creator_id: user_id,
-      });
+      }, fullUser);
 
       res.status(201).json(item);
     } catch (error: any) {
       console.error('[ActionItemController.create] Error:', error);
-      res.status(500).json({ error: error.message || 'Failed to create action item' });
+      if (error.message?.includes('Forbidden')) {
+        res.status(403).json({ error: error.message });
+      } else {
+        res.status(500).json({ error: error.message || 'Failed to create action item' });
+      }
     }
   }
 
@@ -113,13 +117,15 @@ export class ActionItemController {
         status: status ? (status.toUpperCase() as ActionItemStatus) : undefined,
         priority: priority ? (priority.toUpperCase() as ActionItemPriority) : undefined,
         due_date,
-      });
+      }, fullUser);
 
       res.status(200).json(item);
     } catch (error: any) {
       console.error('[ActionItemController.update] Error:', error);
       if (error.message === 'Action item not found') {
         res.status(404).json({ error: error.message });
+      } else if (error.message?.includes('Forbidden')) {
+        res.status(403).json({ error: error.message });
       } else {
         res.status(500).json({ error: error.message || 'Failed to update action item' });
       }
@@ -136,12 +142,14 @@ export class ActionItemController {
       }
 
       const { id } = req.params;
-      await ActionItemService.delete(id, organization_id);
+      await ActionItemService.delete(id, organization_id, fullUser);
       res.status(204).send();
     } catch (error: any) {
       console.error('[ActionItemController.delete] Error:', error);
       if (error.message === 'Action item not found') {
         res.status(404).json({ error: error.message });
+      } else if (error.message?.includes('Forbidden')) {
+        res.status(403).json({ error: error.message });
       } else {
         res.status(500).json({ error: error.message || 'Failed to delete action item' });
       }
