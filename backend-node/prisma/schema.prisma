@@ -3,13 +3,15 @@ generator client {
 }
 
 datasource db {
-  provider = "postgresql"
-  url      = env("DATABASE_URL")
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
 }
 
 model Organization {
   id         String    @id @default(uuid())
   name       String
+  is_active  Boolean   @default(true)
   created_at DateTime  @default(now())
   updated_at DateTime  @updatedAt
 
@@ -22,6 +24,7 @@ model Organization {
   cohorts    Cohort[]
   action_items ActionItem[]
   work_policy OrganizationWorkPolicy?
+  audit_logs  AuditLog[]
 
   @@map("organizations")
 }
@@ -76,6 +79,7 @@ model User {
   received_notifications NotificationRecipient[] @relation("ReceivedNotifications")
   assigned_action_items  ActionItem[]            @relation("ActionItemAssignee")
   created_action_items   ActionItem[]            @relation("ActionItemCreator")
+  audit_logs             AuditLog[]
 
   @@unique([organization_id, user_code])
   @@index([cohort_id])
@@ -587,4 +591,26 @@ model ActionItem {
   @@index([assignee_id])
   @@index([creator_id])
   @@map("action_items")
+}
+
+model AuditLog {
+  id              String        @id @default(uuid())
+  actor_id        String?
+  organization_id String?
+  action          String
+  target_type     String
+  target_id       String
+  metadata        Json?
+  ip_address      String?
+  user_agent      String?
+  created_at      DateTime      @default(now())
+
+  actor           User?         @relation(fields: [actor_id], references: [id], onDelete: SetNull)
+  organization    Organization? @relation(fields: [organization_id], references: [id], onDelete: SetNull)
+
+  @@index([actor_id])
+  @@index([organization_id])
+  @@index([target_type, target_id])
+  @@index([action, created_at])
+  @@map("audit_logs")
 }

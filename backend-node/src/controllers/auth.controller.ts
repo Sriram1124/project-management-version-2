@@ -7,6 +7,9 @@ export class AuthController {
   static async getOrganizations(req: Request, res: Response): Promise<void> {
     try {
       const organizations = await prisma.organization.findMany({
+        where: {
+          is_active: true,
+        },
         select: {
           id: true,
           name: true,
