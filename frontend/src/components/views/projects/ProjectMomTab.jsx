@@ -86,7 +86,7 @@ const initialMoMs = [
   }
 ];
 
-export default function ProjectMomTab({ projectId, projectName, onToast }) {
+export default function ProjectMomTab({ projectId, projectName, onToast, readOnly = false }) {
   const storageKey = `moms_project_${projectId || 'default'}`;
 
   const [moms, setMoms] = useState(() => {
@@ -261,14 +261,16 @@ export default function ProjectMomTab({ projectId, projectName, onToast }) {
           <span className="text-xs text-slate-400 font-medium">
             {filteredMoMs.length} {filteredMoMs.length === 1 ? 'Record' : 'Records'}
           </span>
-          <button
-            type="button"
-            onClick={() => setIsModalOpen(true)}
-            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-purple-600 hover:bg-purple-700 text-white text-xs font-semibold shadow-2xs transition-colors cursor-pointer"
-          >
-            <Plus className="w-3.5 h-3.5" />
-            <span>Add Action Item</span>
-          </button>
+          {!readOnly && (
+            <button
+              type="button"
+              onClick={() => setIsModalOpen(true)}
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-purple-600 hover:bg-purple-700 text-white text-xs font-semibold shadow-2xs transition-colors cursor-pointer"
+            >
+              <Plus className="w-3.5 h-3.5" />
+              <span>Add Action Item</span>
+            </button>
+          )}
         </div>
       </div>
 
@@ -377,17 +379,19 @@ export default function ProjectMomTab({ projectId, projectName, onToast }) {
                             <span className="leading-snug text-slate-700 break-words">{dec}</span>
                           </div>
                           {/* Option to delete individual action item */}
-                          <button
-                            type="button"
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              setItemToDelete({ momId: mom.id, itemIndex: i, itemText: dec });
-                            }}
-                            title="Delete this action item"
-                            className="opacity-70 sm:opacity-0 group-hover/item:opacity-100 hover:!opacity-100 p-1 rounded text-slate-400 hover:text-rose-600 hover:bg-rose-50 transition-all shrink-0 cursor-pointer"
-                          >
-                            <Trash2 className="w-3.5 h-3.5" />
-                          </button>
+                          {!readOnly && (
+                            <button
+                              type="button"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setItemToDelete({ momId: mom.id, itemIndex: i, itemText: dec });
+                              }}
+                              title="Delete this action item"
+                              className="opacity-70 sm:opacity-0 group-hover/item:opacity-100 hover:!opacity-100 p-1 rounded text-slate-400 hover:text-rose-600 hover:bg-rose-50 transition-all shrink-0 cursor-pointer"
+                            >
+                              <Trash2 className="w-3.5 h-3.5" />
+                            </button>
+                          )}
                         </li>
                       ))}
                     </ul>
@@ -404,7 +408,7 @@ export default function ProjectMomTab({ projectId, projectName, onToast }) {
                   )}
 
                   {/* Inline quick-add for individual action items when expanded */}
-                  {isExpanded && (
+                  {isExpanded && !readOnly && (
                     <div className="mt-2.5 pt-2 border-t border-slate-100 flex items-center gap-2">
                       <input
                         type="text"

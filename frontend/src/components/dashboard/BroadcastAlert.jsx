@@ -482,10 +482,9 @@ export default function BroadcastAlert({
               <div className="col-span-1 flex items-center">
                 <span className="sr-only">Select</span>
               </div>
-              <div className="col-span-4">Name</div>
+              <div className="col-span-5">Name</div>
               <div className="col-span-2 text-center">Batch</div>
-              <div className="col-span-3">Email</div>
-              <div className="col-span-2 text-right">Status</div>
+              <div className="col-span-4">Email</div>
             </div>
 
             {/* Scrollable list items */}
@@ -520,7 +519,7 @@ export default function BroadcastAlert({
                     </div>
 
                     {/* Col 2: Name */}
-                    <div className="col-span-4 min-w-0 pr-1">
+                    <div className="col-span-5 min-w-0 pr-1">
                       <span className="font-semibold text-slate-900 truncate block text-xs" title={user.name || 'Intern'}>
                         {user.name || 'Intern'}
                       </span>
@@ -534,24 +533,10 @@ export default function BroadcastAlert({
                     </div>
 
                     {/* Col 4: Email */}
-                    <div className="col-span-3 min-w-0 pr-1">
+                    <div className="col-span-4 min-w-0 pr-1">
                       <span className="text-[11px] text-slate-500 truncate block" title={user.email}>
                         {user.email}
                       </span>
-                    </div>
-
-                    {/* Col 5: Status / Overdue Badge */}
-                    <div className="col-span-2 flex items-center justify-end">
-                      {overdueCount > 0 ? (
-                        <span className="px-1.5 py-0.5 rounded text-[9px] font-bold bg-rose-50 text-rose-700 border border-rose-200 flex items-center gap-1 whitespace-nowrap">
-                          <Clock className="w-2.5 h-2.5 shrink-0" />
-                          <span>{overdueCount} Overdue</span>
-                        </span>
-                      ) : (
-                        <span className="px-2 py-0.5 rounded text-[9px] font-bold bg-slate-50 text-slate-600 border border-slate-200 whitespace-nowrap">
-                          Active
-                        </span>
-                      )}
                     </div>
                   </div>
                 );

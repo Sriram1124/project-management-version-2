@@ -18,7 +18,7 @@ import AssignProjectRolesModal, { PROJECT_ROLE_LABELS } from '../../modals/Assig
 import AllProjectMembersModal from '../../modals/AllProjectMembersModal';
 import ProjectTaskCharts from './ProjectTaskCharts';
 
-export default function ProjectOverviewTab({ projectId, project, onToast }) {
+export default function ProjectOverviewTab({ projectId, project, onToast, readOnly = false }) {
   const { user: authUser } = useAuth();
   const [members, setMembers] = useState([]);
   const [loadingMembers, setLoadingMembers] = useState(false);
@@ -26,10 +26,12 @@ export default function ProjectOverviewTab({ projectId, project, onToast }) {
   const [isAllMembersOpen, setIsAllMembersOpen] = useState(false);
 
   const canAssignRoles = 
-    authUser?.role === 'MANAGER' || 
-    authUser?.role === 'ADMIN' || 
-    authUser?.role === 'SUPER_ADMIN' || 
-    authUser?.id === project?.owner_id;
+    !readOnly && (
+      authUser?.role === 'MANAGER' || 
+      authUser?.role === 'ADMIN' || 
+      authUser?.role === 'SUPER_ADMIN' || 
+      authUser?.id === project?.owner_id
+    );
 
   const loadMembers = () => {
     if (projectId) {
@@ -173,6 +175,7 @@ export default function ProjectOverviewTab({ projectId, project, onToast }) {
           projectId={projectId || project?.id} 
           projectName={projectName}
           onToast={onToast} 
+          readOnly={readOnly}
         />
       </div>
 
@@ -275,6 +278,7 @@ export default function ProjectOverviewTab({ projectId, project, onToast }) {
       <ProjectTaskCharts 
         projectId={projectId || project?.id} 
         members={members}
+        readOnly={readOnly}
       />
 
       {/* View All Members Modal (Floating rectangular modal with search & role filter) */}

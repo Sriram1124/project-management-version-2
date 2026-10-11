@@ -19,7 +19,7 @@ import {
 import { projectsService } from '../../../services/projects.service';
 import { useAuth } from '../../../context/AuthContext';
 
-export default function ProjectsDirectoryView({ onSelectProject }) {
+export default function ProjectsDirectoryView({ onSelectProject, isIntern = false }) {
   const { user: authUser } = useAuth();
   const [projects, setProjects] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -80,7 +80,7 @@ export default function ProjectsDirectoryView({ onSelectProject }) {
     setLoading(true);
     setError(null);
     try {
-      const data = await projectsService.getProjects();
+      const data = await projectsService.getProjects(isIntern ? { my: true } : {});
       setProjects(data);
     } catch (err) {
       setError(err?.message || 'Failed to load projects');
@@ -342,9 +342,13 @@ export default function ProjectsDirectoryView({ onSelectProject }) {
       {/* Title & Actions Bar */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
-          <h2 className="text-xl font-bold text-slate-900 tracking-tight">Active Projects</h2>
+          <h2 className="text-xl font-bold text-slate-900 tracking-tight">
+            {isIntern ? 'My Assigned Projects' : 'Active Projects'}
+          </h2>
           <p className="text-xs text-slate-400 mt-0.5">
-            Create, manage, and safely archive or configure workspace projects.
+            {isIntern 
+              ? 'View and explore project workspaces, roadmaps, and sprint deliverables assigned to you.'
+              : 'Create, manage, and safely archive or configure workspace projects.'}
           </p>
         </div>
 
@@ -378,14 +382,16 @@ export default function ProjectsDirectoryView({ onSelectProject }) {
             </select>
           </div>
 
-          {/* Create Project CTA button */}
-          <button 
-            onClick={handleOpenCreate}
-            className="flex items-center gap-2 px-4 py-2 rounded-xl bg-[#7C3AED] hover:bg-[#6D28D9] text-white text-xs font-semibold shadow-sm transition-all active:scale-95 cursor-pointer"
-          >
-            <Plus className="w-3.5 h-3.5" />
-            <span>Create Project</span>
-          </button>
+          {/* Create Project CTA button (Hidden for interns) */}
+          {!isIntern && (
+            <button 
+              onClick={handleOpenCreate}
+              className="flex items-center gap-2 px-4 py-2 rounded-xl bg-[#7C3AED] hover:bg-[#6D28D9] text-white text-xs font-semibold shadow-sm transition-all active:scale-95 cursor-pointer"
+            >
+              <Plus className="w-3.5 h-3.5" />
+              <span>Create Project</span>
+            </button>
+          )}
         </div>
       </div>
 
@@ -546,21 +552,34 @@ export default function ProjectsDirectoryView({ onSelectProject }) {
                         {/* Actions */}
                         <td className="py-4 px-6 text-right">
                           <div className="flex items-center justify-end gap-2" onClick={(e) => e.stopPropagation()}>
-                            <button 
-                              title="Edit Project"
-                              onClick={(e) => handleOpenEdit(proj, e)}
-                              className="p-1.5 text-slate-400 hover:text-purple-600 hover:bg-purple-50 rounded-lg transition-colors cursor-pointer"
-                            >
-                              <Edit3 className="w-4 h-4" />
-                            </button>
-                            {proj.status !== 'ARCHIVED' && (
-                              <button 
-                                title="Archive Project"
-                                onClick={(e) => handleOpenArchive(proj, e)}
-                                className="p-1.5 text-slate-400 hover:text-amber-600 hover:bg-amber-50 rounded-lg transition-colors cursor-pointer"
+                            {isIntern ? (
+                              <button
+                                title="Open Workspace"
+                                onClick={() => onSelectProject?.(proj.id, proj.name)}
+                                className="inline-flex items-center gap-1.5 px-2.5 py-1 text-xs font-semibold text-purple-700 bg-purple-50 hover:bg-purple-100 rounded-lg transition-colors cursor-pointer"
                               >
-                                <Archive className="w-4 h-4" />
+                                <span>Open</span>
+                                <ChevronRight className="w-3.5 h-3.5" />
                               </button>
+                            ) : (
+                              <>
+                                <button 
+                                  title="Edit Project"
+                                  onClick={(e) => handleOpenEdit(proj, e)}
+                                  className="p-1.5 text-slate-400 hover:text-purple-600 hover:bg-purple-50 rounded-lg transition-colors cursor-pointer"
+                                >
+                                  <Edit3 className="w-4 h-4" />
+                                </button>
+                                {proj.status !== 'ARCHIVED' && (
+                                  <button 
+                                    title="Archive Project"
+                                    onClick={(e) => handleOpenArchive(proj, e)}
+                                    className="p-1.5 text-slate-400 hover:text-amber-600 hover:bg-amber-50 rounded-lg transition-colors cursor-pointer"
+                                  >
+                                    <Archive className="w-4 h-4" />
+                                  </button>
+                                )}
+                              </>
                             )}
                           </div>
                         </td>

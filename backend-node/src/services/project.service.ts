@@ -979,4 +979,312 @@ export class ProjectService {
       },
     });
   }
+
+  /**
+   * Get all Tech Leads in the organization with their assigned projects, total tasks, and performance metrics
+   */
+  static async getTechLeadsOverview(user: any) {
+    const orgId = this.getUserOrgId(user);
+
+    // 1. Fetch all users who are assigned project_role === 'TECH_LEAD' OR have organization role === 'TECH_LEAD'
+    const leadMemberships = await prisma.projectMember.findMany({
+      where: {
+        project_role: 'TECH_LEAD',
+        project: { organization_id: orgId },
+      },
+      include: {
+        user: {
+          select: {
+            id: true,
+            name: true,
+            email: true,
+            batch: true,
+            subbatch: true,
+            is_active: true,
+            roles: {
+              include: {
+                role: true,
+              },
+            },
+          },
+        },
+        project: {
+          select: {
+            id: true,
+            name: true,
+            status: true,
+            start_date: true,
+            end_date: true,
+          },
+        },
+      },
+    });
+
+    // Also find any users whose organization role is 'TECH_LEAD'
+    const orgRoleLeads = await prisma.user.findMany({
+      where: {
+        organization_id: orgId,
+        roles: {
+          some: {
+            role: { name: 'TECH_LEAD' },
+          },
+        },
+      },
+      select: {
+        id: true,
+        name: true,
+        email: true,
+        batch: true,
+        subbatch: true,
+        is_active: true,
+        roles: {
+          include: {
+            role: true,
+          },
+        },
+        project_memberships: {
+          where: {
+            project: { organization_id: orgId },
+          },
+          include: {
+            project: {
+              select: {
+                id: true,
+                name: true,
+                status: true,
+                start_date: true,
+                end_date: true,
+              },
+            },
+          },
+        },
+      },
+    });
+
+    // Combine distinct tech leads map by user ID
+    const leadsMap = new Map<string, any>();
+
+    // Helper to initialize lead entry
+    const getOrCreateLeadEntry = (u: any) => {
+      if (!leadsMap.has(u.id)) {
+        const primaryRole = u.roles?.[0]?.role?.name || 'TECH_LEAD';
+        leadsMap.set(u.id, {
+          id: u.id,
+          name: u.name,
+          email: u.email,
+          batch: u.batch || null,
+          subbatch: u.subbatch || null,
+          is_active: u.is_active,
+          role: primaryRole,
+          projectsMap: new Map<string, any>(),
+        });
+      }
+      return leadsMap.get(u.id);
+    };
+
+    // Add leads from projectMember with project_role === 'TECH_LEAD'
+    for (const pm of leadMemberships) {
+      if (!pm.user) continue;
+      const lead = getOrCreateLeadEntry(pm.user);
+      if (pm.project) {
+        lead.projectsMap.set(pm.project.id, {
+          id: pm.project.id,
+          name: pm.project.name,
+          status: pm.project.status,
+          start_date: pm.project.start_date,
+          end_date: pm.project.end_date,
+          project_role: 'TECH_LEAD',
+        });
+      }
+    }
+
+    // Add leads from org role TECH_LEAD
+    for (const u of orgRoleLeads) {
+      const lead = getOrCreateLeadEntry(u);
+      for (const pm of u.project_memberships || []) {
+        if (pm.project && !lead.projectsMap.has(pm.project.id)) {
+          lead.projectsMap.set(pm.project.id, {
+            id: pm.project.id,
+            name: pm.project.name,
+            status: pm.project.status,
+            start_date: pm.project.start_date,
+            end_date: pm.project.end_date,
+            project_role: pm.project_role || 'TECH_LEAD',
+          });
+        }
+      }
+    }
+
+    const leadList = Array.from(leadsMap.values());
+    if (leadList.length === 0) {
+      return [];
+    }
+
+    // Collect all relevant project IDs across all leads
+    const allProjectIds = new Set<string>();
+    for (const lead of leadList) {
+      for (const projId of lead.projectsMap.keys()) {
+        allProjectIds.add(projId);
+      }
+    }
+
+    // Query all work items in these projects
+    const projectWorkItems = allProjectIds.size > 0
+      ? await prisma.workItem.findMany({
+          where: {
+            project_id: { in: Array.from(allProjectIds) },
+            organization_id: orgId,
+          },
+          select: {
+            id: true,
+            project_id: true,
+            status: true,
+            priority: true,
+            story_points: true,
+            due_date: true,
+            type: true,
+            assignees: {
+              select: {
+                user_id: true,
+              },
+            },
+          },
+        })
+      : [];
+
+    // Query all work items directly assigned to each tech lead
+    const leadUserIds = leadList.map((l) => l.id);
+    const leadAssignedItems = await prisma.workItem.findMany({
+      where: {
+        organization_id: orgId,
+        assignees: {
+          some: {
+            user_id: { in: leadUserIds },
+          },
+        },
+      },
+      select: {
+        id: true,
+        project_id: true,
+        status: true,
+        priority: true,
+        story_points: true,
+        due_date: true,
+        assignees: {
+          select: {
+            user_id: true,
+          },
+        },
+      },
+    });
+
+    // Build finalized overview response per lead
+    const result = leadList.map((lead) => {
+      const projects: any[] = Array.from(lead.projectsMap.values());
+      const leadProjIds = new Set(projects.map((p: any) => p.id));
+
+      // All tasks across the lead's assigned projects (excluding standalone Epics)
+      const allLeadProjectTasks = projectWorkItems.filter(
+        (w) => w.project_id && leadProjIds.has(w.project_id) && w.type !== 'EPIC'
+      );
+
+      // Tasks specifically assigned to this lead
+      const myAssignedTasks = leadAssignedItems.filter((w) =>
+        w.assignees.some((a) => a.user_id === lead.id)
+      );
+
+      // Per-project breakdown with task metrics
+      const projectSummaries = projects.map((p) => {
+        const pTasks = allLeadProjectTasks.filter((t) => t.project_id === p.id);
+        const pCompleted = pTasks.filter((t) => t.status === 'COMPLETED').length;
+        const pTotal = pTasks.length;
+        const pRate = pTotal > 0 ? Math.round((pCompleted / pTotal) * 100) : 0;
+        const pPoints = pTasks.reduce((acc, t) => acc + (Number(t.story_points) || 0), 0);
+        const pCompletedPoints = pTasks
+          .filter((t) => t.status === 'COMPLETED')
+          .reduce((acc, t) => acc + (Number(t.story_points) || 0), 0);
+
+        return {
+          id: p.id,
+          name: p.name,
+          status: p.status,
+          total_tasks: pTotal,
+          completed_tasks: pCompleted,
+          completion_rate: pRate,
+          total_points: pPoints,
+          completed_points: pCompletedPoints,
+        };
+      });
+
+      // Overall Project Task Metrics
+      const totalProjectTasks = allLeadProjectTasks.length;
+      const completedProjectTasks = allLeadProjectTasks.filter((t) => t.status === 'COMPLETED').length;
+      const inProgressProjectTasks = allLeadProjectTasks.filter((t) => t.status === 'IN_PROGRESS' || t.status === 'IN_REVIEW').length;
+      const blockedProjectTasks = allLeadProjectTasks.filter((t) => t.status === 'BLOCKED').length;
+      const projectCompletionRate = totalProjectTasks > 0
+        ? Math.round((completedProjectTasks / totalProjectTasks) * 100)
+        : 0;
+
+      // Direct Assignment Metrics
+      const totalAssignedTasks = myAssignedTasks.length;
+      const completedAssignedTasks = myAssignedTasks.filter((t) => t.status === 'COMPLETED').length;
+      const directCompletionRate = totalAssignedTasks > 0
+        ? Math.round((completedAssignedTasks / totalAssignedTasks) * 100)
+        : 0;
+
+      // Overall Performance Score (0-100)
+      // Calculated from project completion progress (60% weight) and lead's direct task execution (40% weight)
+      let performanceScore = 0;
+      if (totalProjectTasks > 0 && totalAssignedTasks > 0) {
+        performanceScore = Math.round(projectCompletionRate * 0.6 + directCompletionRate * 0.4);
+      } else if (totalProjectTasks > 0) {
+        performanceScore = projectCompletionRate;
+      } else if (totalAssignedTasks > 0) {
+        performanceScore = directCompletionRate;
+      } else {
+        performanceScore = 100; // Fresh lead / clean slate
+      }
+
+      // Performance rating label
+      let performanceLabel = 'Exceptional';
+      let performanceColor = 'text-emerald-700 bg-emerald-50 border-emerald-200';
+      if (performanceScore >= 85) {
+        performanceLabel = 'Exceptional';
+        performanceColor = 'text-emerald-700 bg-emerald-50 border-emerald-200';
+      } else if (performanceScore >= 70) {
+        performanceLabel = 'Strong';
+        performanceColor = 'text-purple-700 bg-purple-50 border-purple-200';
+      } else if (performanceScore >= 50) {
+        performanceLabel = 'On Track';
+        performanceColor = 'text-blue-700 bg-blue-50 border-blue-200';
+      } else if (performanceScore >= 25) {
+        performanceLabel = 'Needs Attention';
+        performanceColor = 'text-amber-700 bg-amber-50 border-amber-200';
+      } else {
+        performanceLabel = 'At Risk';
+        performanceColor = 'text-rose-700 bg-rose-50 border-rose-200';
+      }
+
+      const { projectsMap, ...cleanLead } = lead;
+
+      return {
+        ...cleanLead,
+        projects: projectSummaries,
+        project_count: projectSummaries.length,
+        total_project_tasks: totalProjectTasks,
+        completed_project_tasks: completedProjectTasks,
+        in_progress_project_tasks: inProgressProjectTasks,
+        blocked_project_tasks: blockedProjectTasks,
+        project_completion_rate: projectCompletionRate,
+        direct_assigned_tasks: totalAssignedTasks,
+        direct_completed_tasks: completedAssignedTasks,
+        direct_completion_rate: directCompletionRate,
+        performance_score: performanceScore,
+        performance_label: performanceLabel,
+        performance_color: performanceColor,
+      };
+    });
+
+    return result.sort((a, b) => (b.project_count || 0) - (a.project_count || 0));
+  }
 }

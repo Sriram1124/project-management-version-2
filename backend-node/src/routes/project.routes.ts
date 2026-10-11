@@ -14,6 +14,9 @@ const router = Router();
 // All project routes require authentication
 router.use(authenticate);
 
+// ── Tech Leads Oversight ───────────────────────────────────────────────────
+router.get('/tech-leads', requirePermission('PROJECT_READ'), ProjectController.getTechLeads);
+
 // ── Project CRUD ─────────────────────────────────────────────────────────────
 router.get('/', requirePermission('PROJECT_READ'), ProjectController.list);
 router.post('/', requirePermission('PROJECT_CREATE'), ProjectController.create);

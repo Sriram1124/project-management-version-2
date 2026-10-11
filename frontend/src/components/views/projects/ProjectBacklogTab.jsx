@@ -11,7 +11,7 @@ import { sprintsService } from '../../../services/sprints.service';
 import { projectsService } from '../../../services/projects.service';
 import { useAuth } from '../../../context/AuthContext';
 
-export default function ProjectBacklogTab({ projectId, project = null, onToast }) {
+export default function ProjectBacklogTab({ projectId, project = null, onToast, readOnly = false }) {
   const { user: authUser } = useAuth();
   const [currentProject, setCurrentProject] = useState(project);
   const [loading, setLoading] = useState(true);
@@ -41,7 +41,6 @@ export default function ProjectBacklogTab({ projectId, project = null, onToast }
   // Quick Filters
   const [quickFilterMyIssues, setQuickFilterMyIssues] = useState(false);
   const [quickFilterOverdue, setQuickFilterOverdue] = useState(false);
-  const [quickFilterBlocked, setQuickFilterBlocked] = useState(false);
 
   // Hierarchy Expansion State
   const [expandedIds, setExpandedIds] = useState(new Set());
@@ -355,7 +354,6 @@ export default function ProjectBacklogTab({ projectId, project = null, onToast }
     setSelectedStatus(null);
     setQuickFilterMyIssues(false);
     setQuickFilterOverdue(false);
-    setQuickFilterBlocked(false);
   };
 
   // Actionable Stories & Tasks (excludes EPICs from flat actionable view)
@@ -434,10 +432,6 @@ export default function ProjectBacklogTab({ projectId, project = null, onToast }
         if (!isOverdue) return false;
       }
 
-      if (quickFilterBlocked && item.status !== 'BLOCKED') {
-        return false;
-      }
-
       return true;
     });
   }, [
@@ -451,7 +445,6 @@ export default function ProjectBacklogTab({ projectId, project = null, onToast }
     quickFilterMyIssues,
     authUser,
     quickFilterOverdue,
-    quickFilterBlocked,
   ]);
 
   // Determine whether any filtering criteria are currently active
@@ -463,8 +456,7 @@ export default function ProjectBacklogTab({ projectId, project = null, onToast }
       selectedStatus ||
       selectedSprintId ||
       quickFilterMyIssues ||
-      quickFilterOverdue ||
-      quickFilterBlocked
+      quickFilterOverdue
     );
   }, [
     searchQuery,
@@ -474,7 +466,6 @@ export default function ProjectBacklogTab({ projectId, project = null, onToast }
     selectedSprintId,
     quickFilterMyIssues,
     quickFilterOverdue,
-    quickFilterBlocked,
   ]);
 
   // When filters are active or viewing sprint groups, automatically ensure all required ancestors are expanded so matching items are visible
@@ -555,17 +546,16 @@ export default function ProjectBacklogTab({ projectId, project = null, onToast }
         onToggleMyIssues={() => setQuickFilterMyIssues(!quickFilterMyIssues)}
         quickFilterOverdue={quickFilterOverdue}
         onToggleOverdue={() => setQuickFilterOverdue(!quickFilterOverdue)}
-        quickFilterBlocked={quickFilterBlocked}
-        onToggleBlocked={() => setQuickFilterBlocked(!quickFilterBlocked)}
         onClearFilters={handleClearFilters}
-        onCreateClick={() => {
+        readOnly={readOnly}
+        onCreateClick={readOnly ? undefined : () => {
           setCreateInitialSprintId('backlog');
           setCreateInitialType('Story');
           setCreateAllowedTypes(null);
           setCreateParentItem(null);
           setIsCreateModalOpen(true);
         }}
-        onCreateSprintClick={() => setIsCreateSprintOpen(true)}
+        onCreateSprintClick={readOnly ? undefined : () => setIsCreateSprintOpen(true)}
         onExpandAll={handleExpandAll}
         onCollapseAll={handleCollapseAll}
         allExpanded={expandedIds.size > 0}

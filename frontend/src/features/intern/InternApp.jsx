@@ -21,6 +21,8 @@ import {
 import InternDashboardTab from './components/InternDashboardTab';
 import MyProjectsTab from './components/MyProjectsTab';
 import ScopedProjectView from './components/ScopedProjectView';
+import ProjectsDirectoryView from '../../components/views/projects/ProjectsDirectoryView';
+import ProjectWorkspaceView from '../../components/views/projects/ProjectWorkspaceView';
 import MyTasksTab from './components/MyTasksTab';
 import AssignedFormsTab from './components/AssignedFormsTab';
 import InternAttendanceTab from './components/InternAttendanceTab';
@@ -355,8 +357,8 @@ export default function InternApp({ onLogout, onSelectProject, onToast }) {
         </header>
 
         {/* Page Content */}
-        <main className="flex-1 min-h-0 p-4 sm:p-6 overflow-y-auto">
-          <div className={currentTab === 'dashboard' ? 'w-full space-y-6' : 'max-w-6xl mx-auto space-y-6'}>
+        <main className={`flex-1 min-h-0 min-w-0 overflow-y-auto ${selectedProjectId && currentTab === 'projects' ? 'px-4 sm:px-6 pb-4 sm:pb-6 pt-0' : 'p-4 sm:p-6'}`}>
+          <div className={currentTab === 'dashboard' || currentTab === 'projects' ? 'w-full space-y-6 min-w-0' : 'max-w-6xl mx-auto space-y-6 min-w-0'}>
             {/* Render Tab View */}
             {currentTab === 'dashboard' && (
               <InternDashboardTab
@@ -382,15 +384,16 @@ export default function InternApp({ onLogout, onSelectProject, onToast }) {
 
             {currentTab === 'projects' && (
               selectedProjectId ? (
-                <ScopedProjectView
-                  project={projectsService.getProjectById(selectedProjectId)}
-                  onBack={() => setSelectedProjectId(null)}
-                  onTaskClick={(t) => setSelectedTask(t)}
+                <ProjectWorkspaceView
+                  projectId={selectedProjectId}
+                  onBackToDirectory={() => setSelectedProjectId(null)}
+                  readOnly={true}
                   onToast={onToast}
                 />
               ) : (
-                <MyProjectsTab
+                <ProjectsDirectoryView
                   onSelectProject={(projectId) => setSelectedProjectId(projectId)}
+                  isIntern={true}
                 />
               )
             )}

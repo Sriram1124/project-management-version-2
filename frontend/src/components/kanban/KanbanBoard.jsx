@@ -17,7 +17,7 @@ import { projectsService } from '../../services/projects.service';
 import { timesheetService } from '../../services/timesheet.service';
 import { useAuth } from '../../context/AuthContext';
 
-export default function KanbanBoard({ projectId, onToast }) {
+export default function KanbanBoard({ projectId, onToast, readOnly = false }) {
   const { user: authUser } = useAuth();
   const [loading, setLoading] = useState(true);
   const [workItems, setWorkItems] = useState([]);
@@ -423,25 +423,27 @@ export default function KanbanBoard({ projectId, onToast }) {
         </div>
 
         {/* Action Buttons */}
-        <div className="flex items-center gap-2 self-start sm:self-auto">
-          {activeSprint && (
-            <button
-              onClick={() => setIsCompleteSprintOpen(true)}
-              className="px-2.5 py-1.5 rounded-md border border-emerald-200 text-xs font-medium text-emerald-800 bg-emerald-50/50 hover:bg-emerald-100 transition-colors flex items-center gap-1.5 cursor-pointer"
-            >
-              <Check className="w-3.5 h-3.5 text-emerald-600" />
-              <span>Complete Sprint</span>
-            </button>
-          )}
+        {!readOnly && (
+          <div className="flex items-center gap-2 self-start sm:self-auto">
+            {activeSprint && (
+              <button
+                onClick={() => setIsCompleteSprintOpen(true)}
+                className="px-2.5 py-1.5 rounded-md border border-emerald-200 text-xs font-medium text-emerald-800 bg-emerald-50/50 hover:bg-emerald-100 transition-colors flex items-center gap-1.5 cursor-pointer"
+              >
+                <Check className="w-3.5 h-3.5 text-emerald-600" />
+                <span>Complete Sprint</span>
+              </button>
+            )}
 
-          <button
-            onClick={() => handleOpenAddTask(KANBAN_STATUSES.TODO)}
-            className="px-3 py-1.5 rounded-md bg-purple-700 hover:bg-purple-800 text-white text-xs font-semibold transition-colors flex items-center gap-1.5 cursor-pointer shadow-xs"
-          >
-            <Plus className="w-3.5 h-3.5" />
-            <span>Create Task</span>
-          </button>
-        </div>
+            <button
+              onClick={() => handleOpenAddTask(KANBAN_STATUSES.TODO)}
+              className="px-3 py-1.5 rounded-md bg-purple-700 hover:bg-purple-800 text-white text-xs font-semibold transition-colors flex items-center gap-1.5 cursor-pointer shadow-xs"
+            >
+              <Plus className="w-3.5 h-3.5" />
+              <span>Create Task</span>
+            </button>
+          </div>
+        )}
       </div>
 
       {/* FILTER BAR */}
@@ -478,11 +480,12 @@ export default function KanbanBoard({ projectId, onToast }) {
                 key={col.id}
                 column={col}
                 tasks={colTasks}
-                onAddTask={handleOpenAddTask}
+                onAddTask={readOnly ? undefined : handleOpenAddTask}
                 onTaskClick={handleTaskClick}
-                onDragStart={handleDragStart}
-                onDragEnd={handleDragEnd}
-                onDropTask={handleDropTask}
+                onDragStart={readOnly ? undefined : handleDragStart}
+                onDragEnd={readOnly ? undefined : handleDragEnd}
+                onDropTask={readOnly ? undefined : handleDropTask}
+                readOnly={readOnly}
               />
             );
           })}

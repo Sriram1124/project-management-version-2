@@ -31,14 +31,13 @@ export default function BacklogToolbar({
   onToggleMyIssues,
   quickFilterOverdue,
   onToggleOverdue,
-  quickFilterBlocked,
-  onToggleBlocked,
   onClearFilters,
   onCreateClick,
   onCreateSprintClick,
   onExpandAll,
   onCollapseAll,
   allExpanded = false,
+  readOnly = false,
 }) {
   const [openDropdown, setOpenDropdown] = useState(null);
   const [assigneeSearchQuery, setAssigneeSearchQuery] = useState('');
@@ -75,8 +74,7 @@ export default function BacklogToolbar({
     selectedSprintId ||
     selectedStatus ||
     quickFilterMyIssues ||
-    quickFilterOverdue ||
-    quickFilterBlocked
+    quickFilterOverdue
   );
 
   return (
@@ -112,17 +110,19 @@ export default function BacklogToolbar({
         {/* Left: Create buttons & Search */}
         <div className="flex items-center gap-2 flex-wrap">
           {/* + Create Button */}
-          <button
-            type="button"
-            onClick={onCreateClick}
-            className="px-3 py-1.5 rounded-md bg-[#7C3AED] hover:bg-[#6D28D9] text-white font-semibold flex items-center gap-1.5 transition-colors shadow-xs shrink-0"
-          >
-            <Plus className="w-3.5 h-3.5" />
-            <span>Create Issue</span>
-          </button>
+          {!readOnly && onCreateClick && (
+            <button
+              type="button"
+              onClick={onCreateClick}
+              className="px-3 py-1.5 rounded-md bg-[#7C3AED] hover:bg-[#6D28D9] text-white font-semibold flex items-center gap-1.5 transition-colors shadow-xs shrink-0"
+            >
+              <Plus className="w-3.5 h-3.5" />
+              <span>Create Issue</span>
+            </button>
+          )}
 
           {/* + Sprint Button */}
-          {onCreateSprintClick && (
+          {!readOnly && onCreateSprintClick && (
             <button
               type="button"
               onClick={onCreateSprintClick}
@@ -133,7 +133,9 @@ export default function BacklogToolbar({
             </button>
           )}
 
-          <div className="h-4 w-[1px] bg-slate-200 mx-1 hidden sm:block" />
+          {!readOnly && (onCreateClick || onCreateSprintClick) && (
+            <div className="h-4 w-[1px] bg-slate-200 mx-1 hidden sm:block" />
+          )}
 
           {/* Search Box */}
           <div className="relative w-48 sm:w-64">
@@ -514,18 +516,6 @@ export default function BacklogToolbar({
             }`}
           >
             Overdue
-          </button>
-
-          <button
-            type="button"
-            onClick={onToggleBlocked}
-            className={`px-2 py-0.5 rounded text-[11px] font-medium border transition-colors ${
-              quickFilterBlocked
-                ? 'bg-rose-100 border-rose-300 text-rose-800 font-semibold'
-                : 'border-slate-200 text-slate-600 hover:bg-slate-50 bg-white'
-            }`}
-          >
-            Blocked
           </button>
         </div>
 
