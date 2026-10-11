@@ -18,6 +18,9 @@ export const authenticate = async (req: Request, res: Response, next: NextFuncti
     const user = await prisma.user.findUnique({
       where: { id: payload.userId },
       include: {
+        organization: {
+          select: { id: true, name: true, is_active: true }
+        },
         roles: {
           include: {
             role: {
@@ -32,6 +35,31 @@ export const authenticate = async (req: Request, res: Response, next: NextFuncti
 
     if (!user || !user.is_active) {
       res.status(401).json({ error: 'User is inactive or not found' });
+      return;
+    }
+
+    // Tenant Suspension Guard: If user belongs to an organization, verify it is active
+    if (user.organization_id && user.organization && !user.organization.is_active) {
+      res.status(403).json({ 
+        error: 'Forbidden: Organization account is suspended',
+        code: 'ORGANIZATION_SUSPENDED'
+      });
+      return;
+    }
+
+    // Force Password Change Guard:
+    // If user is flagged with must_change_password, block all protected operational APIs
+    // Allowed paths: /api/auth/change-password, /api/auth/me, /api/auth/logout
+    const isExemptPath = 
+      req.originalUrl.includes('/auth/change-password') || 
+      req.originalUrl.includes('/auth/me') || 
+      req.originalUrl.includes('/auth/logout');
+
+    if (user.must_change_password && !isExemptPath) {
+      res.status(403).json({
+        error: 'Forbidden: Password change required before accessing platform features',
+        code: 'PASSWORD_CHANGE_REQUIRED'
+      });
       return;
     }
 

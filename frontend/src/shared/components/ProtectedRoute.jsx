@@ -17,5 +17,9 @@ export default function ProtectedRoute({ children, allowedRoles }) {
     return <Navigate to="/unauthorized" replace />;
   }
 
+  if (user.must_change_password) {
+    return <Navigate to="/login" replace />;
+  }
+
   return children;
 }

@@ -67,6 +67,18 @@ export class AuthService {
       if (!organizationId || user.organization_id !== organizationId) {
         throw new Error('Invalid credentials');
       }
+
+      // Check whether tenant organization is suspended
+      const org = await prisma.organization.findUnique({
+        where: { id: organizationId },
+        select: { is_active: true }
+      });
+      if (!org || !org.is_active) {
+        const err: any = new Error('Organization account is suspended. Please contact your platform administrator.');
+        err.statusCode = 403;
+        err.code = 'ORGANIZATION_SUSPENDED';
+        throw err;
+      }
     }
 
     const primaryRole = user.roles[0]?.role;
@@ -140,12 +152,17 @@ export class AuthService {
       const user = await prisma.user.findUnique({
         where: { id: session.user_id },
         include: {
+          organization: { select: { is_active: true } },
           roles: { include: { role: true } },
         },
       });
 
       if (!user || !user.is_active) {
         throw new Error('User inactive or not found');
+      }
+
+      if (user.organization_id && user.organization && !user.organization.is_active) {
+        throw new Error('Organization account is suspended');
       }
 
       const primaryRole = user.roles[0]?.role;

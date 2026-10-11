@@ -6,10 +6,12 @@ import {
   LayoutDashboard,
   Bell,
   Search,
-  Sparkles
+  Sparkles,
+  FileText
 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import SuperAdminDashboardView from './views/SuperAdminDashboardView';
+import SuperAdminAuditLogsView from './views/SuperAdminAuditLogsView';
 
 export default function SuperAdminApp() {
   const { user: authUser, logout } = useAuth();
@@ -52,27 +54,37 @@ export default function SuperAdminApp() {
               <Building2 className="w-4 h-4" />
               <span>Organizations</span>
             </button>
+
+            <button
+              onClick={() => setCurrentTab('audit-logs')}
+              className={`w-full flex items-center gap-3 px-3.5 py-2.5 rounded-xl text-xs font-semibold transition-all cursor-pointer ${
+                currentTab === 'audit-logs'
+                  ? 'bg-purple-600/90 text-white shadow-sm'
+                  : 'text-purple-200/80 hover:bg-purple-900/50 hover:text-white'
+              }`}
+            >
+              <FileText className="w-4 h-4" />
+              <span>Audit Logs</span>
+            </button>
           </nav>
         </div>
 
         {/* User Footer */}
         <div className="p-3 border-t border-purple-800/40 bg-purple-950/30">
-          <div className="flex items-center justify-between p-2 rounded-xl bg-purple-900/30 border border-purple-800/40">
+          <div className="flex items-center justify-between p-2 rounded-xl bg-purple-900/40 border border-purple-800/40">
             <div className="flex items-center gap-2.5 min-w-0">
-              <img
-                src={userAvatar}
-                alt={displayName}
-                className="w-8 h-8 rounded-lg object-cover ring-1 ring-purple-400/30 shrink-0"
-              />
+              <div className="w-8 h-8 rounded-lg bg-purple-800 text-white font-bold text-xs flex items-center justify-center shrink-0 border border-purple-700">
+                GA
+              </div>
               <div className="truncate">
-                <span className="block text-xs font-bold text-white truncate">{displayName}</span>
+                <span className="block text-xs font-bold text-white truncate">Global Super Admin</span>
                 <span className="block text-[10px] text-purple-300/70 truncate">{displayEmail}</span>
               </div>
             </div>
             <button
               onClick={logout}
               title="Logout"
-              className="p-1.5 text-purple-300/80 hover:text-rose-400 hover:bg-purple-950/60 rounded-lg transition-colors cursor-pointer"
+              className="p-1.5 text-purple-300/80 hover:text-rose-400 hover:bg-purple-950/60 rounded-lg transition-colors cursor-pointer shrink-0"
             >
               <LogOut className="w-4 h-4" />
             </button>
@@ -83,19 +95,22 @@ export default function SuperAdminApp() {
       {/* Main Content Area */}
       <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
         {/* Top Header */}
-        <header className="h-16 bg-white border-b border-slate-200/80 px-8 flex items-center justify-between shrink-0">
-          <div className="flex items-center gap-3">
-            <span className="text-sm font-black text-slate-800 tracking-tight">Platform Control Center</span>
-            <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-amber-50 text-amber-700 border border-amber-200">
-              Global Root
-            </span>
+        <header className="h-18 bg-white border-b border-slate-200/80 px-8 flex items-center justify-between shrink-0">
+          <div>
+            <div className="flex items-center gap-2.5">
+              <span className="text-base font-bold text-slate-900 tracking-tight">Platform Control Center</span>
+              <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-amber-50 text-amber-700 border border-amber-200">
+                Global Root
+              </span>
+            </div>
+            <p className="text-xs text-slate-500 mt-0.5">Manage organizations, users, and platform operations across InternHub</p>
           </div>
 
           <div className="flex items-center gap-3">
             <span className="text-xs text-slate-500 font-medium">Logged in as {displayEmail}</span>
             <button
               onClick={logout}
-              className="px-3 py-1.5 bg-slate-100 hover:bg-rose-50 hover:text-rose-700 text-slate-700 rounded-lg text-xs font-bold transition-colors cursor-pointer inline-flex items-center gap-1.5"
+              className="px-3.5 py-1.5 bg-white hover:bg-slate-50 border border-slate-200 text-slate-700 rounded-lg text-xs font-bold transition-colors cursor-pointer inline-flex items-center gap-1.5 shadow-2xs"
             >
               <LogOut className="w-3.5 h-3.5" />
               <span>Logout</span>
@@ -106,7 +121,8 @@ export default function SuperAdminApp() {
         {/* Scrollable View Area */}
         <main className="flex-1 overflow-y-auto p-8">
           <div className="max-w-7xl mx-auto">
-            {currentTab === 'organizations' && <SuperAdminDashboardView />}
+            {currentTab === 'organizations' && <SuperAdminDashboardView onNavigateTab={setCurrentTab} />}
+            {currentTab === 'audit-logs' && <SuperAdminAuditLogsView />}
           </div>
         </main>
       </div>
