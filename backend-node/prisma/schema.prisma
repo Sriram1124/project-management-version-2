@@ -268,8 +268,36 @@ model ProjectDocument {
   updated_at    DateTime @updatedAt
 
   project       Project  @relation(fields: [project_id], references: [id], onDelete: Cascade)
+  requirements  DocumentRequirement[]
 
   @@map("project_documents")
+}
+
+enum RequirementStatus {
+  PENDING
+  IN_PROGRESS
+  COMPLETED
+  BLOCKED
+}
+
+model DocumentRequirement {
+  id                  String             @id @default(uuid())
+  document_id         String
+  code                String?            // e.g. "REQ-1", "FR-2", "UI-3"
+  title               String
+  description         String?
+  section             String?            // e.g. "Phase 1 - Audit", "Manager Dashboard"
+  status              RequirementStatus  @default(PENDING)
+  progress_note       String?
+  current_activity    String?
+  updated_by_user_id String?
+  created_at          DateTime           @default(now())
+  updated_at          DateTime           @updatedAt
+
+  document            ProjectDocument    @relation(fields: [document_id], references: [id], onDelete: Cascade)
+
+  @@index([document_id])
+  @@map("document_requirements")
 }
 
 enum WorkItemType {

@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { 
   X, 
   Check, 
@@ -16,12 +16,14 @@ import {
   Calendar,
   GitFork
 } from 'lucide-react';
+import { getEpicSprintSummary } from './HierarchicalIssueTable';
 
 export default function IssueDetailDrawer({
   issue,
   epics = [],
   sprints = [],
   members = [],
+  workItems = [],
   isOpen,
   onClose,
   onUpdateIssue,
@@ -60,8 +62,50 @@ export default function IssueDetailDrawer({
     }
   }, [issue]);
 
-  const currentEpic = epics.find(e => e.id === issue?.epicId);
-  const currentSprint = sprints.find(s => s.id === issue?.sprintId);
+  // Recursively or directly resolve ancestor Epic for this issue
+  const currentEpic = React.useMemo(() => {
+    if (!issue) return null;
+
+    // 1. If this issue itself is an Epic
+    if (String(issue.type).toUpperCase() === 'EPIC') {
+      return { id: issue.id, name: issue.title || issue.name };
+    }
+
+    // 2. Direct epicId or explicit parent is an Epic
+    if (issue.epicId) {
+      const match = epics.find((e) => e.id === issue.epicId);
+      if (match) return match;
+    }
+
+    if (issue.parent_id) {
+      const directParent = (workItems || []).find((w) => w.id === issue.parent_id);
+      if (directParent) {
+        if (String(directParent.type).toUpperCase() === 'EPIC') {
+          return { id: directParent.id, name: directParent.title };
+        }
+        // If parent is a Story or Task, look up its parent (the Epic)
+        if (directParent.parent_id) {
+          const grandParent = (workItems || []).find((w) => w.id === directParent.parent_id);
+          if (grandParent && String(grandParent.type).toUpperCase() === 'EPIC') {
+            return { id: grandParent.id, name: grandParent.title };
+          }
+        }
+      }
+    }
+
+    // 3. Fallback to direct parent if parent is in epics list
+    const parentInEpics = epics.find((e) => e.id === issue.parent_id);
+    if (parentInEpics) return parentInEpics;
+
+    return null;
+  }, [issue, epics, workItems]);
+
+  const currentSprint = sprints.find(s => s.id === (issue?.sprint_id || issue?.sprintId));
+  const isEpic = String(issue?.type || '').toUpperCase() === 'EPIC';
+  const epicSprintSummary = useMemo(() => {
+    if (!isEpic || !issue) return null;
+    return getEpicSprintSummary(issue, workItems, sprints);
+  }, [isEpic, issue, workItems, sprints]);
 
   const handleTitleBlur = () => {
     if (editedTitle.trim() && editedTitle !== issue?.title) {
@@ -85,15 +129,30 @@ export default function IssueDetailDrawer({
 
   const handleAssigneeChange = (assigneeId) => {
     const user = members.find((u) => (u.user_id || u.id) === assigneeId) || null;
-    onUpdateIssue?.({ ...issue, assignee: user, assigneeId: assigneeId || null });
+    onUpdateIssue?.({
+      ...issue,
+      assignee: user,
+      assigneeId: assigneeId || null,
+      assignee_ids: assigneeId ? [assigneeId] : [],
+    });
   };
 
-  const handleSprintChange = (sprintId) => {
-    onUpdateIssue?.({ ...issue, sprintId });
+  const handleSprintChange = (sprintVal) => {
+    const targetSprint = sprintVal === 'backlog' || !sprintVal ? null : sprintVal;
+    onUpdateIssue?.({
+      ...issue,
+      sprintId: targetSprint,
+      sprint_id: targetSprint,
+    });
   };
 
-  const handleEpicChange = (epicId) => {
-    onUpdateIssue?.({ ...issue, epicId });
+  const handleEpicChange = (epicVal) => {
+    const targetEpic = epicVal === '' || !epicVal ? null : epicVal;
+    onUpdateIssue?.({
+      ...issue,
+      epicId: targetEpic,
+      parent_id: targetEpic,
+    });
   };
 
   const handleSPChange = (sp) => {
@@ -126,19 +185,46 @@ export default function IssueDetailDrawer({
     }
   };
 
+  const [childSprintId, setChildSprintId] = useState('');
+
+  // Child items from workItems or issue.subtasks
+  const childItems = React.useMemo(() => {
+    if (!issue) return [];
+    const fromWorkItems = (workItems || []).filter((w) => w.parent_id === issue.id);
+    if (fromWorkItems.length > 0) {
+      return fromWorkItems.map((item) => {
+        const sp = sprints.find((s) => s.id === item.sprint_id);
+        return {
+          id: item.id,
+          title: item.title,
+          type: item.type,
+          status: item.status,
+          done: item.status === 'COMPLETED',
+          sprint_id: item.sprint_id,
+          sprintName: sp ? sp.name : 'Backlog',
+          priority: item.priority,
+        };
+      });
+    }
+    return (issue.subtasks || []).map((st) => ({
+      ...st,
+      sprintName: sprints.find((s) => s.id === st.sprint_id)?.name || 'Backlog',
+    }));
+  }, [issue, workItems, sprints]);
+
   const handleAddChildSubmit = (e) => {
     e.preventDefault();
     if (newSubtaskTitle.trim() && allowedChildTypes.length > 0) {
-      onAddSubtask?.(issue.id, newSubtaskTitle.trim(), childType);
+      onAddSubtask?.(issue.id, newSubtaskTitle.trim(), childType, childSprintId || null);
       setNewSubtaskTitle('');
     }
   };
 
   if (!isOpen || !issue) return null;
 
-  const completedSubtasks = (issue.subtasks || []).filter(s => s.done).length;
-  const totalSubtasks = (issue.subtasks || []).length;
-  const subtaskProgress = totalSubtasks > 0 ? Math.round((completedSubtasks / totalSubtasks) * 100) : 0;
+  const completedSubtasks = childItems.filter((s) => s.done).length;
+  const totalSubtasks = childItems.length;
+  const subtaskProgress = totalSubtasks > 0 ? Math.round((completedSubtasks / totalSubtasks) * 100) : null;
 
   return (
     <div className="fixed inset-y-0 right-0 w-full sm:w-[460px] bg-white border-l border-slate-200 shadow-xl z-50 flex flex-col text-xs select-none animate-in slide-in-from-right duration-200">
@@ -191,15 +277,15 @@ export default function IssueDetailDrawer({
           <div className="flex items-center justify-between">
             <span className="text-slate-500 font-medium">Status</span>
             <select
-              value={issue.status}
+              value={issue.status || 'TODO'}
               onChange={(e) => handleStatusChange(e.target.value)}
               className="px-2 py-1 rounded border border-slate-200 text-xs font-semibold bg-white text-slate-800 focus:outline-none focus:border-purple-600"
             >
-              <option value="TO DO">TO DO</option>
-              <option value="IN PROGRESS">IN PROGRESS</option>
-              <option value="IN REVIEW">IN REVIEW</option>
-              <option value="BLOCKED">BLOCKED</option>
-              <option value="DONE">DONE</option>
+              <option value="TODO">To Do</option>
+              <option value="IN_PROGRESS">In Progress</option>
+              <option value="IN_REVIEW">In Review</option>
+              <option value="BLOCKED">Blocked</option>
+              <option value="COMPLETED">Completed</option>
             </select>
           </div>
 
@@ -207,13 +293,14 @@ export default function IssueDetailDrawer({
           <div className="flex items-center justify-between">
             <span className="text-slate-500 font-medium">Priority</span>
             <select
-              value={issue.priority}
+              value={issue.priority || 'MEDIUM'}
               onChange={(e) => handlePriorityChange(e.target.value)}
               className="px-2 py-1 rounded border border-slate-200 text-xs font-medium bg-white text-slate-800 focus:outline-none focus:border-purple-600"
             >
-              <option value="High">High</option>
-              <option value="Medium">Medium</option>
-              <option value="Low">Low</option>
+              <option value="URGENT">Urgent</option>
+              <option value="HIGH">High</option>
+              <option value="MEDIUM">Medium</option>
+              <option value="LOW">Low</option>
             </select>
           </div>
 
@@ -241,28 +328,42 @@ export default function IssueDetailDrawer({
           {/* Sprint */}
           <div className="flex items-center justify-between">
             <span className="text-slate-500 font-medium">Sprint</span>
-            <select
-              value={issue.sprintId || 'backlog'}
-              onChange={(e) => handleSprintChange(e.target.value)}
-              className="px-2 py-1 rounded border border-slate-200 text-xs font-medium bg-white text-slate-800 focus:outline-none focus:border-purple-600"
-            >
-              {sprints.map((s) => (
-                <option key={s.id} value={s.id}>{s.name}</option>
-              ))}
-            </select>
+            {isEpic ? (
+              <span
+                className={`px-2 py-1 rounded border text-xs font-medium max-w-[180px] truncate select-none ${
+                  epicSprintSummary?.badgeClass || 'bg-slate-50 text-slate-600 border-slate-200'
+                }`}
+                title={epicSprintSummary?.title || 'Derived from child items'}
+              >
+                {epicSprintSummary?.label || 'Backlog'}
+              </span>
+            ) : (
+              <select
+                value={issue.sprint_id || issue.sprintId || 'backlog'}
+                onChange={(e) => handleSprintChange(e.target.value)}
+                className="px-2 py-1 rounded border border-slate-200 text-xs font-medium bg-white text-slate-800 focus:outline-none focus:border-purple-600 max-w-[180px]"
+              >
+                <option value="backlog">Backlog (No Sprint)</option>
+                {sprints.map((s) => (
+                  <option key={s.id} value={s.id}>
+                    {s.name} ({s.status})
+                  </option>
+                ))}
+              </select>
+            )}
           </div>
 
           {/* Epic */}
           <div className="flex items-center justify-between">
             <span className="text-slate-500 font-medium">Epic</span>
             <select
-              value={issue.epicId || ''}
+              value={currentEpic?.id || issue.parent_id || issue.epicId || ''}
               onChange={(e) => handleEpicChange(e.target.value)}
               className="px-2 py-1 rounded border border-slate-200 text-xs font-medium bg-white text-slate-800 focus:outline-none focus:border-purple-600 max-w-[180px]"
             >
-              <option value="">None</option>
+              <option value="">None (No Epic)</option>
               {epics.map((e) => (
-                <option key={e.id} value={e.id}>{e.name}</option>
+                <option key={e.id} value={e.id}>{e.name || e.title}</option>
               ))}
             </select>
           </div>
@@ -333,10 +434,14 @@ export default function IssueDetailDrawer({
                 ({completedSubtasks}/{totalSubtasks})
               </span>
             </div>
-            <span className="text-[10px] text-slate-400 font-semibold">{subtaskProgress}%</span>
+            {subtaskProgress !== null ? (
+              <span className="text-[10px] text-purple-700 font-bold">{subtaskProgress}%</span>
+            ) : (
+              <span className="text-[10px] text-slate-400 font-medium">No child items</span>
+            )}
           </div>
 
-          {totalSubtasks > 0 && (
+          {totalSubtasks > 0 && subtaskProgress !== null && (
             <div className="w-full bg-slate-100 rounded-full h-1 overflow-hidden">
               <div
                 className="bg-emerald-500 h-full rounded-full transition-all"
@@ -347,56 +452,86 @@ export default function IssueDetailDrawer({
 
           {/* Child Items List */}
           <div className="space-y-1">
-            {issue.subtasks?.map((st) => (
+            {childItems.map((st) => (
               <div
                 key={st.id}
                 className="flex items-center justify-between gap-2 p-1.5 rounded hover:bg-slate-50 border border-transparent hover:border-slate-100 transition-colors"
               >
-                <div className="flex items-center gap-2 min-w-0">
+                <div className="flex items-center gap-2 min-w-0 flex-1">
                   <button
+                    type="button"
                     onClick={() => onToggleSubtask?.(issue.id, st.id)}
-                    className={`w-3.5 h-3.5 rounded border flex items-center justify-center transition-colors ${
+                    className={`w-3.5 h-3.5 rounded border flex items-center justify-center transition-colors shrink-0 ${
                       st.done ? 'bg-purple-600 border-purple-600 text-white' : 'border-slate-300 bg-white'
                     }`}
                   >
                     {st.done && <Check className="w-2.5 h-2.5 stroke-[3]" />}
                   </button>
-                  <span className="font-mono text-[10px] text-slate-400">{st.id}</span>
-                  <span className="text-xs text-slate-800 truncate">
+                  <span className="font-mono text-[10px] text-slate-400 shrink-0">{st.id}</span>
+                  {st.type && (
+                    <span className="text-[9px] font-bold px-1 py-0.2 rounded bg-slate-100 text-slate-600 uppercase shrink-0">
+                      {st.type}
+                    </span>
+                  )}
+                  <span className={`text-xs truncate ${st.done ? 'line-through text-slate-400' : 'text-slate-800'}`}>
                     {st.title}
                   </span>
                 </div>
+
+                {/* Sprint Badge */}
+                <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded bg-purple-50 text-purple-700 border border-purple-200 shrink-0">
+                  {st.sprintName}
+                </span>
               </div>
             ))}
 
             {/* Context-Sensitive Add Child Item */}
             {allowedChildTypes.length > 0 ? (
-              <form onSubmit={handleAddChildSubmit} className="flex items-center gap-1.5 pt-1">
-                {allowedChildTypes.length > 1 && (
-                  <select
-                    value={childType}
-                    onChange={(e) => setChildType(e.target.value)}
-                    className="px-1.5 py-1 text-[11px] font-bold rounded border border-purple-200 bg-purple-50 text-purple-800"
+              <form onSubmit={handleAddChildSubmit} className="flex flex-col gap-1.5 pt-1">
+                <div className="flex items-center gap-1.5">
+                  {allowedChildTypes.length > 1 && (
+                    <select
+                      value={childType}
+                      onChange={(e) => setChildType(e.target.value)}
+                      className="px-1.5 py-1 text-[11px] font-bold rounded border border-purple-200 bg-purple-50 text-purple-800"
+                    >
+                      {allowedChildTypes.map((t) => (
+                        <option key={t} value={t}>{t}</option>
+                      ))}
+                    </select>
+                  )}
+                  <input
+                    type="text"
+                    value={newSubtaskTitle}
+                    onChange={(e) => setNewSubtaskTitle(e.target.value)}
+                    placeholder={`+ Add new ${childType.toLowerCase()}...`}
+                    className="flex-1 px-2 py-1 text-xs rounded border border-slate-200 focus:outline-none focus:border-purple-600"
+                  />
+                  <button
+                    type="submit"
+                    disabled={!newSubtaskTitle.trim()}
+                    className="px-2.5 py-1 rounded bg-purple-600 hover:bg-purple-700 disabled:opacity-40 text-white text-xs font-medium transition-colors cursor-pointer"
                   >
-                    {allowedChildTypes.map((t) => (
-                      <option key={t} value={t}>{t}</option>
-                    ))}
-                  </select>
+                    Add
+                  </button>
+                </div>
+
+                {/* Sprint Selection */}
+                {sprints.length > 0 && (
+                  <div className="flex items-center gap-1.5 text-[11px] text-slate-500 pl-1">
+                    <span>Assign to:</span>
+                    <select
+                      value={childSprintId}
+                      onChange={(e) => setChildSprintId(e.target.value)}
+                      className="px-1.5 py-0.5 text-[11px] rounded border border-slate-200 bg-white text-slate-700 focus:outline-none focus:border-purple-600"
+                    >
+                      <option value="">Backlog (No Sprint)</option>
+                      {sprints.map((s) => (
+                        <option key={s.id} value={s.id}>{s.name} ({s.status})</option>
+                      ))}
+                    </select>
+                  </div>
                 )}
-                <input
-                  type="text"
-                  value={newSubtaskTitle}
-                  onChange={(e) => setNewSubtaskTitle(e.target.value)}
-                  placeholder={`+ Add new ${childType.toLowerCase()}...`}
-                  className="flex-1 px-2 py-1 text-xs rounded border border-slate-200 focus:outline-none focus:border-purple-600"
-                />
-                <button
-                  type="submit"
-                  disabled={!newSubtaskTitle.trim()}
-                  className="px-2 py-1 rounded bg-purple-600 hover:bg-purple-700 disabled:opacity-40 text-white text-xs font-medium transition-colors"
-                >
-                  Add
-                </button>
               </form>
             ) : (
               <div className="text-[11px] text-slate-400 italic py-1">

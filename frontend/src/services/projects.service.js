@@ -32,7 +32,16 @@ export const projectsService = {
 
   async getMembers(id) {
     const res = await api.get(`/projects/${id}/members`);
-    return res.members || [];
+    const members = res.members || [];
+    return members.slice().sort((a, b) => {
+      const aIsLead = a.project_role === 'TECH_LEAD' || a.role === 'TECH_LEAD';
+      const bIsLead = b.project_role === 'TECH_LEAD' || b.role === 'TECH_LEAD';
+      if (aIsLead && !bIsLead) return -1;
+      if (!aIsLead && bIsLead) return 1;
+      const nameA = a.name || a.email || '';
+      const nameB = b.name || b.email || '';
+      return nameA.localeCompare(nameB, undefined, { sensitivity: 'base' });
+    });
   },
 
   async addMember(id, userId) {
@@ -46,7 +55,16 @@ export const projectsService = {
 
   async updateMemberRoles(id, roles) {
     const res = await api.patch(`/projects/${id}/members/roles`, { roles });
-    return res.members || [];
+    const members = res.members || [];
+    return members.slice().sort((a, b) => {
+      const aIsLead = a.project_role === 'TECH_LEAD' || a.role === 'TECH_LEAD';
+      const bIsLead = b.project_role === 'TECH_LEAD' || b.role === 'TECH_LEAD';
+      if (aIsLead && !bIsLead) return -1;
+      if (!aIsLead && bIsLead) return 1;
+      const nameA = a.name || a.email || '';
+      const nameB = b.name || b.email || '';
+      return nameA.localeCompare(nameB, undefined, { sensitivity: 'base' });
+    });
   },
 
   async getDocuments(id) {
@@ -82,6 +100,16 @@ export const projectsService = {
 
   async deleteDocument(id, documentId) {
     return await api.delete(`/projects/${id}/documents/${documentId}`);
+  },
+
+  async updateRequirement(projectId, documentId, requirementId, data) {
+    const res = await api.patch(`/projects/${projectId}/documents/${documentId}/requirements/${requirementId}`, data);
+    return res.requirement;
+  },
+
+  async reparseDocument(projectId, documentId) {
+    const res = await api.post(`/projects/${projectId}/documents/${documentId}/reparse`, {});
+    return res.document;
   },
 
   async getUsers(params = {}) {

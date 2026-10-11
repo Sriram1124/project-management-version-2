@@ -238,4 +238,35 @@ export class ProjectController {
       ProjectController.handleError(res, error);
     }
   }
+
+  static async updateRequirement(req: Request, res: Response): Promise<void> {
+    try {
+      const user = (req as any).fullUser;
+      const { id, documentId, requirementId } = req.params;
+
+      const requirement = await ProjectService.updateRequirement(
+        id,
+        documentId,
+        requirementId,
+        req.body,
+        user
+      );
+      res.status(200).json({ requirement });
+    } catch (error) {
+      ProjectController.handleError(res, error);
+    }
+  }
+
+  static async reparseDocument(req: Request, res: Response): Promise<void> {
+    try {
+      const user = (req as any).fullUser;
+      const { id, documentId } = req.params;
+
+      const document = await ProjectService.reparseDocumentRequirements(id, documentId, user);
+      res.status(200).json({ document });
+    } catch (error) {
+      ProjectController.handleError(res, error);
+    }
+  }
 }
+

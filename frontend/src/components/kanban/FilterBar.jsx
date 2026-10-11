@@ -25,18 +25,26 @@ export default function FilterBar({
   onClearFilters,
 }) {
   const [openDropdown, setOpenDropdown] = useState(null);
+  const [assigneeSearchQuery, setAssigneeSearchQuery] = useState('');
   const barRef = useRef(null);
 
   const priorities = ['All Priorities', 'High', 'Medium', 'Low', 'Blocked', 'Completed'];
 
   const toggleDropdown = (name) => {
-    setOpenDropdown((prev) => (prev === name ? null : name));
+    setOpenDropdown((prev) => {
+      const next = prev === name ? null : name;
+      if (next !== 'assignee') {
+        setAssigneeSearchQuery('');
+      }
+      return next;
+    });
   };
 
   useEffect(() => {
     const handleClickOutside = (event) => {
       if (barRef.current && !barRef.current.contains(event.target)) {
         setOpenDropdown(null);
+        setAssigneeSearchQuery('');
       }
     };
     document.addEventListener('mousedown', handleClickOutside);
@@ -52,6 +60,15 @@ export default function FilterBar({
     quickFilterOverdue ||
     quickFilterBlocked
   );
+
+  const allAssigneesList = members.length > 0 ? members : MOCK_ASSIGNEES;
+  const filteredAssignees = allAssigneesList.filter((user) => {
+    if (!assigneeSearchQuery.trim()) return true;
+    const q = assigneeSearchQuery.toLowerCase().trim();
+    const name = (user.name || '').toLowerCase();
+    const email = (user.email || '').toLowerCase();
+    return name.includes(q) || email.includes(q);
+  });
 
   return (
     <div
@@ -95,7 +112,7 @@ export default function FilterBar({
             {selectedAssignee ? (
               <div className="flex items-center gap-1.5">
                 <img
-                  src={selectedAssignee.avatar}
+                  src={selectedAssignee.avatar || `https://ui-avatars.com/api/?name=${encodeURIComponent(selectedAssignee.name || selectedAssignee.email || 'User')}&background=7C3AED&color=fff`}
                   alt={selectedAssignee.name}
                   className="w-3.5 h-3.5 rounded-full object-cover"
                 />
@@ -108,44 +125,83 @@ export default function FilterBar({
           </button>
 
           {openDropdown === 'assignee' && (
-            <div className="absolute left-0 mt-1 w-52 bg-white rounded-md shadow-md border border-slate-200 py-1 z-30">
-              <button
-                onClick={() => {
-                  onSelectAssignee?.(null);
-                  setOpenDropdown(null);
-                }}
-                className={`w-full text-left px-3 py-1.5 text-xs hover:bg-slate-50 transition-colors flex items-center justify-between ${
-                  !selectedAssignee ? 'text-purple-700 font-semibold bg-purple-50/40' : 'text-slate-700'
-                }`}
-              >
-                <span>All Assignees</span>
-                {!selectedAssignee && <Check className="w-3 h-3 text-purple-600" />}
-              </button>
+            <div className="absolute left-0 mt-1 w-56 sm:w-64 bg-white rounded-md shadow-lg border border-slate-200 py-1.5 z-30 flex flex-col">
+              {/* Search Bar Input inside Assignee Dropdown */}
+              <div className="px-2 pb-1.5 pt-0.5 border-b border-slate-100">
+                <div className="relative">
+                  <Search className="w-3.5 h-3.5 text-slate-400 absolute left-2 top-1/2 -translate-y-1/2 pointer-events-none" />
+                  <input
+                    type="text"
+                    value={assigneeSearchQuery}
+                    onChange={(e) => setAssigneeSearchQuery(e.target.value)}
+                    placeholder="Search assignees..."
+                    className="w-full pl-7 pr-6 py-1 text-xs rounded-md border border-slate-200 bg-slate-50 focus:bg-white focus:outline-none focus:ring-1 focus:ring-purple-600 focus:border-purple-600 transition-colors placeholder:text-slate-400"
+                    autoFocus
+                  />
+                  {assigneeSearchQuery && (
+                    <button
+                      type="button"
+                      onClick={() => setAssigneeSearchQuery('')}
+                      className="absolute right-1.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 p-0.5"
+                    >
+                      <X className="w-3 h-3" />
+                    </button>
+                  )}
+                </div>
+              </div>
 
-              {(members.length > 0 ? members : MOCK_ASSIGNEES).map((user) => {
-                const uid = user.user_id || user.id;
-                const uName = user.name || user.email;
-                const uAvatar = user.avatar || `https://ui-avatars.com/api/?name=${encodeURIComponent(uName)}&background=random`;
-                const isSelected = selectedAssignee && (selectedAssignee.user_id === uid || selectedAssignee.id === uid);
-                return (
+              {/* Scrollable list of Assignees */}
+              <div className="max-h-60 overflow-y-auto divide-y divide-slate-50 pt-1">
+                {!assigneeSearchQuery.trim() && (
                   <button
-                    key={uid}
+                    type="button"
                     onClick={() => {
-                      onSelectAssignee?.(user);
+                      onSelectAssignee?.(null);
                       setOpenDropdown(null);
+                      setAssigneeSearchQuery('');
                     }}
-                    className={`w-full text-left px-3 py-1.5 text-xs hover:bg-slate-50 transition-colors flex items-center justify-between ${
-                      isSelected ? 'text-purple-700 font-semibold bg-purple-50/40' : 'text-slate-700'
+                    className={`w-full text-left px-3 py-1.5 text-xs hover:bg-slate-50 transition-colors flex items-center justify-between cursor-pointer ${
+                      !selectedAssignee ? 'text-purple-700 font-semibold bg-purple-50/40' : 'text-slate-700'
                     }`}
                   >
-                    <div className="flex items-center gap-2 truncate">
-                      <img src={uAvatar} alt={uName} className="w-4 h-4 rounded-full object-cover shrink-0" />
-                      <span className="truncate">{uName}</span>
-                    </div>
-                    {isSelected && <Check className="w-3 h-3 text-purple-600 shrink-0" />}
+                    <span>All Assignees</span>
+                    {!selectedAssignee && <Check className="w-3 h-3 text-purple-600" />}
                   </button>
-                );
-              })}
+                )}
+
+                {filteredAssignees.length > 0 ? (
+                  filteredAssignees.map((user) => {
+                    const uid = user.user_id || user.id;
+                    const uName = user.name || user.email;
+                    const uAvatar = user.avatar || `https://ui-avatars.com/api/?name=${encodeURIComponent(uName)}&background=random`;
+                    const isSelected = selectedAssignee && ((selectedAssignee.user_id || selectedAssignee.id) === uid);
+                    return (
+                      <button
+                        key={uid}
+                        type="button"
+                        onClick={() => {
+                          onSelectAssignee?.(user);
+                          setOpenDropdown(null);
+                          setAssigneeSearchQuery('');
+                        }}
+                        className={`w-full text-left px-3 py-1.5 text-xs hover:bg-slate-50 transition-colors flex items-center justify-between cursor-pointer ${
+                          isSelected ? 'text-purple-700 font-semibold bg-purple-50/40' : 'text-slate-700'
+                        }`}
+                      >
+                        <div className="flex items-center gap-2 truncate">
+                          <img src={uAvatar} alt={uName} className="w-4 h-4 rounded-full object-cover shrink-0" />
+                          <span className="truncate">{uName}</span>
+                        </div>
+                        {isSelected && <Check className="w-3 h-3 text-purple-600 shrink-0" />}
+                      </button>
+                    );
+                  })
+                ) : (
+                  <div className="px-3 py-3 text-center text-xs text-slate-400 italic">
+                    No assignees found
+                  </div>
+                )}
+              </div>
             </div>
           )}
         </div>

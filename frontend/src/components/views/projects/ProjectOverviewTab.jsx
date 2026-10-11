@@ -15,13 +15,15 @@ import {
 import { projectsService } from '../../../services/projects.service';
 import { useAuth } from '../../../context/AuthContext';
 import AssignProjectRolesModal, { PROJECT_ROLE_LABELS } from '../../modals/AssignProjectRolesModal';
-import TasksView from '../TasksView';
+import AllProjectMembersModal from '../../modals/AllProjectMembersModal';
+import ProjectTaskCharts from './ProjectTaskCharts';
 
 export default function ProjectOverviewTab({ projectId, project, onToast }) {
   const { user: authUser } = useAuth();
   const [members, setMembers] = useState([]);
   const [loadingMembers, setLoadingMembers] = useState(false);
   const [isAssignRolesOpen, setIsAssignRolesOpen] = useState(false);
+  const [isAllMembersOpen, setIsAllMembersOpen] = useState(false);
 
   const canAssignRoles = 
     authUser?.role === 'MANAGER' || 
@@ -45,7 +47,16 @@ export default function ProjectOverviewTab({ projectId, project, onToast }) {
 
   const handleRolesUpdated = (updatedList) => {
     if (Array.isArray(updatedList) && updatedList.length > 0) {
-      setMembers(updatedList);
+      const sorted = updatedList.slice().sort((a, b) => {
+        const aIsLead = a.project_role === 'TECH_LEAD' || a.role === 'TECH_LEAD';
+        const bIsLead = b.project_role === 'TECH_LEAD' || b.role === 'TECH_LEAD';
+        if (aIsLead && !bIsLead) return -1;
+        if (!aIsLead && bIsLead) return 1;
+        const nameA = a.name || a.email || '';
+        const nameB = b.name || b.email || '';
+        return nameA.localeCompare(nameB, undefined, { sensitivity: 'base' });
+      });
+      setMembers(sorted);
     } else {
       loadMembers();
     }
@@ -82,7 +93,7 @@ export default function ProjectOverviewTab({ projectId, project, onToast }) {
   };
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-6 min-w-0 max-w-full">
       {/* Project Overview Executive Summary */}
       <div className="bg-white rounded-xl p-5 border border-slate-200/80 shadow-xs">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
@@ -158,20 +169,33 @@ export default function ProjectOverviewTab({ projectId, project, onToast }) {
         </div>
 
         {/* Project Files Section (Real Document Metadata API) */}
-        <ProjectFilesSection projectId={projectId || project?.id} onToast={onToast} />
+        <ProjectFilesSection 
+          projectId={projectId || project?.id} 
+          projectName={projectName}
+          onToast={onToast} 
+        />
       </div>
 
-      {/* Project Members Section */}
+      {/* Project Members Section (Compact 5-6 member box with View All) */}
       <div className="bg-white rounded-2xl p-5 border border-slate-200/80 shadow-card">
         <div className="flex items-center justify-between text-xs mb-3">
           <div className="flex items-center gap-2">
             <Users className="w-4 h-4 text-purple-600" />
             <span className="font-bold text-slate-800 uppercase tracking-wider text-[11px]">Project Members</span>
-          </div>
-          <div className="flex items-center gap-2.5">
-            <span className="text-slate-500 text-xs font-semibold">
-              {members.length} {members.length === 1 ? 'Member' : 'Members'}
+            <span className="text-[11px] font-semibold text-slate-400 bg-slate-100 px-2 py-0.5 rounded-full">
+              {members.length}
             </span>
+          </div>
+          <div className="flex items-center gap-2">
+            {members.length > 6 && (
+              <button
+                type="button"
+                onClick={() => setIsAllMembersOpen(true)}
+                className="inline-flex items-center gap-1.5 px-3 py-1 bg-white hover:bg-slate-50 text-slate-700 text-xs font-semibold rounded-lg border border-slate-200 transition-colors cursor-pointer shadow-2xs"
+              >
+                <span>View All ({members.length})</span>
+              </button>
+            )}
             {canAssignRoles && (
               <button
                 type="button"
@@ -186,12 +210,12 @@ export default function ProjectOverviewTab({ projectId, project, onToast }) {
         </div>
 
         {loadingMembers ? (
-          <div className="flex items-center justify-center p-8 text-slate-400">
+          <div className="flex items-center justify-center p-6 text-slate-400">
             <Loader2 className="w-5 h-5 text-purple-600 animate-spin mr-2" />
             <span className="text-xs font-medium">Loading project members...</span>
           </div>
         ) : members.length === 0 ? (
-          <div className="p-8 bg-slate-50/50 rounded-xl border border-dashed border-slate-200 text-center">
+          <div className="p-6 bg-slate-50/50 rounded-xl border border-dashed border-slate-200 text-center">
             <Users className="w-8 h-8 text-slate-300 mx-auto mb-2" />
             <h4 className="text-xs font-bold text-slate-700">0 Members Assigned</h4>
             <p className="text-[11px] text-slate-400 mt-0.5">
@@ -199,35 +223,75 @@ export default function ProjectOverviewTab({ projectId, project, onToast }) {
             </p>
           </div>
         ) : (
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 mt-3">
-            {members.map((member) => {
-              const mName = member.name || member.email || 'Member';
-              const mAvatar = `https://ui-avatars.com/api/?name=${encodeURIComponent(mName)}&background=random`;
-              return (
-                <div key={member.user_id} className="flex items-center justify-between p-3 rounded-xl bg-slate-50/80 border border-slate-200/70 shadow-2xs">
-                  <div className="flex items-center gap-2.5 min-w-0">
-                    <img
-                      src={mAvatar}
-                      alt={mName}
-                      className="w-8 h-8 rounded-full object-cover ring-1 ring-slate-200 shrink-0"
-                    />
-                    <div className="min-w-0">
-                      <div className="text-xs font-bold text-slate-900 truncate">{mName}</div>
-                      <div className="text-[10px] text-slate-400 truncate">{member.email}</div>
+          <div>
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+              {members.slice(0, 6).map((member) => {
+                const mName = member.name || member.email || 'Member';
+                const mAvatar = `https://ui-avatars.com/api/?name=${encodeURIComponent(mName)}&background=random`;
+                const isSpecialRole = Boolean(member.project_role);
+
+                return (
+                  <div key={member.user_id} className="flex items-center justify-between p-3 rounded-xl bg-slate-50/80 border border-slate-200/70 shadow-2xs">
+                    <div className="flex items-center gap-2.5 min-w-0">
+                      <img
+                        src={mAvatar}
+                        alt={mName}
+                        className="w-8 h-8 rounded-full object-cover ring-1 ring-slate-200 shrink-0"
+                      />
+                      <div className="min-w-0 pr-1">
+                        <div className="text-xs font-bold text-slate-900 truncate" title={mName}>{mName}</div>
+                        <div className="text-[10px] text-slate-400 truncate" title={member.email}>{member.email}</div>
+                      </div>
                     </div>
+                    <span className={`px-2.5 py-0.5 rounded-md text-[10px] font-bold shrink-0 ml-1 border whitespace-nowrap ${
+                      isSpecialRole
+                        ? 'bg-purple-100 text-purple-800 border-purple-200'
+                        : 'bg-slate-100 text-slate-600 border-slate-200'
+                    }`}>
+                      {member.project_role ? (PROJECT_ROLE_LABELS[member.project_role] || member.project_role) : 'Member'}
+                    </span>
                   </div>
-                  <span className="px-2.5 py-0.5 rounded-md text-[10px] font-bold bg-purple-100 text-purple-700 border border-purple-200/60 shrink-0 ml-1">
-                    {PROJECT_ROLE_LABELS[member.project_role] || 'Member'}
-                  </span>
-                </div>
-              );
-            })}
+                );
+              })}
+            </div>
+
+            {members.length > 6 && (
+              <div className="mt-3 pt-3 border-t border-slate-100 flex items-center justify-between text-xs text-slate-500">
+                <span>Showing first <strong>6</strong> of <strong>{members.length}</strong> project members</span>
+                <button
+                  type="button"
+                  onClick={() => setIsAllMembersOpen(true)}
+                  className="font-bold text-purple-600 hover:text-purple-700 hover:underline cursor-pointer"
+                >
+                  Show all {members.length} members →
+                </button>
+              </div>
+            )}
           </div>
         )}
       </div>
 
-      {/* Work Management Section (Real Backend Tasks API) */}
-      <TasksView projectId={projectId || project?.id} onToast={onToast} />
+      {/* Task Analytics & Graphs Connected to Database */}
+      <ProjectTaskCharts 
+        projectId={projectId || project?.id} 
+        members={members}
+      />
+
+      {/* View All Members Modal (Floating rectangular modal with search & role filter) */}
+      <AllProjectMembersModal
+        isOpen={isAllMembersOpen}
+        onClose={() => setIsAllMembersOpen(false)}
+        members={members}
+        projectName={projectName}
+        projectId={projectId || project?.id}
+        canAssignRoles={canAssignRoles}
+        canRemoveMembers={canAssignRoles}
+        onOpenAssignRoles={() => setIsAssignRolesOpen(true)}
+        onMemberRemoved={(removedUserId) => {
+          setMembers((prev) => prev.filter((m) => (m.user_id || m.id) !== removedUserId));
+          onToast?.('Member removed from project successfully');
+        }}
+      />
 
       {/* Assign Roles Modal */}
       <AssignProjectRolesModal

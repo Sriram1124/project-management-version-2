@@ -7,6 +7,9 @@ export interface CreateUserInput {
   email: string;
   type: 'INTERN' | 'EMPLOYEE';
   managerOrgId: string;
+  batch?: string | null;
+  subbatch?: string | null;
+  cohort_id?: string | null;
 }
 
 export interface CsvRow {
@@ -14,6 +17,10 @@ export interface CsvRow {
   name: string;
   email: string;
   type: 'INTERN' | 'EMPLOYEE';
+  batch?: string | null;
+  subbatch?: string | null;
+  cohort_id?: string | null;
+  cohort?: string | null;
 }
 
 export interface InvalidCsvRow {
@@ -21,6 +28,9 @@ export interface InvalidCsvRow {
   name: string;
   email: string;
   reason: string;
+  batch?: string | null;
+  subbatch?: string | null;
+  cohort?: string | null;
 }
 
 export interface CsvValidationResult {
@@ -29,6 +39,12 @@ export interface CsvValidationResult {
     total: number;
     valid: number;
     invalid: number;
+  };
+  detectedColumns: {
+    all: string[];
+    requiredPresent: string[];
+    requiredMissing: string[];
+    optionalPresent: string[];
   };
   validRows: CsvRow[];
   invalidRows: InvalidCsvRow[];
@@ -136,7 +152,7 @@ export class UserService {
    * Create an individual organization user (Intern or Employee)
    */
   static async createUser(input: CreateUserInput) {
-    const { name, email, type, managerOrgId } = input;
+    const { name, email, type, managerOrgId, batch, subbatch, cohort_id } = input;
 
     if (!name || typeof name !== 'string' || !name.trim()) {
       throw new Error('Name is required');
@@ -160,6 +176,64 @@ export class UserService {
 
     if (!managerOrgId) {
       throw new Error('Manager organization is required');
+    }
+
+    // Validate batch and subbatch if provided (relevant for INTERN)
+    let userBatch: string | null = null;
+    let userSubbatch: string | null = null;
+    let userCohortId: string | null = null;
+
+    if (type === 'INTERN') {
+      const VALID_BATCH_SUBBATCH: Record<string, string[]> = {
+        A: ['A1', 'A2'],
+        B: ['B1', 'B2'],
+        C: ['C1', 'C2'],
+        D: ['D1', 'D2'],
+      };
+
+      if (batch) {
+        const trimmedBatch = batch.trim().toUpperCase();
+        if (!['A', 'B', 'C', 'D'].includes(trimmedBatch)) {
+          throw new Error('Batch must be one of A, B, C, D');
+        }
+        userBatch = trimmedBatch;
+
+        if (subbatch) {
+          const trimmedSubbatch = subbatch.trim().toUpperCase();
+          const allowed = VALID_BATCH_SUBBATCH[trimmedBatch] || [];
+          if (!allowed.includes(trimmedSubbatch)) {
+            throw new Error(`Subbatch must be one of ${allowed.join(', ')} for Batch ${trimmedBatch}`);
+          }
+          userSubbatch = trimmedSubbatch;
+        } else {
+          userSubbatch = VALID_BATCH_SUBBATCH[trimmedBatch][0];
+        }
+      }
+
+      if (cohort_id) {
+        const cohort = await prisma.cohort.findFirst({
+          where: {
+            id: cohort_id,
+            organization_id: managerOrgId,
+          },
+        });
+        if (!cohort) {
+          throw new Error('Selected cohort was not found in your organization');
+        }
+        userCohortId = cohort.id;
+      } else {
+        // Fallback: automatically assign whichever active cohort exists for the organization
+        const defaultCohort = await prisma.cohort.findFirst({
+          where: {
+            organization_id: managerOrgId,
+            is_active: true,
+          },
+          orderBy: { code: 'asc' },
+        });
+        if (defaultCohort) {
+          userCohortId = defaultCohort.id;
+        }
+      }
     }
 
     // Check globally unique email
@@ -195,8 +269,14 @@ export class UserService {
             user_code: userCode,
             password_hash: passwordHash,
             organization_id: managerOrgId,
+            batch: userBatch,
+            subbatch: userSubbatch,
+            cohort_id: userCohortId,
             must_change_password: true,
             is_active: true,
+          },
+          include: {
+            cohort: true,
           },
         });
 
@@ -216,6 +296,10 @@ export class UserService {
           user_code: newUser.user_code,
           name: newUser.name,
           email: newUser.email,
+          batch: newUser.batch,
+          subbatch: newUser.subbatch,
+          cohort_id: newUser.cohort_id,
+          cohort: newUser.cohort,
           type,
           must_change_password: true,
           created_at: newUser.created_at,
@@ -240,6 +324,12 @@ export class UserService {
       return {
         isValid: false,
         summary: { total: 0, valid: 0, invalid: 0 },
+        detectedColumns: {
+          all: [],
+          requiredPresent: [],
+          requiredMissing: ['name', 'email', 'type'],
+          optionalPresent: [],
+        },
         validRows: [],
         invalidRows: [],
         errors: ['CSV content is empty or invalid.'],
@@ -255,38 +345,99 @@ export class UserService {
       return {
         isValid: false,
         summary: { total: 0, valid: 0, invalid: 0 },
+        detectedColumns: {
+          all: [],
+          requiredPresent: [],
+          requiredMissing: ['name', 'email', 'type'],
+          optionalPresent: [],
+        },
         validRows: [],
         invalidRows: [],
         errors: ['CSV file must contain a header row and at least one data row.'],
       };
     }
 
-    const rawHeaders = this.parseCsvLine(lines[0]).map((h) => h.toLowerCase());
+    const rawHeaders = this.parseCsvLine(lines[0]).map((h) => h.toLowerCase().trim());
 
     // Security violation: forbid client specifying sensitive columns
     if (
       rawHeaders.includes('organization_id') ||
       rawHeaders.includes('password') ||
+      rawHeaders.includes('password_hash') ||
       rawHeaders.includes('user_id') ||
       rawHeaders.includes('user_code')
     ) {
       return {
         isValid: false,
         summary: { total: 0, valid: 0, invalid: 0 },
+        detectedColumns: {
+          all: rawHeaders,
+          requiredPresent: ['name', 'email', 'type'].filter((h) => rawHeaders.includes(h)),
+          requiredMissing: ['name', 'email', 'type'].filter((h) => !rawHeaders.includes(h)),
+          optionalPresent: [],
+        },
         validRows: [],
         invalidRows: [],
         errors: ['Security Violation: CSV cannot contain organization_id, password, user_id, or user_code columns.'],
       };
     }
 
-    if (rawHeaders.length < 3 || rawHeaders[0] !== 'name' || rawHeaders[1] !== 'email' || rawHeaders[2] !== 'type') {
+    const nameIdx = rawHeaders.indexOf('name');
+    const emailIdx = rawHeaders.indexOf('email');
+    const typeIdx = rawHeaders.indexOf('type');
+    const batchIdx = rawHeaders.indexOf('batch');
+    const subbatchIdx = rawHeaders.findIndex(
+      (h) => h === 'subbatch' || h === 'sub_batch' || h === 'sub-batch'
+    );
+    const cohortIdx = rawHeaders.findIndex(
+      (h) => h === 'cohort' || h === 'cohort_name' || h === 'cohort_code'
+    );
+
+    const requiredMissing: string[] = [];
+    if (nameIdx === -1) requiredMissing.push('name');
+    if (emailIdx === -1) requiredMissing.push('email');
+    if (typeIdx === -1) requiredMissing.push('type');
+
+    const requiredPresent = ['name', 'email', 'type'].filter((h) => rawHeaders.includes(h));
+    const optionalPresent: string[] = [];
+    if (batchIdx !== -1) optionalPresent.push('batch');
+    if (subbatchIdx !== -1) optionalPresent.push('subbatch');
+    if (cohortIdx !== -1) optionalPresent.push('cohort');
+
+    const detectedColumns = {
+      all: rawHeaders,
+      requiredPresent,
+      requiredMissing,
+      optionalPresent,
+    };
+
+    if (requiredMissing.length > 0) {
       return {
         isValid: false,
         summary: { total: 0, valid: 0, invalid: 0 },
+        detectedColumns,
         validRows: [],
         invalidRows: [],
-        errors: ['Invalid CSV headers. Expected exact header: name,email,type'],
+        errors: [`Invalid CSV headers. Missing required columns: ${requiredMissing.join(', ')}. Expected at least: name,email,type`],
       };
+    }
+
+    const VALID_BATCH_SUBBATCH: Record<string, string[]> = {
+      A: ['A1', 'A2'],
+      B: ['B1', 'B2'],
+      C: ['C1', 'C2'],
+      D: ['D1', 'D2'],
+    };
+
+    // Pre-fetch all cohorts belonging to manager's organization
+    const orgCohorts = await prisma.cohort.findMany({
+      where: { organization_id: managerOrgId },
+      select: { id: true, code: true, name: true },
+    });
+    const cohortMap = new Map<string, { id: string; name: string }>();
+    for (const c of orgCohorts) {
+      cohortMap.set(c.code.toLowerCase().trim(), { id: c.id, name: c.name });
+      cohortMap.set(c.name.toLowerCase().trim(), { id: c.id, name: c.name });
     }
 
     const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -298,21 +449,30 @@ export class UserService {
       name: string;
       email: string;
       rawType: string;
+      rawBatch: string;
+      rawSubbatch: string;
+      rawCohort: string;
       type?: 'INTERN' | 'EMPLOYEE';
     }> = [];
 
     for (let i = 1; i < lines.length; i++) {
       const rowNum = i + 1;
       const cols = this.parseCsvLine(lines[i]);
-      const name = cols[0] || '';
-      const email = (cols[1] || '').trim().toLowerCase();
-      const rawType = (cols[2] || '').trim().toUpperCase();
+      const name = (cols[nameIdx] || '').trim();
+      const email = (cols[emailIdx] || '').trim().toLowerCase();
+      const rawType = (cols[typeIdx] || '').trim().toUpperCase();
+      const rawBatch = batchIdx !== -1 ? (cols[batchIdx] || '').trim().toUpperCase() : '';
+      const rawSubbatch = subbatchIdx !== -1 ? (cols[subbatchIdx] || '').trim().toUpperCase() : '';
+      const rawCohort = cohortIdx !== -1 ? (cols[cohortIdx] || '').trim() : '';
 
       parsedDataRows.push({
         rowNumber: rowNum,
         name,
         email,
         rawType,
+        rawBatch,
+        rawSubbatch,
+        rawCohort,
         type: (rawType === 'INTERN' || rawType === 'EMPLOYEE') ? rawType : undefined,
       });
 
@@ -337,7 +497,7 @@ export class UserService {
 
     // Pass 3: Validate each row independently
     for (const row of parsedDataRows) {
-      const { rowNumber, name, email, rawType, type } = row;
+      let { rowNumber, name, email, rawType, rawBatch, rawSubbatch, rawCohort, type } = row;
       let failureReason = '';
 
       if (!name) {
@@ -347,13 +507,39 @@ export class UserService {
       } else if (!email || !emailRegex.test(email)) {
         failureReason = 'Invalid email format.';
       } else if ((emailCounts.get(email) || 0) > 1) {
-        // Both rows of any internal duplicate in CSV are marked invalid
         failureReason = 'Duplicate email in CSV.';
       } else if (existingDbEmails.has(email)) {
-        // Email already registered in DB
         failureReason = 'Email already exists.';
       } else if (!type) {
         failureReason = `Invalid type "${rawType}". Must be INTERN or EMPLOYEE.`;
+      } else if (rawBatch && !['A', 'B', 'C', 'D'].includes(rawBatch)) {
+        failureReason = `Invalid batch "${rawBatch}". Must be one of A, B, C, D.`;
+      } else if (rawSubbatch) {
+        if (rawBatch) {
+          const allowedSubbatches = VALID_BATCH_SUBBATCH[rawBatch] || [];
+          if (!allowedSubbatches.includes(rawSubbatch)) {
+            failureReason = `Invalid subbatch "${rawSubbatch}" for Batch ${rawBatch}. Must be one of ${allowedSubbatches.join(', ')}.`;
+          }
+        } else {
+          const allSubbatches = Object.values(VALID_BATCH_SUBBATCH).flat();
+          if (!allSubbatches.includes(rawSubbatch)) {
+            failureReason = `Invalid subbatch "${rawSubbatch}". Valid subbatches are ${allSubbatches.join(', ')}.`;
+          } else {
+            // Infer batch from valid subbatch
+            const inferred = Object.keys(VALID_BATCH_SUBBATCH).find((b) => VALID_BATCH_SUBBATCH[b].includes(rawSubbatch));
+            if (inferred) rawBatch = inferred;
+          }
+        }
+      }
+
+      let resolvedCohortId: string | null = null;
+      if (!failureReason && rawCohort) {
+        const cohortEntry = cohortMap.get(rawCohort.toLowerCase());
+        if (!cohortEntry) {
+          failureReason = `Cohort "${rawCohort}" does not exist in your organization.`;
+        } else {
+          resolvedCohortId = cohortEntry.id;
+        }
       }
 
       if (failureReason) {
@@ -362,6 +548,9 @@ export class UserService {
           name: name || 'Unnamed',
           email: email || 'No email provided',
           reason: failureReason,
+          batch: rawBatch || null,
+          subbatch: rawSubbatch || null,
+          cohort: rawCohort || null,
         });
         errors.push(`Row ${rowNumber}: ${name || 'Unnamed'} (${email || 'No email'}) - ${failureReason}`);
       } else {
@@ -370,6 +559,10 @@ export class UserService {
           name,
           email,
           type: type!,
+          batch: rawBatch || null,
+          subbatch: rawSubbatch || null,
+          cohort_id: resolvedCohortId,
+          cohort: rawCohort || null,
         });
       }
     }
@@ -384,10 +577,28 @@ export class UserService {
         valid: validRows.length,
         invalid: invalidRows.length,
       },
+      detectedColumns,
       validRows,
       invalidRows,
       errors,
     };
+  }
+
+  /**
+   * Generates dynamic CSV template aligned with authoritative database schema and org cohorts
+   */
+  static async generateBulkCsvTemplate(managerOrgId: string): Promise<string> {
+    const cohorts = await prisma.cohort.findMany({
+      where: { organization_id: managerOrgId },
+      select: { code: true, name: true },
+      take: 1,
+    });
+    const sampleCohort = cohorts[0]?.code || 'Cohort-1';
+
+    const header = 'name,email,type,batch,subbatch,cohort\n';
+    const sampleIntern = `Alex Morgan,alex.morgan@example.com,INTERN,A,A1,${sampleCohort}\n`;
+    const sampleEmployee = `Jordan Lee,jordan.lee@example.com,EMPLOYEE,,,\n`;
+    return header + sampleIntern + sampleEmployee;
   }
 
   /**
@@ -451,16 +662,31 @@ export class UserService {
     }
 
     // =========================================================================
-    // BATCH USER CODE RESERVATION
-    // Ensure every user in this batch receives a code that does not collide
-    // with DB users OR with other users in the SAME batch.
+    // BATCH USER CODE RESERVATION & PASSWORD HASHING
+    // =========================================================================
+    // BATCH USER CODE RESERVATION & PASSWORD HASHING
+    // Generate codes and cryptographically secure passwords
     // =========================================================================
     const reservedCodesInBatch = new Set<string>();
+
+    // Pre-seed reserved codes with all existing user codes in the organization
+    const existingOrgUsers = await prisma.user.findMany({
+      where: { organization_id: managerOrgId },
+      select: { user_code: true },
+    });
+    for (const u of existingOrgUsers) {
+      if (u.user_code) reservedCodesInBatch.add(u.user_code);
+    }
+
     const usersToCreate: Array<{
+      id: string;
       name: string;
       email: string;
       user_code: string;
       type: 'INTERN' | 'EMPLOYEE';
+      batch?: string | null;
+      subbatch?: string | null;
+      cohort_id?: string | null;
       temporary_password: string;
       password_hash: string;
       role_id: string;
@@ -472,12 +698,17 @@ export class UserService {
       const tempPassword = this.generateTemporaryPassword();
       const pwdHash = await argon2.hash(tempPassword);
       const roleId = row.type === 'INTERN' ? internRole.id : employeeRole.id;
+      const id = crypto.randomUUID();
 
       usersToCreate.push({
+        id,
         name: row.name.trim(),
         email: row.email.trim().toLowerCase(),
         user_code: userCode,
         type: row.type,
+        batch: row.batch || null,
+        subbatch: row.subbatch || null,
+        cohort_id: row.cohort_id || null,
         temporary_password: tempPassword,
         password_hash: pwdHash,
         role_id: roleId,
@@ -486,41 +717,46 @@ export class UserService {
 
     // =========================================================================
     // ATOMIC TRANSACTION
-    // If ANY user fails or encounters a constraint, roll back completely.
+    // High-performance batch createMany ensures complete all-or-nothing atomicity
+    // with sub-second execution speed, preventing connection/transaction timeouts.
     // =========================================================================
     try {
-      const createdUsers = await prisma.$transaction(async (tx) => {
-        const results = [];
-        for (const item of usersToCreate) {
-          const user = await tx.user.create({
-            data: {
-              name: item.name,
-              email: item.email,
-              user_code: item.user_code,
-              password_hash: item.password_hash,
-              organization_id: managerOrgId,
-              must_change_password: true,
-              is_active: true,
-            },
-          });
+      const usersData = usersToCreate.map((u) => ({
+        id: u.id,
+        name: u.name,
+        email: u.email,
+        user_code: u.user_code,
+        password_hash: u.password_hash,
+        organization_id: managerOrgId,
+        cohort_id: u.cohort_id || null,
+        batch: u.batch || null,
+        subbatch: u.subbatch || null,
+        must_change_password: true,
+        is_active: true,
+      }));
 
-          await tx.userRole.create({
-            data: {
-              user_id: user.id,
-              role_id: item.role_id,
-            },
-          });
+      const rolesData = usersToCreate.map((u) => ({
+        user_id: u.id,
+        role_id: u.role_id,
+      }));
 
-          results.push({
-            name: item.name,
-            email: item.email,
-            user_code: item.user_code,
-            type: item.type,
-            temporary_password: item.temporary_password,
-          });
-        }
-        return results;
-      });
+      await prisma.$transaction(
+        async (tx) => {
+          await tx.user.createMany({ data: usersData });
+          await tx.userRole.createMany({ data: rolesData });
+        },
+        { timeout: 30000, maxWait: 10000 }
+      );
+
+      const createdUsers = usersToCreate.map((u) => ({
+        name: u.name,
+        email: u.email,
+        user_code: u.user_code,
+        type: u.type,
+        batch: u.batch || null,
+        subbatch: u.subbatch || null,
+        temporary_password: u.temporary_password,
+      }));
 
       return {
         summary: {
@@ -888,7 +1124,7 @@ export class UserService {
   static async updateMember(
     managerOrgId: string,
     targetUserId: string,
-    data: { name?: string; batch?: string; subbatch?: string }
+    data: { name?: string; batch?: string; subbatch?: string; cohort_id?: string | null }
   ) {
     if (!managerOrgId) {
       const err: any = new Error('Manager organization context required.');
@@ -993,6 +1229,26 @@ export class UserService {
         throw err;
       }
       dataToUpdate.subbatch = trimmedSubbatch;
+    }
+
+    // Validate Cohort
+    if (data.cohort_id !== undefined) {
+      if (data.cohort_id === null || data.cohort_id === '') {
+        dataToUpdate.cohort_id = null;
+      } else {
+        const cohort = await prisma.cohort.findFirst({
+          where: {
+            id: data.cohort_id,
+            organization_id: managerOrgId,
+          },
+        });
+        if (!cohort) {
+          const err: any = new Error('Selected cohort not found in your organization.');
+          err.statusCode = 400;
+          throw err;
+        }
+        dataToUpdate.cohort_id = cohort.id;
+      }
     }
 
     const updatedUser = await prisma.user.update({

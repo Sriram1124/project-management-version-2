@@ -2,7 +2,6 @@ import React, { useState, useEffect } from 'react';
 import MetricCards from '../dashboard/MetricCards';
 import BroadcastAlert from '../dashboard/BroadcastAlert';
 import ProjectHealth from '../dashboard/ProjectHealth';
-import UpcomingDeadlines from '../dashboard/UpcomingDeadlines';
 import { projectsService } from '../../services/projects.service';
 import { workItemsService } from '../../services/workItems.service';
 import { Calendar, Users, Sparkles, Clock } from 'lucide-react';
@@ -137,44 +136,6 @@ export default function ManagerDashboardView({
     };
   });
 
-  // Calculate upcoming deadlines from live work items
-  const now = new Date();
-  const endOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 23, 59, 59, 999);
-  const endOfWeek = new Date(now.getFullYear(), now.getMonth(), now.getDate() + 7, 23, 59, 59, 999);
-
-  const dueItems = workItems.filter((w) => w.status !== 'COMPLETED' && w.due_date);
-  const todayItems = [];
-  const weekItems = [];
-  const upcomingItems = [];
-
-  dueItems.forEach((w) => {
-    const due = new Date(w.due_date);
-    const projName = w.project?.name || 'Personal / General';
-    const assigneeName = w.assignees?.map((a) => a.name || a.email).join(', ') || 'Assigned Team';
-    const itemData = {
-      id: w.id,
-      title: w.title,
-      subtitle: `${projName} • Assignee: ${assigneeName}`,
-      tag: w.priority || 'NORMAL',
-      tagType: w.priority === 'HIGH' || w.priority === 'URGENT' ? 'danger' : 'purple',
-      dueTime: due.toLocaleDateString('en-US', { month: 'short', day: 'numeric' }),
-    };
-
-    if (due <= endOfToday) {
-      todayItems.push(itemData);
-    } else if (due <= endOfWeek) {
-      weekItems.push(itemData);
-    } else {
-      upcomingItems.push(itemData);
-    }
-  });
-
-  const dynamicDeadlines = [
-    ...(todayItems.length > 0 ? [{ group: 'TODAY', items: todayItems }] : []),
-    ...(weekItems.length > 0 ? [{ group: 'THIS WEEK', items: weekItems }] : []),
-    ...(upcomingItems.length > 0 ? [{ group: 'UPCOMING', items: upcomingItems }] : []),
-  ];
-
   return (
     <div className="space-y-6">
       {/* Primary 4 Metric Cards */}
@@ -196,21 +157,11 @@ export default function ManagerDashboardView({
           workItems={workItems}
         />
 
-
-        {/* Project Health & Upcoming Deadlines in balanced 2-column grid */}
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 items-start">
-          {/* Project Health Card */}
-          <ProjectHealth 
-            projects={dynamicProjectHealth}
-            onViewAll={() => onNavigate('projects')}
-          />
-
-          {/* Upcoming Deadlines Card */}
-          <UpcomingDeadlines 
-            deadlines={dynamicDeadlines}
-            onViewAll={() => onNavigate('tasks')}
-          />
-        </div>
+        {/* Project Health Card */}
+        <ProjectHealth 
+          projects={dynamicProjectHealth}
+          onViewAll={() => onNavigate('projects')}
+        />
       </div>
     </div>
   );

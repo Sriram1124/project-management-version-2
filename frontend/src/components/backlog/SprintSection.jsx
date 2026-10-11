@@ -33,6 +33,7 @@ export default function SprintSection({
   onCreateIssueInSprint,
   onCompleteSprint,
   onStartSprint,
+  hasActiveFilters = false,
 }) {
   const [isSectionOpen, setIsSectionOpen] = useState(true);
   const [isDragOver, setIsDragOver] = useState(false);
@@ -144,7 +145,12 @@ export default function SprintSection({
             <button
               type="button"
               onClick={() => onStartSprint?.(sprint.id)}
-              className="px-2.5 py-1 rounded-md border border-purple-200 bg-purple-50 hover:bg-purple-100 text-purple-700 text-xs font-semibold transition-colors flex items-center gap-1"
+              title={
+                sprints?.find((s) => s.id !== sprint.id && s.status === 'ACTIVE')
+                  ? `Cannot start sprint: Sprint "${sprints.find((s) => s.id !== sprint.id && s.status === 'ACTIVE').name}" is currently active`
+                  : `Start ${sprint.name}`
+              }
+              className="px-2.5 py-1 rounded-md border border-purple-200 bg-purple-50 hover:bg-purple-100 text-purple-700 text-xs font-semibold transition-colors flex items-center gap-1 cursor-pointer"
             >
               <Play className="w-3 h-3 fill-purple-600 text-purple-600" />
               <span>Start sprint</span>
@@ -183,6 +189,7 @@ export default function SprintSection({
           expandedIds={expandedIds}
           onToggleExpand={onToggleExpand}
           isHierarchical={true}
+          hasActiveFilters={hasActiveFilters}
           onDragStart={onDragStart}
           onDragEnd={onDragEnd}
           emptyMessage={`No issues in ${sprint.name}. Drag issues here or click Create to add one.`}

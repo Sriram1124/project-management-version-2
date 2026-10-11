@@ -1,5 +1,5 @@
-import React, { useState } from 'react';
-import { X, Calendar, Play, Loader2, AlertCircle, Check } from 'lucide-react';
+import React, { useState, useMemo } from 'react';
+import { X, Calendar, Play, Loader2, AlertCircle, Check, Info } from 'lucide-react';
 import { sprintsService } from '../../services/sprints.service';
 
 export default function CreateSprintModal({
@@ -7,6 +7,7 @@ export default function CreateSprintModal({
   onClose,
   projectId,
   projectName = '',
+  existingSprints = [],
   onSuccess,
 }) {
   const [name, setName] = useState('');
@@ -15,6 +16,25 @@ export default function CreateSprintModal({
   const [endDate, setEndDate] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState('');
+
+  // Subtle overlap indicator calculation (does not block sprint creation)
+  const overlappingSprints = useMemo(() => {
+    if (!startDate || !endDate || !existingSprints?.length) return [];
+    const newStart = new Date(startDate).getTime();
+    const newEnd = new Date(endDate).getTime();
+    if (isNaN(newStart) || isNaN(newEnd) || newStart > newEnd) return [];
+
+    return existingSprints.filter((s) => {
+      const sStartVal = s.start_date || s.startDate;
+      const sEndVal = s.end_date || s.endDate;
+      if (!sStartVal || !sEndVal) return false;
+      const sStart = new Date(sStartVal).getTime();
+      const sEnd = new Date(sEndVal).getTime();
+      if (isNaN(sStart) || isNaN(sEnd)) return false;
+
+      return newStart <= sEnd && newEnd >= sStart;
+    });
+  }, [startDate, endDate, existingSprints]);
 
   if (!isOpen) return null;
 
@@ -127,7 +147,7 @@ export default function CreateSprintModal({
                 type="date"
                 value={startDate}
                 onChange={(e) => setStartDate(e.target.value)}
-                className="w-full px-3 py-2 text-xs bg-slate-50 border border-slate-200 rounded-xl text-slate-800 focus:bg-white focus:outline-hidden focus:ring-2 focus:ring-purple-500/20 focus:border-purple-500 transition-all"
+                className="w-full px-3 py-2 text-xs bg-slate-50 border border-slate-200 rounded-xl text-slate-800 focus:bg-white focus:outline-hidden focus:ring-2 focus:ring-purple-500/20 focus:border-purple-500 transition-all cursor-pointer"
               />
             </div>
             <div>
@@ -138,10 +158,25 @@ export default function CreateSprintModal({
                 type="date"
                 value={endDate}
                 onChange={(e) => setEndDate(e.target.value)}
-                className="w-full px-3 py-2 text-xs bg-slate-50 border border-slate-200 rounded-xl text-slate-800 focus:bg-white focus:outline-hidden focus:ring-2 focus:ring-purple-500/20 focus:border-purple-500 transition-all"
+                className="w-full px-3 py-2 text-xs bg-slate-50 border border-slate-200 rounded-xl text-slate-800 focus:bg-white focus:outline-hidden focus:ring-2 focus:ring-purple-500/20 focus:border-purple-500 transition-all cursor-pointer"
               />
             </div>
           </div>
+
+          {/* Subtle Overlap Indicator (does not block sprint creation) */}
+          {overlappingSprints.length > 0 && (
+            <div className="p-3 bg-amber-50/90 border border-amber-200/90 text-amber-900 rounded-xl text-xs flex items-start gap-2.5 animate-in fade-in">
+              <Info className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
+              <div className="space-y-0.5">
+                <div className="font-semibold text-amber-900">
+                  Overlapping Schedule Notice
+                </div>
+                <div className="text-[11px] text-amber-700 leading-relaxed">
+                  Dates overlap with {overlappingSprints.map((s) => `"${s.name}"`).join(', ')}. Multiple planned sprints are allowed, but only one sprint can be active at a time.
+                </div>
+              </div>
+            </div>
+          )}
 
           {/* Footer buttons */}
           <div className="pt-3 border-t border-slate-100 flex items-center justify-end gap-2.5">

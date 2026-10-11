@@ -23,12 +23,8 @@ export default function LoginView({ onLogin }) {
   return (
     <div className="min-h-screen bg-[#f7f4ff] px-4 py-10 text-slate-900">
       <div className="mx-auto max-w-5xl rounded-[32px] border border-violet-200 bg-white/80 p-6 shadow-[0_32px_80px_rgba(109,40,217,0.08)] backdrop-blur-md sm:p-8 lg:p-10">
-        <div className="mb-8 flex items-center gap-3">
-          <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-violet-600 text-lg font-black text-white shadow-lg shadow-violet-200">D</div>
-          <div>
-            <div className="text-[10px] font-bold uppercase tracking-[0.28em] text-violet-500">Dailoqa</div>
-            <div className="text-xl font-semibold">Sign In</div>
-          </div>
+        <div className="mb-8">
+          <div className="text-xl font-bold tracking-tight text-slate-900">Project Management</div>
         </div>
 
         <div className="grid gap-6 lg:grid-cols-[1.1fr_0.9fr]">

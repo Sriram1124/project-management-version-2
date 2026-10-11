@@ -138,7 +138,7 @@ export default function TasksView({ projectId = null, onToast }) {
   };
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-4 min-w-0 max-w-full">
       {/* Top Header & Search Bar */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-white p-4 rounded-xl border border-slate-200/80 shadow-xs">
         <div>
@@ -198,7 +198,7 @@ export default function TasksView({ projectId = null, onToast }) {
       {/* Filter Tabs & Issue Type Row */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-200 pb-2">
         {/* Status Tabs */}
-        <div className="flex items-center gap-1.5 overflow-x-auto">
+        <div className="flex items-center gap-1.5 overflow-x-auto min-w-0 max-w-full">
           {STATUS_TABS.map((tab) => (
             <button
               key={tab.id}
@@ -271,23 +271,27 @@ export default function TasksView({ projectId = null, onToast }) {
           </div>
         </div>
       ) : (
-        <div className="bg-white rounded-xl border border-slate-200 overflow-hidden shadow-xs">
-          <div className="overflow-x-auto">
-            <table className="w-full text-left text-xs border-collapse">
+        <div className="bg-white rounded-xl border border-slate-200 overflow-hidden shadow-xs min-w-0 max-w-full">
+          <div className="overflow-x-auto min-w-0 max-w-full">
+            <table className="w-full text-left text-xs border-collapse table-auto md:table-fixed">
               <thead className="bg-slate-50 border-b border-slate-200 text-slate-500 font-semibold uppercase tracking-wider text-[10px]">
                 <tr>
-                  <th className="py-2.5 px-3.5 w-16">Type</th>
-                  <th className="py-2.5 px-3.5">Title</th>
-                  <th className="py-2.5 px-3.5">Project</th>
-                  <th className="py-2.5 px-3.5">Assignees</th>
-                  <th className="py-2.5 px-3.5">Priority</th>
-                  <th className="py-2.5 px-3.5">Status</th>
-                  <th className="py-2.5 px-3.5">Due Date</th>
+                  <th className="py-2.5 px-3.5 w-18 md:w-20 shrink-0">Type</th>
+                  <th className="py-2.5 px-3.5 md:w-[32%] min-w-[150px]">Title</th>
+                  <th className="py-2.5 px-3.5 md:w-[16%] min-w-[100px]">Project</th>
+                  <th className="py-2.5 px-3.5 md:w-[18%] min-w-[110px]">Assignees</th>
+                  <th className="py-2.5 px-3.5 w-20 md:w-24 shrink-0">Priority</th>
+                  <th className="py-2.5 px-3.5 w-24 md:w-28 shrink-0">Status</th>
+                  <th className="py-2.5 px-3.5 w-24 md:w-28 shrink-0">Due Date</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100 font-medium">
                 {filteredTasks.map((task) => {
                   const isOverdue = task.is_overdue || workItemsService.isOverdue(task);
+                  const assigneesText = task.assignees && task.assignees.length > 0
+                    ? task.assignees.map((a) => a.name || a.email || 'Member').join(', ')
+                    : 'Unassigned';
+
                   return (
                     <tr
                       key={task.id}
@@ -295,7 +299,7 @@ export default function TasksView({ projectId = null, onToast }) {
                       className="hover:bg-purple-50/40 transition-colors cursor-pointer group"
                     >
                       {/* Type Badge */}
-                      <td className="py-2.5 px-3.5">
+                      <td className="py-2.5 px-3.5 whitespace-nowrap">
                         <span
                           className={`px-2 py-0.5 rounded text-[9px] font-bold uppercase tracking-wider border ${getTypeStyle(
                             task.type
@@ -306,44 +310,54 @@ export default function TasksView({ projectId = null, onToast }) {
                       </td>
 
                       {/* Title & Parent Hierarchy indicator */}
-                      <td className="py-2.5 px-3.5">
-                        <div className="flex flex-col">
-                          <span className="text-slate-900 font-semibold group-hover:text-purple-700 transition-colors">
+                      <td className="py-2.5 px-3.5 min-w-0">
+                        <div className="flex flex-col min-w-0">
+                          <span
+                            className="text-slate-900 font-semibold group-hover:text-purple-700 transition-colors truncate block"
+                            title={task.title}
+                          >
                             {task.title}
                           </span>
                           {task.parent && (
-                            <span className="text-[10px] text-slate-400 flex items-center gap-1 mt-0.5">
-                              <span className="text-slate-300">↳</span>
-                              <span>[{task.parent.type}] {task.parent.title}</span>
+                            <span
+                              className="text-[10px] text-slate-400 flex items-center gap-1 mt-0.5 truncate"
+                              title={`[${task.parent.type}] ${task.parent.title}`}
+                            >
+                              <span className="text-slate-300 shrink-0">↳</span>
+                              <span className="truncate">[{task.parent.type}] {task.parent.title}</span>
                             </span>
                           )}
                         </div>
                       </td>
 
                       {/* Project */}
-                      <td className="py-2.5 px-3.5 text-slate-600">
-                        {task.project?.name || (
-                          <span className="text-[10px] text-purple-700 bg-purple-50 px-2 py-0.5 rounded-full font-semibold">
+                      <td className="py-2.5 px-3.5 text-slate-600 min-w-0">
+                        {task.project?.name ? (
+                          <span className="truncate block" title={task.project.name}>
+                            {task.project.name}
+                          </span>
+                        ) : (
+                          <span className="text-[10px] text-purple-700 bg-purple-50 px-2 py-0.5 rounded-full font-semibold whitespace-nowrap">
                             Personal
                           </span>
                         )}
                       </td>
 
                       {/* Assignees */}
-                      <td className="py-2.5 px-3.5">
+                      <td className="py-2.5 px-3.5 min-w-0">
                         {task.assignees && task.assignees.length > 0 ? (
-                          <div className="flex items-center gap-1">
-                            <span className="text-slate-700 text-xs">
-                              {task.assignees.map((a) => a.name || a.email || 'Member').join(', ')}
+                          <div className="flex items-center gap-1 min-w-0">
+                            <span className="text-slate-700 text-xs truncate block" title={assigneesText}>
+                              {assigneesText}
                             </span>
                           </div>
                         ) : (
-                          <span className="text-slate-400 italic text-[11px]">Unassigned</span>
+                          <span className="text-slate-400 italic text-[11px] whitespace-nowrap">Unassigned</span>
                         )}
                       </td>
 
                       {/* Priority */}
-                      <td className="py-2.5 px-3.5">
+                      <td className="py-2.5 px-3.5 whitespace-nowrap">
                         <span
                           className={`px-2 py-0.5 rounded text-[10px] font-medium border ${getPriorityStyle(
                             task.priority
@@ -354,7 +368,7 @@ export default function TasksView({ projectId = null, onToast }) {
                       </td>
 
                       {/* Status */}
-                      <td className="py-2.5 px-3.5">
+                      <td className="py-2.5 px-3.5 whitespace-nowrap">
                         <span
                           className={`px-2 py-0.5 rounded text-[10px] font-medium border ${getStatusBadge(
                             task.status
@@ -365,18 +379,18 @@ export default function TasksView({ projectId = null, onToast }) {
                       </td>
 
                       {/* Due Date & Overdue */}
-                      <td className="py-2.5 px-3.5">
+                      <td className="py-2.5 px-3.5 whitespace-nowrap">
                         <div className="flex items-center gap-1 text-[11px]">
                           {task.due_date ? (
                             <>
                               <Clock
-                                className={`w-3 h-3 ${isOverdue ? 'text-rose-600' : 'text-slate-400'}`}
+                                className={`w-3 h-3 shrink-0 ${isOverdue ? 'text-rose-600' : 'text-slate-400'}`}
                               />
                               <span className={isOverdue ? 'text-rose-600 font-bold' : 'text-slate-600'}>
                                 {new Date(task.due_date).toLocaleDateString()}
                               </span>
                               {isOverdue && (
-                                <span className="text-[9px] px-1 py-0.2 bg-rose-100 text-rose-700 font-bold rounded">
+                                <span className="text-[9px] px-1 py-0.2 bg-rose-100 text-rose-700 font-bold rounded shrink-0">
                                   OVERDUE
                                 </span>
                               )}
