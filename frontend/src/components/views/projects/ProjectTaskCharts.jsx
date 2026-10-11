@@ -23,6 +23,7 @@ import {
 } from 'lucide-react';
 import { workItemsService } from '../../../services/workItems.service';
 import { PROJECT_ROLE_LABELS } from '../../modals/AssignProjectRolesModal';
+import { useAuth } from '../../../context/AuthContext';
 
 const STATUS_CONFIG = {
   TODO: { label: 'To Do', color: '#94A3B8', bg: 'bg-slate-100', text: 'text-slate-700', border: 'border-slate-300' },
@@ -47,12 +48,18 @@ const TYPE_CONFIG = {
   BUG: { label: 'Bugs', color: '#DC2626' },
 };
 
-export default function ProjectTaskCharts({ projectId, members = [] }) {
+export default function ProjectTaskCharts({ projectId, members = [], readOnly = false }) {
+  const { user: authUser } = useAuth();
+  const isInternUser = readOnly || authUser?.role === 'INTERN';
+  const currentUserId = authUser?.id || authUser?.user_id;
+
   const [workItems, setWorkItems] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
-  const [viewMode, setViewMode] = useState('TASKS'); // 'TASKS' | 'PERFORMANCE' | 'BOTH'
-  const [selectedPerformanceFilter, setSelectedPerformanceFilter] = useState('ALL'); // 'ALL' | 'TECH_LEADS' | userId
+  const [viewMode, setViewMode] = useState(isInternUser ? 'PERFORMANCE' : 'TASKS'); // 'TASKS' | 'PERFORMANCE' | 'BOTH'
+  const [selectedPerformanceFilter, setSelectedPerformanceFilter] = useState(
+    isInternUser && currentUserId ? currentUserId : 'ALL'
+  ); // 'ALL' | 'TECH_LEADS' | userId
   const [isDropdownOpen, setIsDropdownOpen] = useState(false);
   const [memberSearchQuery, setMemberSearchQuery] = useState('');
   const dropdownRef = useRef(null);
@@ -89,6 +96,13 @@ export default function ProjectTaskCharts({ projectId, members = [] }) {
   useEffect(() => {
     fetchWorkItems();
   }, [projectId]);
+
+  useEffect(() => {
+    if (isInternUser && currentUserId) {
+      setSelectedPerformanceFilter(currentUserId);
+      setViewMode('PERFORMANCE');
+    }
+  }, [isInternUser, currentUserId]);
 
   // Tech leads set
   const techLeadUserIds = useMemo(() => {
@@ -372,13 +386,11 @@ export default function ProjectTaskCharts({ projectId, members = [] }) {
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-3 bg-white p-4 rounded-xl border border-slate-200/80 shadow-xs">
         <div>
           <h2 className="text-base font-bold text-slate-900 tracking-tight flex items-center gap-2">
-            {viewMode === 'PERFORMANCE' ? (
-              <Award className="w-4 h-4 text-purple-600" />
-            ) : (
-              <BarChart3 className="w-4 h-4 text-purple-600" />
-            )}
+            <Award className="w-4 h-4 text-purple-600" />
             <span>
-              {viewMode === 'PERFORMANCE'
+              {isInternUser
+                ? 'Your Performance & Deliverables'
+                : viewMode === 'PERFORMANCE'
                 ? 'Team Members & Tech Leads Performance'
                 : viewMode === 'BOTH'
                 ? 'Project Analytics & Team Performance'
@@ -386,91 +398,94 @@ export default function ProjectTaskCharts({ projectId, members = [] }) {
             </span>
           </h2>
           <p className="text-xs text-slate-500 mt-0.5">
-            {viewMode === 'PERFORMANCE'
+            {isInternUser
+              ? 'Your completion rate, active tasks, on-time delivery, and story points within this project'
+              : viewMode === 'PERFORMANCE'
               ? 'Individual completion rates, active work, and on-time delivery across team members'
               : 'Real-time status breakdowns, priority distribution, and velocity metrics from Supabase database'}
           </p>
         </div>
 
-        <div className="flex flex-wrap items-center gap-2.5">
-          {/* Segmented View Mode Toggle: Tasks & Graphs vs Team Performance vs Both */}
-          <div className="inline-flex items-center p-1 rounded-xl bg-slate-100 border border-slate-200/70 text-xs font-semibold">
-            <button
-              type="button"
-              onClick={() => setViewMode('TASKS')}
-              className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg transition-all cursor-pointer ${
-                viewMode === 'TASKS'
-                  ? 'bg-white text-purple-700 font-bold shadow-xs'
-                  : 'text-slate-600 hover:text-slate-900'
-              }`}
-            >
-              <BarChart3 className="w-3.5 h-3.5" />
-              <span>Tasks & Graphs</span>
-            </button>
-            <button
-              type="button"
-              onClick={() => setViewMode('PERFORMANCE')}
-              className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg transition-all cursor-pointer ${
-                viewMode === 'PERFORMANCE'
-                  ? 'bg-white text-purple-700 font-bold shadow-xs'
-                  : 'text-slate-600 hover:text-slate-900'
-              }`}
-            >
-              <Award className="w-3.5 h-3.5" />
-              <span>Team Performance</span>
-            </button>
-            <button
-              type="button"
-              onClick={() => setViewMode('BOTH')}
-              className={`inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg transition-all cursor-pointer hidden lg:inline-flex ${
-                viewMode === 'BOTH'
-                  ? 'bg-white text-purple-700 font-bold shadow-xs'
-                  : 'text-slate-600 hover:text-slate-900'
-              }`}
-            >
-              <span>Both</span>
-            </button>
-          </div>
-
-          {/* Members Performance Dropdown */}
-          <div className="relative" ref={dropdownRef}>
-            <div className="inline-flex items-center rounded-xl border shadow-2xs overflow-hidden transition-all bg-white border-slate-200">
+        {!isInternUser && (
+          <div className="flex flex-wrap items-center gap-2.5">
+            {/* Segmented View Mode Toggle: Tasks & Graphs vs Team Performance vs Both */}
+            <div className="inline-flex items-center p-1 rounded-xl bg-slate-100 border border-slate-200/70 text-xs font-semibold">
               <button
                 type="button"
-                onClick={() => setIsDropdownOpen(!isDropdownOpen)}
-                className={`inline-flex items-center gap-2 px-3.5 py-1.5 text-xs font-bold transition-all cursor-pointer ${
-                  selectedPerformanceFilter !== 'ALL'
-                    ? 'bg-purple-50 text-purple-900'
-                    : 'text-slate-700 hover:bg-slate-50'
+                onClick={() => setViewMode('TASKS')}
+                className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg transition-all cursor-pointer ${
+                  viewMode === 'TASKS'
+                    ? 'bg-white text-purple-700 font-bold shadow-xs'
+                    : 'text-slate-600 hover:text-slate-900'
                 }`}
               >
-                <UserCheck className="w-3.5 h-3.5 text-purple-600" />
-                <span>
-                  {selectedPerformanceFilter === 'ALL'
-                    ? 'All Scope'
-                    : selectedPerformanceFilter === 'TECH_LEADS'
-                    ? 'Scope: Tech Leads'
-                    : `Scope: ${memberPerformanceMap.get(selectedPerformanceFilter)?.name || 'Selected Member'}`}
-                </span>
-                <ChevronDown className="w-3.5 h-3.5 text-slate-400 ml-0.5" />
+                <BarChart3 className="w-3.5 h-3.5" />
+                <span>Tasks & Graphs</span>
               </button>
+              <button
+                type="button"
+                onClick={() => setViewMode('PERFORMANCE')}
+                className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg transition-all cursor-pointer ${
+                  viewMode === 'PERFORMANCE'
+                    ? 'bg-white text-purple-700 font-bold shadow-xs'
+                    : 'text-slate-600 hover:text-slate-900'
+                }`}
+              >
+                <Award className="w-3.5 h-3.5" />
+                <span>Team Performance</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => setViewMode('BOTH')}
+                className={`inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg transition-all cursor-pointer hidden lg:inline-flex ${
+                  viewMode === 'BOTH'
+                    ? 'bg-white text-purple-700 font-bold shadow-xs'
+                    : 'text-slate-600 hover:text-slate-900'
+                }`}
+              >
+                <span>Both</span>
+              </button>
+            </div>
 
-              {/* Reset to All Project Tasks button if filter is active */}
-              {selectedPerformanceFilter !== 'ALL' && (
+            {/* Members Performance Dropdown */}
+            <div className="relative" ref={dropdownRef}>
+              <div className="inline-flex items-center rounded-xl border shadow-2xs overflow-hidden transition-all bg-white border-slate-200">
                 <button
                   type="button"
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    setSelectedPerformanceFilter('ALL');
-                    setIsDropdownOpen(false);
-                  }}
-                  title="Reset to All Project Tasks & Graphs"
-                  className="px-2 py-1.5 bg-purple-100 hover:bg-purple-200 text-purple-700 border-l border-purple-200 transition-colors cursor-pointer"
+                  onClick={() => setIsDropdownOpen(!isDropdownOpen)}
+                  className={`inline-flex items-center gap-2 px-3.5 py-1.5 text-xs font-bold transition-all cursor-pointer ${
+                    selectedPerformanceFilter !== 'ALL'
+                      ? 'bg-purple-50 text-purple-900'
+                      : 'text-slate-700 hover:bg-slate-50'
+                  }`}
                 >
-                  <X className="w-3.5 h-3.5" />
+                  <UserCheck className="w-3.5 h-3.5 text-purple-600" />
+                  <span>
+                    {selectedPerformanceFilter === 'ALL'
+                      ? 'All Scope'
+                      : selectedPerformanceFilter === 'TECH_LEADS'
+                      ? 'Scope: Tech Leads'
+                      : `Scope: ${memberPerformanceMap.get(selectedPerformanceFilter)?.name || 'Selected Member'}`}
+                  </span>
+                  <ChevronDown className="w-3.5 h-3.5 text-slate-400 ml-0.5" />
                 </button>
-              )}
-            </div>
+
+                {/* Reset to All Project Tasks button if filter is active */}
+                {selectedPerformanceFilter !== 'ALL' && (
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setSelectedPerformanceFilter('ALL');
+                      setIsDropdownOpen(false);
+                    }}
+                    title="Reset to All Project Tasks & Graphs"
+                    className="px-2 py-1.5 bg-purple-100 hover:bg-purple-200 text-purple-700 border-l border-purple-200 transition-colors cursor-pointer"
+                  >
+                    <X className="w-3.5 h-3.5" />
+                  </button>
+                )}
+              </div>
 
             {isDropdownOpen && (
               <div className="absolute right-0 top-full mt-1.5 w-72 rounded-xl bg-white border border-slate-200 shadow-xl p-2 z-30 text-slate-800 animate-in fade-in slide-in-from-top-1 duration-150">
@@ -627,6 +642,7 @@ export default function ProjectTaskCharts({ projectId, members = [] }) {
             )}
           </div>
 
+          {/* Refresh button */}
           <button
             type="button"
             onClick={fetchWorkItems}
@@ -637,7 +653,8 @@ export default function ProjectTaskCharts({ projectId, members = [] }) {
             <span>Refresh</span>
           </button>
         </div>
-      </div>
+      )}
+    </div>
 
       {/* KPI Highlight Cards & Main Charts (Visible in Tasks & Graphs or Both view) */}
       {(viewMode === 'TASKS' || viewMode === 'BOTH') && (
@@ -887,18 +904,28 @@ export default function ProjectTaskCharts({ projectId, members = [] }) {
           {/* Performance Summary Metrics Strip */}
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
             <div className="bg-white p-3.5 rounded-xl border border-slate-200/80 shadow-2xs">
-              <div className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Members Tracked</div>
-              <div className="text-xl font-bold text-slate-900 mt-1">{performanceRows.length}</div>
-              <div className="text-[10px] text-slate-400 mt-0.5">{techLeadUserIds.size} tech leads</div>
+              <div className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">
+                {isInternUser ? 'Your Assigned Tasks' : 'Members Tracked'}
+              </div>
+              <div className="text-xl font-bold text-slate-900 mt-1">
+                {isInternUser
+                  ? performanceRows.reduce((acc, r) => acc + r.totalAssigned, 0)
+                  : performanceRows.length}
+              </div>
+              <div className="text-[10px] text-slate-400 mt-0.5">
+                {isInternUser ? 'In this project' : `${techLeadUserIds.size} tech leads`}
+              </div>
             </div>
             <div className="bg-white p-3.5 rounded-xl border border-slate-200/80 shadow-2xs">
-              <div className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Avg Completion Rate</div>
+              <div className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Completion Rate</div>
               <div className="text-xl font-bold text-purple-700 mt-1">
                 {performanceRows.length > 0 
                   ? Math.round(performanceRows.reduce((acc, r) => acc + r.completionRate, 0) / performanceRows.length)
                   : 0}%
               </div>
-              <div className="text-[10px] text-slate-400 mt-0.5">Across active assignees</div>
+              <div className="text-[10px] text-slate-400 mt-0.5">
+                {isInternUser ? 'Your progress' : 'Across active assignees'}
+              </div>
             </div>
             <div className="bg-white p-3.5 rounded-xl border border-slate-200/80 shadow-2xs">
               <div className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Total Completed</div>
@@ -912,7 +939,9 @@ export default function ProjectTaskCharts({ projectId, members = [] }) {
               <div className="text-xl font-bold text-rose-600 mt-1">
                 {performanceRows.reduce((acc, r) => acc + r.pastDue, 0)}
               </div>
-              <div className="text-[10px] text-slate-400 mt-0.5">Requires follow-up</div>
+              <div className="text-[10px] text-slate-400 mt-0.5">
+                {isInternUser ? 'Needs attention' : 'Requires follow-up'}
+              </div>
             </div>
           </div>
 
@@ -921,14 +950,16 @@ export default function ProjectTaskCharts({ projectId, members = [] }) {
               <div className="flex items-center gap-2">
                 <Award className="w-4 h-4 text-purple-600" />
                 <h3 className="text-xs font-bold text-slate-800 uppercase tracking-wider">
-                  {selectedPerformanceFilter === 'TECH_LEADS'
+                  {isInternUser
+                    ? 'Your Personal Performance Breakdown'
+                    : selectedPerformanceFilter === 'TECH_LEADS'
                     ? 'Tech Leads Performance & Task Delivery'
                     : selectedPerformanceFilter !== 'ALL'
                     ? `${memberPerformanceMap.get(selectedPerformanceFilter)?.name || 'Member'} — Task Performance Record`
                     : 'Team Members & Tech Leads Performance Directory'}
                 </h3>
                 <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-purple-100 text-purple-700">
-                  {performanceRows.length} {performanceRows.length === 1 ? 'Tracked' : 'Tracked'}
+                  {isInternUser ? 'You' : `${performanceRows.length} Tracked`}
                 </span>
               </div>
               <div className="text-[11px] text-slate-400">

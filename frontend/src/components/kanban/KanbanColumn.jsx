@@ -10,6 +10,7 @@ export default function KanbanColumn({
   onDragStart,
   onDragEnd,
   onDropTask,
+  readOnly = false,
 }) {
   const [isDragOver, setIsDragOver] = useState(false);
 
@@ -60,13 +61,15 @@ export default function KanbanColumn({
           </span>
         </div>
 
-        <button
-          onClick={() => onAddTask?.(column.id)}
-          title={`Add task to ${column.title}`}
-          className="w-5 h-5 rounded text-slate-400 hover:text-slate-700 hover:bg-white flex items-center justify-center transition-colors border border-transparent hover:border-slate-200"
-        >
-          <Plus className="w-3.5 h-3.5" />
-        </button>
+        {!readOnly && (
+          <button
+            onClick={() => onAddTask?.(column.id)}
+            title={`Add task to ${column.title}`}
+            className="w-5 h-5 rounded text-slate-400 hover:text-slate-700 hover:bg-white flex items-center justify-center transition-colors border border-transparent hover:border-slate-200"
+          >
+            <Plus className="w-3.5 h-3.5" />
+          </button>
+        )}
       </div>
 
       {/* Task List */}
@@ -76,21 +79,23 @@ export default function KanbanColumn({
             key={task.id}
             task={task}
             onClick={onTaskClick}
-            onDragStart={onDragStart}
-            onDragEnd={onDragEnd}
+            onDragStart={readOnly ? undefined : onDragStart}
+            onDragEnd={readOnly ? undefined : onDragEnd}
           />
         ))}
 
         {tasks.length === 0 && (
           <div className="h-28 rounded border border-dashed border-slate-200 flex flex-col items-center justify-center text-center p-2">
             <span className="text-xs text-slate-400">No tasks</span>
-            <button
-              onClick={() => onAddTask?.(column.id)}
-              className="mt-1 text-[11px] font-medium text-purple-700 hover:underline flex items-center gap-1"
-            >
-              <Plus className="w-3 h-3" />
-              <span>Create</span>
-            </button>
+            {!readOnly && (
+              <button
+                onClick={() => onAddTask?.(column.id)}
+                className="mt-1 text-[11px] font-medium text-purple-700 hover:underline flex items-center gap-1"
+              >
+                <Plus className="w-3 h-3" />
+                <span>Create</span>
+              </button>
+            )}
           </div>
         )}
       </div>

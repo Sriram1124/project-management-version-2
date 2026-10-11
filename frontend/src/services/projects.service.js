@@ -10,6 +10,11 @@ export const projectsService = {
     return res.projects || [];
   },
 
+  async getTechLeads() {
+    const res = await api.get('/projects/tech-leads');
+    return res.tech_leads || [];
+  },
+
   async getProjectById(id) {
     const res = await api.get(`/projects/${id}`);
     return res.project;

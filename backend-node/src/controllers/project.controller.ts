@@ -268,5 +268,15 @@ export class ProjectController {
       ProjectController.handleError(res, error);
     }
   }
+
+  static async getTechLeads(req: Request, res: Response): Promise<void> {
+    try {
+      const user = (req as any).fullUser;
+      const tech_leads = await ProjectService.getTechLeadsOverview(user);
+      res.status(200).json({ tech_leads });
+    } catch (error) {
+      ProjectController.handleError(res, error);
+    }
+  }
 }
 

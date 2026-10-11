@@ -85,7 +85,7 @@ function ImageThumbnail({ projectId, fileId, alt }) {
   );
 }
 
-export default function ProjectFilesSection({ projectId, projectName = '', onToast }) {
+export default function ProjectFilesSection({ projectId, projectName = '', onToast, readOnly = false }) {
   const [files, setFiles] = useState([]);
   const [previewFile, setPreviewFile] = useState(null);
   const [inspectDoc, setInspectDoc] = useState(null);
@@ -376,19 +376,21 @@ export default function ProjectFilesSection({ projectId, projectName = '', onToa
               multiple
               className="hidden"
             />
-            <button
-              type="button"
-              onClick={handleUploadClick}
-              disabled={uploading}
-              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold bg-purple-600 hover:bg-purple-700 text-white shadow-2xs transition-all active:scale-95 disabled:opacity-50 cursor-pointer"
-            >
-              {uploading ? (
-                <Loader2 className="w-3.5 h-3.5 animate-spin" />
-              ) : (
-                <UploadCloud className="w-3.5 h-3.5" />
-              )}
-              <span>{uploading ? 'Analyzing...' : 'Upload File'}</span>
-            </button>
+            {!readOnly && (
+              <button
+                type="button"
+                onClick={handleUploadClick}
+                disabled={uploading}
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold bg-purple-600 hover:bg-purple-700 text-white shadow-2xs transition-all active:scale-95 disabled:opacity-50 cursor-pointer"
+              >
+                {uploading ? (
+                  <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                ) : (
+                  <UploadCloud className="w-3.5 h-3.5" />
+                )}
+                <span>{uploading ? 'Analyzing...' : 'Upload File'}</span>
+              </button>
+            )}
           </div>
         </div>
       </div>
@@ -605,21 +607,25 @@ export default function ProjectFilesSection({ projectId, projectName = '', onToa
                       <Download className="w-3.5 h-3.5 text-slate-400" />
                       <span>Download</span>
                     </button>
-                    <button
-                      onClick={(e) => handleStartRename(file, e)}
-                      className="w-full px-3 py-1.5 text-left text-xs text-slate-700 hover:bg-slate-50 flex items-center gap-2"
-                    >
-                      <Pencil className="w-3.5 h-3.5 text-slate-400" />
-                      <span>Rename</span>
-                    </button>
-                    <div className="border-t border-slate-100 my-0.5" />
-                    <button
-                      onClick={(e) => handleDelete(file, e)}
-                      className="w-full px-3 py-1.5 text-left text-xs text-rose-600 hover:bg-rose-50 flex items-center gap-2"
-                    >
-                      <Trash2 className="w-3.5 h-3.5 text-rose-500" />
-                      <span>Delete</span>
-                    </button>
+                    {!readOnly && (
+                      <>
+                        <button
+                          onClick={(e) => handleStartRename(file, e)}
+                          className="w-full px-3 py-1.5 text-left text-xs text-slate-700 hover:bg-slate-50 flex items-center gap-2"
+                        >
+                          <Pencil className="w-3.5 h-3.5 text-slate-400" />
+                          <span>Rename</span>
+                        </button>
+                        <div className="border-t border-slate-100 my-0.5" />
+                        <button
+                          onClick={(e) => handleDelete(file, e)}
+                          className="w-full px-3 py-1.5 text-left text-xs text-rose-600 hover:bg-rose-50 flex items-center gap-2"
+                        >
+                          <Trash2 className="w-3.5 h-3.5 text-rose-500" />
+                          <span>Delete</span>
+                        </button>
+                      </>
+                    )}
                   </div>
                 )}
               </div>

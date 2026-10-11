@@ -38,7 +38,8 @@ export default function ProjectSprintWorkspaceTab({
   projectId, 
   selectedSprintId: propSelectedSprintId, 
   onBackToRoadmap, 
-  onToast 
+  onToast,
+  readOnly = false,
 }) {
   const { user: authUser } = useAuth();
   const [loading, setLoading] = useState(true);
@@ -493,49 +494,51 @@ export default function ProjectSprintWorkspaceTab({
             </div>
           </div>
 
-          {/* Action CTAs */}
-          <div className="flex items-center gap-2 self-start shrink-0">
-            {currentSprint?.status === 'PLANNED' && (
-              <button
-                onClick={() => handleStartSprint(currentSprint.id)}
-                disabled={startingSprint}
-                className="px-3 py-1.5 rounded-md bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-semibold transition-colors flex items-center gap-1.5 shadow-xs cursor-pointer disabled:opacity-50"
-              >
-                <Play className="w-3.5 h-3.5 fill-current" />
-                <span>Start Sprint</span>
-              </button>
-            )}
+          {/* Action CTAs (Hidden for readOnly) */}
+          {!readOnly && (
+            <div className="flex items-center gap-2 self-start shrink-0">
+              {currentSprint?.status === 'PLANNED' && (
+                <button
+                  onClick={() => handleStartSprint(currentSprint.id)}
+                  disabled={startingSprint}
+                  className="px-3 py-1.5 rounded-md bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-semibold transition-colors flex items-center gap-1.5 shadow-xs cursor-pointer disabled:opacity-50"
+                >
+                  <Play className="w-3.5 h-3.5 fill-current" />
+                  <span>Start Sprint</span>
+                </button>
+              )}
 
-            {currentSprint?.status === 'ACTIVE' && (
-              <button
-                onClick={() => setIsCompleteSprintOpen(true)}
-                className="px-3 py-1.5 rounded-md border border-slate-200 hover:bg-slate-50 text-slate-700 text-xs font-medium transition-colors flex items-center gap-1.5 cursor-pointer"
-              >
-                <Check className="w-3.5 h-3.5 text-slate-500" />
-                <span>Complete Sprint</span>
-              </button>
-            )}
+              {currentSprint?.status === 'ACTIVE' && (
+                <button
+                  onClick={() => setIsCompleteSprintOpen(true)}
+                  className="px-3 py-1.5 rounded-md border border-slate-200 hover:bg-slate-50 text-slate-700 text-xs font-medium transition-colors flex items-center gap-1.5 cursor-pointer"
+                >
+                  <Check className="w-3.5 h-3.5 text-slate-500" />
+                  <span>Complete Sprint</span>
+                </button>
+              )}
 
-            {currentSprint && (
+              {currentSprint && (
+                <button
+                  onClick={() => setEditingSprint(currentSprint)}
+                  className="px-2.5 py-1.5 rounded-md border border-slate-200 hover:bg-slate-50 text-slate-700 text-xs font-medium transition-colors flex items-center gap-1.5 cursor-pointer"
+                  title="Edit or delete current sprint"
+                >
+                  <Edit3 className="w-3.5 h-3.5 text-slate-500" />
+                  <span>Edit Sprint</span>
+                </button>
+              )}
+
               <button
-                onClick={() => setEditingSprint(currentSprint)}
+                onClick={() => setIsCreateSprintOpen(true)}
                 className="px-2.5 py-1.5 rounded-md border border-slate-200 hover:bg-slate-50 text-slate-700 text-xs font-medium transition-colors flex items-center gap-1.5 cursor-pointer"
-                title="Edit or delete current sprint"
+                title="Plan next sprint cycle"
               >
-                <Edit3 className="w-3.5 h-3.5 text-slate-500" />
-                <span>Edit Sprint</span>
+                <Plus className="w-3.5 h-3.5 text-slate-500" />
+                <span>New Sprint</span>
               </button>
-            )}
-
-            <button
-              onClick={() => setIsCreateSprintOpen(true)}
-              className="px-2.5 py-1.5 rounded-md border border-slate-200 hover:bg-slate-50 text-slate-700 text-xs font-medium transition-colors flex items-center gap-1.5 cursor-pointer"
-              title="Plan next sprint cycle"
-            >
-              <Plus className="w-3.5 h-3.5 text-slate-500" />
-              <span>New Sprint</span>
-            </button>
-          </div>
+            </div>
+          )}
         </div>
 
         {/* SPRINT BURNDOWN & HEALTH INLINE SECTIONS */}
@@ -662,7 +665,7 @@ export default function ProjectSprintWorkspaceTab({
                   <th className="py-2.5 px-3.5">Schedule Variance</th>
                   <th className="py-2.5 px-3.5">Scope & Points</th>
                   <th className="py-2.5 px-3.5">Completion Rate</th>
-                  <th className="py-2.5 px-3.5 text-right">Actions</th>
+                  {!readOnly && <th className="py-2.5 px-3.5 text-right">Actions</th>}
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
@@ -871,19 +874,21 @@ export default function ProjectSprintWorkspaceTab({
                         </div>
                       </td>
 
-                      {/* Action buttons */}
-                      <td className="py-3 px-3.5 text-right">
-                        <div className="flex items-center justify-end gap-1.5" onClick={(e) => e.stopPropagation()}>
-                          <button
-                            type="button"
-                            onClick={() => setEditingSprint(s)}
-                            className="p-1 text-slate-400 hover:text-slate-700 hover:bg-slate-100 rounded transition-colors"
-                            title="Edit or Delete Sprint"
-                          >
-                            <Edit3 className="w-3.5 h-3.5" />
-                          </button>
-                        </div>
-                      </td>
+                      {/* Action buttons (Hidden for readOnly) */}
+                      {!readOnly && (
+                        <td className="py-3 px-3.5 text-right">
+                          <div className="flex items-center justify-end gap-1.5" onClick={(e) => e.stopPropagation()}>
+                            <button
+                              type="button"
+                              onClick={() => setEditingSprint(s)}
+                              className="p-1 text-slate-400 hover:text-slate-700 hover:bg-slate-100 rounded transition-colors"
+                              title="Edit or Delete Sprint"
+                            >
+                              <Edit3 className="w-3.5 h-3.5" />
+                            </button>
+                          </div>
+                        </td>
+                      )}
                     </tr>
                   );
                 })}
@@ -972,13 +977,15 @@ export default function ProjectSprintWorkspaceTab({
                       {colTasks.length}
                     </span>
                   </div>
-                  <button
-                    onClick={() => handleOpenAddTask(col.id)}
-                    title={`Add task to ${col.title}`}
-                    className="p-1 rounded text-slate-400 hover:text-slate-600 hover:bg-white transition-colors cursor-pointer"
-                  >
-                    <Plus className="w-3 h-3" />
-                  </button>
+                  {!readOnly && (
+                    <button
+                      onClick={() => handleOpenAddTask(col.id)}
+                      title={`Add task to ${col.title}`}
+                      className="p-1 rounded text-slate-400 hover:text-slate-600 hover:bg-white transition-colors cursor-pointer"
+                    >
+                      <Plus className="w-3 h-3" />
+                    </button>
+                  )}
                 </div>
 
                 {/* Compact Task Cards */}

@@ -25,7 +25,8 @@ export default function ProjectRoadmapTab({
   projectId, 
   project, 
   onOpenSprintBoard, 
-  onToast 
+  onToast,
+  readOnly = false,
 }) {
   const [loading, setLoading] = useState(true);
   const [sprints, setSprints] = useState([]);
@@ -407,16 +408,18 @@ export default function ProjectRoadmapTab({
         </div>
 
         {/* Right CTA: Create Sprint */}
-        <div className="flex items-center gap-2 shrink-0 self-end md:self-center">
-          <button
-            type="button"
-            onClick={() => setIsCreateSprintOpen(true)}
-            className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-purple-700 hover:bg-purple-800 text-white text-xs font-semibold transition-colors cursor-pointer shadow-xs"
-          >
-            <Plus className="w-3.5 h-3.5" />
-            <span>Create Sprint</span>
-          </button>
-        </div>
+        {!readOnly && (
+          <div className="flex items-center gap-2 shrink-0 self-end md:self-center">
+            <button
+              type="button"
+              onClick={() => setIsCreateSprintOpen(true)}
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-purple-700 hover:bg-purple-800 text-white text-xs font-semibold transition-colors cursor-pointer shadow-xs"
+            >
+              <Plus className="w-3.5 h-3.5" />
+              <span>Create Sprint</span>
+            </button>
+          </div>
+        )}
       </div>
 
       {/* -------------------------------------------------------------
@@ -544,18 +547,20 @@ export default function ProjectRoadmapTab({
                         </span>
 
                         <div className="flex items-center gap-1 shrink-0 ml-1">
-                          {/* Edit Sprint Icon Button */}
-                          <button
-                            type="button"
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              setEditingSprint(sprint);
-                            }}
-                            title={`Edit ${sprint.name}`}
-                            className="p-1 rounded-md bg-black/15 hover:bg-black/30 active:bg-black/40 text-white transition-all cursor-pointer shrink-0"
-                          >
-                            <Edit3 className="w-3.5 h-3.5" />
-                          </button>
+                          {/* Edit Sprint Icon Button (Hidden when readOnly) */}
+                          {!readOnly && (
+                            <button
+                              type="button"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setEditingSprint(sprint);
+                              }}
+                              title={`Edit ${sprint.name}`}
+                              className="p-1 rounded-md bg-black/15 hover:bg-black/30 active:bg-black/40 text-white transition-all cursor-pointer shrink-0"
+                            >
+                              <Edit3 className="w-3.5 h-3.5" />
+                            </button>
+                          )}
 
                           {/* Open Sprint Board Button */}
                           <button
@@ -671,14 +676,16 @@ export default function ProjectRoadmapTab({
                       <ExternalLink className="w-3 h-3" />
                     </button>
 
-                    <button
-                      type="button"
-                      onClick={() => setEditingSprint(sprint)}
-                      className="px-3 py-1.5 rounded-lg bg-purple-600 hover:bg-purple-700 active:bg-purple-800 text-white text-xs font-bold transition-all flex items-center gap-1.5 shadow-2xs cursor-pointer"
-                    >
-                      <Calendar className="w-3.5 h-3.5" />
-                      <span>Set Dates</span>
-                    </button>
+                    {!readOnly && (
+                      <button
+                        type="button"
+                        onClick={() => setEditingSprint(sprint)}
+                        className="px-3 py-1.5 rounded-lg bg-purple-600 hover:bg-purple-700 active:bg-purple-800 text-white text-xs font-bold transition-all flex items-center gap-1.5 shadow-2xs cursor-pointer"
+                      >
+                        <Calendar className="w-3.5 h-3.5" />
+                        <span>Set Dates</span>
+                      </button>
+                    )}
                   </div>
                 </div>
               );
