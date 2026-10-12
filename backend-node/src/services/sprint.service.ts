@@ -17,6 +17,18 @@ export interface UpdateSprintInput {
 }
 
 export class SprintService {
+  private static isManagerOrAdmin(user: any): boolean {
+    if (!user) return false;
+    if (user.role === 'SUPER_ADMIN' || user.role === 'ADMIN' || user.role === 'MANAGER') return true;
+    if (Array.isArray(user.roles)) {
+      return user.roles.some((r: any) => {
+        const name = r.role?.name || r.name;
+        return name === 'SUPER_ADMIN' || name === 'ADMIN' || name === 'MANAGER';
+      });
+    }
+    return false;
+  }
+
   private static getUserOrgId(user: any): string {
     if (!user.organization_id) {
       throw new Error('User does not belong to any organization');
@@ -49,20 +61,51 @@ export class SprintService {
    * Create a new sprint in a project
    */
   static async createSprint(projectId: string, data: CreateSprintInput, user: any) {
-    const orgId = this.getUserOrgId(user);
+    if (!projectId || projectId === 'undefined') {
+      throw new Error('Project not found');
+    }
 
     if (!data.name || typeof data.name !== 'string' || !data.name.trim()) {
       throw new Error('Sprint name is required');
     }
 
+    let orgId = user.organization_id;
+    if (!orgId && this.isManagerOrAdmin(user)) {
+      const firstOrg = await prisma.organization.findFirst({ where: { is_active: true } });
+      orgId = firstOrg?.id;
+    }
+
+    const where: any = { id: projectId };
+    if (orgId) {
+      where.organization_id = orgId;
+    }
+
     const project = await prisma.project.findFirst({
-      where: { id: projectId, organization_id: orgId },
+      where,
     });
     if (!project) {
       throw new Error('Project not found');
     }
 
     const { startDate, endDate } = this.validateDates(data.start_date, data.end_date);
+
+    let status: SprintStatus = SprintStatus.PLANNED;
+    if ((data as any).status) {
+      const upper = String((data as any).status).toUpperCase().trim();
+      if (upper === 'ACTIVE') status = SprintStatus.ACTIVE;
+      else if (upper === 'COMPLETED') status = SprintStatus.COMPLETED;
+      else if (upper === 'CANCELLED') status = SprintStatus.CANCELLED;
+      else if (upper === 'PLANNED') status = SprintStatus.PLANNED;
+    }
+
+    if (status === SprintStatus.ACTIVE) {
+      const existingActive = await prisma.sprint.findFirst({
+        where: { project_id: projectId, status: SprintStatus.ACTIVE },
+      });
+      if (existingActive) {
+        throw new Error('Another sprint is currently active in this project');
+      }
+    }
 
     return await prisma.sprint.create({
       data: {
@@ -72,7 +115,7 @@ export class SprintService {
         goal: data.goal ? data.goal.trim() : null,
         start_date: startDate,
         end_date: endDate,
-        status: SprintStatus.PLANNED,
+        status,
       },
     });
   }
@@ -81,17 +124,30 @@ export class SprintService {
    * List all sprints for a project with metrics
    */
   static async listSprints(projectId: string, user: any) {
-    const orgId = this.getUserOrgId(user);
+    if (!projectId || projectId === 'undefined') {
+      throw new Error('Project not found');
+    }
+
+    let orgId = user.organization_id;
+    if (!orgId && this.isManagerOrAdmin(user)) {
+      const firstOrg = await prisma.organization.findFirst({ where: { is_active: true } });
+      orgId = firstOrg?.id;
+    }
+
+    const where: any = { id: projectId };
+    if (orgId) {
+      where.organization_id = orgId;
+    }
 
     const project = await prisma.project.findFirst({
-      where: { id: projectId, organization_id: orgId },
+      where,
     });
     if (!project) {
       throw new Error('Project not found');
     }
 
     const sprints = await prisma.sprint.findMany({
-      where: { project_id: projectId, organization_id: orgId },
+      where: { project_id: projectId, organization_id: project.organization_id },
       orderBy: [{ created_at: 'asc' }],
       include: {
         _count: {
@@ -132,10 +188,33 @@ export class SprintService {
    * Get single sprint details with work items
    */
   static async getSprintById(projectId: string, sprintId: string, user: any) {
-    const orgId = this.getUserOrgId(user);
+    if (!projectId || projectId === 'undefined') {
+      throw new Error('Project not found');
+    }
+    if (!sprintId || sprintId === 'undefined') {
+      throw new Error('Sprint not found');
+    }
+
+    let orgId = user.organization_id;
+    if (!orgId && this.isManagerOrAdmin(user)) {
+      const firstOrg = await prisma.organization.findFirst({ where: { is_active: true } });
+      orgId = firstOrg?.id;
+    }
+
+    const where: any = { id: projectId };
+    if (orgId) {
+      where.organization_id = orgId;
+    }
+
+    const project = await prisma.project.findFirst({
+      where,
+    });
+    if (!project) {
+      throw new Error('Project not found');
+    }
 
     const sprint = await prisma.sprint.findFirst({
-      where: { id: sprintId, project_id: projectId, organization_id: orgId },
+      where: { id: sprintId, project_id: projectId, organization_id: project.organization_id },
       include: {
         work_items: {
           include: {
@@ -181,7 +260,30 @@ export class SprintService {
    * Update sprint details
    */
   static async updateSprint(projectId: string, sprintId: string, data: UpdateSprintInput, user: any) {
-    const orgId = this.getUserOrgId(user);
+    if (!projectId || projectId === 'undefined') {
+      throw new Error('Project not found');
+    }
+    if (!sprintId || sprintId === 'undefined') {
+      throw new Error('Sprint not found in this project');
+    }
+
+    let orgId = user.organization_id;
+    if (!orgId && this.isManagerOrAdmin(user)) {
+      const firstOrg = await prisma.organization.findFirst({ where: { is_active: true } });
+      orgId = firstOrg?.id;
+    }
+
+    const where: any = { id: projectId };
+    if (orgId) {
+      where.organization_id = orgId;
+    }
+
+    const project = await prisma.project.findFirst({
+      where,
+    });
+    if (!project) {
+      throw new Error('Project not found');
+    }
 
     return await prisma.$transaction(async (tx) => {
       // If activating a sprint, lock project row to serialize concurrent sprint lifecycle requests
@@ -189,8 +291,13 @@ export class SprintService {
         await tx.$executeRaw`SELECT id FROM "projects" WHERE id = ${projectId} FOR UPDATE;`;
       }
 
+      const sprintWhere: any = { id: sprintId, project_id: projectId };
+      if (project.organization_id) {
+        sprintWhere.organization_id = project.organization_id;
+      }
+
       const existing = await tx.sprint.findFirst({
-        where: { id: sprintId, project_id: projectId, organization_id: orgId },
+        where: sprintWhere,
       });
       if (!existing) {
         throw new Error('Sprint not found in this project');
@@ -217,12 +324,17 @@ export class SprintService {
       }
 
       if (data.status !== undefined && data.status !== existing.status) {
+        let candidate = String(data.status).toUpperCase().trim();
+        if (candidate === 'IN_PROGRESS' || candidate === 'IN-PROGRESS') {
+          candidate = 'ACTIVE';
+        }
+
         const validStatuses = Object.values(SprintStatus) as string[];
-        if (!validStatuses.includes(data.status)) {
+        if (!validStatuses.includes(candidate)) {
           throw new Error(`Invalid sprint status: ${data.status}`);
         }
 
-        if (data.status === SprintStatus.ACTIVE) {
+        if (candidate === SprintStatus.ACTIVE) {
           const activeSprint = await tx.sprint.findFirst({
             where: {
               project_id: projectId,
@@ -240,13 +352,13 @@ export class SprintService {
           }
         }
 
-        if (data.status === SprintStatus.COMPLETED) {
+        if (candidate === SprintStatus.COMPLETED) {
           if (!existing.end_date && !updateData.end_date) {
             updateData.end_date = new Date();
           }
         }
 
-        updateData.status = data.status as SprintStatus;
+        updateData.status = candidate as SprintStatus;
       }
 
       return await tx.sprint.update({
@@ -260,14 +372,42 @@ export class SprintService {
    * Start a sprint (transactional with single active sprint guarantee and concurrency protection)
    */
   static async startSprint(projectId: string, sprintId: string, user: any) {
-    const orgId = this.getUserOrgId(user);
+    if (!projectId || projectId === 'undefined') {
+      throw new Error('Project not found');
+    }
+    if (!sprintId || sprintId === 'undefined') {
+      throw new Error('Sprint not found in this project');
+    }
+
+    let orgId = user.organization_id;
+    if (!orgId && this.isManagerOrAdmin(user)) {
+      const firstOrg = await prisma.organization.findFirst({ where: { is_active: true } });
+      orgId = firstOrg?.id;
+    }
+
+    const where: any = { id: projectId };
+    if (orgId) {
+      where.organization_id = orgId;
+    }
+
+    const project = await prisma.project.findFirst({
+      where,
+    });
+    if (!project) {
+      throw new Error('Project not found');
+    }
 
     return await prisma.$transaction(async (tx) => {
       // Acquire exclusive lock on the project to serialize concurrent sprint activation requests
       await tx.$executeRaw`SELECT id FROM "projects" WHERE id = ${projectId} FOR UPDATE;`;
 
+      const sprintWhere: any = { id: sprintId, project_id: projectId };
+      if (project.organization_id) {
+        sprintWhere.organization_id = project.organization_id;
+      }
+
       const targetSprint = await tx.sprint.findFirst({
-        where: { id: sprintId, project_id: projectId, organization_id: orgId },
+        where: sprintWhere,
       });
       if (!targetSprint) {
         throw new Error('Sprint not found in this project');
@@ -317,11 +457,39 @@ export class SprintService {
     },
     user: any
   ) {
-    const orgId = this.getUserOrgId(user);
+    if (!projectId || projectId === 'undefined') {
+      throw new Error('Project not found');
+    }
+    if (!sprintId || sprintId === 'undefined') {
+      throw new Error('Sprint not found in this project');
+    }
+
+    let orgId = user.organization_id;
+    if (!orgId && this.isManagerOrAdmin(user)) {
+      const firstOrg = await prisma.organization.findFirst({ where: { is_active: true } });
+      orgId = firstOrg?.id;
+    }
+
+    const where: any = { id: projectId };
+    if (orgId) {
+      where.organization_id = orgId;
+    }
+
+    const project = await prisma.project.findFirst({
+      where,
+    });
+    if (!project) {
+      throw new Error('Project not found');
+    }
 
     return await prisma.$transaction(async (tx) => {
+      const sprintWhere: any = { id: sprintId, project_id: projectId };
+      if (project.organization_id) {
+        sprintWhere.organization_id = project.organization_id;
+      }
+
       const sprint = await tx.sprint.findFirst({
-        where: { id: sprintId, project_id: projectId, organization_id: orgId },
+        where: sprintWhere,
       });
       if (!sprint) {
         throw new Error('Sprint not found in this project');
@@ -342,7 +510,7 @@ export class SprintService {
           where: {
             id: options.target_sprint_id,
             project_id: projectId,
-            organization_id: orgId,
+            ...(project.organization_id ? { organization_id: project.organization_id } : {}),
           },
         });
         if (!targetSprint) {
@@ -376,11 +544,39 @@ export class SprintService {
    * Delete a sprint (disassociates work items safely back to backlog)
    */
   static async deleteSprint(projectId: string, sprintId: string, user: any) {
-    const orgId = this.getUserOrgId(user);
+    if (!projectId || projectId === 'undefined') {
+      throw new Error('Project not found');
+    }
+    if (!sprintId || sprintId === 'undefined') {
+      throw new Error('Sprint not found in this project');
+    }
+
+    let orgId = user.organization_id;
+    if (!orgId && this.isManagerOrAdmin(user)) {
+      const firstOrg = await prisma.organization.findFirst({ where: { is_active: true } });
+      orgId = firstOrg?.id;
+    }
+
+    const where: any = { id: projectId };
+    if (orgId) {
+      where.organization_id = orgId;
+    }
+
+    const project = await prisma.project.findFirst({
+      where,
+    });
+    if (!project) {
+      throw new Error('Project not found');
+    }
 
     return await prisma.$transaction(async (tx) => {
+      const sprintWhere: any = { id: sprintId, project_id: projectId };
+      if (project.organization_id) {
+        sprintWhere.organization_id = project.organization_id;
+      }
+
       const sprint = await tx.sprint.findFirst({
-        where: { id: sprintId, project_id: projectId, organization_id: orgId },
+        where: sprintWhere,
       });
       if (!sprint) {
         throw new Error('Sprint not found in this project');

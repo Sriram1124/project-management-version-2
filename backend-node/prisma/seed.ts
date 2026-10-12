@@ -25,7 +25,8 @@ async function main() {
     'ATTENDANCE_READ', 'ATTENDANCE_CREATE', 'ATTENDANCE_UPDATE',
     'EVALUATION_READ', 'EVALUATION_CREATE', 'EVALUATION_UPDATE',
     'ORGANIZATION_READ', 'ORGANIZATION_CREATE', 'ORGANIZATION_UPDATE', 'ORGANIZATION_DELETE',
-    'DOCUMENT_UPLOAD'
+    'DOCUMENT_UPLOAD',
+    'NOTIFICATION_READ', 'NOTIFICATION_CREATE'
   ];
 
   for (const permName of permissions) {
@@ -44,14 +45,19 @@ async function main() {
   const techLeadRole = await prisma.role.findUnique({ where: { name: 'TECH_LEAD' } });
 
   const superAdminPerms = [
-    'ORGANIZATION_READ', 'ORGANIZATION_CREATE', 'ORGANIZATION_UPDATE', 'ORGANIZATION_DELETE'
+    'ORGANIZATION_READ', 'ORGANIZATION_CREATE', 'ORGANIZATION_UPDATE', 'ORGANIZATION_DELETE',
+    'USER_READ', 'USER_CREATE', 'USER_UPDATE', 'USER_DELETE',
+    'PROJECT_READ', 'PROJECT_CREATE', 'PROJECT_UPDATE', 'PROJECT_DELETE'
   ];
 
   const managerPerms = [
-    'USER_READ', 'USER_CREATE', 'USER_BULK_CREATE', 'PROJECT_READ', 'PROJECT_CREATE', 'PROJECT_UPDATE', 'PROJECT_DELETE',
+    'USER_READ', 'USER_CREATE', 'USER_BULK_CREATE', 'USER_UPDATE', 'USER_DELETE',
+    'PROJECT_READ', 'PROJECT_CREATE', 'PROJECT_UPDATE', 'PROJECT_DELETE',
     'TASK_READ', 'TASK_CREATE', 'TASK_UPDATE', 'TASK_DELETE', 'TASK_ASSIGN',
-    'FORM_READ', 'FORM_CREATE', 'FORM_UPDATE', 'EVALUATION_READ', 'EVALUATION_CREATE', 'EVALUATION_UPDATE',
-    'ATTENDANCE_READ', 'ATTENDANCE_CREATE', 'ATTENDANCE_UPDATE', 'DOCUMENT_UPLOAD'
+    'FORM_READ', 'FORM_CREATE', 'FORM_UPDATE', 'FORM_DELETE', 'FORM_SUBMIT',
+    'EVALUATION_READ', 'EVALUATION_CREATE', 'EVALUATION_UPDATE',
+    'ATTENDANCE_READ', 'ATTENDANCE_CREATE', 'ATTENDANCE_UPDATE', 'DOCUMENT_UPLOAD',
+    'NOTIFICATION_READ', 'NOTIFICATION_CREATE'
   ];
 
   const techLeadPerms = [
@@ -208,41 +214,44 @@ async function main() {
   
   const manager = await prisma.user.upsert({
     where: { email: 'manager@dailoqa.com' },
-    update: { organization_id: org.id },
+    update: { organization_id: org.id, password_hash: passwordHash, must_change_password: false, is_active: true },
     create: {
       name: 'Test Manager',
       email: 'manager@dailoqa.com',
       password_hash: passwordHash,
       organization_id: org.id,
+      must_change_password: false,
     },
   });
 
   const intern = await prisma.user.upsert({
     where: { email: 'intern@dailoqa.com' },
-    update: { organization_id: org.id, batch: 'Batch 2026-A' },
+    update: { organization_id: org.id, batch: 'Batch 2026-A', password_hash: passwordHash, must_change_password: false, is_active: true },
     create: {
       name: 'Test Intern',
       email: 'intern@dailoqa.com',
       password_hash: passwordHash,
       organization_id: org.id,
       batch: 'Batch 2026-A',
+      must_change_password: false,
     },
   });
 
   const lead = await prisma.user.upsert({
     where: { email: 'lead@dailoqa.com' },
-    update: { organization_id: org.id },
+    update: { organization_id: org.id, password_hash: passwordHash, must_change_password: false, is_active: true },
     create: {
       name: 'Alex Tech Lead',
       email: 'lead@dailoqa.com',
       password_hash: passwordHash,
       organization_id: org.id,
+      must_change_password: false,
     },
   });
 
   const superAdmin = await prisma.user.upsert({
     where: { email: 'superadmin@dailoqa.com' },
-    update: { organization_id: null },
+    update: { organization_id: null, password_hash: passwordHash, must_change_password: false, is_active: true },
     create: {
       name: 'Global Super Admin',
       email: 'superadmin@dailoqa.com',

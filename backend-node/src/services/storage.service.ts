@@ -3,7 +3,7 @@ import path from 'path';
 import crypto from 'crypto';
 
 export class StorageService {
-  private static getStorageRoot(): string {
+  static getStorageRoot(): string {
     const root = process.env.STORAGE_PATH || path.join(process.cwd(), 'storage');
     if (!fs.existsSync(root)) {
       fs.mkdirSync(root, { recursive: true });
@@ -47,7 +47,7 @@ export class StorageService {
   /**
    * Resolve physical file path from storage key
    */
-  static getFilePath(storageKey: string): string {
+  static getFilePath(storageKey: string, checkExists: boolean = true): string {
     const storageRoot = this.getStorageRoot();
     const resolvedPath = path.resolve(path.join(storageRoot, storageKey));
 
@@ -55,7 +55,7 @@ export class StorageService {
       throw new Error('Invalid file path traversal');
     }
 
-    if (!fs.existsSync(resolvedPath)) {
+    if (checkExists && !fs.existsSync(resolvedPath)) {
       throw new Error('File not found in storage');
     }
 

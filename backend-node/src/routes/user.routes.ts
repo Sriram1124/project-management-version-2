@@ -17,16 +17,16 @@ router.use(authenticate);
 router.get('/', requirePermission('USER_READ'), UserController.list);
 
 // Manager provisions individual user
-router.post('/', requireRole(['MANAGER']), UserController.create);
+router.post('/', requireRole(['MANAGER', 'ADMIN', 'SUPER_ADMIN']), UserController.create);
 
 // Manager downloads schema-aware CSV template
-router.get('/bulk/template', requireRole(['MANAGER']), UserController.getTemplate);
+router.get('/bulk/template', requireRole(['MANAGER', 'ADMIN', 'SUPER_ADMIN']), UserController.getTemplate);
 
 // Manager validates CSV for bulk preview
-router.post('/bulk/validate', requireRole(['MANAGER']), upload.single('file'), UserController.validateCsv);
+router.post('/bulk/validate', requireRole(['MANAGER', 'ADMIN', 'SUPER_ADMIN']), upload.any(), UserController.validateCsv);
 
 // Manager confirms bulk creation
-router.post('/bulk', requireRole(['MANAGER']), upload.single('file'), UserController.createBulk);
+router.post('/bulk', requireRole(['MANAGER', 'ADMIN', 'SUPER_ADMIN']), upload.any(), UserController.createBulk);
 
 // User updates own profile
 router.patch('/profile', UserController.updateProfile);
@@ -35,10 +35,10 @@ router.patch('/profile', UserController.updateProfile);
 router.get('/:userId/timesheet/report', requireRole(['MANAGER', 'ADMIN', 'SUPER_ADMIN']), TimesheetController.getIndividualReport);
 
 // Manager resets an organization user's password
-router.post('/:id/reset-password', requireRole(['MANAGER']), UserController.resetPassword);
+router.post('/:id/reset-password', requireRole(['MANAGER', 'ADMIN', 'SUPER_ADMIN']), UserController.resetPassword);
 
 // Manager deactivates an organization user
-router.post('/:id/deactivate', requireRole(['MANAGER']), UserController.deactivate);
+router.post('/:id/deactivate', requireRole(['MANAGER', 'ADMIN', 'SUPER_ADMIN']), UserController.deactivate);
 
 // Manager updates an organization member's permitted details (name, batch, subbatch)
 router.patch('/:id', requireRole(['MANAGER', 'ADMIN', 'SUPER_ADMIN']), UserController.updateMember);

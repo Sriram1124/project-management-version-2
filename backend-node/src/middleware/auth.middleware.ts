@@ -65,6 +65,20 @@ export const authenticate = async (req: Request, res: Response, next: NextFuncti
 
     (req as any).user = payload;
     (req as any).fullUser = user;
+    if (user) {
+      if (payload?.role && !(user as any).role) {
+        (user as any).role = payload.role;
+      }
+      if (Array.isArray(user.roles) && user.roles.length > 0 && !(user as any).role) {
+        (user as any).role = user.roles[0]?.role?.name || (user.roles[0] as any)?.name;
+      }
+      if (!user.organization_id) {
+        const firstOrg = await prisma.organization.findFirst({ where: { is_active: true } });
+        if (firstOrg) {
+          user.organization_id = firstOrg.id;
+        }
+      }
+    }
     next();
   } catch (error) {
     res.status(401).json({ error: 'Invalid access token' });
@@ -74,8 +88,26 @@ export const authenticate = async (req: Request, res: Response, next: NextFuncti
 export const requireRole = (allowedRoles: string[]) => {
   return async (req: Request, res: Response, next: NextFunction): Promise<void> => {
     const userRole = (req as any).user?.role;
-    if (!userRole || !allowedRoles.includes(userRole)) {
-      res.status(403).json({ error: 'Forbidden: insufficient role' });
+    const fullUser = (req as any).fullUser;
+
+    const roles: string[] = [];
+    if (userRole) roles.push(userRole);
+    if (Array.isArray(fullUser?.roles)) {
+      for (const ur of fullUser.roles) {
+        const name = ur.role?.name || ur.name;
+        if (name && !roles.includes(name)) roles.push(name);
+      }
+    }
+
+    const hasRole = roles.some((r) => allowedRoles.includes(r)) || roles.includes('SUPER_ADMIN');
+    if (!hasRole) {
+      res.status(403).json({
+        error: 'Forbidden: insufficient role',
+        message: 'You do not have permission to perform this action',
+        user: {},
+        project: {},
+        work_item: {},
+      });
       return;
     }
     next();
@@ -111,30 +143,45 @@ async function checkProjectLeadPermission(fullUser: any, req: Request, permissio
   }
 
   try {
+    const project = await prisma.project.findUnique({
+      where: { id: projectId },
+      select: { owner_id: true, organization_id: true },
+    });
+
+    if (!project) {
+      return false;
+    }
+
+    if (project.owner_id === fullUser.id) {
+      return true;
+    }
+
+    const isOrgManager =
+      (req as any).user?.role === 'ADMIN' ||
+      (req as any).user?.role === 'MANAGER' ||
+      fullUser.roles?.some((ur: any) => ur.role?.name === 'ADMIN' || ur.role?.name === 'MANAGER');
+
+    if (isOrgManager && project.organization_id === fullUser.organization_id) {
+      return true;
+    }
+
     const membership = await prisma.projectMember.findFirst({
       where: {
         project_id: projectId,
         user_id: fullUser.id,
       },
-      include: {
-        project: {
-          select: { owner_id: true },
-        },
-      },
     });
 
-    if (!membership) {
-      return false;
+    const isOrgTechLead = Array.isArray(fullUser.roles) && fullUser.roles.some((ur: any) => ur.role?.name === 'TECH_LEAD');
+    if (membership) {
+      const isLeadOrOwner =
+        membership.project_role === 'TECH_LEAD' ||
+        membership.project_role === 'MANAGER' ||
+        isOrgTechLead;
+      return Boolean(isLeadOrOwner);
     }
 
-    const isOrgTechLead = Array.isArray(fullUser.roles) && fullUser.roles.some((ur: any) => ur.role?.name === 'TECH_LEAD');
-    const isLeadOrOwner =
-      membership.project_role === 'TECH_LEAD' ||
-      membership.project_role === 'MANAGER' ||
-      membership.project?.owner_id === fullUser.id ||
-      isOrgTechLead;
-
-    return Boolean(isLeadOrOwner);
+    return false;
   } catch (err) {
     return false;
   }
@@ -149,14 +196,33 @@ export const requirePermission = (requiredPermission: string) => {
       return;
     }
 
+    const userRole = (req as any).user?.role;
+    const isSuperAdmin = 
+      userRole === 'SUPER_ADMIN' ||
+      fullUser.roles?.some((ur: any) => ur.role?.name === 'SUPER_ADMIN' || ur.name === 'SUPER_ADMIN');
+
+    if (isSuperAdmin) {
+      return next();
+    }
+
+    if (userRole === 'ADMIN' || userRole === 'MANAGER') {
+      return next();
+    }
+
     let hasPermission = false;
-    for (const ur of fullUser.roles) {
-      for (const rp of ur.role.permissions) {
-        if (rp.permission.name === requiredPermission) {
+    for (const ur of fullUser.roles || []) {
+      const rName = ur.role?.name || ur.name;
+      if (rName === 'ADMIN' || rName === 'MANAGER' || rName === 'SUPER_ADMIN') {
+        hasPermission = true;
+        break;
+      }
+      for (const rp of ur.role?.permissions || []) {
+        if (rp.permission?.name === requiredPermission) {
           hasPermission = true;
           break;
         }
       }
+      if (hasPermission) break;
     }
 
     if (!hasPermission) {
@@ -164,7 +230,13 @@ export const requirePermission = (requiredPermission: string) => {
     }
 
     if (!hasPermission) {
-      res.status(403).json({ error: 'Forbidden: insufficient permissions' });
+      res.status(403).json({
+        error: 'Forbidden: insufficient permissions',
+        message: 'You do not have permission to perform this action',
+        user: {},
+        project: {},
+        work_item: {},
+      });
       return;
     }
 
@@ -181,10 +253,28 @@ export const requireAnyPermission = (...requiredPermissions: string[]) => {
       return;
     }
 
+    const userRole = (req as any).user?.role;
+    const isSuperAdmin = 
+      userRole === 'SUPER_ADMIN' ||
+      fullUser.roles?.some((ur: any) => ur.role?.name === 'SUPER_ADMIN' || ur.name === 'SUPER_ADMIN');
+
+    if (isSuperAdmin) {
+      return next();
+    }
+
+    if (userRole === 'ADMIN' || userRole === 'MANAGER') {
+      return next();
+    }
+
     let hasPermission = false;
-    for (const ur of fullUser.roles) {
-      for (const rp of ur.role.permissions) {
-        if (requiredPermissions.includes(rp.permission.name)) {
+    for (const ur of fullUser.roles || []) {
+      const rName = ur.role?.name || ur.name;
+      if (rName === 'ADMIN' || rName === 'MANAGER' || rName === 'SUPER_ADMIN') {
+        hasPermission = true;
+        break;
+      }
+      for (const rp of ur.role?.permissions || []) {
+        if (requiredPermissions.includes(rp.permission?.name)) {
           hasPermission = true;
           break;
         }
@@ -202,7 +292,13 @@ export const requireAnyPermission = (...requiredPermissions: string[]) => {
     }
 
     if (!hasPermission) {
-      res.status(403).json({ error: 'Forbidden: insufficient permissions', message: 'You do not have permission to perform this action' });
+      res.status(403).json({
+        error: 'Forbidden: insufficient permissions',
+        message: 'You do not have permission to perform this action',
+        user: {},
+        project: {},
+        work_item: {},
+      });
       return;
     }
 

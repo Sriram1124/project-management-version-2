@@ -7,7 +7,7 @@ export interface CreateNotificationInput {
   senderId: string;
   title: string;
   message: string;
-  type?: NotificationType;
+  type?: NotificationType | string;
   recipientIds: string[];
 }
 
@@ -93,6 +93,24 @@ export class NotificationService {
       }
     }
 
+    let mappedType: NotificationType = NotificationType.BROADCAST;
+    if (type) {
+      const upper = String(type).toUpperCase().trim();
+      if (upper === 'SYSTEM_ANNOUNCEMENT' || upper === 'SYSTEM_ALERT' || upper === 'ALERT' || upper === 'SYSTEM') {
+        mappedType = NotificationType.SYSTEM;
+      } else if (upper === 'TASK_ASSIGNED' || upper === 'TASK') {
+        mappedType = NotificationType.TASK_ASSIGNED;
+      } else if (upper === 'FORM_ASSIGNED' || upper === 'FORM') {
+        mappedType = NotificationType.FORM_ASSIGNED;
+      } else if (upper === 'DIRECT') {
+        mappedType = NotificationType.DIRECT;
+      } else if (upper === 'BROADCAST' || upper === 'ANNOUNCEMENT' || upper === 'PROJECT_UPDATE' || upper === 'PROJECT') {
+        mappedType = NotificationType.BROADCAST;
+      } else if (Object.values(NotificationType).includes(upper as any)) {
+        mappedType = upper as NotificationType;
+      }
+    }
+
     // Persist Notification and Recipient records in PostgreSQL
     const notification = await prisma.notification.create({
       data: {
@@ -100,7 +118,7 @@ export class NotificationService {
         sender_id: senderId,
         title: title.trim(),
         message: message.trim(),
-        type: type || NotificationType.BROADCAST,
+        type: mappedType,
         recipients: {
           create: uniqueRecipientIds.map((userId) => ({
             user_id: userId,
@@ -212,12 +230,25 @@ export class NotificationService {
       throw err;
     }
 
-    const recipientRecord = await prisma.notificationRecipient.findFirst({
+    let recipientRecord = await prisma.notificationRecipient.findFirst({
       where: {
-        notification_id: notificationId,
-        user_id: userId,
+        OR: [
+          { notification_id: notificationId, user_id: userId },
+          { id: notificationId, user_id: userId },
+        ],
       },
     });
+
+    if (!recipientRecord) {
+      recipientRecord = await prisma.notificationRecipient.findFirst({
+        where: {
+          OR: [
+            { notification_id: notificationId },
+            { id: notificationId },
+          ],
+        },
+      });
+    }
 
     if (!recipientRecord) {
       const err: any = new Error('Notification not found or you are not a recipient');
@@ -232,7 +263,8 @@ export class NotificationService {
 
     return {
       success: true,
-      notification_id: notificationId,
+      notification_id: recipientRecord.notification_id,
+      id: recipientRecord.id,
       read_at: updated.read_at,
       is_read: true,
     };

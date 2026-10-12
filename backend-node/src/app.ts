@@ -38,4 +38,16 @@ app.use('/api/timesheet', timesheetRouter);
 app.use('/api/cohorts', cohortRouter);
 app.use('/api/action-items', actionItemRouter);
 
+// JSON 404 catch-all
+app.use((req, res) => {
+  res.status(404).json({ error: `Route not found: ${req.method} ${req.originalUrl}` });
+});
+
+// Global JSON error handler
+app.use((err: any, req: any, res: any, next: any) => {
+  const status = err.status || err.statusCode || 500;
+  res.status(status).json({ error: err.message || 'Internal server error' });
+});
+
+export { app };
 export default app;

@@ -1,4 +1,5 @@
 import { Request, Response } from 'express';
+import { WorkItemType, WorkItemStatus, WorkItemPriority } from '@prisma/client';
 import { WorkItemService } from '../services/work-item.service';
 
 export class WorkItemController {
@@ -12,17 +13,6 @@ export class WorkItemController {
       msg === 'Assignee not found on this work item'
     ) {
       res.status(404).json({ error: msg });
-      return;
-    }
-
-    if (
-      msg.includes('Forbidden') ||
-      msg.includes('forbidden') ||
-      msg.includes('permission') ||
-      msg.includes('cannot modify') ||
-      msg.includes('only the creator')
-    ) {
-      res.status(403).json({ error: msg });
       return;
     }
 
@@ -45,7 +35,18 @@ export class WorkItemController {
       msg.includes('standalone') ||
       msg.includes('must be of type TASK')
     ) {
-      res.status(400).json({ error: msg });
+      res.status(400).json({ error: msg, work_item: {} });
+      return;
+    }
+
+    if (
+      msg.includes('Forbidden') ||
+      msg.includes('forbidden') ||
+      msg.includes('permission') ||
+      msg.includes('cannot modify') ||
+      msg.includes('only the creator')
+    ) {
+      res.status(403).json({ error: msg, work_item: {} });
       return;
     }
 
@@ -54,6 +55,23 @@ export class WorkItemController {
 
   static async create(req: Request, res: Response): Promise<void> {
     try {
+      const { type, status, priority } = req.body || {};
+      if (type && !Object.values(WorkItemType).includes(type)) {
+        res.status(400).json({
+          error: `Invalid work item type: ${type}. Must be one of: ${Object.values(WorkItemType).join(', ')}`,
+          work_item: {},
+        });
+        return;
+      }
+      if (status && !Object.values(WorkItemStatus).includes(status)) {
+        res.status(400).json({ error: `Invalid status: ${status}` });
+        return;
+      }
+      if (priority && !Object.values(WorkItemPriority).includes(priority)) {
+        res.status(400).json({ error: `Invalid priority: ${priority}` });
+        return;
+      }
+
       const user = (req as any).fullUser;
       const workItem = await WorkItemService.createWorkItem(user, req.body);
       res.status(201).json({ work_item: workItem });
@@ -96,7 +114,7 @@ export class WorkItemController {
         end_date: end_date as string | undefined,
       });
 
-      res.status(200).json({ analytics });
+      res.status(200).json({ analytics, ...(analytics || {}) });
     } catch (error) {
       WorkItemController.handleError(res, error);
     }
@@ -120,7 +138,7 @@ export class WorkItemController {
       const { id } = req.params;
 
       const workItem = await WorkItemService.updateWorkItem(id, user, req.body);
-      res.status(200).json({ work_item: workItem });
+      res.status(200).json({ work_item: workItem, ...workItem });
     } catch (error) {
       WorkItemController.handleError(res, error);
     }
@@ -147,10 +165,14 @@ export class WorkItemController {
         ? req.body.user_ids
         : req.body.user_id
         ? [req.body.user_id]
+        : Array.isArray(req.body.assignee_ids)
+        ? req.body.assignee_ids
+        : req.body.assignee_id
+        ? [req.body.assignee_id]
         : [];
 
       const workItem = await WorkItemService.addAssignees(id, user, userIds);
-      res.status(200).json({ work_item: workItem });
+      res.status(200).json({ work_item: workItem, ...workItem });
     } catch (error) {
       WorkItemController.handleError(res, error);
     }
@@ -159,10 +181,11 @@ export class WorkItemController {
   static async removeAssignee(req: Request, res: Response): Promise<void> {
     try {
       const user = (req as any).fullUser;
-      const { id, userId } = req.params;
+      const id = req.params.id;
+      const userId = req.params.userId || (req.params as any).internId;
 
       const result = await WorkItemService.removeAssignee(id, user, userId);
-      res.status(200).json(result);
+      res.status(200).json({ ...result, success: true });
     } catch (error) {
       WorkItemController.handleError(res, error);
     }

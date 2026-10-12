@@ -48,6 +48,7 @@ router.patch('/:id/documents/:documentId', requirePermission('PROJECT_UPDATE'), 
 router.delete('/:id/documents/:documentId', requirePermission('PROJECT_UPDATE'), ProjectController.deleteDocument);
 router.post('/:id/documents/:documentId/reparse', requirePermission('PROJECT_UPDATE'), ProjectController.reparseDocument);
 router.patch('/:id/documents/:documentId/requirements/:requirementId', requirePermission('PROJECT_UPDATE'), ProjectController.updateRequirement);
+router.put('/:id/documents/:documentId/requirements/:requirementId', requirePermission('PROJECT_UPDATE'), ProjectController.updateRequirement);
 
 export { router as projectRouter };
 

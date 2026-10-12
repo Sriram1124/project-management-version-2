@@ -35,7 +35,13 @@ export class SprintController {
       const user = (req as any).fullUser;
       const { id: projectId } = req.params;
       const sprint = await SprintService.createSprint(projectId, req.body, user);
-      res.status(201).json({ sprint });
+      res.status(201).json({
+        ...sprint,
+        sprint,
+        id: sprint.id,
+        name: sprint.name,
+        status: sprint.status,
+      });
     } catch (error) {
       SprintController.handleError(res, error);
     }
@@ -46,7 +52,10 @@ export class SprintController {
       const user = (req as any).fullUser;
       const { id: projectId } = req.params;
       const sprints = await SprintService.listSprints(projectId, user);
-      res.status(200).json({ sprints });
+      res.status(200).json({
+        sprints,
+        data: sprints,
+      });
     } catch (error) {
       SprintController.handleError(res, error);
     }
@@ -57,7 +66,13 @@ export class SprintController {
       const user = (req as any).fullUser;
       const { id: projectId, sprintId } = req.params;
       const sprint = await SprintService.getSprintById(projectId, sprintId, user);
-      res.status(200).json({ sprint });
+      res.status(200).json({
+        ...sprint,
+        sprint,
+        id: sprint.id,
+        name: sprint.name,
+        status: sprint.status,
+      });
     } catch (error) {
       SprintController.handleError(res, error);
     }
@@ -68,7 +83,13 @@ export class SprintController {
       const user = (req as any).fullUser;
       const { id: projectId, sprintId } = req.params;
       const sprint = await SprintService.updateSprint(projectId, sprintId, req.body, user);
-      res.status(200).json({ sprint });
+      res.status(200).json({
+        ...sprint,
+        sprint,
+        id: sprint.id,
+        name: sprint.name,
+        status: sprint.status,
+      });
     } catch (error) {
       SprintController.handleError(res, error);
     }
@@ -79,7 +100,14 @@ export class SprintController {
       const user = (req as any).fullUser;
       const { id: projectId, sprintId } = req.params;
       const sprint = await SprintService.startSprint(projectId, sprintId, user);
-      res.status(200).json({ sprint, message: 'Sprint started successfully' });
+      res.status(200).json({
+        ...sprint,
+        sprint,
+        id: sprint.id,
+        name: sprint.name,
+        status: sprint.status,
+        message: 'Sprint started successfully',
+      });
     } catch (error) {
       SprintController.handleError(res, error);
     }
@@ -96,7 +124,14 @@ export class SprintController {
         { unfinished_action, target_sprint_id },
         user
       );
-      res.status(200).json({ sprint, message: 'Sprint completed successfully' });
+      res.status(200).json({
+        ...sprint,
+        sprint,
+        id: sprint.id,
+        name: sprint.name,
+        status: sprint.status,
+        message: 'Sprint completed successfully',
+      });
     } catch (error) {
       SprintController.handleError(res, error);
     }

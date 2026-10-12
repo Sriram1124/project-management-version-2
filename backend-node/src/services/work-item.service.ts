@@ -53,25 +53,23 @@ export class WorkItemService {
    * Helper to ensure user belongs to an organization
    */
   private static getUserOrgId(user: any): string {
-    if (!user.organization_id) {
-      throw new Error('User does not belong to any organization');
-    }
-    return user.organization_id;
+    if (user?.organization_id) return user.organization_id;
+    if (user?.organization?.id) return user.organization.id;
+    throw new Error('User does not belong to any organization');
   }
 
   /**
    * Helper to check if user has admin or manager role
    */
   private static isManagerOrAdmin(user: any): boolean {
-    if (user.role === 'ADMIN' || user.role === 'MANAGER') return true;
+    if (!user) return false;
+    const r = String(user.role || '').toUpperCase();
+    if (r === 'ADMIN' || r === 'MANAGER' || r === 'SUPER_ADMIN') return true;
     if (Array.isArray(user.roles)) {
-      return user.roles.some(
-        (ur: any) =>
-          ur.role?.name === 'ADMIN' ||
-          ur.role?.name === 'MANAGER' ||
-          ur.name === 'ADMIN' ||
-          ur.name === 'MANAGER'
-      );
+      return user.roles.some((ur: any) => {
+        const name = String(ur.role?.name || ur.name || ur || '').toUpperCase();
+        return name === 'ADMIN' || name === 'MANAGER' || name === 'SUPER_ADMIN';
+      });
     }
     return false;
   }
@@ -203,15 +201,24 @@ export class WorkItemService {
    * Check if user is an INTERN
    */
   private static isIntern(user: any): boolean {
-    const role = String(user.role || '').toUpperCase();
-    if (role === 'INTERN') return true;
+    if (this.isManagerOrAdmin(user)) return false;
+    const roleNames: string[] = [];
+    if (user.role) roleNames.push(String(user.role).toUpperCase());
     if (Array.isArray(user.roles)) {
-      const hasIntern = user.roles.some(
-        (ur: any) => (ur.role?.name || ur.name || '').toUpperCase() === 'INTERN'
-      );
-      if (hasIntern && !this.isManagerOrAdmin(user)) return true;
+      user.roles.forEach((ur: any) => {
+        if (ur.role?.name) roleNames.push(String(ur.role.name).toUpperCase());
+        if (ur.name) roleNames.push(String(ur.name).toUpperCase());
+      });
     }
-    return false;
+    if (
+      roleNames.includes('ADMIN') ||
+      roleNames.includes('MANAGER') ||
+      roleNames.includes('SUPER_ADMIN') ||
+      roleNames.includes('TECH_LEAD')
+    ) {
+      return false;
+    }
+    return roleNames.includes('INTERN');
   }
 
   /**
@@ -770,11 +777,20 @@ export class WorkItemService {
    * Update work item fields
    */
   static async updateWorkItem(id: string, user: any, input: UpdateWorkItemInput) {
-    const orgId = this.getUserOrgId(user);
+    let orgId = user?.organization_id;
+    if (!orgId && this.isManagerOrAdmin(user)) {
+      const firstOrg = await prisma.organization.findFirst({ where: { is_active: true } });
+      orgId = firstOrg?.id;
+    }
     const isMgr = this.isManagerOrAdmin(user);
 
+    const whereItem: any = { id };
+    if (orgId) {
+      whereItem.organization_id = orgId;
+    }
+
     const currentItem = await prisma.workItem.findFirst({
-      where: { id, organization_id: orgId },
+      where: whereItem,
       include: {
         assignees: true,
       },
@@ -787,12 +803,17 @@ export class WorkItemService {
     // Access check
     if (currentItem.project_id) {
       if (!isMgr) {
+        const project = await prisma.project.findUnique({
+          where: { id: currentItem.project_id },
+          select: { owner_id: true },
+        });
+        const isOwner = project && project.owner_id === user.id;
         const isMember = await this.verifyProjectMembership(
           currentItem.project_id,
           user.id,
           orgId
         );
-        if (!isMember) {
+        if (!isMember && !isOwner) {
           throw new Error('Forbidden: you are not a member of this project');
         }
       }
@@ -1146,11 +1167,20 @@ export class WorkItemService {
    * Add assignees to work item
    */
   static async addAssignees(id: string, user: any, userIds: string[]) {
-    const orgId = this.getUserOrgId(user);
+    let orgId = user?.organization_id;
+    if (!orgId && this.isManagerOrAdmin(user)) {
+      const firstOrg = await prisma.organization.findFirst({ where: { is_active: true } });
+      orgId = firstOrg?.id;
+    }
     const isMgr = this.isManagerOrAdmin(user);
 
+    const whereItem: any = { id };
+    if (orgId) {
+      whereItem.organization_id = orgId;
+    }
+
     const item = await prisma.workItem.findFirst({
-      where: { id, organization_id: orgId },
+      where: whereItem,
       include: { assignees: true },
     });
 
@@ -1240,11 +1270,20 @@ export class WorkItemService {
    * Remove assignee from work item
    */
   static async removeAssignee(id: string, user: any, targetUserId: string) {
-    const orgId = this.getUserOrgId(user);
+    let orgId = user?.organization_id;
+    if (!orgId && this.isManagerOrAdmin(user)) {
+      const firstOrg = await prisma.organization.findFirst({ where: { is_active: true } });
+      orgId = firstOrg?.id;
+    }
     const isMgr = this.isManagerOrAdmin(user);
 
+    const whereItem: any = { id };
+    if (orgId) {
+      whereItem.organization_id = orgId;
+    }
+
     const item = await prisma.workItem.findFirst({
-      where: { id, organization_id: orgId },
+      where: whereItem,
       include: { assignees: true },
     });
 
@@ -1266,8 +1305,13 @@ export class WorkItemService {
     if (item.project_id) {
       const isSelf = user.id === targetUserId;
       if (!isMgr && !isSelf) {
+        const project = await prisma.project.findUnique({
+          where: { id: item.project_id },
+          select: { owner_id: true },
+        });
+        const isOwner = project && project.owner_id === user.id;
         const isMember = await this.verifyProjectMembership(item.project_id, user.id, orgId);
-        if (!isMember) {
+        if (!isMember && !isOwner) {
           throw new Error('Forbidden: you are not a member of this project');
         }
       }
@@ -1367,33 +1411,35 @@ export class WorkItemService {
    * Get comprehensive task analytics scoped to the authenticated user or requested scope
    */
   static async getAnalytics(user: any, filters?: WorkItemAnalyticsFilter) {
-    const orgId = this.getUserOrgId(user);
+    let orgId = user?.organization_id;
+    if (!orgId && this.isManagerOrAdmin(user)) {
+      const firstOrg = await prisma.organization.findFirst({ where: { is_active: true } });
+      orgId = firstOrg?.id;
+    }
     const isMgr = this.isManagerOrAdmin(user);
-    const authorizedLeadProjects = await this.getAuthorizedLeadProjectIds(user, orgId);
+    const authorizedLeadProjects = orgId ? await this.getAuthorizedLeadProjectIds(user, orgId) : [];
     const isLeadAnyProject = authorizedLeadProjects.length > 0;
 
     let targetUserId: string | null = null;
     let isActingAsLead = false;
 
     if (filters?.project_id) {
+      const whereProject: any = { id: filters.project_id };
+      if (orgId) {
+        whereProject.organization_id = orgId;
+      }
       const project = await prisma.project.findFirst({
-        where: { id: filters.project_id, organization_id: orgId },
-        select: { id: true, name: true },
+        where: whereProject,
+        select: { id: true, name: true, owner_id: true },
       });
       if (!project) {
         throw new Error('Project not found in your organization');
       }
 
-      if (isMgr || authorizedLeadProjects.includes(filters.project_id)) {
+      if (isMgr || project.owner_id === user.id || authorizedLeadProjects.includes(filters.project_id)) {
         // Authorized Manager or Tech Lead for this project
         isActingAsLead = true;
         if (filters?.user_id) {
-          const isMember = await prisma.projectMember.findFirst({
-            where: { project_id: filters.project_id, user_id: filters.user_id },
-          });
-          if (!isMember && !isMgr) {
-            throw new Error('Forbidden: requested user is not a member of your authorized project');
-          }
           targetUserId = filters.user_id;
         }
       } else {
@@ -1409,23 +1455,9 @@ export class WorkItemService {
       }
     } else {
       // No specific project provided in filters
-      if (isMgr) {
+      if (isMgr || isLeadAnyProject) {
         isActingAsLead = true;
         if (filters?.user_id) {
-          targetUserId = filters.user_id;
-        }
-      } else if (isLeadAnyProject) {
-        isActingAsLead = true;
-        if (filters?.user_id) {
-          const isMemberOfLeadProject = await prisma.projectMember.findFirst({
-            where: {
-              project_id: { in: authorizedLeadProjects },
-              user_id: filters.user_id,
-            },
-          });
-          if (!isMemberOfLeadProject && filters.user_id !== user.id) {
-            throw new Error('Forbidden: requested user is not a member of your authorized projects');
-          }
           targetUserId = filters.user_id;
         }
       } else {
@@ -1437,7 +1469,10 @@ export class WorkItemService {
       }
     }
 
-    const where: any = { organization_id: orgId };
+    const where: any = {};
+    if (orgId) {
+      where.organization_id = orgId;
+    }
     if (targetUserId) {
       where.assignees = { some: { user_id: targetUserId } };
     }

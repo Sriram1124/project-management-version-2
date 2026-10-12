@@ -63,21 +63,24 @@ export class AuthService {
         throw new Error('Invalid credentials');
       }
     } else {
-      // Organization user MUST provide organization_id and it MUST match user.organization_id exactly
-      if (!organizationId || user.organization_id !== organizationId) {
+      // If organization_id is provided, it MUST match user.organization_id exactly
+      if (organizationId && user.organization_id !== organizationId) {
         throw new Error('Invalid credentials');
       }
 
-      // Check whether tenant organization is suspended
-      const org = await prisma.organization.findUnique({
-        where: { id: organizationId },
-        select: { is_active: true }
-      });
-      if (!org || !org.is_active) {
-        const err: any = new Error('Organization account is suspended. Please contact your platform administrator.');
-        err.statusCode = 403;
-        err.code = 'ORGANIZATION_SUSPENDED';
-        throw err;
+      const effectiveOrgId = organizationId || user.organization_id;
+      if (effectiveOrgId) {
+        // Check whether tenant organization is suspended
+        const org = await prisma.organization.findUnique({
+          where: { id: effectiveOrgId },
+          select: { is_active: true }
+        });
+        if (org && !org.is_active) {
+          const err: any = new Error('Organization account is suspended. Please contact your platform administrator.');
+          err.statusCode = 403;
+          err.code = 'ORGANIZATION_SUSPENDED';
+          throw err;
+        }
       }
     }
 

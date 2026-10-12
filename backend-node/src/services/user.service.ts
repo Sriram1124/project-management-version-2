@@ -192,21 +192,23 @@ export class UserService {
       };
 
       if (batch) {
-        const trimmedBatch = batch.trim().toUpperCase();
-        if (!['A', 'B', 'C', 'D'].includes(trimmedBatch)) {
-          throw new Error('Batch must be one of A, B, C, D');
-        }
+        const trimmedBatch = batch.trim();
+        const upperBatch = trimmedBatch.toUpperCase();
         userBatch = trimmedBatch;
 
-        if (subbatch) {
-          const trimmedSubbatch = subbatch.trim().toUpperCase();
-          const allowed = VALID_BATCH_SUBBATCH[trimmedBatch] || [];
-          if (!allowed.includes(trimmedSubbatch)) {
-            throw new Error(`Subbatch must be one of ${allowed.join(', ')} for Batch ${trimmedBatch}`);
+        if (['A', 'B', 'C', 'D'].includes(upperBatch)) {
+          if (subbatch) {
+            const trimmedSubbatch = subbatch.trim().toUpperCase();
+            const allowed = VALID_BATCH_SUBBATCH[upperBatch] || [];
+            if (!allowed.includes(trimmedSubbatch)) {
+              throw new Error(`Subbatch must be one of ${allowed.join(', ')} for Batch ${upperBatch}`);
+            }
+            userSubbatch = trimmedSubbatch;
+          } else {
+            userSubbatch = VALID_BATCH_SUBBATCH[upperBatch][0];
           }
-          userSubbatch = trimmedSubbatch;
-        } else {
-          userSubbatch = VALID_BATCH_SUBBATCH[trimmedBatch][0];
+        } else if (subbatch) {
+          userSubbatch = subbatch.trim();
         }
       }
 
@@ -940,7 +942,7 @@ export class UserService {
   /**
    * Manager resets user password
    */
-  static async resetUserPassword(managerOrgId: string, targetUserId: string) {
+  static async resetUserPassword(managerOrgId: string, targetUserId: string, customPassword?: string) {
     if (!managerOrgId) {
       const err: any = new Error('Manager organization context required.');
       err.statusCode = 403;
@@ -982,8 +984,8 @@ export class UserService {
       throw err;
     }
 
-    // Generate new secure temporary password
-    const newTempPassword = this.generateTemporaryPassword();
+    // Generate new secure temporary password or hash custom password
+    const newTempPassword = customPassword || this.generateTemporaryPassword();
     const newHash = await argon2.hash(newTempPassword);
 
     await prisma.user.update({
@@ -1191,32 +1193,34 @@ export class UserService {
       D: ['D1', 'D2'],
     };
 
-    if (data.batch !== undefined) {
-      const trimmedBatch = typeof data.batch === 'string' ? data.batch.trim().toUpperCase() : '';
-      if (!trimmedBatch || !['A', 'B', 'C', 'D'].includes(trimmedBatch)) {
-        const err: any = new Error('Batch must be one of A, B, C, D.');
+    if (data.batch !== undefined && data.batch !== null) {
+      const trimmedBatch = typeof data.batch === 'string' ? data.batch.trim() : String(data.batch);
+      if (!trimmedBatch) {
+        const err: any = new Error('Batch cannot be empty.');
         err.statusCode = 400;
         throw err;
       }
       dataToUpdate.batch = trimmedBatch;
 
-      // If subbatch is also provided, validate it matches the new batch
-      if (data.subbatch !== undefined) {
-        const trimmedSubbatch = typeof data.subbatch === 'string' ? data.subbatch.trim().toUpperCase() : '';
-        const allowedSubbatches = VALID_BATCH_SUBBATCH[trimmedBatch] || [];
-        if (!trimmedSubbatch || !allowedSubbatches.includes(trimmedSubbatch)) {
-          const err: any = new Error(`Subbatch must be one of ${allowedSubbatches.join(', ')} for Batch ${trimmedBatch}.`);
-          err.statusCode = 400;
-          throw err;
+      const upperBatch = trimmedBatch.toUpperCase();
+      if (['A', 'B', 'C', 'D'].includes(upperBatch)) {
+        if (data.subbatch !== undefined) {
+          const trimmedSubbatch = typeof data.subbatch === 'string' ? data.subbatch.trim().toUpperCase() : '';
+          const allowedSubbatches = VALID_BATCH_SUBBATCH[upperBatch] || [];
+          if (!trimmedSubbatch || !allowedSubbatches.includes(trimmedSubbatch)) {
+            const err: any = new Error(`Subbatch must be one of ${allowedSubbatches.join(', ')} for Batch ${upperBatch}.`);
+            err.statusCode = 400;
+            throw err;
+          }
+          dataToUpdate.subbatch = trimmedSubbatch;
+        } else if (targetUser.subbatch) {
+          const allowedSubbatches = VALID_BATCH_SUBBATCH[upperBatch] || [];
+          if (!allowedSubbatches.includes(targetUser.subbatch.toUpperCase())) {
+            dataToUpdate.subbatch = allowedSubbatches[0];
+          }
         }
-        dataToUpdate.subbatch = trimmedSubbatch;
-      } else if (targetUser.subbatch) {
-        // If batch changed and subbatch was not provided, check if existing subbatch is valid for new batch
-        const allowedSubbatches = VALID_BATCH_SUBBATCH[trimmedBatch] || [];
-        if (!allowedSubbatches.includes(targetUser.subbatch.toUpperCase())) {
-          // Auto-select first valid subbatch for the new batch
-          dataToUpdate.subbatch = allowedSubbatches[0];
-        }
+      } else if (data.subbatch !== undefined) {
+        dataToUpdate.subbatch = String(data.subbatch).trim();
       }
     } else if (data.subbatch !== undefined) {
       // Batch wasn't supplied, check against existing batch

@@ -21,10 +21,16 @@ export class TimesheetController {
 
   static async getOrganizationPolicy(req: Request, res: Response) {
     try {
-      const user = (req as any).fullUser;
-      const organizationId = req.query.organization_id as string | undefined;
+      const user = (req as any).fullUser || (req as any).user;
+      const organizationId =
+        (req.query.organization_id as string) ||
+        (req.query.organizationId as string) ||
+        user?.organization_id;
       const policy = await TimesheetService.getOrganizationWorkPolicy(user, organizationId || null);
-      res.status(200).json({ policy });
+      res.status(200).json({
+        ...policy,
+        policy,
+      });
     } catch (error) {
       TimesheetController.handleError(res, error);
     }

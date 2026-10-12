@@ -1,6 +1,6 @@
 import { Router } from 'express';
 import { FormController } from '../controllers/form.controller';
-import { authenticate, requirePermission } from '../middleware/auth.middleware';
+import { authenticate, requireAnyPermission } from '../middleware/auth.middleware';
 
 const router = Router();
 
@@ -11,22 +11,25 @@ router.use(authenticate);
 router.get('/', FormController.listForms);
 
 // Manager only: create/update forms
-router.post('/', requirePermission('PROJECT_CREATE'), FormController.createForm);
+router.post('/', requireAnyPermission('FORM_CREATE', 'PROJECT_CREATE'), FormController.createForm);
 router.get('/:id', FormController.getForm);
-router.patch('/:id', requirePermission('PROJECT_UPDATE'), FormController.updateForm);
+router.patch('/:id', requireAnyPermission('FORM_UPDATE', 'PROJECT_UPDATE'), FormController.updateForm);
 
 // Status changes
-router.post('/:id/publish', requirePermission('PROJECT_UPDATE'), FormController.publishForm);
-router.post('/:id/archive', requirePermission('PROJECT_UPDATE'), FormController.archiveForm);
+router.post('/:id/publish', requireAnyPermission('FORM_UPDATE', 'PROJECT_UPDATE'), FormController.publishForm);
+router.post('/:id/archive', requireAnyPermission('FORM_UPDATE', 'PROJECT_UPDATE'), FormController.archiveForm);
 
 // Questions
-router.post('/:id/questions', requirePermission('PROJECT_UPDATE'), FormController.addQuestion);
-router.patch('/:id/questions/:questionId', requirePermission('PROJECT_UPDATE'), FormController.updateQuestion);
-router.delete('/:id/questions/:questionId', requirePermission('PROJECT_UPDATE'), FormController.deleteQuestion);
+router.post('/:id/questions', requireAnyPermission('FORM_UPDATE', 'PROJECT_UPDATE'), FormController.addQuestion);
+router.patch('/:id/questions/:questionId', requireAnyPermission('FORM_UPDATE', 'PROJECT_UPDATE'), FormController.updateQuestion);
+router.delete('/:id/questions/:questionId', requireAnyPermission('FORM_UPDATE', 'PROJECT_UPDATE'), FormController.deleteQuestion);
 
 // Submissions
-router.post('/:id/submissions', FormController.submitForm);
-router.get('/:id/submissions', requirePermission('PROJECT_READ'), FormController.listSubmissions);
 router.get('/:id/submissions/my', FormController.getMySubmission);
+router.get('/:id/submissions', requireAnyPermission('FORM_READ', 'PROJECT_READ'), FormController.listSubmissions);
+router.post('/:id/submissions', FormController.submitForm);
+
+// Form delete
+router.delete('/:id', requireAnyPermission('FORM_DELETE', 'PROJECT_DELETE'), FormController.deleteForm);
 
 export { router as formRouter };

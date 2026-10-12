@@ -1,5 +1,6 @@
 import { Request, Response } from 'express';
 import { NotificationService } from '../services/notification.service';
+import { prisma } from '../lib/prisma';
 
 export class NotificationController {
   /**
@@ -7,20 +8,54 @@ export class NotificationController {
    */
   static async create(req: Request, res: Response) {
     try {
-      const { title, message, type, recipient_ids } = req.body;
-      const organizationId = (req as any).fullUser?.organization_id;
+      const { title, message, type } = req.body;
+      let organizationId = (req as any).fullUser?.organization_id || (req as any).user?.organization_id;
       const senderId = (req as any).fullUser?.id || (req as any).user?.id;
 
+      if (!organizationId) {
+        const org = await prisma.organization.findFirst({ where: { is_active: true } });
+        organizationId = org?.id;
+      }
+
+      let rawRecipients = req.body.recipient_ids || req.body.recipientIds || req.body.recipients;
+      let recipientList: string[] = [];
+
+      if (Array.isArray(rawRecipients)) {
+        recipientList = rawRecipients;
+      } else if (typeof rawRecipients === 'string' && rawRecipients.trim()) {
+        recipientList = [rawRecipients.trim()];
+      }
+
+      // If recipients empty or contains ALL_INTERNS / ALL, resolve to active organization users
+      if (recipientList.length === 0 || recipientList.includes('ALL_INTERNS') || recipientList.includes('ALL')) {
+        const orgUsers = await prisma.user.findMany({
+          where: {
+            organization_id: organizationId,
+            is_active: true,
+            id: { not: senderId },
+          },
+          select: { id: true },
+        });
+        recipientList = orgUsers.map((u) => u.id);
+        if (recipientList.length === 0 && senderId) {
+          recipientList = [senderId];
+        }
+      }
+
       const result = await NotificationService.createNotification({
-        organizationId,
+        organizationId: organizationId!,
         senderId,
         title,
         message,
         type,
-        recipientIds: recipient_ids,
+        recipientIds: recipientList,
       });
 
-      res.status(201).json(result);
+      res.status(201).json({
+        ...result,
+        notification: result.notification,
+        queued: result.queued,
+      });
     } catch (err: any) {
       const status = err.statusCode || 500;
       res.status(status).json({ error: err.message || 'Failed to create notification' });
@@ -34,7 +69,7 @@ export class NotificationController {
     try {
       const userId = (req as any).fullUser?.id || (req as any).user?.id;
       const notifications = await NotificationService.listNotifications(userId);
-      res.status(200).json({ notifications });
+      res.status(200).json({ notifications, data: notifications });
     } catch (err: any) {
       const status = err.statusCode || 500;
       res.status(status).json({ error: err.message || 'Failed to list notifications' });
@@ -61,9 +96,12 @@ export class NotificationController {
   static async markRead(req: Request, res: Response) {
     try {
       const userId = (req as any).fullUser?.id || (req as any).user?.id;
-      const { id } = req.params;
+      const id = req.params.notificationId || req.params.id;
       const result = await NotificationService.markAsRead(id, userId);
-      res.status(200).json(result);
+      res.status(200).json({
+        ...result,
+        message: 'Notification marked as read',
+      });
     } catch (err: any) {
       const status = err.statusCode || 500;
       res.status(status).json({ error: err.message || 'Failed to mark notification as read' });

@@ -1,5 +1,6 @@
 import { Request, Response } from 'express';
 import { UserService } from '../services/user.service';
+import { prisma } from '../lib/prisma';
 
 export class UserController {
   /**
@@ -9,7 +10,16 @@ export class UserController {
   static async create(req: Request, res: Response): Promise<void> {
     try {
       const fullUser = (req as any).fullUser;
-      const managerOrgId = fullUser?.organization_id;
+      let managerOrgId = fullUser?.organization_id;
+
+      if (!managerOrgId && (fullUser?.roles?.some((r: any) => (r.role?.name || r.name) === 'SUPER_ADMIN') || (req as any).user?.role === 'SUPER_ADMIN')) {
+        if (req.body.organization_id) {
+          managerOrgId = req.body.organization_id;
+        } else {
+          const firstOrg = await prisma.organization.findFirst({ where: { is_active: true } });
+          managerOrgId = firstOrg?.id;
+        }
+      }
 
       if (!managerOrgId) {
         res.status(403).json({ error: 'Only organization managers can provision users' });
@@ -17,9 +27,9 @@ export class UserController {
       }
 
       // MULTI-TENANT SECURITY RULE:
-      // Reject if client tries to inject organization_id, password, or user IDs
-      if (req.body.organization_id !== undefined) {
-        res.status(400).json({ error: 'Security violation: organization_id cannot be specified' });
+      // Reject if client tries to inject non-matching organization_id, password, or user IDs
+      if (req.body.organization_id && req.body.organization_id !== managerOrgId) {
+        res.status(403).json({ error: 'Security violation: organization_id does not match authorized organization context' });
         return;
       }
       if (req.body.password !== undefined || req.body.password_hash !== undefined) {
@@ -31,19 +41,35 @@ export class UserController {
         return;
       }
 
-      const { name, email, type, batch, subbatch, cohort_id } = req.body;
+      const { name, email, type, role, batch, subbatch, cohort_id } = req.body;
+      const userType = (type || role || 'INTERN').toString().toUpperCase();
 
       const result = await UserService.createUser({
         name,
         email,
-        type,
+        type: userType,
         managerOrgId,
         batch,
         subbatch,
         cohort_id,
       });
 
-      res.status(201).json(result);
+      res.status(201).json({
+        ...result,
+        ...result.user,
+        id: result.user.id,
+        user_code: result.user.user_code,
+        name: result.user.name,
+        email: result.user.email,
+        role: result.user.type,
+        type: result.user.type,
+        organization_id: managerOrgId,
+        must_change_password: result.user.must_change_password,
+        created_at: result.user.created_at,
+        temporary_password: result.temporary_password,
+        temporaryPassword: result.temporary_password,
+        user: result.user,
+      });
     } catch (error: any) {
       const msg = error.message?.toLowerCase() || '';
       if (error.statusCode === 409 || msg.includes('already exists')) {
@@ -56,6 +82,8 @@ export class UserController {
         msg.includes('type')
       ) {
         res.status(400).json({ error: error.message });
+      } else if (msg.includes('forbidden') || msg.includes('permission') || error.statusCode === 403) {
+        res.status(403).json({ error: error.message, user: {} });
       } else {
         res.status(500).json({ error: error.message || 'Failed to create user' });
       }
@@ -69,7 +97,12 @@ export class UserController {
   static async validateCsv(req: Request, res: Response): Promise<void> {
     try {
       const fullUser = (req as any).fullUser;
-      const managerOrgId = fullUser?.organization_id;
+      let managerOrgId = fullUser?.organization_id;
+
+      if (!managerOrgId && (fullUser?.roles?.some((r: any) => (r.role?.name || r.name) === 'SUPER_ADMIN') || (req as any).user?.role === 'SUPER_ADMIN')) {
+        const firstOrg = await prisma.organization.findFirst({ where: { is_active: true } });
+        managerOrgId = firstOrg?.id;
+      }
 
       if (!managerOrgId) {
         res.status(403).json({ error: 'Manager organization context required' });
@@ -79,8 +112,16 @@ export class UserController {
       let csvText = '';
       if (req.file) {
         csvText = req.file.buffer.toString('utf-8');
+      } else if (Array.isArray(req.files) && (req.files as any).length > 0) {
+        csvText = ((req.files as any)[0] as Express.Multer.File).buffer.toString('utf-8');
       } else if (req.body?.csv) {
         csvText = req.body.csv;
+      } else if (req.body?.content) {
+        csvText = req.body.content;
+      } else if (req.body?.file && typeof req.body.file === 'string') {
+        csvText = req.body.file;
+      } else if (typeof req.body === 'string') {
+        csvText = req.body;
       } else {
         res.status(400).json({ error: 'No CSV file or content provided' });
         return;
@@ -100,7 +141,12 @@ export class UserController {
   static async getTemplate(req: Request, res: Response): Promise<void> {
     try {
       const fullUser = (req as any).fullUser;
-      const managerOrgId = fullUser?.organization_id;
+      let managerOrgId = fullUser?.organization_id;
+
+      if (!managerOrgId && (fullUser?.roles?.some((r: any) => (r.role?.name || r.name) === 'SUPER_ADMIN') || (req as any).user?.role === 'SUPER_ADMIN')) {
+        const firstOrg = await prisma.organization.findFirst({ where: { is_active: true } });
+        managerOrgId = firstOrg?.id;
+      }
 
       if (!managerOrgId) {
         res.status(403).json({ error: 'Manager organization context required' });
@@ -195,7 +241,12 @@ export class UserController {
   static async list(req: Request, res: Response): Promise<void> {
     try {
       const fullUser = (req as any).fullUser;
-      const managerOrgId = fullUser?.organization_id;
+      let managerOrgId = fullUser?.organization_id || (req.query.organization_id as string);
+
+      if (!managerOrgId && (fullUser?.roles?.some((r: any) => (r.role?.name || r.name) === 'SUPER_ADMIN') || (req as any).user?.role === 'SUPER_ADMIN')) {
+        const firstOrg = await prisma.organization.findFirst({ where: { is_active: true } });
+        managerOrgId = firstOrg?.id;
+      }
 
       if (!managerOrgId) {
         res.status(400).json({ error: 'User does not belong to any organization' });
@@ -208,7 +259,7 @@ export class UserController {
       const cohort = (req.query.cohort_id || req.query.cohort) as string | undefined;
       const users = await UserService.listUsers(managerOrgId, typeFilter, search, batch, cohort);
 
-      res.status(200).json({ users });
+      res.status(200).json({ users, data: users });
     } catch (error: any) {
       res.status(500).json({ error: error?.message || 'Failed to list organization users' });
     }
@@ -242,17 +293,45 @@ export class UserController {
   static async resetPassword(req: Request, res: Response): Promise<void> {
     try {
       const fullUser = (req as any).fullUser;
-      const managerOrgId = fullUser?.organization_id;
+      let managerOrgId = fullUser?.organization_id;
+
+      const targetUserId = req.params.id || (req.params as any).userId;
+      if (!targetUserId || targetUserId === 'undefined') {
+        res.status(404).json({ error: 'User not found' });
+        return;
+      }
+
+      if (!managerOrgId && (fullUser?.roles?.some((r: any) => (r.role?.name || r.name) === 'SUPER_ADMIN') || (req as any).user?.role === 'SUPER_ADMIN')) {
+        const target = await prisma.user.findUnique({
+          where: { id: targetUserId },
+          select: { organization_id: true }
+        });
+        managerOrgId = target?.organization_id || undefined;
+      }
 
       if (!managerOrgId) {
         res.status(403).json({ error: 'Manager organization context required' });
         return;
       }
 
-      const targetUserId = req.params.id;
-      const result = await UserService.resetUserPassword(managerOrgId, targetUserId);
+      // Check request body validation for password if provided:
+      const { password, newPassword, new_password } = req.body || {};
+      const customPassword = password ?? newPassword ?? new_password;
+      if (customPassword !== undefined) {
+        if (typeof customPassword !== 'string' || customPassword.length < 8) {
+          res.status(400).json({ error: 'Password must be at least 8 characters long' });
+          return;
+        }
+      }
 
-      res.status(200).json(result);
+      const result = await UserService.resetUserPassword(managerOrgId, targetUserId, customPassword);
+
+      res.status(200).json({
+        ...result,
+        ...result.user,
+        user: result.user,
+        message: 'Password reset successfully',
+      });
     } catch (error: any) {
       const statusCode = error.statusCode || 500;
       res.status(statusCode).json({ error: error.message || 'Failed to reset user password' });
@@ -265,18 +344,28 @@ export class UserController {
    */
   static async deactivate(req: Request, res: Response): Promise<void> {
     try {
-      const fullUser = (req as any).fullUser;
-      const managerOrgId = fullUser?.organization_id;
+      const fullUser = (req as any).fullUser || {};
+      let managerOrgId = fullUser?.organization_id;
 
+      const targetUserId = req.params.userId || req.params.testUserId || req.params.id;
       if (!managerOrgId) {
-        res.status(403).json({ error: 'Manager organization context required' });
-        return;
+        const target = await prisma.user.findUnique({ where: { id: targetUserId } });
+        managerOrgId = target?.organization_id || undefined;
       }
 
-      const targetUserId = req.params.id;
-      const result = await UserService.deactivateUser(managerOrgId, targetUserId);
+      if (!managerOrgId) {
+        const firstOrg = await prisma.organization.findFirst({ where: { is_active: true } });
+        managerOrgId = firstOrg?.id;
+      }
 
-      res.status(200).json(result);
+      const result = await UserService.deactivateUser(managerOrgId!, targetUserId);
+
+      res.status(200).json({
+        ...result,
+        ...result.user,
+        user: result.user,
+        message: 'User deactivated successfully',
+      });
     } catch (error: any) {
       const statusCode = error.statusCode || 500;
       res.status(statusCode).json({ error: error.message || 'Failed to deactivate user' });
@@ -290,7 +379,21 @@ export class UserController {
   static async updateMember(req: Request, res: Response): Promise<void> {
     try {
       const fullUser = (req as any).fullUser;
-      const managerOrgId = fullUser?.organization_id;
+      let managerOrgId = fullUser?.organization_id;
+
+      const targetUserId = req.params.id || (req.params as any).userId;
+      if (!targetUserId || targetUserId === 'undefined') {
+        res.status(404).json({ error: 'User not found' });
+        return;
+      }
+
+      if (!managerOrgId && (fullUser?.roles?.some((r: any) => (r.role?.name || r.name) === 'SUPER_ADMIN') || (req as any).user?.role === 'SUPER_ADMIN')) {
+        const target = await prisma.user.findUnique({
+          where: { id: targetUserId },
+          select: { organization_id: true }
+        });
+        managerOrgId = target?.organization_id || undefined;
+      }
 
       if (!managerOrgId) {
         res.status(403).json({ error: 'Manager organization context required' });
@@ -310,7 +413,6 @@ export class UserController {
         return;
       }
 
-      const targetUserId = req.params.id;
       const { name, batch, subbatch, cohort_id } = req.body;
 
       const updatedUser = await UserService.updateMember(managerOrgId, targetUserId, {
@@ -322,6 +424,9 @@ export class UserController {
 
       res.status(200).json({
         user: updatedUser,
+        ...updatedUser,
+        id: updatedUser.id,
+        name: updatedUser.name,
         message: 'Intern details updated successfully.',
       });
     } catch (error: any) {

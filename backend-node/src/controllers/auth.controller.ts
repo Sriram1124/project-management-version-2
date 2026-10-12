@@ -72,8 +72,12 @@ export class AuthController {
 
   static async refresh(req: Request, res: Response): Promise<void> {
     try {
-      const refreshToken = req.cookies?.refreshToken || req.body?.refreshToken;
-      const sessionId = req.cookies?.sessionId || req.body?.sessionId;
+      const refreshToken = (req.body && req.body.refreshToken !== undefined)
+        ? req.body.refreshToken
+        : req.cookies?.refreshToken;
+      const sessionId = (req.body && req.body.sessionId !== undefined)
+        ? req.body.sessionId
+        : req.cookies?.sessionId;
 
       if (!refreshToken || !sessionId) {
         res.status(401).json({ error: 'Refresh token and session ID required' });
