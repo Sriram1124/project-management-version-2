@@ -158,17 +158,24 @@ export class SprintService {
             id: true,
             status: true,
             story_points: true,
+            type: true,
+            parent_id: true,
           },
         },
       },
     });
 
     return sprints.map((s) => {
-      const totalItems = s._count.work_items;
-      const completedItems = s.work_items.filter((w) => w.status === WorkItemStatus.COMPLETED).length;
+      // Find all parent IDs that have children in this sprint (to prevent double counting)
+      const parentIdsWithChildren = new Set(s.work_items.map((w: any) => w.parent_id).filter(Boolean));
+      // Eligible leaves are deliverables without children in this sprint, excluding Epics
+      const eligibleLeaves = s.work_items.filter((w: any) => w.type !== 'EPIC' && !parentIdsWithChildren.has(w.id));
+
+      const totalItems = eligibleLeaves.length;
+      const completedItems = eligibleLeaves.filter((w) => w.status === WorkItemStatus.COMPLETED).length;
       const completionPercentage = totalItems > 0 ? Math.round((completedItems / totalItems) * 100) : 0;
-      const totalPoints = s.work_items.reduce((acc: number, w: any) => acc + (Number(w.story_points) || 0), 0);
-      const completedPoints = s.work_items
+      const totalPoints = eligibleLeaves.reduce((acc: number, w: any) => acc + (Number(w.story_points) || 0), 0);
+      const completedPoints = eligibleLeaves
         .filter((w: any) => w.status === WorkItemStatus.COMPLETED)
         .reduce((acc: number, w: any) => acc + (Number(w.story_points) || 0), 0);
 
@@ -238,11 +245,14 @@ export class SprintService {
       throw new Error('Sprint not found in this project');
     }
 
-    const totalItems = sprint.work_items.length;
-    const completedItems = sprint.work_items.filter((w) => w.status === WorkItemStatus.COMPLETED).length;
+    const parentIdsWithChildren = new Set(sprint.work_items.map((w: any) => w.parent_id).filter(Boolean));
+    const eligibleLeaves = sprint.work_items.filter((w: any) => w.type !== 'EPIC' && !parentIdsWithChildren.has(w.id));
+
+    const totalItems = eligibleLeaves.length;
+    const completedItems = eligibleLeaves.filter((w) => w.status === WorkItemStatus.COMPLETED).length;
     const completionPercentage = totalItems > 0 ? Math.round((completedItems / totalItems) * 100) : 0;
-    const totalPoints = sprint.work_items.reduce((acc: number, w: any) => acc + (Number(w.story_points) || 0), 0);
-    const completedPoints = sprint.work_items
+    const totalPoints = eligibleLeaves.reduce((acc: number, w: any) => acc + (Number(w.story_points) || 0), 0);
+    const completedPoints = eligibleLeaves
       .filter((w: any) => w.status === WorkItemStatus.COMPLETED)
       .reduce((acc: number, w: any) => acc + (Number(w.story_points) || 0), 0);
 

@@ -368,19 +368,46 @@ function HierarchicalRow({
     return getEpicSprintSummary(item, allWorkItems, sprints);
   }, [isEpic, item, allWorkItems, sprints]);
 
-  // Points rollup
-  const ownPoints = Number(item.story_points) || 0;
-  const childPoints = allDescendants.reduce((acc, d) => acc + (Number(d.story_points) || 0), 0);
-  const totalRolledUpPoints = hasChildren ? ownPoints + childPoints : ownPoints;
+  // Eligible leaf descendants (excluding epics and items that have children among descendants)
+  const descendantParentIds = new Set(allDescendants.map((d) => d.parent_id).filter(Boolean));
+  const eligibleLeafDescendants = allDescendants.filter(
+    (d) => d.type !== 'EPIC' && !descendantParentIds.has(d.id)
+  );
 
-  // Progress
+  const descendantTotalSp = eligibleLeafDescendants.reduce((acc, d) => acc + (Number(d.story_points) || 0), 0);
+  const descendantCompletedSp = eligibleLeafDescendants
+    .filter((d) => String(d.status).toUpperCase() === 'COMPLETED')
+    .reduce((acc, d) => acc + (Number(d.story_points) || 0), 0);
+
+  const ownPoints = Number(item.story_points) || 0;
+  // For Epics: rollup all descendant leaf items
+  // For Stories: if has children, rollup child tasks; if no children, use own direct points
+  // For Tasks/Bugs: use own direct points
+  const totalRolledUpPoints = isEpic
+    ? descendantTotalSp
+    : isStory
+    ? (hasChildren ? descendantTotalSp : ownPoints)
+    : ownPoints;
+
+  const completedRolledUpPoints = isEpic
+    ? descendantCompletedSp
+    : isStory
+    ? (hasChildren ? descendantCompletedSp : (item.status === 'COMPLETED' ? ownPoints : 0))
+    : (item.status === 'COMPLETED' ? ownPoints : 0);
+
+  // Story-point based progress calculation
   const totalDescendantsCount = allDescendants.length;
   const completedDescendantsCount = allDescendants.filter(
     (d) => String(d.status).toUpperCase() === 'COMPLETED'
   ).length;
-  const progressPercent = totalDescendantsCount > 0
+  const hasSpWork = totalRolledUpPoints > 0;
+  const progressPercent = hasSpWork
+    ? Math.round((completedRolledUpPoints / totalRolledUpPoints) * 100)
+    : totalDescendantsCount > 0
     ? Math.round((completedDescendantsCount / totalDescendantsCount) * 100)
-    : item.status === 'COMPLETED' ? 100 : 0;
+    : item.status === 'COMPLETED'
+    ? 100
+    : 0;
 
   // Format short Key (e.g., EPIC-1a2b, STORY-8f3c, or id)
   const keyLabel = `${itemType.substring(0, 4)}-${item.id.substring(0, 4)}`.toUpperCase();
@@ -418,8 +445,19 @@ function HierarchicalRow({
 
   const handlePointsSubmit = (e) => {
     e.preventDefault();
-    const val = pointsValue === '' ? null : Math.max(0, parseInt(pointsValue, 10) || 0);
-    onUpdateStoryPoints?.(item.id, val);
+    if (isTask || isLeaf) {
+      const val = parseInt(pointsValue, 10);
+      if (isNaN(val) || val <= 0) {
+        alert('Story points are mandatory for tasks, subtasks, and bugs and must be a positive integer greater than 0.');
+        setPointsValue(item.story_points ?? 1);
+        setEditingPoints(false);
+        return;
+      }
+      onUpdateStoryPoints?.(item.id, val);
+    } else {
+      const val = pointsValue === '' ? null : Math.max(0, parseInt(pointsValue, 10) || 0);
+      onUpdateStoryPoints?.(item.id, val);
+    }
     setEditingPoints(false);
   };
 
@@ -860,7 +898,11 @@ function HierarchicalRow({
           {totalDescendantsCount > 0 ? (
             <div className="space-y-0.5">
               <div className="flex items-center justify-between text-[10px] text-slate-500 font-mono">
-                <span>{completedDescendantsCount}/{totalDescendantsCount}</span>
+                <span>
+                  {hasSpWork
+                    ? `${completedRolledUpPoints}/${totalRolledUpPoints} SP`
+                    : `${completedDescendantsCount}/${totalDescendantsCount}`}
+                </span>
                 <span>{progressPercent}%</span>
               </div>
               <div className="w-full bg-slate-100 rounded-full h-1.5 overflow-hidden border border-slate-200">

@@ -256,6 +256,15 @@ export default function CreateIssueModal({
         }
       }
 
+      const isTaskLike = issueType === 'Task' || issueType === 'Subtask' || issueType === 'Bug';
+      const sp = Number(storyPoints);
+      if (isTaskLike) {
+        if (!storyPoints || isNaN(sp) || !Number.isInteger(sp) || sp <= 0) {
+          setError('Story points are mandatory for tasks, subtasks, and bugs and must be a positive integer greater than 0.');
+          return;
+        }
+      }
+
       onCreateIssue?.({
         type: issueType.toUpperCase(),
         title: summary.trim(),
@@ -264,7 +273,7 @@ export default function CreateIssueModal({
         sprint_id: sprintId === 'backlog' ? null : sprintId,
         assignee_ids: assigneeId ? [assigneeId] : [],
         priority: priority.toUpperCase(),
-        story_points: Number(storyPoints) || 0,
+        story_points: sp > 0 ? sp : 0,
         start_date: startDate ? new Date(startDate).toISOString() : null,
         due_date: dueDate ? new Date(dueDate).toISOString() : null,
       });
@@ -500,11 +509,14 @@ export default function CreateIssueModal({
           {/* Story Points (for non-epics) */}
           {issueType !== 'Epic' && (
             <div>
-              <label className="block text-slate-700 font-semibold mb-1">Story Points</label>
+              <label className="block text-slate-700 font-semibold mb-1">
+                Story Points {issueType !== 'Story' ? '*' : ''}
+              </label>
               <input
                 type="number"
-                min={0}
+                min={1}
                 max={100}
+                required={issueType !== 'Story'}
                 value={storyPoints}
                 onChange={(e) => setStoryPoints(e.target.value)}
                 className="w-full px-2.5 py-1.5 rounded border border-slate-200 bg-white text-slate-800 focus:outline-none focus:border-purple-600 font-mono"

@@ -17,7 +17,8 @@ export class AuthController {
         orderBy: { name: 'asc' },
       });
       res.status(200).json(organizations);
-    } catch (error) {
+    } catch (error: any) {
+      console.error('[AuthController.getOrganizations] Error:', error?.message || error);
       res.status(500).json({ error: 'Failed to fetch organizations' });
     }
   }

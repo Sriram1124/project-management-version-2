@@ -191,7 +191,7 @@ export default function IssueRow({
         {/* COLUMN 5: STORY POINTS (FIXED 40px) */}
         <div className="flex justify-center shrink-0">
           <span className="w-5 h-5 rounded-full bg-slate-100 text-slate-700 font-mono font-bold text-[10px] flex items-center justify-center border border-slate-200">
-            {issue.storyPoints ?? '-'}
+            {issue.story_points ?? issue.storyPoints ?? '-'}
           </span>
         </div>
 

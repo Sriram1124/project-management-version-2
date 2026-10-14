@@ -92,6 +92,14 @@ export default function ProjectBacklogTab({ projectId, project = null, onToast, 
     loadProjectData();
   }, [loadProjectData]);
 
+  useEffect(() => {
+    const handleSync = () => {
+      loadProjectData();
+    };
+    window.addEventListener('work-items-updated', handleSync);
+    return () => window.removeEventListener('work-items-updated', handleSync);
+  }, [loadProjectData]);
+
   // Keep selectedIssue in sync with live workItems when refreshed
   useEffect(() => {
     if (selectedIssue?.id && workItems.length > 0) {
@@ -128,9 +136,11 @@ export default function ProjectBacklogTab({ projectId, project = null, onToast, 
       });
   }, [workItems]);
 
-  // Total Story Points across all project items
+  // Total Story Points across all project items (leaf deliverables to avoid double counting)
   const totalSP = useMemo(() => {
-    return workItems.reduce((acc, curr) => acc + (Number(curr.story_points) || 0), 0);
+    const parentIds = new Set(workItems.map((w) => w.parent_id).filter(Boolean));
+    const eligibleLeaves = workItems.filter((w) => w.type !== 'EPIC' && !parentIds.has(w.id));
+    return eligibleLeaves.reduce((acc, curr) => acc + (Number(curr.story_points) || 0), 0);
   }, [workItems]);
 
   // Toggle single row expand
@@ -708,14 +718,22 @@ export default function ProjectBacklogTab({ projectId, project = null, onToast, 
                 ? (updated.parent_id === '' ? null : updated.parent_id) 
                 : (updated.epicId === '' ? null : updated.epicId);
 
+              const spToSave = updated.story_points !== undefined ? updated.story_points : updated.storyPoints;
+
               const payload = {
                 title: updated.title,
                 description: updated.description,
                 status: updated.status,
                 priority: updated.priority,
-                story_points: updated.story_points,
                 due_date: updated.due_date,
               };
+
+              if (spToSave !== undefined && spToSave !== null && spToSave !== '') {
+                const numSp = Number(spToSave);
+                if (!isNaN(numSp)) {
+                  payload.story_points = numSp;
+                }
+              }
 
               if (sprintIdToSave !== undefined) {
                 payload.sprint_id = sprintIdToSave;
@@ -756,17 +774,20 @@ export default function ProjectBacklogTab({ projectId, project = null, onToast, 
             const newStatus = currentSubtask.status === 'COMPLETED' ? 'TODO' : 'COMPLETED';
             await handleUpdateStatus(subtaskId, newStatus);
           }}
-          onAddSubtask={async (parentIssueId, subtaskTitle, childType = 'SUBTASK', sprintId = null) => {
+          onAddSubtask={async (parentIssueId, subtaskTitle, childType = 'SUBTASK', sprintId = null, storyPoints = 3) => {
             try {
+              const isTaskLike = ['TASK', 'SUBTASK', 'BUG'].includes(childType);
+              const spVal = isTaskLike ? (Number(storyPoints) > 0 ? Number(storyPoints) : 3) : Number(storyPoints) || 0;
               await workItemsService.createWorkItem({
                 project_id: projectId,
                 parent_id: parentIssueId,
                 type: childType,
                 title: subtaskTitle.trim(),
                 sprint_id: sprintId || null,
+                story_points: spVal,
               });
               loadProjectData();
-              onToast?.(`Added ${childType.toLowerCase()}: "${subtaskTitle.trim()}"`);
+              onToast?.(`Added ${childType.toLowerCase()}: "${subtaskTitle.trim()}" (${spVal} SP)`);
             } catch (err) {
               console.error('Failed to add child item:', err);
               onToast?.(err.message || 'Failed to add child item');

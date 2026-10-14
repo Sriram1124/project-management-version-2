@@ -108,6 +108,14 @@ export default function ProjectSprintWorkspaceTab({
     loadData();
   }, [loadData]);
 
+  useEffect(() => {
+    const handleSync = () => {
+      loadData();
+    };
+    window.addEventListener('work-items-updated', handleSync);
+    return () => window.removeEventListener('work-items-updated', handleSync);
+  }, [loadData]);
+
   // Active sprint in the project
   const activeSprint = useMemo(() => {
     return sprints.find((s) => s.status === 'ACTIVE') || null;
@@ -127,13 +135,28 @@ export default function ProjectSprintWorkspaceTab({
     return sprints.filter((s) => s.status === 'PLANNED');
   }, [sprints]);
 
-  // Tasks in the currently viewed sprint (excluding standalone Epics)
-  const sprintTasks = useMemo(() => {
+  // All work items in the currently viewed sprint (including child tasks whose parent story is in this sprint)
+  const sprintWorkItems = useMemo(() => {
     if (!currentSprint) return [];
+    const storyInSprintIds = new Set(
+      workItems.filter((w) => w.sprint_id === currentSprint.id && w.type === 'STORY').map((w) => w.id)
+    );
     return workItems.filter(
-      (w) => w.sprint_id === currentSprint.id && w.type !== 'EPIC'
+      (w) =>
+        w.type !== 'EPIC' &&
+        (w.sprint_id === currentSprint.id || (w.parent_id && storyInSprintIds.has(w.parent_id)))
     );
   }, [workItems, currentSprint]);
+
+  // Leaf deliverables in the sprint (avoids double counting parent stories and their child tasks)
+  const parentIdsInSprint = useMemo(() => {
+    return new Set(sprintWorkItems.map((w) => w.parent_id).filter(Boolean));
+  }, [sprintWorkItems]);
+
+  // Deliverable tasks/stories in the currently viewed sprint
+  const sprintTasks = useMemo(() => {
+    return sprintWorkItems.filter((w) => !parentIdsInSprint.has(w.id));
+  }, [sprintWorkItems, parentIdsInSprint]);
 
   // Filter sprint tasks by quick filter
   const filteredTasks = useMemo(() => {
@@ -671,11 +694,20 @@ export default function ProjectSprintWorkspaceTab({
               <tbody className="divide-y divide-slate-100">
                 {sprints.map((s) => {
                   const isCurrent = s.id === currentSprint?.id;
-                  const sprintWorkItems = workItems.filter((w) => w.sprint_id === s.id && w.type !== 'EPIC');
-                  const sTotalItems = s.total_items ?? sprintWorkItems.length;
-                  const sCompletedItems = s.completed_items ?? sprintWorkItems.filter((w) => w.status === 'COMPLETED').length;
-                  const sTotalPoints = s.total_points ?? sprintWorkItems.reduce((acc, w) => acc + (Number(w.story_points) || 0), 0);
-                  const sCompletedPoints = s.completed_points ?? sprintWorkItems.filter((w) => w.status === 'COMPLETED').reduce((acc, w) => acc + (Number(w.story_points) || 0), 0);
+                  const sStoryIds = new Set(
+                    workItems.filter((w) => w.sprint_id === s.id && w.type === 'STORY').map((w) => w.id)
+                  );
+                  const sprintWorkItems = workItems.filter(
+                    (w) =>
+                      w.type !== 'EPIC' &&
+                      (w.sprint_id === s.id || (w.parent_id && sStoryIds.has(w.parent_id)))
+                  );
+                  const sParentIds = new Set(sprintWorkItems.map((w) => w.parent_id).filter(Boolean));
+                  const sLeaves = sprintWorkItems.filter((w) => !sParentIds.has(w.id));
+                  const sTotalItems = s.total_items ?? sLeaves.length;
+                  const sCompletedItems = s.completed_items ?? sLeaves.filter((w) => w.status === 'COMPLETED').length;
+                  const sTotalPoints = s.total_points ?? sLeaves.reduce((acc, w) => acc + (Number(w.story_points) || 0), 0);
+                  const sCompletedPoints = s.completed_points ?? sLeaves.filter((w) => w.status === 'COMPLETED').reduce((acc, w) => acc + (Number(w.story_points) || 0), 0);
                   const sCompletionRate = sTotalItems > 0 ? Math.round((sCompletedItems / sTotalItems) * 100) : (s.completion_percentage ?? 0);
 
                   const startDate = s.start_date ? new Date(s.start_date) : null;

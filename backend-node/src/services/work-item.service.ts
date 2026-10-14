@@ -415,6 +415,35 @@ export class WorkItemService {
       throw new Error(`Invalid priority: ${data.priority}`);
     }
 
+    // Story points validation:
+    // For TASK, SUBTASK, BUG: story_points is mandatory and must be a positive integer greater than 0.
+    const isTaskLike =
+      data.type === WorkItemType.TASK ||
+      data.type === WorkItemType.SUBTASK ||
+      data.type === WorkItemType.BUG;
+
+    if (isTaskLike) {
+      const sp = Number(data.story_points);
+      if (
+        data.story_points === undefined ||
+        data.story_points === null ||
+        isNaN(sp) ||
+        !Number.isInteger(sp) ||
+        sp <= 0
+      ) {
+        throw new Error(
+          'Story points are mandatory for tasks, subtasks, and bugs and must be a positive integer greater than 0.'
+        );
+      }
+    } else if (data.type === WorkItemType.STORY) {
+      if (data.story_points !== undefined && data.story_points !== null) {
+        const sp = Number(data.story_points);
+        if (isNaN(sp) || !Number.isInteger(sp) || sp < 0) {
+          throw new Error('Story points for stories must be a non-negative integer.');
+        }
+      }
+    }
+
     const projectId = data.project_id ? data.project_id.trim() : null;
     const parentId = data.parent_id ? data.parent_id.trim() : null;
 
@@ -516,6 +545,14 @@ export class WorkItemService {
         throw new Error('Cannot assign work item to a sprint belonging to a different project');
       }
       sprintId = sprint.id;
+    } else if (parentId) {
+      const parentItem = await prisma.workItem.findUnique({
+        where: { id: parentId },
+        select: { sprint_id: true },
+      });
+      if (parentItem?.sprint_id) {
+        sprintId = parentItem.sprint_id;
+      }
     }
 
     const status = data.status || WorkItemStatus.TODO;
@@ -734,6 +771,7 @@ export class WorkItemService {
             status: true,
             priority: true,
             due_date: true,
+            story_points: true,
           },
         },
         assignees: {
@@ -918,8 +956,34 @@ export class WorkItemService {
       dataToUpdate.due_date = input.due_date ? new Date(input.due_date) : null;
     }
 
+    const effectiveType = input.type !== undefined ? input.type : currentItem.type;
+
     if (input.story_points !== undefined) {
-      dataToUpdate.story_points = input.story_points !== null && input.story_points !== undefined ? Math.max(0, parseInt(String(input.story_points), 10) || 0) : null;
+      const isTaskLike =
+        effectiveType === WorkItemType.TASK ||
+        effectiveType === WorkItemType.SUBTASK ||
+        effectiveType === WorkItemType.BUG;
+
+      if (isTaskLike) {
+        const sp = Number(input.story_points);
+        if (
+          input.story_points === null ||
+          isNaN(sp) ||
+          !Number.isInteger(sp) ||
+          sp <= 0
+        ) {
+          throw new Error(
+            'Story points are mandatory for tasks, subtasks, and bugs and must be a positive integer greater than 0.'
+          );
+        }
+        dataToUpdate.story_points = sp;
+      } else {
+        const sp = input.story_points !== null ? Number(input.story_points) : null;
+        if (sp !== null && (isNaN(sp) || !Number.isInteger(sp) || sp < 0)) {
+          throw new Error('Story points must be a non-negative integer.');
+        }
+        dataToUpdate.story_points = sp ?? 0;
+      }
     }
 
     if (input.sprint_id !== undefined) {
@@ -947,7 +1011,6 @@ export class WorkItemService {
       }
     }
 
-    const effectiveType = input.type !== undefined ? input.type : currentItem.type;
     const effectiveParentId =
       input.parent_id !== undefined
         ? input.parent_id === '' || input.parent_id === 'null'
@@ -1113,6 +1176,13 @@ export class WorkItemService {
         },
       },
     });
+
+    if (input.sprint_id !== undefined) {
+      await prisma.workItem.updateMany({
+        where: { parent_id: id },
+        data: { sprint_id: dataToUpdate.sprint_id ?? null },
+      });
+    }
 
     return this.formatWorkItem(updated);
   }
@@ -1590,10 +1660,20 @@ export class WorkItemService {
       BUG: items.filter((w) => w.type === WorkItemType.BUG).length,
     };
 
-    const story_points_total = items.reduce((sum, w) => sum + (Number(w.story_points) || 0), 0);
-    const story_points_completed = items
+    // Calculate story points strictly from eligible leaf tasks to avoid double-counting parent stories/epics
+    const parentIdsWithChildren = new Set(items.map((w) => w.parent_id).filter(Boolean));
+    const eligibleTasks = items.filter(
+      (w) =>
+        (w.type === WorkItemType.TASK || w.type === WorkItemType.SUBTASK || w.type === WorkItemType.BUG) &&
+        !parentIdsWithChildren.has(w.id)
+    );
+    const story_points_total = eligibleTasks.reduce((sum, w) => sum + (Number(w.story_points) || 0), 0);
+    const story_points_completed = eligibleTasks
       .filter((w) => w.status === WorkItemStatus.COMPLETED)
       .reduce((sum, w) => sum + (Number(w.story_points) || 0), 0);
+    const story_points_remaining = Math.max(0, story_points_total - story_points_completed);
+    const story_points_progress =
+      story_points_total > 0 ? Math.round((story_points_completed / story_points_total) * 100) : null;
 
     const total_logged_minutes = timeEntries.reduce((sum, e) => sum + (Number(e.duration_minutes) || 0), 0);
     const total_logged_hours = +(total_logged_minutes / 60).toFixed(1);
@@ -1744,6 +1824,8 @@ export class WorkItemService {
       type_counts,
       story_points_total,
       story_points_completed,
+      story_points_remaining,
+      story_points_progress,
       total_logged_minutes,
       total_logged_hours,
       task_breakdown,

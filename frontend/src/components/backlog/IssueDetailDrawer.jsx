@@ -87,6 +87,10 @@ export default function IssueDetailDrawer({
   const [activeTab, setActiveTab] = useState('comments'); // 'comments' | 'worklog' | 'history'
   const [editedTitle, setEditedTitle] = useState(issue?.title || '');
   const [editedDesc, setEditedDesc] = useState(issue?.description || '');
+  const [editedStoryPoints, setEditedStoryPoints] = useState(
+    issue?.story_points ?? issue?.storyPoints ?? ''
+  );
+  const [childPoints, setChildPoints] = useState(3);
   const [newComment, setNewComment] = useState('');
   const [comments, setComments] = useState([
     { id: 'c1', author: 'Priya Sharma', time: 'Yesterday at 3:45 PM', text: 'Please ensure migration handles foreign key cascade deletes properly.' }
@@ -117,6 +121,7 @@ export default function IssueDetailDrawer({
     if (issue) {
       setEditedTitle(issue.title || '');
       setEditedDesc(issue.description || '');
+      setEditedStoryPoints(issue.story_points ?? issue.storyPoints ?? '');
     }
   }, [issue]);
 
@@ -160,6 +165,8 @@ export default function IssueDetailDrawer({
 
   const currentSprint = sprints.find(s => s.id === (issue?.sprint_id || issue?.sprintId));
   const isEpic = String(issue?.type || '').toUpperCase() === 'EPIC';
+  const isStory = String(issue?.type || '').toUpperCase() === 'STORY';
+  const isTaskLike = ['TASK', 'SUBTASK', 'BUG'].includes(String(issue?.type || '').toUpperCase());
   const epicSprintSummary = useMemo(() => {
     if (!isEpic || !issue) return null;
     return getEpicSprintSummary(issue, workItems, sprints);
@@ -226,8 +233,43 @@ export default function IssueDetailDrawer({
     });
   };
 
-  const handleSPChange = (sp) => {
-    onUpdateIssue?.({ ...issue, storyPoints: Number(sp) || 0 });
+  const handleSPBlur = () => {
+    const raw = editedStoryPoints;
+    if (raw === '' || raw === null || raw === undefined) {
+      setEditedStoryPoints(issue?.story_points ?? issue?.storyPoints ?? (isTaskLike ? 1 : 0));
+      return;
+    }
+    const val = parseInt(raw, 10);
+    if (isTaskLike) {
+      if (isNaN(val) || val <= 0) {
+        alert('Story points are mandatory for tasks, subtasks, and bugs and must be a positive integer greater than 0.');
+        setEditedStoryPoints(issue?.story_points ?? issue?.storyPoints ?? 1);
+        return;
+      }
+      if (val !== (issue?.story_points ?? issue?.storyPoints)) {
+        onUpdateIssue?.({
+          ...issue,
+          story_points: val,
+          storyPoints: val,
+        });
+      }
+    } else {
+      const finalVal = isNaN(val) ? 0 : Math.max(0, val);
+      if (finalVal !== (issue?.story_points ?? issue?.storyPoints)) {
+        onUpdateIssue?.({
+          ...issue,
+          story_points: finalVal,
+          storyPoints: finalVal,
+        });
+      }
+    }
+  };
+
+  const handleSPKeyDown = (e) => {
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      handleSPBlur();
+    }
   };
 
   const handleDueDateChange = (dueDate) => {
@@ -274,20 +316,40 @@ export default function IssueDetailDrawer({
           sprint_id: item.sprint_id,
           sprintName: sp ? sp.name : 'Backlog',
           priority: item.priority,
+          story_points: item.story_points ?? item.storyPoints ?? 0,
         };
       });
     }
     return (issue.subtasks || []).map((st) => ({
       ...st,
       sprintName: sprints.find((s) => s.id === st.sprint_id)?.name || 'Backlog',
+      story_points: st.story_points ?? st.storyPoints ?? 0,
     }));
   }, [issue, workItems, sprints]);
+
+  const hasChildTasks = isStory && childItems.length > 0;
+  const childTotalSp = useMemo(() => {
+    return childItems.reduce((acc, c) => acc + (Number(c.story_points) || 0), 0);
+  }, [childItems]);
 
   const handleAddChildSubmit = (e) => {
     e.preventDefault();
     if (newSubtaskTitle.trim() && allowedChildTypes.length > 0) {
-      onAddSubtask?.(issue.id, newSubtaskTitle.trim(), childType, childSprintId || null);
+      const isChildTaskLike = ['TASK', 'SUBTASK', 'BUG'].includes(childType);
+      const pointsVal = parseInt(childPoints, 10);
+      if (isChildTaskLike && (isNaN(pointsVal) || pointsVal <= 0)) {
+        alert('Story points are mandatory for tasks, subtasks, and bugs and must be a positive integer greater than 0.');
+        return;
+      }
+      onAddSubtask?.(
+        issue.id,
+        newSubtaskTitle.trim(),
+        childType,
+        childSprintId || null,
+        isChildTaskLike ? pointsVal : Math.max(0, pointsVal || 0)
+      );
       setNewSubtaskTitle('');
+      setChildPoints(3);
     }
   };
 
@@ -478,18 +540,32 @@ export default function IssueDetailDrawer({
           {/* Story Points */}
           <div className="flex items-center justify-between">
             <span className="text-slate-500 font-medium">Story Points</span>
-            {canChangeStoryPoints ? (
-              <input
-                type="number"
-                min={0}
-                max={100}
-                value={issue.storyPoints ?? 0}
-                onChange={(e) => handleSPChange(e.target.value)}
-                className="w-16 px-2 py-0.5 rounded border border-slate-200 text-xs font-mono font-semibold bg-white text-slate-800 text-right focus:outline-none focus:border-purple-600 cursor-pointer"
-              />
+            {isEpic ? (
+              <span className="text-[11px] text-slate-400 italic">Aggregated from stories</span>
+            ) : hasChildTasks ? (
+              <div className="flex items-center gap-1.5" title="Story points are aggregated from child tasks">
+                <span className="px-2 py-0.5 rounded bg-purple-50 text-purple-700 font-mono font-bold text-xs border border-purple-200">
+                  {childTotalSp} SP
+                </span>
+                <span className="text-[10px] text-slate-400">({childItems.length} tasks)</span>
+              </div>
+            ) : canChangeStoryPoints ? (
+              <div className="flex items-center gap-1.5">
+                <input
+                  type="number"
+                  min={isTaskLike ? 1 : 0}
+                  max={999}
+                  value={editedStoryPoints}
+                  onChange={(e) => setEditedStoryPoints(e.target.value)}
+                  onBlur={handleSPBlur}
+                  onKeyDown={handleSPKeyDown}
+                  className="w-16 px-2 py-0.5 rounded border border-slate-200 text-xs font-mono font-semibold bg-white text-slate-800 text-right focus:outline-none focus:border-purple-600 focus:ring-1 focus:ring-purple-500 shadow-2xs"
+                />
+                <span className="text-xs text-slate-400 font-mono">pts</span>
+              </div>
             ) : (
               <span className="px-2 py-0.5 text-xs font-mono font-semibold text-slate-700 select-none">
-                {issue.storyPoints ?? issue.story_points ?? 0}
+                {issue.story_points ?? issue.storyPoints ?? 0} pts
               </span>
             )}
           </div>
@@ -608,10 +684,17 @@ export default function IssueDetailDrawer({
                   </span>
                 </div>
 
-                {/* Sprint Badge */}
-                <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded bg-purple-50 text-purple-700 border border-purple-200 shrink-0">
-                  {st.sprintName}
-                </span>
+                <div className="flex items-center gap-1.5 shrink-0">
+                  {st.story_points > 0 && (
+                    <span className="text-[10px] font-mono font-bold px-1.5 py-0.5 rounded bg-slate-100 text-slate-700 border border-slate-200">
+                      {st.story_points} SP
+                    </span>
+                  )}
+                  {/* Sprint Badge */}
+                  <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded bg-purple-50 text-purple-700 border border-purple-200">
+                    {st.sprintName}
+                  </span>
+                </div>
               </div>
             ))}
 
@@ -637,6 +720,21 @@ export default function IssueDetailDrawer({
                     placeholder={`+ Add new ${childType.toLowerCase()}...`}
                     className="flex-1 px-2 py-1 text-xs rounded border border-slate-200 focus:outline-none focus:border-purple-600"
                   />
+                  {['TASK', 'SUBTASK', 'BUG'].includes(childType) && (
+                    <div className="flex items-center gap-1 shrink-0" title="Story Points (mandatory for tasks)">
+                      <input
+                        type="number"
+                        min={1}
+                        max={999}
+                        value={childPoints}
+                        onChange={(e) => setChildPoints(e.target.value)}
+                        className="w-12 px-1 py-1 text-center text-xs font-mono font-semibold rounded border border-purple-200 bg-purple-50 text-purple-800 focus:outline-none focus:border-purple-600"
+                        placeholder="SP"
+                        required
+                      />
+                      <span className="text-[10px] text-purple-700 font-bold">SP</span>
+                    </div>
+                  )}
                   <button
                     type="submit"
                     disabled={!newSubtaskTitle.trim()}

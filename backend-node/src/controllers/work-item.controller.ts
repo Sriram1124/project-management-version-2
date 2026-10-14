@@ -18,6 +18,8 @@ export class WorkItemController {
 
     if (
       msg.includes('required') ||
+      msg.includes('mandatory') ||
+      msg.includes('Story points') ||
       msg.includes('Invalid') ||
       msg.includes('must have') ||
       msg.includes('cannot have') ||

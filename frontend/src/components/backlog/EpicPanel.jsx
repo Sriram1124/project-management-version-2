@@ -46,8 +46,14 @@ export default function EpicPanel({
         {epics.map((epic) => {
           const epicIssues = issues.filter(i => i.epicId === epic.id);
           const completedCount = epicIssues.filter(i => i.status === 'DONE' || i.status === 'COMPLETED').length;
+          const epicTotalSp = epicIssues.reduce((acc, i) => acc + (Number(i.story_points || i.storyPoints) || 0), 0);
+          const epicCompletedSp = epicIssues
+            .filter((i) => i.status === 'DONE' || i.status === 'COMPLETED')
+            .reduce((acc, i) => acc + (Number(i.story_points || i.storyPoints) || 0), 0);
           const isSelected = selectedEpicId === epic.id;
-          const progressPercent = epicIssues.length > 0
+          const progressPercent = epicTotalSp > 0
+            ? Math.round((epicCompletedSp / epicTotalSp) * 100)
+            : epicIssues.length > 0
             ? Math.round((completedCount / epicIssues.length) * 100)
             : epic.progress || 0;
 

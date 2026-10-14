@@ -341,6 +341,7 @@ export default function ManagerApp() {
               {currentView === 'dashboard' && (
                 <ManagerDashboardView
                   onNavigate={(v) => handleNavigate(v)}
+                  onSelectProject={handleSelectProject}
                   onOpenAlertModal={() => setIsAlertModalOpen(true)}
                   onOpenExceptionModal={(excId) => setSelectedException(excId)}
                   onSendAlertMessage={handleCustomAlertFromBar}

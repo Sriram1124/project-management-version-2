@@ -11,6 +11,7 @@ export default function CreatePersonalTaskModal({
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
   const [priority, setPriority] = useState('MEDIUM');
+  const [storyPoints, setStoryPoints] = useState(1);
   const [dueDate, setDueDate] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
@@ -21,6 +22,12 @@ export default function CreatePersonalTaskModal({
     e.preventDefault();
     if (!title.trim() || loading) return;
 
+    const sp = Number(storyPoints);
+    if (!storyPoints || isNaN(sp) || !Number.isInteger(sp) || sp <= 0) {
+      setError('Story points are mandatory and must be a positive integer greater than 0.');
+      return;
+    }
+
     try {
       setLoading(true);
       setError('');
@@ -28,6 +35,7 @@ export default function CreatePersonalTaskModal({
         title: title.trim(),
         description: description.trim(),
         priority,
+        story_points: sp,
         dueDate: dueDate ? new Date(dueDate).toISOString() : null,
       });
 
@@ -36,6 +44,7 @@ export default function CreatePersonalTaskModal({
       setTitle('');
       setDescription('');
       setDueDate('');
+      setStoryPoints(1);
       onClose();
     } catch (err) {
       setError(err.message || 'Failed to create personal task');
@@ -106,7 +115,7 @@ export default function CreatePersonalTaskModal({
             />
           </div>
 
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid grid-cols-3 gap-3">
             <div>
               <label className="block text-[11px] font-bold text-slate-700 mb-1">
                 Priority
@@ -121,6 +130,22 @@ export default function CreatePersonalTaskModal({
                 <option value="HIGH">High</option>
                 <option value="URGENT">Urgent</option>
               </select>
+            </div>
+
+            <div>
+              <label className="block text-[11px] font-bold text-slate-700 mb-1">
+                Story Points *
+              </label>
+              <input
+                type="number"
+                min="1"
+                max="99"
+                step="1"
+                required
+                value={storyPoints}
+                onChange={(e) => setStoryPoints(e.target.value)}
+                className="w-full px-3 py-2 border border-slate-200 rounded-lg bg-white text-slate-900 font-mono focus:outline-none focus:border-purple-600"
+              />
             </div>
 
             <div>

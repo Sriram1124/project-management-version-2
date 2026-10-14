@@ -63,7 +63,15 @@ export default function InternDashboardTab({
   const dueTodayCount = dueTodayTasks.length;
   const overdueCount = overdueTasks.length;
   const inReviewCount = inReviewTasks.length;
-  const progressPercentage = totalTasks > 0 ? Math.round((completedTasks / totalTasks) * 100) : 0;
+  const totalSp = workItems.reduce((acc, w) => acc + (Number(w.story_points) || 0), 0);
+  const completedSp = workItems
+    .filter((w) => w.status === 'COMPLETED')
+    .reduce((acc, w) => acc + (Number(w.story_points) || 0), 0);
+  const progressPercentage = totalSp > 0
+    ? Math.round((completedSp / totalSp) * 100)
+    : totalTasks > 0
+    ? Math.round((completedTasks / totalTasks) * 100)
+    : 0;
 
   // Priority Work Items
   const priorityItems = workItems.filter((w) => 

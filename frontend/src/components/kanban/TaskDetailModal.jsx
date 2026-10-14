@@ -61,6 +61,7 @@ export default function TaskDetailModal({
   const [description, setDescription] = useState(task?.description || '');
   const [status, setStatus] = useState(task?.status || 'TODO');
   const [priority, setPriority] = useState(task?.priority || 'MEDIUM');
+  const [storyPoints, setStoryPoints] = useState(task?.story_points ?? '');
   const [startDate, setStartDate] = useState(
     task?.start_date ? task.start_date.split('T')[0] : ''
   );
@@ -90,6 +91,7 @@ export default function TaskDetailModal({
       setDescription(data.description || '');
       setStatus(data.status || 'TODO');
       setPriority(data.priority || 'MEDIUM');
+      setStoryPoints(data.story_points ?? '');
       setStartDate(data.start_date ? data.start_date.split('T')[0] : '');
       setDueDate(data.due_date ? data.due_date.split('T')[0] : '');
     } catch (err) {
@@ -204,17 +206,29 @@ export default function TaskDetailModal({
       return;
     }
 
+    const isTaskLike = liveTask.type === 'TASK' || liveTask.type === 'SUBTASK' || liveTask.type === 'BUG';
+    const sp = Number(storyPoints);
+    if (isTaskLike && !isIntern) {
+      if (storyPoints === '' || isNaN(sp) || !Number.isInteger(sp) || sp <= 0) {
+        setError('Story points are mandatory for tasks, subtasks, and bugs and must be a positive integer greater than 0.');
+        return;
+      }
+    }
+
     try {
       setSaving(true);
       setError('');
-      const updated = await workItemsService.updateWorkItem(liveTask.id, {
+      const payload = {
         title: title.trim(),
         description: description.trim() || null,
         status,
         priority,
         start_date: startDate ? new Date(startDate).toISOString() : null,
         due_date: dueDate ? new Date(dueDate).toISOString() : null,
-      });
+        ...(!isIntern && storyPoints !== '' && !isNaN(sp) && sp > 0 ? { story_points: sp } : {}),
+      };
+
+      const updated = await workItemsService.updateWorkItem(liveTask.id, payload);
 
       setLiveTask(updated);
       setIsEditing(false);
@@ -301,6 +315,15 @@ export default function TaskDetailModal({
   const canEditFields = !isIntern;
   const canUpdateStatus = !isIntern || isAssignedIntern;
   const canAssignOrReassign = !isIntern;
+
+  // Story-level aggregated task story points
+  const childTasks = children.filter((c) => c.type === 'TASK' || c.type === 'BUG');
+  const storyTotalSp = childTasks.reduce((sum, c) => sum + (Number(c.story_points) || 0), 0);
+  const storyCompletedSp = childTasks
+    .filter((c) => c.status === 'COMPLETED')
+    .reduce((sum, c) => sum + (Number(c.story_points) || 0), 0);
+  const storyRemainingSp = Math.max(0, storyTotalSp - storyCompletedSp);
+  const storyProgress = storyTotalSp > 0 ? Math.round((storyCompletedSp / storyTotalSp) * 100) : null;
 
   const handleStartWork = async () => {
     try {
@@ -448,8 +471,34 @@ export default function TaskDetailModal({
             )}
           </div>
 
-          {/* Status & Priority Row */}
-          <div className="grid grid-cols-2 gap-3 p-3.5 bg-slate-50/80 rounded-xl border border-slate-200/70">
+          {/* Story Progress Banner (Aggregated Child Task SP) */}
+          {liveTask.type === 'STORY' && (
+            <div className="p-3 bg-purple-50/70 border border-purple-200/80 rounded-xl space-y-1.5">
+              <div className="flex items-center justify-between text-xs">
+                <span className="font-bold text-purple-900 uppercase text-[10px] tracking-wider">
+                  Story Progress (Aggregated Task SP)
+                </span>
+                <span className="font-mono font-bold text-purple-800">
+                  {storyTotalSp > 0
+                    ? `${storyCompletedSp} / ${storyTotalSp} SP (${storyProgress}%)`
+                    : 'No task story points defined'}
+                </span>
+              </div>
+              <div className="w-full bg-purple-200/60 rounded-full h-2 overflow-hidden">
+                <div
+                  className="bg-purple-600 h-full rounded-full transition-all"
+                  style={{ width: `${storyProgress || 0}%` }}
+                />
+              </div>
+              <div className="flex items-center justify-between text-[11px] text-purple-700 pt-0.5 font-medium">
+                <span>{childTasks.length} child task{childTasks.length === 1 ? '' : 's'}</span>
+                <span>{storyRemainingSp} SP remaining</span>
+              </div>
+            </div>
+          )}
+
+          {/* Status, Priority & Story Points Row */}
+          <div className={`grid gap-3 p-3.5 bg-slate-50/80 rounded-xl border border-slate-200/70 ${liveTask.type !== 'EPIC' && liveTask.type !== 'STORY' ? 'grid-cols-3' : 'grid-cols-2'}`}>
             <div>
               <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1">
                 Status
@@ -495,6 +544,38 @@ export default function TaskDetailModal({
                 </div>
               )}
             </div>
+
+            {liveTask.type !== 'EPIC' && liveTask.type !== 'STORY' && (
+              <div>
+                <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1">
+                  Story Points *
+                </label>
+                {canEditFields && isEditing ? (
+                  <input
+                    type="number"
+                    min="1"
+                    max="99"
+                    step="1"
+                    value={storyPoints}
+                    onChange={(e) => setStoryPoints(e.target.value)}
+                    className="w-full px-2.5 py-1.5 rounded-lg border border-purple-300 bg-white text-slate-800 font-mono font-bold text-xs focus:outline-none focus:border-purple-600"
+                  />
+                ) : (
+                  <div className="px-2.5 py-1.5 rounded-lg border border-purple-100 bg-purple-50 text-purple-700 font-mono font-bold text-xs flex items-center justify-between">
+                    <span>{liveTask.story_points ? `${liveTask.story_points} SP` : '—'}</span>
+                    {canEditFields && !isEditing && (
+                      <button
+                        type="button"
+                        onClick={() => setIsEditing(true)}
+                        className="text-[10px] text-purple-600 hover:underline font-sans font-normal"
+                      >
+                        Edit
+                      </button>
+                    )}
+                  </div>
+                )}
+              </div>
+            )}
           </div>
 
           {isAssignedIntern && (
@@ -750,9 +831,16 @@ export default function TaskDetailModal({
                           {child.title}
                         </span>
                       </div>
-                      <span className="text-[10px] text-slate-500 font-semibold uppercase">
-                        {child.status}
-                      </span>
+                      <div className="flex items-center gap-2 shrink-0">
+                        {child.story_points > 0 && (
+                          <span className="font-mono text-[10px] font-bold px-1.5 py-0.5 rounded bg-purple-50 text-purple-700 border border-purple-200">
+                            {child.story_points} SP
+                          </span>
+                        )}
+                        <span className="text-[10px] text-slate-500 font-semibold uppercase">
+                          {child.status}
+                        </span>
+                      </div>
                     </div>
                   ))}
                 </div>

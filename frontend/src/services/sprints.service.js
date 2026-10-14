@@ -24,6 +24,9 @@ export const sprintsService = {
    */
   async createSprint(projectId, data) {
     const res = await api.post(`/projects/${projectId}/sprints`, data);
+    if (typeof window !== 'undefined') {
+      window.dispatchEvent(new CustomEvent('work-items-updated', { detail: { action: 'create-sprint', projectId, sprint: res.sprint } }));
+    }
     return res.sprint;
   },
 
@@ -32,6 +35,9 @@ export const sprintsService = {
    */
   async updateSprint(projectId, sprintId, data) {
     const res = await api.patch(`/projects/${projectId}/sprints/${sprintId}`, data);
+    if (typeof window !== 'undefined') {
+      window.dispatchEvent(new CustomEvent('work-items-updated', { detail: { action: 'update-sprint', projectId, sprint: res.sprint } }));
+    }
     return res.sprint;
   },
 
@@ -40,6 +46,9 @@ export const sprintsService = {
    */
   async startSprint(projectId, sprintId) {
     const res = await api.post(`/projects/${projectId}/sprints/${sprintId}/start`);
+    if (typeof window !== 'undefined') {
+      window.dispatchEvent(new CustomEvent('work-items-updated', { detail: { action: 'start-sprint', projectId, sprint: res.sprint } }));
+    }
     return res.sprint;
   },
 
@@ -48,6 +57,9 @@ export const sprintsService = {
    */
   async completeSprint(projectId, sprintId, options = {}) {
     const res = await api.post(`/projects/${projectId}/sprints/${sprintId}/complete`, options);
+    if (typeof window !== 'undefined') {
+      window.dispatchEvent(new CustomEvent('work-items-updated', { detail: { action: 'complete-sprint', projectId, sprint: res.sprint } }));
+    }
     return res.sprint;
   },
 
@@ -55,7 +67,11 @@ export const sprintsService = {
    * Delete sprint (disassociates work items safely back to backlog)
    */
   async deleteSprint(projectId, sprintId) {
-    return await api.delete(`/projects/${projectId}/sprints/${sprintId}`);
+    const res = await api.delete(`/projects/${projectId}/sprints/${sprintId}`);
+    if (typeof window !== 'undefined') {
+      window.dispatchEvent(new CustomEvent('work-items-updated', { detail: { action: 'delete-sprint', projectId, sprintId } }));
+    }
+    return res;
   },
 };
 

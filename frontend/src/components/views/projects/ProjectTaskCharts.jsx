@@ -5,7 +5,6 @@ import {
   CheckCircle2, 
   Clock, 
   AlertCircle, 
-  TrendingUp, 
   Layers, 
   Users, 
   Loader2, 
@@ -1091,40 +1090,6 @@ export default function ProjectTaskCharts({ projectId = null, members = [], read
             </div>
           </div>
 
-          {/* 14-Day Completion Activity Trend Chart (If available) */}
-          {analytics.trends?.length > 0 && (
-            <div className="bg-white p-4 rounded-2xl border border-slate-200/80 shadow-2xs">
-              <div className="flex items-center justify-between pb-2 mb-3 border-b border-slate-100">
-                <div className="flex items-center gap-2">
-                  <TrendingUp className="w-4 h-4 text-purple-600" />
-                  <h3 className="text-xs font-bold text-slate-800 uppercase tracking-wider">
-                    Task Completion & Velocity Trend (Last 14 Days)
-                  </h3>
-                </div>
-                <span className="text-[10px] text-slate-400 font-medium">Daily Delivery Timeline</span>
-              </div>
-              <div className="grid grid-cols-7 sm:grid-cols-14 gap-1.5 items-end pt-2">
-                {analytics.trends.map((t, idx) => {
-                  const dayName = new Date(t.date).toLocaleDateString('en-US', { weekday: 'narrow' });
-                  const dayNum = new Date(t.date).getDate();
-                  const heightPct = Math.min(100, Math.max(12, t.completed * 35));
-                  return (
-                    <div key={idx} className="flex flex-col items-center gap-1 text-center">
-                      <span className="text-[9px] font-bold text-slate-500">{t.completed}</span>
-                      <div className="w-full bg-slate-100 rounded-t-md h-16 flex items-end justify-center p-0.5">
-                        <div 
-                          className="w-full bg-purple-600 rounded-t-sm transition-all duration-300"
-                          style={{ height: `${heightPct}%`, opacity: t.completed > 0 ? 1 : 0.2 }}
-                          title={`${t.date}: ${t.completed} completed, ${t.logged_hours} hrs logged`}
-                        />
-                      </div>
-                      <span className="text-[8px] text-slate-400">{dayName} {dayNum}</span>
-                    </div>
-                  );
-                })}
-              </div>
-            </div>
-          )}
         </div>
       )}
 

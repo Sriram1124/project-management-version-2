@@ -40,6 +40,7 @@ export default function LoginView() {
   // Organizations
   const [organizations, setOrganizations] = useState([]);
   const [loadingOrgs, setLoadingOrgs] = useState(false);
+  const [orgLoadFailed, setOrgLoadFailed] = useState(false);
   const [orgSearch, setOrgSearch] = useState('');
   const [selectedOrg, setSelectedOrg] = useState(null);
 
@@ -55,10 +56,12 @@ export default function LoginView() {
     try {
       setLoadingOrgs(true);
       setError('');
+      setOrgLoadFailed(false);
       const data = await authService.getOrganizations();
       setOrganizations(Array.isArray(data) ? data : []);
     } catch (err) {
-      setError('Unable to load organizations. Please check your connection.');
+      setOrgLoadFailed(true);
+      setError(err.message || 'Unable to load organizations. Please check your connection.');
     } finally {
       setLoadingOrgs(false);
     }
@@ -84,7 +87,7 @@ export default function LoginView() {
       setStep('ROOT_LOGIN');
     } else {
       setStep('ORG_SELECT');
-      if (organizations.length === 0) {
+      if (organizations.length === 0 || orgLoadFailed) {
         fetchOrganizations();
       }
     }
@@ -332,6 +335,18 @@ export default function LoginView() {
                   {loadingOrgs ? (
                     <div className="flex flex-col items-center justify-center gap-2 rounded-2xl border border-violet-100 bg-violet-50/40 py-8 text-sm text-slate-500">
                       <Loader2 className="h-5 w-5 animate-spin text-violet-500" /> Loading organizations...
+                    </div>
+                  ) : orgLoadFailed ? (
+                    <div className="flex flex-col items-center justify-center gap-3 rounded-2xl border border-red-100 bg-red-50/40 p-6 text-center text-sm text-red-600">
+                      <AlertCircle className="h-5 w-5 text-red-500" />
+                      <span>Failed to load organizations.</span>
+                      <button
+                        type="button"
+                        onClick={fetchOrganizations}
+                        className="rounded-xl bg-violet-600 px-4 py-1.5 text-xs font-semibold text-white transition hover:bg-violet-700"
+                      >
+                        Retry
+                      </button>
                     </div>
                   ) : filteredOrgs.length === 0 ? (
                     <div className="rounded-2xl border border-violet-100 bg-violet-50/40 p-6 text-center text-sm text-slate-500">

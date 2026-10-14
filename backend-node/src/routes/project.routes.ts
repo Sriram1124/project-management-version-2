@@ -18,6 +18,7 @@ router.use(authenticate);
 router.get('/tech-leads', requirePermission('PROJECT_READ'), ProjectController.getTechLeads);
 
 // ── Project CRUD ─────────────────────────────────────────────────────────────
+router.get('/health-overview', requirePermission('PROJECT_READ'), ProjectController.getHealthOverview);
 router.get('/', requirePermission('PROJECT_READ'), ProjectController.list);
 router.post('/', requirePermission('PROJECT_CREATE'), ProjectController.create);
 router.get('/:id', requirePermission('PROJECT_READ'), ProjectController.getById);

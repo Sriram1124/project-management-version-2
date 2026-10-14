@@ -46,6 +46,7 @@ export default function AddTaskModal({
   const [type, setType] = useState(initialType);
   const [status, setStatus] = useState(initialStatus || 'TODO');
   const [priority, setPriority] = useState('MEDIUM');
+  const [storyPoints, setStoryPoints] = useState(3);
   const [selectedProjectId, setSelectedProjectId] = useState(projectId || '');
   const [parentId, setParentId] = useState(initialParentId || '');
   const [sprintId, setSprintId] = useState(initialSprintId || '');
@@ -89,6 +90,7 @@ export default function AddTaskModal({
       setStatus(initialStatus || 'TODO');
       setSprintId(initialSprintId || '');
       setPriority('MEDIUM');
+      setStoryPoints(3);
       setAssigneeId('');
       setStartDate('');
       setDueDate('');
@@ -317,6 +319,15 @@ export default function AddTaskModal({
       }
     }
 
+    const isTaskLike = type === 'TASK' || type === 'SUBTASK' || type === 'BUG';
+    const sp = Number(storyPoints);
+    if (isTaskLike) {
+      if (!storyPoints || isNaN(sp) || !Number.isInteger(sp) || sp <= 0) {
+        setError('Story points are mandatory for tasks, subtasks, and bugs and must be a positive integer greater than 0.');
+        return;
+      }
+    }
+
     try {
       setSubmitting(true);
       setError('');
@@ -327,6 +338,7 @@ export default function AddTaskModal({
         type,
         status,
         priority,
+        story_points: type === 'EPIC' ? 0 : sp > 0 ? sp : 0,
         project_id: targetProjId,
         parent_id: parentId || null,
         sprint_id: sprintId || null,
@@ -411,8 +423,8 @@ export default function AddTaskModal({
             </div>
           )}
 
-          {/* Work Item Type & Priority Row */}
-          <div className="grid grid-cols-2 gap-3">
+          {/* Work Item Type, Priority & Story Points Row */}
+          <div className={`grid gap-3 ${type !== 'EPIC' ? 'grid-cols-3' : 'grid-cols-2'}`}>
             <div>
               <label className="block text-[11px] font-bold text-slate-700 uppercase tracking-wider mb-1">
                 Issue Type *
@@ -446,6 +458,25 @@ export default function AddTaskModal({
                 ))}
               </select>
             </div>
+
+            {type !== 'EPIC' && (
+              <div>
+                <label className="block text-[11px] font-bold text-slate-700 uppercase tracking-wider mb-1 flex items-center justify-between">
+                  <span>Story Points *</span>
+                </label>
+                <input
+                  type="number"
+                  min="1"
+                  max="99"
+                  step="1"
+                  required
+                  value={storyPoints}
+                  onChange={(e) => setStoryPoints(e.target.value)}
+                  placeholder="e.g. 3"
+                  className="w-full px-3 py-2 rounded-xl border border-slate-200 bg-white text-slate-800 font-mono font-bold focus:outline-none focus:border-purple-600"
+                />
+              </div>
+            )}
           </div>
 
           {/* Title */}

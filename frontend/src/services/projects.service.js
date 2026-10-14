@@ -10,6 +10,14 @@ export const projectsService = {
     return res.projects || [];
   },
 
+  async getHealthOverview(params = {}) {
+    const query = new URLSearchParams();
+    if (params.cohort_id) query.append('cohort_id', params.cohort_id);
+    const qs = query.toString() ? `?${query.toString()}` : '';
+    const res = await api.get(`/projects/health-overview${qs}`);
+    return res;
+  },
+
   async getTechLeads() {
     const res = await api.get('/projects/tech-leads');
     return res.tech_leads || [];

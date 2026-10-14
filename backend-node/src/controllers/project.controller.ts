@@ -1,5 +1,6 @@
 import { Request, Response } from 'express';
 import { ProjectService } from '../services/project.service';
+import { ProjectHealthService } from '../services/project-health.service';
 
 export class ProjectController {
   private static handleError(res: Response, error: any) {
@@ -38,6 +39,21 @@ export class ProjectController {
     }
 
     res.status(500).json({ error: msg });
+  }
+
+  static async getHealthOverview(req: Request, res: Response): Promise<void> {
+    try {
+      const user = (req as any).fullUser;
+      const { cohort_id } = req.query as { cohort_id?: string };
+
+      const healthOverview = await ProjectHealthService.getPortfolioHealth(user, {
+        cohort_id,
+      });
+
+      res.status(200).json(healthOverview);
+    } catch (error) {
+      ProjectController.handleError(res, error);
+    }
   }
 
   static async list(req: Request, res: Response): Promise<void> {

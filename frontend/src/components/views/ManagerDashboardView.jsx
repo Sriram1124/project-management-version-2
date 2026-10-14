@@ -8,6 +8,7 @@ import { Calendar, Users, Sparkles, Clock } from 'lucide-react';
 
 export default function ManagerDashboardView({ 
   onNavigate, 
+  onSelectProject,
   onOpenAlertModal, 
   onOpenExceptionModal,
   onSendAlertMessage,
@@ -20,33 +21,47 @@ export default function ManagerDashboardView({
   const [projects, setProjects] = useState([]);
   const [users, setUsers] = useState([]);
   const [workItems, setWorkItems] = useState([]);
+  const [healthOverview, setHealthOverview] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [healthLoading, setHealthLoading] = useState(true);
 
   // If Cohort 2 is selected, render the clean future/empty state
   const isFutureCohort = selectedCohort?.code === 'cohort-2' || (selectedCohort?.name?.toLowerCase().includes('cohort 2') && (!selectedCohort?._count?.users || selectedCohort?._count?.users === 0));
 
-  useEffect(() => {
-    let isMounted = true;
-    setLoading(true);
+  const fetchDashboardData = React.useCallback(() => {
     const userParams = selectedCohort?.id ? { cohort_id: selectedCohort.id } : {};
-    Promise.all([
+    return Promise.all([
       projectsService.getProjects().catch(() => ({ projects: [] })),
       projectsService.getUsers(userParams).catch(() => ({ users: [] })),
-      workItemsService.listWorkItems().catch(() => [])
-    ]).then(([projData, userData, workData]) => {
-      if (isMounted) {
-        setProjects(Array.isArray(projData) ? projData : (projData?.projects || []));
-        const loadedUsers = Array.isArray(userData) ? userData : (userData?.users || []);
-        setUsers(loadedUsers);
-        setWorkItems(Array.isArray(workData) ? workData : []);
-        setLoading(false);
-      }
+      workItemsService.listWorkItems().catch(() => []),
+      projectsService.getHealthOverview(userParams).catch((err) => {
+        console.error('Failed to load project health overview:', err);
+        return null;
+      }),
+    ]).then(([projData, userData, workData, healthData]) => {
+      setProjects(Array.isArray(projData) ? projData : (projData?.projects || []));
+      const loadedUsers = Array.isArray(userData) ? userData : (userData?.users || []);
+      setUsers(loadedUsers);
+      setWorkItems(Array.isArray(workData) ? workData : []);
+      setHealthOverview(healthData);
+      setLoading(false);
+      setHealthLoading(false);
     });
-
-    return () => {
-      isMounted = false;
-    };
   }, [selectedCohort?.id]);
+
+  useEffect(() => {
+    setLoading(true);
+    setHealthLoading(true);
+    fetchDashboardData();
+  }, [fetchDashboardData]);
+
+  useEffect(() => {
+    const handleSync = () => {
+      fetchDashboardData();
+    };
+    window.addEventListener('work-items-updated', handleSync);
+    return () => window.removeEventListener('work-items-updated', handleSync);
+  }, [fetchDashboardData]);
 
   if (isFutureCohort) {
     return (
@@ -121,41 +136,6 @@ export default function ManagerDashboardView({
     },
   };
 
-  const dynamicProjectHealth = projects.map((proj) => {
-    const ownerName = proj.owner ? (proj.owner.name || proj.owner.email) : 'Unassigned';
-    const memberCount = proj._count?.members ?? (proj.members?.length ?? 0);
-
-    // Filter work items belonging to this project (verifying project_id or project.id)
-    const projItems = workItems.filter(
-      (w) => w.project_id === proj.id || w.project?.id === proj.id
-    );
-
-    // Eligible leaf deliverables: Stories, Tasks, Bugs, Subtasks (exclude parent Epics to avoid double counting)
-    const eligibleDeliverables = projItems.filter(
-      (item) => String(item.type || '').toUpperCase() !== 'EPIC'
-    );
-
-    const completedDeliverables = eligibleDeliverables.filter(
-      (item) => String(item.status || '').toUpperCase() === 'COMPLETED'
-    );
-
-    // If 0 eligible deliverables, return 0% (never default to arbitrary percentage)
-    const progress = eligibleDeliverables.length > 0
-      ? Math.round((completedDeliverables.length / eligibleDeliverables.length) * 100)
-      : 0;
-
-    return {
-      id: proj.id,
-      name: proj.name,
-      lead: ownerName,
-      section: proj.status,
-      internsCount: memberCount,
-      progress,
-      status: proj.status,
-      statusType: proj.status === 'ACTIVE' ? 'success' : (proj.status === 'PLANNED' ? 'warning' : 'default'),
-    };
-  });
-
   return (
     <div className="space-y-6">
       {/* Primary 4 Metric Cards */}
@@ -179,8 +159,10 @@ export default function ManagerDashboardView({
 
         {/* Project Health Card */}
         <ProjectHealth 
-          projects={dynamicProjectHealth}
+          healthOverview={healthOverview}
+          loading={healthLoading}
           onViewAll={() => onNavigate('projects')}
+          onSelectProject={onSelectProject}
         />
       </div>
     </div>

@@ -55,6 +55,9 @@ export const workItemsService = {
     }
 
     const data = await api.post('/work-items', cleanPayload);
+    if (typeof window !== 'undefined') {
+      window.dispatchEvent(new CustomEvent('work-items-updated', { detail: { action: 'create', item: data.work_item } }));
+    }
     return data.work_item;
   },
 
@@ -71,6 +74,9 @@ export const workItemsService = {
     if (cleanPayload.parent_id === '') cleanPayload.parent_id = null;
 
     const data = await api.patch(`/work-items/${id}`, cleanPayload);
+    if (typeof window !== 'undefined') {
+      window.dispatchEvent(new CustomEvent('work-items-updated', { detail: { action: 'update', id, item: data.work_item } }));
+    }
     return data.work_item;
   },
 
@@ -79,7 +85,11 @@ export const workItemsService = {
    */
   async deleteWorkItem(id) {
     if (!id) throw new Error('Work item ID is required');
-    return await api.delete(`/work-items/${id}`);
+    const res = await api.delete(`/work-items/${id}`);
+    if (typeof window !== 'undefined') {
+      window.dispatchEvent(new CustomEvent('work-items-updated', { detail: { action: 'delete', id } }));
+    }
+    return res;
   },
 
   /**
@@ -102,12 +112,13 @@ export const workItemsService = {
   /**
    * Convenience helper for personal task creation
    */
-  async createPersonalTask({ title, description, priority = 'MEDIUM', dueDate }) {
+  async createPersonalTask({ title, description, priority = 'MEDIUM', dueDate, story_points = 1 }) {
     return await this.createWorkItem({
       title,
       description: description || null,
       priority,
       due_date: dueDate || null,
+      story_points: Number(story_points) || 1,
       type: 'TASK',
       project_id: null,
     });
