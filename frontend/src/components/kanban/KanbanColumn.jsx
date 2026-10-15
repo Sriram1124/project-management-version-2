@@ -56,8 +56,15 @@ export default function KanbanColumn({
           <h3 className="text-xs font-bold text-slate-800 tracking-tight">
             {displayTitle}
           </h3>
-          <span className="text-[10px] font-semibold text-slate-500 px-1.5 py-0.2 rounded bg-white border border-slate-200">
-            {tasks.length}
+          <span
+            title={column.wipLimit ? `Work in Progress Limit: ${column.wipLimit}` : undefined}
+            className={`text-[10px] font-semibold px-1.5 py-0.5 rounded border transition-colors ${
+              column.wipLimit && tasks.length > column.wipLimit
+                ? 'bg-amber-50 text-amber-800 border-amber-300 font-bold'
+                : 'bg-white text-slate-500 border-slate-200'
+            }`}
+          >
+            {tasks.length}{column.wipLimit ? ` / ${column.wipLimit} max` : ''}
           </span>
         </div>
 

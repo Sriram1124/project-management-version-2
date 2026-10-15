@@ -3,6 +3,16 @@ import { prisma } from '../lib/prisma';
 
 export type HealthStatus = 'HEALTHY' | 'AT_RISK' | 'CRITICAL' | 'NOT_ASSESSED' | 'INSUFFICIENT_DATA';
 
+/**
+ * Configurable thresholds for blocked-work percentage of remaining story points.
+ * formula: (blockedStoryPoints / remainingStoryPoints) * 100
+ */
+export const BLOCKED_RISK_THRESHOLDS = {
+  LOW_EXPOSURE_MAX: 25, // < 25%: Low exposure; monitor. Do not classify as AT_RISK solely on percentage.
+  POTENTIAL_RISK_MIN: 25, // 25% to < 50%: Potential delivery risk (AT_RISK)
+  HIGH_RISK_MIN: 50, // >= 50%: High delivery risk (evaluate for CRITICAL or AT_RISK)
+} as const;
+
 export interface StoryHealthItem {
   id: string;
   title: string;
@@ -16,6 +26,7 @@ export interface StoryHealthItem {
   completed_task_count: number;
   is_blocked: boolean;
   is_overdue: boolean;
+  sprint_id?: string | null;
 }
 
 export interface ProjectHealthItem {
@@ -24,12 +35,16 @@ export interface ProjectHealthItem {
   status: string; // Project lifecycle status (e.g. ACTIVE, PLANNED, ARCHIVED)
   health: HealthStatus;
   reasons: string[];
+  warnings?: string[];
   completion_percentage: number | null; // Kept for backwards compatibility
   progress_percentage: number | null; // SP-based project progress percentage
   has_estimated_work: boolean;
   total_sp: number;
   completed_sp: number;
   remaining_sp: number;
+  blocked_sp: number;
+  blocked_work_percentage: number | null;
+  unestimated_blockers_count: number;
   story_count: number;
   completed_stories_count: number;
   blocked_stories_count: number;
@@ -46,11 +61,14 @@ export interface ProjectHealthItem {
 
 export interface PortfolioHealthSummary {
   total: number;
+  assessed: number;
   healthy: number;
   at_risk: number;
   critical: number;
   not_assessed: number;
   insufficient_data: number;
+  attention_required: number;
+  attention_rate: number;
 }
 
 export interface PortfolioHealthDistribution {
@@ -98,6 +116,7 @@ export class ProjectHealthService {
       due_date?: Date | null;
       story_points?: number | null;
       parent_id?: string | null;
+      sprint_id?: string | null;
     }>;
     sprints?: Array<{
       id: string;
@@ -108,10 +127,14 @@ export class ProjectHealthService {
   }): {
     health: HealthStatus;
     reasons: string[];
+    warnings?: string[];
     has_estimated_work: boolean;
     total_sp: number;
     completed_sp: number;
     remaining_sp: number;
+    blocked_sp: number;
+    blocked_work_percentage: number | null;
+    unestimated_blockers_count: number;
     progress_percentage: number | null;
     completion_percentage: number | null;
     story_count: number;
@@ -130,6 +153,8 @@ export class ProjectHealthService {
     const workItems = project.work_items || [];
     const sprints = project.sprints || [];
     const now = new Date();
+
+    const sprintMap = new Map<string, any>(sprints.map((s: any) => [s.id, s]));
 
     // 1. All parent IDs that have children in this project (to prevent double counting)
     const parentIdsWithChildren = new Set(workItems.map((w: any) => w.parent_id).filter(Boolean));
@@ -169,8 +194,11 @@ export class ProjectHealthService {
         ? Math.round((sCompletedSp / sTotalSp) * 100)
         : (s.status === WorkItemStatus.COMPLETED ? 100 : null);
 
-      const isStoryExplicitlyBlocked = s.status === WorkItemStatus.BLOCKED;
-      const hasBlockedChildTask = childTasks.some((t: any) => t.status === WorkItemStatus.BLOCKED);
+      // Exclude completed work from remaining blocked work
+      const isStoryExplicitlyBlocked = s.status === WorkItemStatus.BLOCKED && s.status !== WorkItemStatus.COMPLETED;
+      const hasBlockedChildTask = childTasks.some(
+        (t: any) => t.status === WorkItemStatus.BLOCKED && t.status !== WorkItemStatus.COMPLETED
+      );
       const isBlocked = isStoryExplicitlyBlocked || hasBlockedChildTask;
 
       const isStoryExplicitlyOverdue = Boolean(s.due_date && new Date(s.due_date) < now && s.status !== WorkItemStatus.COMPLETED);
@@ -190,6 +218,7 @@ export class ProjectHealthService {
         completed_task_count: hasChildren ? sCompletedTasks.length : (s.status === WorkItemStatus.COMPLETED ? 1 : 0),
         is_blocked: isBlocked,
         is_overdue: isOverdue,
+        sprint_id: s.sprint_id || null,
       };
     });
 
@@ -202,15 +231,27 @@ export class ProjectHealthService {
     const has_estimated_work = total_sp > 0;
     const progress_percentage = has_estimated_work ? Math.round((completed_sp / total_sp) * 100) : null;
 
+    // Unfinished leaf deliverables (excluding completed or cancelled work)
+    const unfinishedLeaves = eligibleLeaves.filter(
+      (t: any) => t.status !== WorkItemStatus.COMPLETED && (t.status as any) !== 'CANCELLED'
+    );
+
+    // Blocked leaf deliverables (only active/unfinished work)
+    const blockedLeaves = unfinishedLeaves.filter((t: any) => t.status === WorkItemStatus.BLOCKED);
+    const blocked_tasks = blockedLeaves.length;
+    const blocked_sp = blockedLeaves.reduce((sum: number, t: any) => sum + (Number(t.story_points) || 0), 0);
+
+    // Formula: blockedWorkPercentage = (blockedStoryPoints / remainingStoryPoints) * 100
+    const blocked_work_percentage =
+      remaining_sp > 0 ? Number(((blocked_sp / remaining_sp) * 100).toFixed(1)) : 0;
+
     // Task and story counts from eligible leaves
     const total_tasks = eligibleLeaves.length;
     const completed_tasks = eligibleLeaves.filter((t: any) => t.status === WorkItemStatus.COMPLETED).length;
-    const overdueTasksList = eligibleLeaves.filter(
-      (t: any) => t.due_date && new Date(t.due_date) < now && t.status !== WorkItemStatus.COMPLETED
+    const overdueTasksList = unfinishedLeaves.filter(
+      (t: any) => t.due_date && new Date(t.due_date) < now
     );
     const overdue_tasks = overdueTasksList.length;
-    const blockedTasksList = eligibleLeaves.filter((t: any) => t.status === WorkItemStatus.BLOCKED);
-    const blocked_tasks = blockedTasksList.length;
 
     const completed_stories_count = storyItems.filter(
       (s) => s.status === WorkItemStatus.COMPLETED || (s.total_sp > 0 && s.completed_sp === s.total_sp)
@@ -253,16 +294,66 @@ export class ProjectHealthService {
       daysUntilDeadline = Math.floor((new Date(project.end_date).getTime() - now.getTime()) / (1000 * 60 * 60 * 24));
     }
 
+    // Classify blocked items by sprint scope & estimation
+    const blockedInActiveSprint: any[] = [];
+    const blockedInCompletedSprint: any[] = [];
+    const blockedInPlannedOrBacklog: any[] = [];
+    const unestimatedBlockers: any[] = [];
+
+    for (const t of blockedLeaves) {
+      let itemSprintId = t.sprint_id;
+      if (!itemSprintId && t.parent_id) {
+        const parent = workItems.find((w: any) => w.id === t.parent_id);
+        if (parent?.sprint_id) itemSprintId = parent.sprint_id;
+      }
+      const itemSprint = itemSprintId ? sprintMap.get(itemSprintId) : null;
+      const sprintLifecycle = itemSprint ? itemSprint.status : 'BACKLOG';
+
+      if (sprintLifecycle === 'ACTIVE') {
+        blockedInActiveSprint.push(t);
+      } else if (sprintLifecycle === 'COMPLETED') {
+        blockedInCompletedSprint.push(t);
+      } else {
+        blockedInPlannedOrBacklog.push(t);
+      }
+
+      if (!t.story_points || Number(t.story_points) === 0) {
+        unestimatedBlockers.push(t);
+      }
+    }
+    const unestimated_blockers_count = unestimatedBlockers.length;
+
+    // Collect non-blocking data quality and lifecycle warnings
+    const warnings: string[] = [];
+    if (blockedInCompletedSprint.length > 0) {
+      warnings.push(
+        `${blockedInCompletedSprint.length} unresolved blocked deliverable(s) in completed sprint · Flagged for review / rollover`
+      );
+    }
+    if (unestimated_blockers_count > 0) {
+      warnings.push(
+        `${unestimated_blockers_count} blocked deliverable(s) with 0 estimated SP · Delivery impact unknown (estimation required)`
+      );
+    }
+    const hasExplicitSchedule = Boolean(project.end_date || activeSprint);
+    if (remaining_sp > 0 && !hasExplicitSchedule) {
+      warnings.push('Missing schedule data: No project deadline or active sprint scheduled');
+    }
+
     // 5. Insufficient Data / Not Assessed check:
     // If no eligible estimated work defined, return NOT_ASSESSED with null progress percentage
     if (!has_estimated_work || total_tasks === 0) {
       return {
         health: 'NOT_ASSESSED',
         reasons: ['No estimated work defined for this project'],
+        warnings,
         has_estimated_work: false,
         total_sp: 0,
         completed_sp: 0,
         remaining_sp: 0,
+        blocked_sp: 0,
+        blocked_work_percentage: null,
+        unestimated_blockers_count,
         progress_percentage: null,
         completion_percentage: null,
         story_count: stories.length,
@@ -272,7 +363,7 @@ export class ProjectHealthService {
         total_tasks,
         completed_tasks,
         overdue_tasks,
-        blocked_tasks,
+        blocked_tasks: 0,
         critical_tasks: 0,
         project_overdue_days: projectOverdueDays,
         max_task_overdue_days: maxTaskOverdueDays,
@@ -281,36 +372,18 @@ export class ProjectHealthService {
     }
 
     // 6. Evaluate Health Separately from Progress:
-    // High / Urgent priority deliveries
-    const critOverdueStories = storyItems.filter(
-      (s) => (s.priority === WorkItemPriority.URGENT || s.priority === WorkItemPriority.HIGH) && s.is_overdue
-    );
-    const critOverdueTasks = overdueTasksList.filter(
-      (t) => t.priority === WorkItemPriority.URGENT || t.priority === WorkItemPriority.HIGH
-    );
-
-    const critBlockedStories = storyItems.filter(
-      (s) => (s.priority === WorkItemPriority.URGENT || s.priority === WorkItemPriority.HIGH) && s.is_blocked
-    );
-    const severeBlockedTasks = blockedTasksList.filter((t) => {
-      if (t.priority === WorkItemPriority.URGENT) return true;
-      if (t.priority === WorkItemPriority.HIGH && t.due_date) {
-        const diffDays = Math.floor((new Date(t.due_date).getTime() - now.getTime()) / (1000 * 60 * 60 * 24));
-        return diffDays <= 3;
-      }
-      return false;
-    });
-
-    const blockedSp = eligibleLeaves
-      .filter((t: any) => t.status === WorkItemStatus.BLOCKED)
-      .reduce((sum: number, t: any) => sum + (Number(t.story_points) || 0), 0);
-    const isWidespreadBlockage = blocked_tasks >= 3 || (remaining_sp > 0 && blockedSp / remaining_sp >= 0.5);
-
     const criticalReasons: string[] = [];
     const atRiskReasons: string[] = [];
 
     // --- CRITICAL THRESHOLDS ---
+
     // Rule 1: High/Urgent priority deliverable overdue
+    const critOverdueTasks = overdueTasksList.filter(
+      (t) => t.priority === WorkItemPriority.URGENT || t.priority === WorkItemPriority.HIGH
+    );
+    const critOverdueStories = storyItems.filter(
+      (s) => (s.priority === WorkItemPriority.URGENT || s.priority === WorkItemPriority.HIGH) && s.is_overdue
+    );
     if (critOverdueTasks.length > 0 || critOverdueStories.length > 0) {
       const count = Math.max(critOverdueStories.length, critOverdueTasks.length);
       criticalReasons.push(
@@ -318,19 +391,58 @@ export class ProjectHealthService {
       );
     }
 
-    // Rule 2: High/Urgent priority deliverable blocked / severe blocker
-    if (critBlockedStories.length > 0 || severeBlockedTasks.length > 0) {
-      const count = Math.max(critBlockedStories.length, severeBlockedTasks.length);
+    // Rule 2: Severe Blocker / High-Priority Deliverable Blocked
+    // Blockers in completed sprints are excluded from severe immediate threats
+    const severeBlockedDeliverables = blockedLeaves.filter((t: any) => {
+      let sId = t.sprint_id;
+      if (!sId && t.parent_id) {
+        const p = workItems.find((w: any) => w.id === t.parent_id);
+        if (p?.sprint_id) sId = p.sprint_id;
+      }
+      const sObj = sId ? sprintMap.get(sId) : null;
+      if (sObj?.status === 'COMPLETED') return false;
+
+      if (t.priority === WorkItemPriority.URGENT) return true;
+      if (t.priority === WorkItemPriority.HIGH) {
+        if (t.due_date) {
+          const diffDays = Math.floor((new Date(t.due_date).getTime() - now.getTime()) / (1000 * 60 * 60 * 24));
+          return diffDays <= 3;
+        }
+        if (daysUntilDeadline !== null && daysUntilDeadline <= 3) return true;
+        if (sObj?.status === 'ACTIVE' && sObj.end_date) {
+          const sprintDays = Math.floor((new Date(sObj.end_date).getTime() - now.getTime()) / (1000 * 60 * 60 * 24));
+          if (sprintDays <= 3) return true;
+        }
+      }
+      return false;
+    });
+
+    if (severeBlockedDeliverables.length > 0) {
       criticalReasons.push(
-        `${count} high-priority deliverable(s) blocked · Urgent resolution required`
-      );
-    } else if (isWidespreadBlockage) {
-      criticalReasons.push(
-        `Widespread blocker: ${blocked_tasks} deliverables blocked (${blockedSp} SP pending)`
+        `${severeBlockedDeliverables.length} high-priority deliverable(s) blocked · Urgent resolution required`
       );
     }
 
-    // Rule 3: Significant schedule slippage
+    // Rule 3: High Delivery Risk (More than 50% of remaining SP blocked)
+    if (blocked_work_percentage > BLOCKED_RISK_THRESHOLDS.HIGH_RISK_MIN) {
+      criticalReasons.push(
+        `High delivery risk: ${blocked_sp} of ${remaining_sp} remaining SP blocked (${Math.round(blocked_work_percentage)}%)`
+      );
+    } else if (blocked_work_percentage === BLOCKED_RISK_THRESHOLDS.HIGH_RISK_MIN) {
+      // At exactly 50%, evaluate for CRITICAL if severe factors or widespread task count apply
+      const hasCriticalFactors =
+        severeBlockedDeliverables.length > 0 ||
+        critOverdueTasks.length > 0 ||
+        blockedInActiveSprint.length > 0 ||
+        blocked_tasks >= 3;
+      if (hasCriticalFactors) {
+        criticalReasons.push(
+          `High delivery risk: ${blocked_sp} of ${remaining_sp} remaining SP blocked (50%)`
+        );
+      }
+    }
+
+    // Rule 4: Significant schedule slippage
     if (projectEndDatePassed) {
       if (
         progress_percentage === 0 ||
@@ -343,7 +455,7 @@ export class ProjectHealthService {
       }
     }
 
-    // Rule 4: Critical volume of overdue work
+    // Rule 5: Critical volume of overdue work
     if (overdue_tasks >= 4 || (overdue_tasks >= 3 && overdue_tasks / total_tasks >= 0.4)) {
       criticalReasons.push(`${overdue_tasks} deliverables overdue · Significant delivery risk`);
     }
@@ -352,10 +464,14 @@ export class ProjectHealthService {
       return {
         health: 'CRITICAL',
         reasons: criticalReasons,
+        warnings,
         has_estimated_work: true,
         total_sp,
         completed_sp,
         remaining_sp,
+        blocked_sp,
+        blocked_work_percentage,
+        unestimated_blockers_count,
         progress_percentage,
         completion_percentage: progress_percentage,
         story_count: stories.length,
@@ -366,7 +482,7 @@ export class ProjectHealthService {
         completed_tasks,
         overdue_tasks,
         blocked_tasks,
-        critical_tasks: critOverdueTasks.length + severeBlockedTasks.length,
+        critical_tasks: critOverdueTasks.length + severeBlockedDeliverables.length,
         project_overdue_days: projectOverdueDays,
         max_task_overdue_days: maxTaskOverdueDays,
         stories: storyItems,
@@ -374,26 +490,68 @@ export class ProjectHealthService {
     }
 
     // --- AT_RISK THRESHOLDS ---
+
+    // Rule A: Moderate project-level delay
     if (projectEndDatePassed) {
       atRiskReasons.push(
         `Project deadline passed ${projectOverdueDays} ${projectOverdueDays === 1 ? 'day' : 'days'} ago · ${remaining_sp} SP pending`
       );
     }
 
+    // Rule B: Active sprint deadline passed
     if (sprintOverdue) {
       atRiskReasons.push('Active sprint deadline passed · Delivery delayed');
     }
 
-    if (blocked_stories_count > 0 || blocked_tasks > 0) {
+    // Rule C: Story-Point-Based Blocker Impact (Configurable thresholds)
+    if (blocked_work_percentage >= BLOCKED_RISK_THRESHOLDS.HIGH_RISK_MIN) {
+      // Exactly 50% without critical factors evaluated to AT_RISK
       atRiskReasons.push(
-        `${blocked_stories_count > 0 ? `${blocked_stories_count} story blocked` : `${blocked_tasks} task blocked`} · Attention required`
+        `${blocked_sp} of ${remaining_sp} remaining SP blocked (${Math.round(blocked_work_percentage)}%) · Significant delivery risk`
       );
+    } else if (blocked_work_percentage >= BLOCKED_RISK_THRESHOLDS.POTENTIAL_RISK_MIN) {
+      // 25% to below 50%: Potential delivery risk
+      atRiskReasons.push(
+        `${blocked_sp} of ${remaining_sp} remaining SP blocked (${Math.round(blocked_work_percentage)}%) · Potential delivery risk`
+      );
+    } else {
+      // Below 25%: Low exposure; do NOT classify as AT_RISK solely on percentage!
+      // But check if a high-priority blocker threatens an active sprint:
+      const highPriorityActiveBlockers = blockedInActiveSprint.filter(
+        (t: any) => t.priority === WorkItemPriority.HIGH || t.priority === WorkItemPriority.URGENT
+      );
+      if (highPriorityActiveBlockers.length > 0) {
+        atRiskReasons.push(
+          `High-priority deliverable blocked in active sprint · Immediate delivery risk`
+        );
+      } else {
+        // High-priority unestimated blocker in active sprint
+        const urgentUnestimatedActive = unestimatedBlockers.filter((t: any) => {
+          let sId = t.sprint_id;
+          if (!sId && t.parent_id) {
+            const p = workItems.find((w: any) => w.id === t.parent_id);
+            if (p?.sprint_id) sId = p.sprint_id;
+          }
+          const sObj = sId ? sprintMap.get(sId) : null;
+          return (
+            (t.priority === WorkItemPriority.HIGH || t.priority === WorkItemPriority.URGENT) &&
+            sObj?.status === 'ACTIVE'
+          );
+        });
+        if (urgentUnestimatedActive.length > 0) {
+          atRiskReasons.push(
+            `High-priority unestimated deliverable blocked in active sprint · Attention required`
+          );
+        }
+      }
     }
 
+    // Rule D: Task-level overdue deliverables
     if (overdue_tasks > 0) {
       atRiskReasons.push(`${overdue_tasks} deliverable(s) overdue (${maxTaskOverdueDays}d delay)`);
     }
 
+    // Rule E: Imminent project deadline (< 7 days) with low progress (< 40%)
     if (daysUntilDeadline !== null && daysUntilDeadline <= 7 && (progress_percentage ?? 0) < 40 && remaining_sp > 0) {
       atRiskReasons.push(`Upcoming deadline in ${daysUntilDeadline}d with ${remaining_sp} SP remaining`);
     }
@@ -402,10 +560,14 @@ export class ProjectHealthService {
       return {
         health: 'AT_RISK',
         reasons: atRiskReasons,
+        warnings,
         has_estimated_work: true,
         total_sp,
         completed_sp,
         remaining_sp,
+        blocked_sp,
+        blocked_work_percentage,
+        unestimated_blockers_count,
         progress_percentage,
         completion_percentage: progress_percentage,
         story_count: stories.length,
@@ -416,7 +578,7 @@ export class ProjectHealthService {
         completed_tasks,
         overdue_tasks,
         blocked_tasks,
-        critical_tasks: critOverdueTasks.length + severeBlockedTasks.length,
+        critical_tasks: critOverdueTasks.length + severeBlockedDeliverables.length,
         project_overdue_days: projectOverdueDays,
         max_task_overdue_days: maxTaskOverdueDays,
         stories: storyItems,
@@ -424,14 +586,30 @@ export class ProjectHealthService {
     }
 
     // --- HEALTHY ---
-    const isAllCompleted = remaining_sp === 0;
+    let healthyReason = 'On schedule · 0 overdue · 0 active blockers';
+    if (remaining_sp === 0) {
+      healthyReason = 'All deliverables completed';
+    } else if (!hasExplicitSchedule) {
+      if (blockedInCompletedSprint.length > 0) {
+        healthyReason = `No active delivery blockers · ${blockedInCompletedSprint.length} item in completed sprint flagged for review`;
+      } else {
+        healthyReason = 'No active delivery blockers · Schedule dates not set';
+      }
+    } else if (blocked_work_percentage > 0 && blocked_work_percentage < BLOCKED_RISK_THRESHOLDS.POTENTIAL_RISK_MIN) {
+      healthyReason = `On track · Low blocker exposure (${blocked_sp} of ${remaining_sp} SP blocked)`;
+    }
+
     return {
       health: 'HEALTHY',
-      reasons: [isAllCompleted ? 'All deliverables completed' : 'On schedule · 0 overdue · 0 blocked'],
+      reasons: [healthyReason],
+      warnings,
       has_estimated_work: true,
       total_sp,
       completed_sp,
       remaining_sp,
+      blocked_sp,
+      blocked_work_percentage,
+      unestimated_blockers_count,
       progress_percentage,
       completion_percentage: progress_percentage,
       story_count: stories.length,
@@ -441,7 +619,7 @@ export class ProjectHealthService {
       total_tasks,
       completed_tasks,
       overdue_tasks: 0,
-      blocked_tasks: 0,
+      blocked_tasks,
       critical_tasks: 0,
       project_overdue_days: 0,
       max_task_overdue_days: 0,
@@ -459,7 +637,7 @@ export class ProjectHealthService {
     const orgId = await this.getEffectiveOrgId(user);
     if (!orgId) {
       return {
-        summary: { total: 0, healthy: 0, at_risk: 0, critical: 0, not_assessed: 0, insufficient_data: 0 },
+        summary: { total: 0, assessed: 0, healthy: 0, at_risk: 0, critical: 0, not_assessed: 0, insufficient_data: 0, attention_required: 0, attention_rate: 0 },
         distribution: {
           healthy: { count: 0, percentage: 0 },
           at_risk: { count: 0, percentage: 0 },
@@ -503,6 +681,7 @@ export class ProjectHealthService {
             due_date: true,
             story_points: true,
             parent_id: true,
+            sprint_id: true,
           },
         },
         sprints: {
@@ -525,12 +704,16 @@ export class ProjectHealthService {
         status: p.status,
         health: evaluation.health,
         reasons: evaluation.reasons,
+        warnings: evaluation.warnings,
         completion_percentage: evaluation.completion_percentage,
         progress_percentage: evaluation.progress_percentage,
         has_estimated_work: evaluation.has_estimated_work,
         total_sp: evaluation.total_sp,
         completed_sp: evaluation.completed_sp,
         remaining_sp: evaluation.remaining_sp,
+        blocked_sp: evaluation.blocked_sp,
+        blocked_work_percentage: evaluation.blocked_work_percentage,
+        unestimated_blockers_count: evaluation.unestimated_blockers_count,
         story_count: evaluation.story_count,
         completed_stories_count: evaluation.completed_stories_count,
         blocked_stories_count: evaluation.blocked_stories_count,
@@ -554,35 +737,46 @@ export class ProjectHealthService {
       (p) => p.health === 'NOT_ASSESSED' || (p.health as any) === 'INSUFFICIENT_DATA'
     ).length;
 
+    const assessedCount = healthyCount + atRiskCount + criticalCount;
+    const attentionRequiredCount = atRiskCount + criticalCount;
+
+    const roundPct = (num: number, den: number) => {
+      if (den <= 0) return 0;
+      return Number(((num / den) * 100).toFixed(1));
+    };
+
     const summary: PortfolioHealthSummary = {
       total,
+      assessed: assessedCount,
       healthy: healthyCount,
       at_risk: atRiskCount,
       critical: criticalCount,
       not_assessed: notAssessedCount,
       insufficient_data: notAssessedCount,
+      attention_required: attentionRequiredCount,
+      attention_rate: roundPct(attentionRequiredCount, assessedCount),
     };
 
     const distribution: PortfolioHealthDistribution = {
       healthy: {
         count: healthyCount,
-        percentage: total > 0 ? Math.round((healthyCount / total) * 100) : 0,
+        percentage: roundPct(healthyCount, assessedCount),
       },
       at_risk: {
         count: atRiskCount,
-        percentage: total > 0 ? Math.round((atRiskCount / total) * 100) : 0,
+        percentage: roundPct(atRiskCount, assessedCount),
       },
       critical: {
         count: criticalCount,
-        percentage: total > 0 ? Math.round((criticalCount / total) * 100) : 0,
+        percentage: roundPct(criticalCount, assessedCount),
       },
       not_assessed: {
         count: notAssessedCount,
-        percentage: total > 0 ? Math.round((notAssessedCount / total) * 100) : 0,
+        percentage: roundPct(notAssessedCount, total),
       },
       insufficient_data: {
         count: notAssessedCount,
-        percentage: total > 0 ? Math.round((notAssessedCount / total) * 100) : 0,
+        percentage: roundPct(notAssessedCount, total),
       },
     };
 

@@ -231,7 +231,7 @@ export class WorkItemService {
    * BUG -> cannot have children
    *
    * Top-level (parentId = null):
-   * In a Project (projectId != null): only EPIC is permitted at root.
+   * In a Project (projectId != null): EPIC, STORY, or BUG are permitted at root (standalone stories and bugs permitted without an Epic).
    * Personal Tasks (projectId == null): only TASK is permitted.
    */
   private static async validateHierarchy(
@@ -242,9 +242,13 @@ export class WorkItemService {
   ): Promise<void> {
     if (!parentId) {
       if (projectId) {
-        if (type !== WorkItemType.EPIC) {
+        if (
+          type !== WorkItemType.EPIC &&
+          type !== WorkItemType.STORY &&
+          type !== WorkItemType.BUG
+        ) {
           throw new Error(
-            `${type} must have a parent work item. Only EPIC can be created at the project root.`
+            `${type} must have a parent work item. Only EPIC, STORY, and BUG can be created at the project root.`
           );
         }
       } else {
@@ -1716,6 +1720,12 @@ export class WorkItemService {
         was_completed_on_time,
         logged_minutes,
         logged_hours: +(logged_minutes / 60).toFixed(1),
+        assignees: w.assignees?.map((a: any) => ({
+          id: a.user?.id || a.user_id,
+          user_id: a.user?.id || a.user_id,
+          name: a.user?.name,
+          email: a.user?.email,
+        })) || [],
       };
     });
 

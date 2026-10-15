@@ -182,7 +182,14 @@ export default function ProjectHealth({
                             <span>
                               {proj.story_count} {proj.story_count === 1 ? 'story' : 'stories'}
                             </span>
-                            {proj.blocked_stories_count > 0 ? (
+                            {proj.blocked_sp > 0 ? (
+                              <>
+                                <span className="text-slate-300">•</span>
+                                <span className="text-amber-600 font-semibold">
+                                  {proj.blocked_sp} SP blocked ({proj.blocked_work_percentage}%)
+                                </span>
+                              </>
+                            ) : proj.blocked_stories_count > 0 ? (
                               <>
                                 <span className="text-slate-300">•</span>
                                 <span className="text-amber-600 font-semibold">

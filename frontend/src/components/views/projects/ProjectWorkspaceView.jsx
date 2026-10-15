@@ -1,13 +1,15 @@
-import React, { useState, useEffect } from 'react';
-import { FolderKanban } from 'lucide-react';
+import React, { useState, useEffect, useMemo } from 'react';
+import { FolderKanban, AlertCircle } from 'lucide-react';
 import ProjectOverviewTab from './ProjectOverviewTab';
 import ProjectRoadmapTab from './ProjectRoadmapTab';
 import ProjectSprintWorkspaceTab from './ProjectSprintWorkspaceTab';
+import ProjectCycleWorkspaceTab from './ProjectCycleWorkspaceTab';
 import ProjectBacklogTab from './ProjectBacklogTab';
 import KanbanBoard from '../../kanban/KanbanBoard';
 import ProjectMomTab from './ProjectMomTab';
 import { projectsService } from '../../../services/projects.service';
 import { useAuth } from '../../../context/AuthContext';
+import { getProjectMethodology, getProjectTabs, isKanbanProject } from '../../../utils/methodology';
 
 export default function ProjectWorkspaceView({ 
   projectId,
@@ -27,13 +29,12 @@ export default function ProjectWorkspaceView({
 
   const [currentTab, setCurrentTab] = useState(activeTab);
   const [liveProject, setLiveProject] = useState(null);
-  const [members, setMembers] = useState([]);
   const [selectedSprintId, setSelectedSprintId] = useState(null);
 
   const isTechLeadOnProject = 
     authRole === 'TECH_LEAD' || 
     Boolean(authUser?.is_tech_lead && (authUser?.lead_project_ids?.includes(projectId) || !authUser?.lead_project_ids?.length)) ||
-    members.some((m) => 
+    (liveProject?.members || []).some((m) => 
       (m.user_id === currentUserId || m.id === currentUserId) && 
       (m.project_role === 'TECH_LEAD' || m.role === 'TECH_LEAD')
     );
@@ -55,12 +56,28 @@ export default function ProjectWorkspaceView({
           onProjectLoaded?.(proj);
         })
         .catch((err) => console.error('Failed to load project details in workspace:', err));
-
-      projectsService.getMembers(projectId)
-        .then((mList) => setMembers(mList || []))
-        .catch((err) => console.error('Failed to load project members in workspace:', err));
     }
   }, [projectId]);
+
+  const isKanban = isKanbanProject(liveProject);
+  const tabs = useMemo(() => {
+    return getProjectTabs(liveProject);
+  }, [liveProject]);
+
+  // Adjust active tab when switching between Scrum and Kanban projects
+  useEffect(() => {
+    if (liveProject) {
+      if (isKanban && (currentTab === 'scrum' || currentTab === 'sprint')) {
+        const targetTab = currentTab === 'scrum' ? 'kanban' : 'cycles';
+        setCurrentTab(targetTab);
+        onTabChange?.(targetTab);
+      } else if (!isKanban && (currentTab === 'kanban' || currentTab === 'cycles')) {
+        const targetTab = currentTab === 'kanban' ? 'scrum' : 'sprint';
+        setCurrentTab(targetTab);
+        onTabChange?.(targetTab);
+      }
+    }
+  }, [isKanban, liveProject, currentTab, onTabChange]);
 
   useEffect(() => {
     setCurrentTab(activeTab);
@@ -73,17 +90,12 @@ export default function ProjectWorkspaceView({
 
   const handleOpenSprintBoard = (sprintId) => {
     setSelectedSprintId(sprintId);
-    handleTabClick('sprint');
+    if (isKanban) {
+      handleTabClick('cycles');
+    } else {
+      handleTabClick('sprint');
+    }
   };
-
-  const tabs = [
-    { id: 'overview', label: 'Overview' },
-    { id: 'roadmap', label: 'Roadmap' },
-    { id: 'sprint', label: 'Sprint Workspace' },
-    { id: 'backlog', label: 'Backlog & Epics' },
-    { id: 'kanban', label: 'Kanban Board' },
-    { id: 'action-items', label: 'Action Items' },
-  ];
 
   const ownerName = liveProject?.owner
     ? (liveProject.owner.name || liveProject.owner.email)
@@ -96,24 +108,19 @@ export default function ProjectWorkspaceView({
     <div className="min-w-0 max-w-full">
       {/* PROJECT CONTEXT: METADATA & PROJECT NAVIGATION TABS */}
       <div className="sticky top-0 z-30 bg-white border-b border-slate-200 -mx-4 sm:-mx-6 px-4 sm:px-6 pt-3 pb-0 select-none shadow-xs">
-        {/* ROW 1: Project Metadata & Optional Back Button */}
+        {/* ROW 1: Project Metadata */}
         <div className="flex flex-wrap items-center justify-between gap-2 sm:gap-3 text-xs sm:text-sm text-slate-600 pb-2.5">
           <div className="flex flex-wrap items-center gap-2 sm:gap-3">
-            {onBackToDirectory && (
-              <>
-                <button
-                  type="button"
-                  onClick={onBackToDirectory}
-                  className="inline-flex items-center gap-1.5 px-2.5 py-1 text-xs font-semibold text-purple-700 bg-purple-50 hover:bg-purple-100 rounded-lg transition-colors cursor-pointer mr-1"
-                >
-                  <span>&larr; Back to Projects</span>
-                </button>
-                <span className="text-slate-300 select-none">·</span>
-              </>
-            )}
             {liveProject?.name && (
               <>
                 <span className="font-bold text-slate-900">{liveProject.name}</span>
+                <span className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider ${
+                  isKanban
+                    ? 'bg-indigo-50 text-indigo-700 border border-indigo-200'
+                    : 'bg-purple-50 text-purple-700 border border-purple-200'
+                }`}>
+                  {isKanban ? 'Kanban Project' : 'Scrum Project'}
+                </span>
                 <span className="text-slate-300 select-none">·</span>
               </>
             )}
@@ -168,24 +175,36 @@ export default function ProjectWorkspaceView({
             onToast={onToast}
             readOnly={effectiveReadOnly}
           />
-        ) : currentTab === 'sprint' ? (
-          <ProjectSprintWorkspaceTab
-            projectId={projectId}
-            selectedSprintId={selectedSprintId}
-            onBackToRoadmap={() => handleTabClick('roadmap')}
-            onToast={onToast}
-            readOnly={effectiveReadOnly}
-          />
+        ) : currentTab === 'sprint' || currentTab === 'cycles' ? (
+          isKanban ? (
+            <ProjectCycleWorkspaceTab
+              projectId={projectId}
+              selectedCycleId={selectedSprintId}
+              onToast={onToast}
+              readOnly={effectiveReadOnly}
+            />
+          ) : (
+            <ProjectSprintWorkspaceTab
+              projectId={projectId}
+              selectedSprintId={selectedSprintId}
+              onBackToRoadmap={() => handleTabClick('roadmap')}
+              onToast={onToast}
+              readOnly={effectiveReadOnly}
+            />
+          )
         ) : currentTab === 'backlog' ? (
           <ProjectBacklogTab
             projectId={projectId}
             project={liveProject}
+            isKanbanProject={isKanban}
             onToast={onToast}
             readOnly={effectiveReadOnly}
           />
-        ) : currentTab === 'kanban' ? (
+        ) : currentTab === 'scrum' || currentTab === 'kanban' ? (
           <KanbanBoard
             projectId={projectId}
+            project={liveProject}
+            isKanbanProject={isKanban}
             onToast={onToast}
             readOnly={effectiveReadOnly}
           />

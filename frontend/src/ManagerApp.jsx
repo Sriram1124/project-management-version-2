@@ -372,9 +372,13 @@ export default function ManagerApp() {
                 />
               )}
               {currentView === 'my-tasks' && <ManagerMyTasksView onToast={triggerToast} />}
-              {currentView === 'tasks' && <TasksView onToast={triggerToast} />}
-              {currentView === 'reports' && <ReportsView />}
-              {currentView === 'timesheet' && <TimesheetView onToast={triggerToast} />}
+              {currentView === 'reports' && (
+                <ReportsView
+                  onToast={triggerToast}
+                  selectedCohort={cohorts.find((c) => c.id === selectedCohortId) || cohorts[0]}
+                  selectedCohortId={selectedCohortId}
+                />
+              )}
               {currentView === 'channels' && (
                 <TeamsChannelView
                   forms={channelForms}

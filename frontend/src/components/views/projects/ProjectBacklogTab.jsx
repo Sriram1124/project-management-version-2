@@ -11,9 +11,10 @@ import { sprintsService } from '../../../services/sprints.service';
 import { projectsService } from '../../../services/projects.service';
 import { useAuth } from '../../../context/AuthContext';
 
-export default function ProjectBacklogTab({ projectId, project = null, onToast, readOnly = false }) {
+export default function ProjectBacklogTab({ projectId, project = null, isKanbanProject = false, onToast, readOnly = false }) {
   const { user: authUser } = useAuth();
   const [currentProject, setCurrentProject] = useState(project);
+  const isKanban = isKanbanProject || currentProject?.methodology === 'KANBAN';
   const [loading, setLoading] = useState(true);
   const [sprints, setSprints] = useState([]);
   const [workItems, setWorkItems] = useState([]);
@@ -36,7 +37,13 @@ export default function ProjectBacklogTab({ projectId, project = null, onToast, 
   const [selectedPriority, setSelectedPriority] = useState(null);
   const [selectedSprintId, setSelectedSprintId] = useState(null);
   const [selectedStatus, setSelectedStatus] = useState(null);
-  const [groupBy, setGroupBy] = useState('none'); // 'none' (Flat Stories & Tasks) | 'sprint' (Sprint Groups) | 'epic' (Hierarchy Tree)
+  const [groupBy, setGroupBy] = useState(isKanbanProject || project?.methodology === 'KANBAN' ? 'epic' : 'none'); // 'none' (Flat Stories & Tasks) | 'sprint' (Sprint Groups) | 'epic' (Hierarchy Tree)
+
+  useEffect(() => {
+    if (isKanban && groupBy === 'sprint') {
+      setGroupBy('epic');
+    }
+  }, [isKanban, groupBy]);
 
   // Quick Filters
   const [quickFilterMyIssues, setQuickFilterMyIssues] = useState(false);
@@ -573,6 +580,7 @@ export default function ProjectBacklogTab({ projectId, project = null, onToast, 
         quickFilterOverdue={quickFilterOverdue}
         onToggleOverdue={() => setQuickFilterOverdue(!quickFilterOverdue)}
         onClearFilters={handleClearFilters}
+        isKanban={isKanban}
         readOnly={readOnly}
         onCreateClick={readOnly ? undefined : () => {
           setCreateInitialSprintId('backlog');
@@ -581,7 +589,7 @@ export default function ProjectBacklogTab({ projectId, project = null, onToast, 
           setCreateParentItem(null);
           setIsCreateModalOpen(true);
         }}
-        onCreateSprintClick={readOnly ? undefined : () => setIsCreateSprintOpen(true)}
+        onCreateSprintClick={isKanban || readOnly ? undefined : () => setIsCreateSprintOpen(true)}
         onExpandAll={handleExpandAll}
         onCollapseAll={handleCollapseAll}
         allExpanded={expandedIds.size > 0}
@@ -805,6 +813,7 @@ export default function ProjectBacklogTab({ projectId, project = null, onToast, 
           setCreateAllowedTypes(null);
         }}
         projectId={projectId}
+        isKanban={isKanban}
         initialIssueType={createInitialType}
         initialSprintId={createInitialSprintId}
         allowedTypes={createAllowedTypes}

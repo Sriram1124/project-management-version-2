@@ -115,16 +115,6 @@ export const projectsService = {
     return await api.delete(`/projects/${id}/documents/${documentId}`);
   },
 
-  async updateRequirement(projectId, documentId, requirementId, data) {
-    const res = await api.patch(`/projects/${projectId}/documents/${documentId}/requirements/${requirementId}`, data);
-    return res.requirement;
-  },
-
-  async reparseDocument(projectId, documentId) {
-    const res = await api.post(`/projects/${projectId}/documents/${documentId}/reparse`, {});
-    return res.document;
-  },
-
   async getUsers(params = {}) {
     const query = new URLSearchParams();
     if (params.cohort_id) query.append('cohort_id', params.cohort_id);

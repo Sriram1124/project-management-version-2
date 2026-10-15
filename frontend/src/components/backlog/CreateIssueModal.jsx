@@ -17,6 +17,7 @@ export default function CreateIssueModal({
   initialIssueType = 'Story',
   parentItem = null,
   allowedTypes = null,
+  isKanban = false,
   onCreateIssue,
   onCreateEpic,
 }) {
@@ -27,6 +28,8 @@ export default function CreateIssueModal({
   const [sprintId, setSprintId] = useState(initialSprintId || 'backlog');
   const [assigneeId, setAssigneeId] = useState('');
   const [priority, setPriority] = useState('Medium');
+  const [status, setStatus] = useState('TODO');
+  const [submitting, setSubmitting] = useState(false);
   const [storyPoints, setStoryPoints] = useState(3);
   const [startDate, setStartDate] = useState('');
   const [dueDate, setDueDate] = useState('');
@@ -150,10 +153,12 @@ export default function CreateIssueModal({
   useEffect(() => {
     if (isOpen) {
       setError('');
+      setSubmitting(false);
       setSummary('');
       setDescription('');
       setAssigneeId('');
       setPriority('Medium');
+      setStatus('TODO');
       setStoryPoints(3);
       setStartDate('');
       setDueDate('');
@@ -179,12 +184,8 @@ export default function CreateIssueModal({
             : effectiveAllowedTypes[0] || 'Story';
         setIssueType(chosen);
 
-        // Only pre-fill initialEpicId if chosen type is Story or Bug
-        if (initialEpicId && (chosen === 'Story' || chosen === 'Bug')) {
-          setParentId(initialEpicId);
-        } else {
-          setParentId('');
-        }
+        // When creating an issue from the main Create Issue button, default to no parent Epic
+        setParentId('');
       }
     }
   }, [
@@ -208,7 +209,7 @@ export default function CreateIssueModal({
 
   if (!isOpen) return null;
 
-  const handleSubmit = (e) => {
+  const handleSubmit = async (e) => {
     e.preventDefault();
     if (!summary.trim()) return;
 
@@ -217,72 +218,94 @@ export default function CreateIssueModal({
       return;
     }
 
-    if (issueType === 'Epic') {
-      onCreateEpic?.({
-        type: 'EPIC',
-        title: summary.trim(),
-        description: description.trim(),
-        assignee_ids: assigneeId ? [assigneeId] : [],
-        priority: priority.toUpperCase(),
-        start_date: startDate ? new Date(startDate).toISOString() : null,
-        due_date: dueDate ? new Date(dueDate).toISOString() : null,
-      });
-    } else {
-      const effectiveParentId = parentItem ? parentItem.id : parentId;
-      if (!effectiveParentId) {
-        setError(`A parent work item is required for ${issueType}. Please select a valid parent.`);
-        return;
+    try {
+      setSubmitting(true);
+      setError('');
+
+      if (issueType === 'Epic') {
+        await onCreateEpic?.({
+          type: 'EPIC',
+          title: summary.trim(),
+          description: description.trim(),
+          status: status || 'TODO',
+          assignee_ids: assigneeId ? [assigneeId] : [],
+          priority: priority.toUpperCase(),
+          start_date: startDate ? new Date(startDate).toISOString() : null,
+          due_date: dueDate ? new Date(dueDate).toISOString() : null,
+        });
+      } else {
+        const effectiveParentId = parentItem ? parentItem.id : parentId;
+        const isParentOptional = issueType === 'Story' || issueType === 'Bug';
+        if (!effectiveParentId && !isParentOptional) {
+          setError(`A parent work item is required for ${issueType}. Please select a valid parent.`);
+          setSubmitting(false);
+          return;
+        }
+
+        // Enforce hierarchy validation before submit if a parent is selected
+        if (effectiveParentId) {
+          const selectedParent = parentItem || availableParents.find((p) => p.id === effectiveParentId);
+          if (selectedParent) {
+            const pType = selectedParent.type;
+            if (issueType === 'Story' && pType !== 'EPIC') {
+              setError('A Story can only have an Epic as its parent.');
+              setSubmitting(false);
+              return;
+            }
+            if (issueType === 'Task' && pType !== 'STORY') {
+              setError('A Task must have a Story as its parent.');
+              setSubmitting(false);
+              return;
+            }
+            if (issueType === 'Subtask' && pType !== 'TASK') {
+              setError('A Subtask must have a Task as its parent.');
+              setSubmitting(false);
+              return;
+            }
+            if (issueType === 'Bug' && pType !== 'EPIC' && pType !== 'STORY') {
+              setError('A Bug can only have an Epic or Story as its parent.');
+              setSubmitting(false);
+              return;
+            }
+          }
+        }
+
+        const isTaskLike = issueType === 'Task' || issueType === 'Subtask' || issueType === 'Bug';
+        const sp = Number(storyPoints);
+        if (isTaskLike) {
+          if (!storyPoints || isNaN(sp) || !Number.isInteger(sp) || sp <= 0) {
+            setError('Story points are mandatory for tasks, subtasks, and bugs and must be a positive integer greater than 0.');
+            setSubmitting(false);
+            return;
+          }
+        }
+
+        await onCreateIssue?.({
+          type: issueType.toUpperCase(),
+          title: summary.trim(),
+          description: description.trim(),
+          status: status || 'TODO',
+          parent_id: effectiveParentId || null,
+          sprint_id: sprintId === 'backlog' ? null : sprintId,
+          assignee_ids: assigneeId ? [assigneeId] : [],
+          priority: priority.toUpperCase(),
+          story_points: sp > 0 ? sp : 0,
+          start_date: startDate ? new Date(startDate).toISOString() : null,
+          due_date: dueDate ? new Date(dueDate).toISOString() : null,
+        });
       }
 
-      // Enforce hierarchy validation before submit
-      const selectedParent = parentItem || availableParents.find((p) => p.id === effectiveParentId);
-      if (selectedParent) {
-        const pType = selectedParent.type;
-        if (issueType === 'Story' && pType !== 'EPIC') {
-          setError('A Story must have an Epic as its parent.');
-          return;
-        }
-        if (issueType === 'Task' && pType !== 'STORY') {
-          setError('A Task must have a Story as its parent.');
-          return;
-        }
-        if (issueType === 'Subtask' && pType !== 'TASK') {
-          setError('A Subtask must have a Task as its parent.');
-          return;
-        }
-        if (issueType === 'Bug' && pType !== 'EPIC' && pType !== 'STORY') {
-          setError('A Bug must have an Epic or Story as its parent.');
-          return;
-        }
-      }
-
-      const isTaskLike = issueType === 'Task' || issueType === 'Subtask' || issueType === 'Bug';
-      const sp = Number(storyPoints);
-      if (isTaskLike) {
-        if (!storyPoints || isNaN(sp) || !Number.isInteger(sp) || sp <= 0) {
-          setError('Story points are mandatory for tasks, subtasks, and bugs and must be a positive integer greater than 0.');
-          return;
-        }
-      }
-
-      onCreateIssue?.({
-        type: issueType.toUpperCase(),
-        title: summary.trim(),
-        description: description.trim(),
-        parent_id: effectiveParentId,
-        sprint_id: sprintId === 'backlog' ? null : sprintId,
-        assignee_ids: assigneeId ? [assigneeId] : [],
-        priority: priority.toUpperCase(),
-        story_points: sp > 0 ? sp : 0,
-        start_date: startDate ? new Date(startDate).toISOString() : null,
-        due_date: dueDate ? new Date(dueDate).toISOString() : null,
-      });
+      // Reset and close only on success
+      setSummary('');
+      setDescription('');
+      onClose();
+    } catch (err) {
+      console.error('Failed to create item in CreateIssueModal:', err);
+      const errMsg = err?.response?.data?.error || err?.message || 'Failed to create work item';
+      setError(errMsg);
+    } finally {
+      setSubmitting(false);
     }
-
-    // Reset and close
-    setSummary('');
-    setDescription('');
-    onClose();
   };
 
   return (
@@ -372,13 +395,27 @@ export default function CreateIssueModal({
           </div>
 
           {issueType !== 'Epic' ? (
-            <div className="grid grid-cols-2 gap-3">
+            <div className={`grid ${isKanban ? 'grid-cols-1' : 'grid-cols-2'} gap-3`}>
               {/* Parent Selector */}
               <div>
                 <label className="block text-slate-700 font-semibold mb-1 flex items-center gap-1">
                   <GitFork className="w-3 h-3 text-purple-600" />
-                  <span>{parentItem ? `Parent ${parentItem.type}` : 'Parent'}</span>
-                  <span className="text-rose-500">*</span>
+                  <span>
+                    {parentItem
+                      ? `Parent ${parentItem.type}`
+                      : issueType === 'Story'
+                      ? 'Parent Epic'
+                      : issueType === 'Bug'
+                      ? 'Parent Epic or Story'
+                      : issueType === 'Task'
+                      ? 'Parent Story'
+                      : 'Parent Task'}
+                  </span>
+                  {['Story', 'Bug'].includes(issueType) ? (
+                    <span className="text-slate-400 font-normal text-[10px] ml-0.5">(Optional)</span>
+                  ) : (
+                    <span className="text-rose-500">*</span>
+                  )}
                 </label>
                 {parentItem ? (
                   <div className="p-2 rounded border border-purple-200 bg-purple-50 text-slate-800 text-xs flex items-center justify-between">
@@ -390,25 +427,27 @@ export default function CreateIssueModal({
                     <Loader2 className="w-3.5 h-3.5 animate-spin text-purple-600" />
                     <span>Loading parents...</span>
                   </div>
-                ) : availableParents.length === 0 ? (
+                ) : !['Story', 'Bug'].includes(issueType) && availableParents.length === 0 ? (
                   <div className="p-2 rounded border border-amber-200 bg-amber-50 text-amber-800 text-[11px] font-medium leading-tight">
-                    {issueType === 'Story'
-                      ? 'No Epics found in this project. Create an Epic first.'
-                      : issueType === 'Task'
+                    {issueType === 'Task'
                       ? 'No Stories found in this project. Create a Story first.'
-                      : issueType === 'Subtask'
-                      ? 'No Tasks found in this project. Create a Task first.'
-                      : 'No Epics or Stories found in this project. Create an Epic or Story first.'}
+                      : 'No Tasks found in this project. Create a Task first.'}
                   </div>
                 ) : (
                   <select
                     value={parentId}
                     onChange={(e) => setParentId(e.target.value)}
-                    required
-                    className="w-full px-2.5 py-1.5 rounded border border-slate-200 bg-white text-slate-800 focus:outline-none focus:border-purple-600"
+                    required={!['Story', 'Bug'].includes(issueType)}
+                    className="w-full px-2.5 py-1.5 rounded border border-slate-200 bg-white text-slate-800 focus:outline-none focus:border-purple-600 cursor-pointer"
                   >
                     <option value="">
-                      Select Parent {issueType === 'Story' ? 'Epic' : issueType === 'Task' ? 'Story' : issueType === 'Subtask' ? 'Task' : 'Epic or Story'} *
+                      {issueType === 'Story'
+                        ? 'None (No Epic - Standalone Story)'
+                        : issueType === 'Bug'
+                        ? 'None (No Epic - Standalone Bug)'
+                        : issueType === 'Task'
+                        ? 'Select Parent Story *'
+                        : 'Select Parent Task *'}
                     </option>
                     {availableParents.map((p) => (
                       <option key={p.id} value={p.id}>
@@ -419,20 +458,22 @@ export default function CreateIssueModal({
                 )}
               </div>
 
-              {/* Sprint Selector */}
-              <div>
-                <label className="block text-slate-700 font-semibold mb-1">Sprint</label>
-                <select
-                  value={sprintId}
-                  onChange={(e) => setSprintId(e.target.value)}
-                  className="w-full px-2.5 py-1.5 rounded border border-slate-200 bg-white text-slate-800 focus:outline-none focus:border-purple-600"
-                >
-                  <option value="backlog">Backlog</option>
-                  {sprints.map((s) => (
-                    <option key={s.id} value={s.id}>{s.name}</option>
-                  ))}
-                </select>
-              </div>
+              {/* Sprint Selector (hidden in Kanban) */}
+              {!isKanban && (
+                <div>
+                  <label className="block text-slate-700 font-semibold mb-1">Sprint</label>
+                  <select
+                    value={sprintId}
+                    onChange={(e) => setSprintId(e.target.value)}
+                    className="w-full px-2.5 py-1.5 rounded border border-slate-200 bg-white text-slate-800 focus:outline-none focus:border-purple-600"
+                  >
+                    <option value="backlog">Backlog</option>
+                    {sprints.map((s) => (
+                      <option key={s.id} value={s.id}>{s.name}</option>
+                    ))}
+                  </select>
+                </div>
+              )}
             </div>
           ) : (
             <div className="p-2.5 rounded border border-purple-100 bg-purple-50/70 text-purple-900 text-[11px] flex items-center gap-2">
@@ -443,7 +484,7 @@ export default function CreateIssueModal({
             </div>
           )}
 
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid grid-cols-3 gap-3">
             {/* Assignee */}
             <div>
               <label className="block text-slate-700 font-semibold mb-1">
@@ -465,6 +506,22 @@ export default function CreateIssueModal({
                     </option>
                   );
                 })}
+              </select>
+            </div>
+
+            {/* Status */}
+            <div>
+              <label className="block text-slate-700 font-semibold mb-1">Status</label>
+              <select
+                value={status}
+                onChange={(e) => setStatus(e.target.value)}
+                className="w-full px-2.5 py-1.5 rounded border border-slate-200 bg-white text-slate-800 focus:outline-none focus:border-purple-600"
+              >
+                <option value="TODO">To Do</option>
+                <option value="IN_PROGRESS">In Progress</option>
+                <option value="IN_REVIEW">In Review</option>
+                <option value="COMPLETED">Completed</option>
+                <option value="BLOCKED">Blocked</option>
               </select>
             </div>
 
@@ -529,15 +586,18 @@ export default function CreateIssueModal({
             <button
               type="button"
               onClick={onClose}
-              className="px-3 py-1.5 rounded border border-slate-200 text-slate-600 hover:bg-slate-50 font-medium cursor-pointer"
+              disabled={submitting}
+              className="px-3 py-1.5 rounded border border-slate-200 text-slate-600 hover:bg-slate-50 font-medium cursor-pointer disabled:opacity-50"
             >
               Cancel
             </button>
             <button
               type="submit"
-              className="px-3.5 py-1.5 rounded bg-[#7C3AED] hover:bg-[#6D28D9] text-white font-semibold transition-colors cursor-pointer"
+              disabled={submitting}
+              className="flex items-center gap-1.5 px-3.5 py-1.5 rounded bg-[#7C3AED] hover:bg-[#6D28D9] disabled:opacity-50 text-white font-semibold transition-colors cursor-pointer"
             >
-              Create {issueType}
+              {submitting && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
+              <span>{submitting ? 'Creating...' : `Create ${issueType}`}</span>
             </button>
           </div>
         </form>

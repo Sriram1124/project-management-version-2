@@ -26,12 +26,14 @@ export const COLUMNS_CONFIG = [
     title: 'In Progress',
     dotColor: 'bg-purple-600',
     borderColor: 'border-purple-200',
+    wipLimit: 8,
   },
   {
     id: KANBAN_STATUSES.IN_REVIEW,
     title: 'In Review',
     dotColor: 'bg-amber-500',
     borderColor: 'border-amber-200',
+    wipLimit: 6,
   },
   {
     id: KANBAN_STATUSES.BLOCKED,

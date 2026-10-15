@@ -9,6 +9,7 @@ export default function CreateSprintModal({
   projectName = '',
   existingSprints = [],
   onSuccess,
+  isKanban = false,
 }) {
   const [name, setName] = useState('');
   const [goal, setGoal] = useState('');
@@ -82,13 +83,19 @@ export default function CreateSprintModal({
         {/* Header */}
         <div className="p-5 border-b border-slate-100 flex items-center justify-between bg-slate-50/60">
           <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-xl bg-purple-100 text-purple-700 flex items-center justify-center shadow-xs">
+            <div className={`w-10 h-10 rounded-xl flex items-center justify-center shadow-xs ${
+              isKanban ? 'bg-indigo-100 text-indigo-700' : 'bg-purple-100 text-purple-700'
+            }`}>
               <Play className="w-5 h-5 ml-0.5" />
             </div>
             <div>
-              <h2 className="text-base font-bold text-slate-900 tracking-tight">Create Sprint</h2>
+              <h2 className="text-base font-bold text-slate-900 tracking-tight">
+                {isKanban ? 'Create Planning Cycle' : 'Create Sprint'}
+              </h2>
               <p className="text-xs text-slate-500 mt-0.5">
-                Plan a new sprint iteration for {projectName ? `"${projectName}"` : 'this project'}.
+                {isKanban
+                  ? `Plan a new cycle for ${projectName ? `"${projectName}"` : 'this project'}.`
+                  : `Plan a new sprint iteration for ${projectName ? `"${projectName}"` : 'this project'}.`}
               </p>
             </div>
           </div>
@@ -112,7 +119,7 @@ export default function CreateSprintModal({
 
           <div>
             <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1.5">
-              Sprint Name <span className="text-rose-500">*</span>
+              {isKanban ? 'Cycle Name' : 'Sprint Name'} <span className="text-rose-500">*</span>
             </label>
             <input
               type="text"
@@ -120,20 +127,20 @@ export default function CreateSprintModal({
               autoFocus
               value={name}
               onChange={(e) => setName(e.target.value)}
-              placeholder="e.g., Sprint 01 or Sprint 02"
+              placeholder={isKanban ? 'e.g., Cycle 1 - Core Flow' : 'e.g., Sprint 01 or Sprint 02'}
               className="w-full px-3 py-2 text-xs bg-slate-50 border border-slate-200 rounded-xl text-slate-900 placeholder:text-slate-400 focus:bg-white focus:outline-hidden focus:ring-2 focus:ring-purple-500/20 focus:border-purple-500 transition-all font-medium"
             />
           </div>
 
           <div>
             <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1.5">
-              Sprint Goal
+              {isKanban ? 'Cycle Goal / Scope' : 'Sprint Goal'}
             </label>
             <textarea
               rows={2}
               value={goal}
               onChange={(e) => setGoal(e.target.value)}
-              placeholder="What is the objective or target milestone for this sprint?"
+              placeholder={isKanban ? 'What is the objective or target deliverable for this cycle?' : 'What is the objective or target milestone for this sprint?'}
               className="w-full px-3 py-2 text-xs bg-slate-50 border border-slate-200 rounded-xl text-slate-900 placeholder:text-slate-400 focus:bg-white focus:outline-hidden focus:ring-2 focus:ring-purple-500/20 focus:border-purple-500 transition-all resize-none"
             />
           </div>
@@ -191,7 +198,9 @@ export default function CreateSprintModal({
             <button
               type="submit"
               disabled={submitting}
-              className="px-4 py-2 text-xs font-bold text-white bg-purple-600 hover:bg-purple-700 active:bg-purple-800 rounded-xl shadow-xs transition-all flex items-center gap-1.5 cursor-pointer disabled:opacity-50"
+              className={`px-4 py-2 text-xs font-bold text-white rounded-xl shadow-xs transition-all flex items-center gap-1.5 cursor-pointer disabled:opacity-50 ${
+                isKanban ? 'bg-indigo-600 hover:bg-indigo-700 active:bg-indigo-800' : 'bg-purple-600 hover:bg-purple-700 active:bg-purple-800'
+              }`}
             >
               {submitting ? (
                 <>
@@ -201,7 +210,7 @@ export default function CreateSprintModal({
               ) : (
                 <>
                   <Check className="w-3.5 h-3.5" />
-                  <span>Create Sprint</span>
+                  <span>{isKanban ? 'Create Cycle' : 'Create Sprint'}</span>
                 </>
               )}
             </button>

@@ -113,8 +113,6 @@ export default function ManagerDashboardView({
   }
 
   const activeProjectsCount = projects.filter((p) => p.status === 'ACTIVE' || p.status === 'PLANNED').length;
-  const completedTasks = workItems.filter((w) => w.status === 'COMPLETED').length;
-  const overdueTasks = workItems.filter((w) => workItemsService.isOverdue(w)).length;
   const activeUsersCount = users.filter((u) => u.is_active !== false).length;
 
   const dynamicMetrics = {
@@ -126,14 +124,6 @@ export default function ManagerDashboardView({
       value: projects.length,
       subtitle: `${activeProjectsCount} In Progress / Planned`,
     },
-    tasksCompleted: {
-      value: completedTasks,
-      change: `${completedTasks} of ${workItems.length} Total Tasks`,
-    },
-    overdueTasks: {
-      value: overdueTasks,
-      subtitle: overdueTasks > 0 ? `${overdueTasks} Tasks Require Attention` : 'All Tasks on Schedule',
-    },
   };
 
   return (
@@ -141,6 +131,8 @@ export default function ManagerDashboardView({
       {/* Primary 4 Metric Cards */}
       <MetricCards 
         metrics={dynamicMetrics} 
+        healthOverview={healthOverview}
+        healthLoading={healthLoading}
         onCardClick={(type) => {
           if (type === 'interns') onNavigate('interns');
           else if (type === 'projects') onNavigate('projects');

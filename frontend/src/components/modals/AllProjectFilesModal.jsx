@@ -9,12 +9,7 @@ import {
   Image as ImageIcon,
   Download, 
   Eye, 
-  Loader2, 
-  Layers,
-  Activity,
-  CheckCircle2,
-  Clock,
-  AlertCircle
+  Loader2 
 } from 'lucide-react';
 
 export default function AllProjectFilesModal({
@@ -25,7 +20,6 @@ export default function AllProjectFilesModal({
   projectId,
   onPreview,
   onDownload,
-  onInspectRequirements,
 }) {
   if (!isOpen) return null;
 
@@ -37,8 +31,7 @@ export default function AllProjectFilesModal({
       const q = search.toLowerCase();
       const matchName = (f.name || '').toLowerCase().includes(q);
       const matchType = (f.type || '').toLowerCase().includes(q);
-      const matchStatus = (f.implementationStatus || '').toLowerCase().includes(q);
-      return matchName || matchType || matchStatus;
+      return matchName || matchType;
     });
   }, [files, search]);
 
@@ -49,22 +42,6 @@ export default function AllProjectFilesModal({
       await onDownload?.(file);
     } finally {
       setDownloadingId(null);
-    }
-  };
-
-  const getStatusBadge = (status) => {
-    switch (status) {
-      case 'Completed':
-        return 'bg-emerald-50 text-emerald-700 border-emerald-300';
-      case 'In Progress':
-        return 'bg-purple-50 text-purple-700 border-purple-300';
-      case 'Pending':
-        return 'bg-blue-50 text-blue-700 border-blue-200';
-      case 'Analysis required':
-        return 'bg-amber-50 text-amber-700 border-amber-200';
-      case 'Not trackable':
-      default:
-        return 'bg-slate-100 text-slate-500 border-slate-200';
     }
   };
 
@@ -161,29 +138,10 @@ export default function AllProjectFilesModal({
                         <span className="font-mono text-[9px] uppercase px-1.5 py-0.2 rounded bg-slate-100 border border-slate-200 shrink-0">
                           {file.type}
                         </span>
-                        <span className={`text-[9px] font-bold px-2 py-0.2 rounded-full border shrink-0 ${getStatusBadge(file.implementationStatus)}`}>
-                          {file.implementationStatus}
-                        </span>
                       </div>
 
                       <div className="flex items-center gap-3 text-[11px] text-slate-400 mt-1">
                         <span>Uploaded {file.uploadedAt}</span>
-                        {file.progressPct !== null && (
-                          <>
-                            <span>·</span>
-                            <span className="font-semibold text-purple-700">
-                              {file.progressPct}% implemented ({file.completedReqs}/{file.totalReqs} items)
-                            </span>
-                          </>
-                        )}
-                        {file.currentActivity && (
-                          <>
-                            <span>·</span>
-                            <span className="text-slate-600 truncate max-w-xs" title={file.currentActivity}>
-                              {file.currentActivity}
-                            </span>
-                          </>
-                        )}
                       </div>
                     </div>
                   </div>

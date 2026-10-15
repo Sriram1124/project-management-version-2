@@ -369,7 +369,7 @@ export default function IssueDetailDrawer({
           </span>
           <span className="text-slate-300">/</span>
           <span className="text-[11px] text-slate-500 font-medium">
-            {currentEpic?.name || 'No Epic'}
+            {isEpic ? 'Top-level Epic' : (currentEpic?.name || 'No Epic')}
           </span>
         </div>
 
@@ -519,20 +519,26 @@ export default function IssueDetailDrawer({
           {/* Epic */}
           <div className="flex items-center justify-between">
             <span className="text-slate-500 font-medium">Epic</span>
-            {canChangeEpic ? (
+            {isEpic ? (
+              <span className="px-2 py-0.5 rounded text-[11px] font-semibold bg-purple-50 text-purple-700 border border-purple-200 select-none">
+                None (Top-level Epic)
+              </span>
+            ) : canChangeEpic ? (
               <select
-                value={currentEpic?.id || issue.parent_id || issue.epicId || ''}
+                value={currentEpic?.id || ''}
                 onChange={(e) => handleEpicChange(e.target.value)}
                 className="px-2 py-1 rounded border border-slate-200 text-xs font-medium bg-white text-slate-800 focus:outline-none focus:border-purple-600 max-w-[180px] cursor-pointer"
               >
                 <option value="">None (No Epic)</option>
-                {epics.map((e) => (
-                  <option key={e.id} value={e.id}>{e.name || e.title}</option>
-                ))}
+                {epics
+                  .filter((e) => e.id !== issue.id)
+                  .map((e) => (
+                    <option key={e.id} value={e.id}>{e.name || e.title}</option>
+                  ))}
               </select>
             ) : (
               <span className="px-2 py-1 rounded border border-slate-200 text-xs font-medium bg-slate-50 text-slate-700 select-none truncate max-w-[180px]">
-                {currentEpic?.name || 'None'}
+                {currentEpic?.name || 'None (No Epic)'}
               </span>
             )}
           </div>

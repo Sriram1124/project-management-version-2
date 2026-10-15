@@ -124,37 +124,40 @@ async function runHierarchyVerification() {
     return epic;
   }, true);
 
-  await testCase('1.2 Create STORY at project root (Rejected)', async () => {
+  await testCase('1.2 Create STORY at project root (Allowed - Standalone Story)', async () => {
     return await WorkItemService.createWorkItem(mockUser, {
       project_id: project.id,
       type: WorkItemType.STORY,
-      title: 'TEST_STORY_ROOT',
+      title: 'TEST_STORY_ROOT_STANDALONE',
     });
-  }, false, 'must have a parent work item. Only EPIC can be created at the project root');
+  }, true);
 
-  await testCase('1.3 Create TASK at project root (Rejected)', async () => {
+  await testCase('1.3 Create BUG at project root (Allowed - Standalone Bug)', async () => {
+    return await WorkItemService.createWorkItem(mockUser, {
+      project_id: project.id,
+      type: WorkItemType.BUG,
+      title: 'TEST_BUG_ROOT_STANDALONE',
+      story_points: 3,
+    });
+  }, true);
+
+  await testCase('1.4 Create TASK at project root (Rejected)', async () => {
     return await WorkItemService.createWorkItem(mockUser, {
       project_id: project.id,
       type: WorkItemType.TASK,
       title: 'TEST_TASK_ROOT',
+      story_points: 3,
     });
-  }, false, 'must have a parent work item. Only EPIC can be created at the project root');
+  }, false, 'must have a parent work item. Only EPIC, STORY, and BUG can be created at the project root');
 
-  await testCase('1.4 Create SUBTASK at project root (Rejected)', async () => {
+  await testCase('1.5 Create SUBTASK at project root (Rejected)', async () => {
     return await WorkItemService.createWorkItem(mockUser, {
       project_id: project.id,
       type: WorkItemType.SUBTASK,
       title: 'TEST_SUBTASK_ROOT',
+      story_points: 3,
     });
-  }, false, 'must have a parent work item. Only EPIC can be created at the project root');
-
-  await testCase('1.5 Create BUG at project root (Rejected)', async () => {
-    return await WorkItemService.createWorkItem(mockUser, {
-      project_id: project.id,
-      type: WorkItemType.BUG,
-      title: 'TEST_BUG_ROOT',
-    });
-  }, false, 'must have a parent work item. Only EPIC can be created at the project root');
+  }, false, 'must have a parent work item. Only EPIC, STORY, and BUG can be created at the project root');
 
   // ---------------------------------------------------------
   // SECTION 2: Manager Personal Tasks (project_id = null)
@@ -168,6 +171,7 @@ async function runHierarchyVerification() {
       parent_id: null,
       type: WorkItemType.TASK,
       title: 'TEST_PERSONAL_TASK',
+      story_points: 3,
     });
     testPersonalTaskId = item.id;
     return item;
@@ -197,6 +201,7 @@ async function runHierarchyVerification() {
       parent_id: null,
       type: WorkItemType.SUBTASK,
       title: 'TEST_PERSONAL_SUBTASK',
+      story_points: 3,
     });
   }, false, 'Personal tasks without a project must be of type TASK');
 
@@ -224,6 +229,7 @@ async function runHierarchyVerification() {
       parent_id: testEpicId,
       type: WorkItemType.BUG,
       title: 'TEST_EPIC_BUG',
+      story_points: 3,
     });
     testEpicBugId = bug.id;
     return bug;
@@ -235,6 +241,7 @@ async function runHierarchyVerification() {
       parent_id: testEpicId,
       type: WorkItemType.TASK,
       title: 'TEST_EPIC_TASK_INVALID',
+      story_points: 3,
     });
   }, false, 'An EPIC can only contain STORY or BUG');
 
@@ -244,6 +251,7 @@ async function runHierarchyVerification() {
       parent_id: testEpicId,
       type: WorkItemType.SUBTASK,
       title: 'TEST_EPIC_SUBTASK_INVALID',
+      story_points: 3,
     });
   }, false, 'An EPIC can only contain STORY or BUG');
 
@@ -268,6 +276,7 @@ async function runHierarchyVerification() {
       parent_id: testStoryId,
       type: WorkItemType.TASK,
       title: 'TEST_STORY_TASK',
+      story_points: 3,
     });
     testTaskId = task.id;
     return task;
@@ -279,6 +288,7 @@ async function runHierarchyVerification() {
       parent_id: testStoryId,
       type: WorkItemType.BUG,
       title: 'TEST_STORY_BUG',
+      story_points: 3,
     });
   }, true);
 
@@ -297,6 +307,7 @@ async function runHierarchyVerification() {
       parent_id: testStoryId,
       type: WorkItemType.SUBTASK,
       title: 'TEST_SUBTASK_UNDER_STORY_INVALID',
+      story_points: 3,
     });
   }, false, 'A STORY can only contain TASK or BUG');
 
@@ -312,6 +323,7 @@ async function runHierarchyVerification() {
       parent_id: testTaskId,
       type: WorkItemType.SUBTASK,
       title: 'TEST_TASK_SUBTASK',
+      story_points: 3,
     });
     testSubtaskId = subtask.id;
     return subtask;
@@ -323,6 +335,7 @@ async function runHierarchyVerification() {
       parent_id: testTaskId,
       type: WorkItemType.TASK,
       title: 'TEST_TASK_UNDER_TASK_INVALID',
+      story_points: 3,
     });
   }, false, 'A TASK can only contain SUBTASK');
 
@@ -341,6 +354,7 @@ async function runHierarchyVerification() {
       parent_id: testTaskId,
       type: WorkItemType.BUG,
       title: 'TEST_BUG_UNDER_TASK_INVALID',
+      story_points: 3,
     });
   }, false, 'A TASK can only contain SUBTASK');
 
@@ -355,6 +369,7 @@ async function runHierarchyVerification() {
       parent_id: testSubtaskId,
       type: WorkItemType.SUBTASK,
       title: 'TEST_LEAF_SUBTASK_INVALID',
+      story_points: 3,
     });
   }, false, 'A SUBTASK is a leaf item and cannot have child work items');
 
@@ -364,6 +379,7 @@ async function runHierarchyVerification() {
       parent_id: testEpicBugId,
       type: WorkItemType.SUBTASK,
       title: 'TEST_LEAF_BUG_INVALID',
+      story_points: 3,
     });
   }, false, 'A BUG is a leaf item and cannot have child work items');
 
@@ -412,6 +428,7 @@ async function runHierarchyVerification() {
       parent_id: testPersonalTaskId,
       type: WorkItemType.SUBTASK,
       title: 'TEST_PROJECT_ITEM_PERSONAL_PARENT',
+      story_points: 3,
     });
   }, false, 'Cross-project parent relationships are not allowed');
 
@@ -421,6 +438,7 @@ async function runHierarchyVerification() {
       parent_id: testStoryId,
       type: WorkItemType.TASK,
       title: 'TEST_PERSONAL_TASK_WITH_PROJECT_PARENT',
+      story_points: 3,
     });
   }, false, 'Personal tasks cannot have a project work item as a parent');
 

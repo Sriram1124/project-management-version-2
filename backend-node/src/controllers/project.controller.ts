@@ -21,6 +21,7 @@ export class ProjectController {
       msg.includes('Invalid') ||
       msg.includes('already a member') ||
       msg.includes('cannot be') ||
+      msg.includes('immutable') ||
       msg.includes('does not exist in your organization') ||
       msg.includes('not found in your organization')
     ) {
@@ -83,6 +84,7 @@ export class ProjectController {
         project,
         id: project.id,
         name: project.name,
+        methodology: project.methodology,
         status: project.status,
         organization_id: project.organization_id,
         owner_id: project.owner_id,
@@ -103,6 +105,7 @@ export class ProjectController {
         project,
         id: project.id,
         name: project.name,
+        methodology: project.methodology,
         status: project.status,
         organization_id: project.organization_id,
         owner_id: project.owner_id,
@@ -125,6 +128,7 @@ export class ProjectController {
         project,
         id: project.id,
         name: project.name,
+        methodology: project.methodology,
         status: project.status,
         organization_id: project.organization_id,
         owner_id: project.owner_id,
@@ -334,48 +338,6 @@ export class ProjectController {
 
       const result = await ProjectService.deleteProjectDocument(projectId, documentId, user);
       res.status(200).json(result);
-    } catch (error) {
-      ProjectController.handleError(res, error);
-    }
-  }
-
-  static async updateRequirement(req: Request, res: Response): Promise<void> {
-    try {
-      const user = (req as any).fullUser;
-      const id = req.params.id || (req.params as any).projectId;
-      const documentId = req.params.documentId || (req.params as any).metadataDocumentId;
-      const requirementId = req.params.requirementId;
-
-      const requirement = await ProjectService.updateRequirement(
-        id,
-        documentId,
-        requirementId,
-        req.body,
-        user
-      );
-      res.status(200).json({
-        requirement,
-        ...requirement,
-        success: true,
-      });
-    } catch (error) {
-      ProjectController.handleError(res, error);
-    }
-  }
-
-  static async reparseDocument(req: Request, res: Response): Promise<void> {
-    try {
-      const user = (req as any).fullUser;
-      const id = req.params.id || (req.params as any).projectId;
-      const documentId = req.params.documentId || (req.params as any).metadataDocumentId;
-
-      const document = await ProjectService.reparseDocumentRequirements(id, documentId, user);
-      res.status(200).json({
-        document,
-        requirements: (document as any)?.requirements || [],
-        ...document,
-        success: true,
-      });
     } catch (error) {
       ProjectController.handleError(res, error);
     }

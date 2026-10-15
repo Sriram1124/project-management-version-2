@@ -31,6 +31,8 @@ import { workItemsService } from '../../../services/workItems.service';
 import FilePreviewModal from '../../../components/views/projects/FilePreviewModal';
 import PersonalKanbanBoard from './PersonalKanbanBoard';
 import HierarchyTreeView from './HierarchyTreeView';
+import ProjectSprintWorkspaceTab from '../../../components/views/projects/ProjectSprintWorkspaceTab';
+import ProjectCycleWorkspaceTab from '../../../components/views/projects/ProjectCycleWorkspaceTab';
 
 export default function ScopedProjectView({
   project,
@@ -141,13 +143,25 @@ export default function ScopedProjectView({
     });
   };
 
+  const isKanban = project?.methodology === 'KANBAN';
+
+  useEffect(() => {
+    if (isKanban && activeTab === 'sprint') {
+      setActiveTab('cycles');
+    } else if (!isKanban && activeTab === 'cycles') {
+      setActiveTab('sprint');
+    }
+  }, [isKanban, activeTab]);
+
   const tabs = [
     { id: 'overview', label: 'Overview' },
     { id: 'documents', label: `Project Documents (${documents.length})` },
     { id: 'work', label: `Work Items (${projectWorkItems.length})` },
     { id: 'action-items', label: 'Action Items' },
-    { id: 'kanban', label: 'Kanban Board' },
-    { id: 'sprint', label: 'Sprint Workspace' }
+    { id: 'kanban', label: isKanban ? 'Kanban Board' : 'Scrum Board' },
+    ...(isKanban
+      ? [{ id: 'cycles', label: 'Planning & Cycles' }]
+      : [{ id: 'sprint', label: 'Sprint Workspace' }]),
   ];
 
   return (
@@ -173,6 +187,13 @@ export default function ScopedProjectView({
                 </span>
                 <span className="text-[10px] font-bold text-emerald-700 bg-emerald-50 border border-emerald-200 px-2 py-0.5 rounded">
                   {project.status || 'ACTIVE'}
+                </span>
+                <span className={`text-[10px] font-bold px-2 py-0.5 rounded uppercase tracking-wider ${
+                  isKanban
+                    ? 'bg-indigo-50 text-indigo-700 border border-indigo-200'
+                    : 'bg-purple-50 text-purple-700 border border-purple-200'
+                }`}>
+                  {isKanban ? 'Kanban Project' : 'Scrum Project'}
                 </span>
               </div>
               <h2 className="text-base font-bold text-slate-900 mt-0.5">
@@ -230,7 +251,7 @@ export default function ScopedProjectView({
             </div>
 
             {/* Project Details Grid */}
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <div className="p-3.5 bg-slate-50 rounded-xl border border-slate-200">
                 <span className="text-[10px] font-bold text-slate-400 uppercase block">
                   Project Owner
@@ -249,16 +270,6 @@ export default function ScopedProjectView({
                   {project.startDate || 'TBD'} - {project.endDate || 'TBD'}
                 </span>
                 <span className="text-[10px] text-slate-500">Scheduled Duration</span>
-              </div>
-
-              <div className="p-3.5 bg-slate-50 rounded-xl border border-slate-200">
-                <span className="text-[10px] font-bold text-slate-400 uppercase block">
-                  Assigned Team
-                </span>
-                <span className="text-sm font-bold text-slate-800 mt-1 block">
-                  {members.length} {members.length === 1 ? 'Member' : 'Members'}
-                </span>
-                <span className="text-[10px] text-slate-500">Active Collaborators</span>
               </div>
             </div>
 
@@ -640,20 +651,22 @@ export default function ScopedProjectView({
         />
       )}
 
-      {/* Tab 5: Sprint Placeholder (Planned for V2) */}
-      {activeTab === 'sprint' && (
-        <div className="bg-white rounded-2xl p-12 border border-slate-200 shadow-card text-center max-w-lg mx-auto my-8 space-y-3">
-          <div className="w-12 h-12 rounded-2xl bg-indigo-50 text-indigo-600 flex items-center justify-center mx-auto mb-1">
-            <Zap className="w-6 h-6" />
-          </div>
-          <h3 className="text-base font-bold text-slate-900">Sprint Management</h3>
-          <p className="text-xs text-slate-500 leading-relaxed max-w-md mx-auto">
-            Advanced sprint planning, burndown metrics, and iteration tracking will be available in V2.
-          </p>
-          <span className="inline-flex items-center px-3 py-1 rounded-full text-[11px] font-semibold bg-indigo-50 text-indigo-700 border border-indigo-200">
-            Planned for V2
-          </span>
-        </div>
+      {/* Tab 5: Sprint Workspace (Scrum) */}
+      {activeTab === 'sprint' && !isKanban && (
+        <ProjectSprintWorkspaceTab
+          projectId={project.id}
+          onToast={onToast}
+          readOnly={true}
+        />
+      )}
+
+      {/* Tab 5 (Kanban): Planning & Cycles Workspace */}
+      {activeTab === 'cycles' && isKanban && (
+        <ProjectCycleWorkspaceTab
+          projectId={project.id}
+          onToast={onToast}
+          readOnly={true}
+        />
       )}
 
       {/* Tab 6: Action Items Placeholder (Planned for V2) */}

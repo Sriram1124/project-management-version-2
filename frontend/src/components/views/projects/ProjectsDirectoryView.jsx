@@ -129,6 +129,7 @@ export default function ProjectsDirectoryView({ onSelectProject, isIntern = fals
     const defaultOwnerId = authUser?.id || (orgUsers.length > 0 ? orgUsers[0].id : '');
     setCreateForm({
       name: '',
+      methodology: '',
       description: '',
       status: 'PLANNED',
       start_date: '',
@@ -159,6 +160,10 @@ export default function ProjectsDirectoryView({ onSelectProject, isIntern = fals
       setCreateError('Project name is required');
       return;
     }
+    if (!createForm.methodology) {
+      setCreateError('Project Methodology is required. Please select Scrum or Kanban.');
+      return;
+    }
     if (!createForm.owner_id) {
       setCreateError('Project owner is required');
       return;
@@ -168,6 +173,7 @@ export default function ProjectsDirectoryView({ onSelectProject, isIntern = fals
     try {
       const payload = {
         name: createForm.name.trim(),
+        methodology: createForm.methodology,
         description: createForm.description.trim() || undefined,
         status: createForm.status,
         start_date: createForm.start_date || undefined,
@@ -192,6 +198,7 @@ export default function ProjectsDirectoryView({ onSelectProject, isIntern = fals
     setEditingProject(proj);
     setEditForm({
       name: proj.name || '',
+      methodology: proj.methodology || 'SCRUM',
       description: proj.description || '',
       status: proj.status || 'PLANNED',
       start_date: proj.start_date ? proj.start_date.slice(0, 10) : '',
@@ -473,8 +480,17 @@ export default function ProjectsDirectoryView({ onSelectProject, isIntern = fals
                               <FolderKanban className="w-4 h-4" />
                             </div>
                             <div>
-                              <div className="font-bold text-slate-900 group-hover:text-purple-700 transition-colors text-xs leading-snug">
-                                {proj.name}
+                              <div className="flex items-center gap-2">
+                                <span className="font-bold text-slate-900 group-hover:text-purple-700 transition-colors text-xs leading-snug">
+                                  {proj.name}
+                                </span>
+                                <span className={`px-1.5 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider ${
+                                  proj.methodology === 'KANBAN'
+                                    ? 'bg-indigo-50 text-indigo-700 border border-indigo-200'
+                                    : 'bg-purple-50 text-purple-700 border border-purple-200'
+                                }`}>
+                                  {proj.methodology === 'KANBAN' ? 'Kanban' : 'Scrum'}
+                                </span>
                               </div>
                               <div className="text-[10px] text-slate-400 font-mono mt-0.5">
                                 ID: {proj.id.slice(0, 8)}...
@@ -641,6 +657,85 @@ export default function ProjectsDirectoryView({ onSelectProject, isIntern = fals
                   onChange={(e) => setCreateForm({ ...createForm, name: e.target.value })}
                   className="w-full px-3 py-2 border border-slate-300 rounded-xl text-xs text-slate-800 focus:outline-hidden focus:border-purple-600 focus:ring-1 focus:ring-purple-600"
                 />
+              </div>
+
+              {/* Project Methodology Selector */}
+              <div>
+                <label className="block text-xs font-semibold text-slate-700 mb-1.5 flex items-center justify-between">
+                  <span>Project Methodology <span className="text-rose-500">*</span></span>
+                  {!createForm.methodology && (
+                    <span className="text-[10px] text-amber-600 font-medium">Please select Scrum or Kanban</span>
+                  )}
+                </label>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                  {/* Scrum Option Card */}
+                  <div
+                    onClick={() => setCreateForm({ ...createForm, methodology: 'SCRUM' })}
+                    className={`p-3 rounded-xl border text-left cursor-pointer transition-all ${
+                      createForm.methodology === 'SCRUM'
+                        ? 'border-purple-600 bg-purple-50/50 shadow-xs ring-1 ring-purple-600'
+                        : 'border-slate-200 bg-white hover:border-slate-300 hover:bg-slate-50/50'
+                    }`}
+                  >
+                    <div className="flex items-center justify-between mb-1">
+                      <div className="flex items-center gap-1.5">
+                        <span className="text-xs font-bold text-slate-900">Scrum</span>
+                        <span className="text-[10px] px-1.5 py-0.5 rounded font-semibold bg-purple-100 text-purple-700">Sprint-based</span>
+                      </div>
+                      <div className={`w-3.5 h-3.5 rounded-full border flex items-center justify-center ${
+                        createForm.methodology === 'SCRUM'
+                          ? 'border-purple-600 bg-purple-600'
+                          : 'border-slate-300'
+                      }`}>
+                        {createForm.methodology === 'SCRUM' && (
+                          <div className="w-1.5 h-1.5 rounded-full bg-white" />
+                        )}
+                      </div>
+                    </div>
+                    <p className="text-[11px] text-slate-500 font-medium mb-1.5">
+                      Sprint-based planning and delivery.
+                    </p>
+                    <ul className="text-[10px] text-slate-600 space-y-0.5 list-disc list-inside">
+                      <li>Sprint planning &amp; iterations</li>
+                      <li>Product &amp; sprint backlog</li>
+                      <li>Sprint progress tracking</li>
+                    </ul>
+                  </div>
+
+                  {/* Kanban Option Card */}
+                  <div
+                    onClick={() => setCreateForm({ ...createForm, methodology: 'KANBAN' })}
+                    className={`p-3 rounded-xl border text-left cursor-pointer transition-all ${
+                      createForm.methodology === 'KANBAN'
+                        ? 'border-purple-600 bg-purple-50/50 shadow-xs ring-1 ring-purple-600'
+                        : 'border-slate-200 bg-white hover:border-slate-300 hover:bg-slate-50/50'
+                    }`}
+                  >
+                    <div className="flex items-center justify-between mb-1">
+                      <div className="flex items-center gap-1.5">
+                        <span className="text-xs font-bold text-slate-900">Kanban</span>
+                        <span className="text-[10px] px-1.5 py-0.5 rounded font-semibold bg-indigo-100 text-indigo-700">Continuous</span>
+                      </div>
+                      <div className={`w-3.5 h-3.5 rounded-full border flex items-center justify-center ${
+                        createForm.methodology === 'KANBAN'
+                          ? 'border-purple-600 bg-purple-600'
+                          : 'border-slate-300'
+                      }`}>
+                        {createForm.methodology === 'KANBAN' && (
+                          <div className="w-1.5 h-1.5 rounded-full bg-white" />
+                        )}
+                      </div>
+                    </div>
+                    <p className="text-[11px] text-slate-500 font-medium mb-1.5">
+                      Continuous workflow without mandatory sprints.
+                    </p>
+                    <ul className="text-[10px] text-slate-600 space-y-0.5 list-disc list-inside">
+                      <li>Continuous flow of work</li>
+                      <li>Work-in-progress visibility</li>
+                      <li>No mandatory sprint planning</li>
+                    </ul>
+                  </div>
+                </div>
               </div>
 
               <div>
@@ -872,6 +967,28 @@ export default function ProjectsDirectoryView({ onSelectProject, isIntern = fals
                   onChange={(e) => setEditForm({ ...editForm, name: e.target.value })}
                   className="w-full px-3 py-2 border border-slate-300 rounded-xl text-xs text-slate-800 focus:outline-hidden focus:border-purple-600 focus:ring-1 focus:ring-purple-600"
                 />
+              </div>
+
+              {/* Project Methodology (Immutable - Read-Only) */}
+              <div>
+                <label className="block text-xs font-semibold text-slate-700 mb-1">
+                  Project Methodology
+                </label>
+                <div className="flex items-center justify-between p-2.5 rounded-xl border border-slate-200 bg-slate-50/80">
+                  <div className="flex items-center gap-2">
+                    <span className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider ${
+                      editForm.methodology === 'KANBAN'
+                        ? 'bg-indigo-50 text-indigo-700 border border-indigo-200'
+                        : 'bg-purple-50 text-purple-700 border border-purple-200'
+                    }`}>
+                      {editForm.methodology === 'KANBAN' ? 'Kanban Project' : 'Scrum Project'}
+                    </span>
+                    <span className="text-[11px] text-slate-500">
+                      {editForm.methodology === 'KANBAN' ? 'Continuous workflow' : 'Sprint iterations & planning'}
+                    </span>
+                  </div>
+                  <span className="text-[10px] text-slate-400 font-medium italic">Immutable after creation</span>
+                </div>
               </div>
 
               <div>

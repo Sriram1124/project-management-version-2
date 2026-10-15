@@ -1,13 +1,13 @@
 import fs from 'fs';
 import path from 'path';
-import { ProjectStatus, RequirementStatus } from '@prisma/client';
+import { ProjectStatus, ProjectMethodology } from '@prisma/client';
 import { prisma } from '../lib/prisma';
 import { StorageService } from './storage.service';
-import { DocumentParserService } from './document-parser.service';
 
 export interface CreateProjectInput {
   name: string;
   description?: string;
+  methodology: ProjectMethodology | string;
   start_date?: string | null;
   end_date?: string | null;
   status?: ProjectStatus;
@@ -19,6 +19,7 @@ export interface CreateProjectInput {
 export interface UpdateProjectInput {
   name?: string;
   description?: string | null;
+  methodology?: ProjectMethodology | string;
   start_date?: string | null;
   end_date?: string | null;
   status?: ProjectStatus;
@@ -208,6 +209,15 @@ export class ProjectService {
       throw new Error('Project name is required');
     }
 
+    if (!data.methodology || typeof data.methodology !== 'string' || !data.methodology.trim()) {
+      throw new Error('Project methodology is required (SCRUM or KANBAN)');
+    }
+    const methUpper = data.methodology.toUpperCase().trim();
+    if (methUpper !== 'SCRUM' && methUpper !== 'KANBAN') {
+      throw new Error(`Invalid project methodology: ${data.methodology}. Must be SCRUM or KANBAN.`);
+    }
+    const methodology = methUpper as ProjectMethodology;
+
     let ownerId = user.id;
     if (data.owner_id) {
       // Validate owner belongs to the same organization
@@ -283,6 +293,7 @@ export class ProjectService {
       data: {
         name: data.name.trim(),
         description: data.description?.trim() || null,
+        methodology,
         start_date: startDate,
         end_date: endDate,
         status,
@@ -360,6 +371,13 @@ export class ProjectService {
 
     if (data.description !== undefined) {
       updateData.description = data.description ? data.description.trim() : null;
+    }
+
+    if (data.methodology !== undefined) {
+      const methUpper = typeof data.methodology === 'string' ? data.methodology.toUpperCase().trim() : '';
+      if (methUpper !== existing.methodology) {
+        throw new Error('Project methodology is immutable and cannot be changed after creation');
+      }
     }
 
     let newStart = existing.start_date;
@@ -860,11 +878,6 @@ export class ProjectService {
 
     return await prisma.projectDocument.findMany({
       where: { project_id: projectId },
-      include: {
-        requirements: {
-          orderBy: { created_at: 'asc' },
-        },
-      },
       orderBy: { created_at: 'desc' },
     });
   }
@@ -929,36 +942,7 @@ export class ProjectService {
       throw err;
     }
 
-    // Automatically parse actionable requirements from supported formats
-    try {
-      const filePath = StorageService.getFilePath(storageKey);
-      const text = await DocumentParserService.extractText(filePath, ext, file.buffer);
-      const extracted = DocumentParserService.extractRequirements(text);
-
-      if (extracted && extracted.length > 0) {
-        await prisma.documentRequirement.createMany({
-          data: extracted.map((req) => ({
-            document_id: createdDoc.id,
-            code: req.code,
-            title: req.title,
-            description: req.description,
-            section: req.section,
-            status: RequirementStatus.PENDING,
-          })),
-        });
-      }
-    } catch (parseErr: any) {
-      console.warn(`[DocumentParser] Notice: Could not parse requirements from ${file.originalname}:`, parseErr.message);
-    }
-
-    return await prisma.projectDocument.findUnique({
-      where: { id: createdDoc.id },
-      include: {
-        requirements: {
-          orderBy: { created_at: 'asc' },
-        },
-      },
-    });
+    return createdDoc;
   }
 
   /**
@@ -1183,10 +1167,6 @@ export class ProjectService {
     }
 
     if (document) {
-      await prisma.documentRequirement.deleteMany({
-        where: { document_id: document.id },
-      }).catch(() => {});
-
       await prisma.projectDocument.delete({
         where: { id: document.id },
       });
@@ -1202,140 +1182,6 @@ export class ProjectService {
       success: true,
       id: document?.id || documentId,
     };
-  }
-
-  /**
-   * Update an individual requirement status, progress note, or current activity
-   */
-  static async updateRequirement(
-    projectId: string,
-    documentId: string,
-    requirementId: string,
-    data: { status?: RequirementStatus; progress_note?: string; current_activity?: string },
-    user: any
-  ) {
-    let orgId = user.organization_id;
-    if (!orgId && this.isManagerOrAdmin(user)) {
-      const firstOrg = await prisma.organization.findFirst({ where: { is_active: true } });
-      orgId = firstOrg?.id;
-    }
-
-    const whereProject: any = { id: projectId };
-    if (orgId) {
-      whereProject.organization_id = orgId;
-    }
-
-    const project = await prisma.project.findFirst({
-      where: whereProject,
-    });
-    if (!project) throw new Error('Project not found');
-
-    const requirement = await prisma.documentRequirement.findFirst({
-      where: { id: requirementId, document_id: documentId },
-    });
-    if (!requirement) throw new Error('Requirement not found');
-
-    const updateData: any = {
-      updated_by_user_id: user.id,
-    };
-    if (data.status !== undefined) {
-      if (!Object.values(RequirementStatus).includes(data.status)) {
-        throw new Error(`Invalid requirement status: ${data.status}`);
-      }
-      updateData.status = data.status;
-    }
-    if (data.progress_note !== undefined) updateData.progress_note = data.progress_note;
-    if (data.current_activity !== undefined) updateData.current_activity = data.current_activity;
-
-    return await prisma.documentRequirement.update({
-      where: { id: requirementId },
-      data: updateData,
-    });
-  }
-
-  /**
-   * Reparse document requirements manually or for existing documents
-   */
-  static async reparseDocumentRequirements(
-    projectId: string,
-    documentId: string,
-    user: any
-  ) {
-    let orgId = user.organization_id;
-    if (!orgId && this.isManagerOrAdmin(user)) {
-      const firstOrg = await prisma.organization.findFirst({ where: { is_active: true } });
-      orgId = firstOrg?.id;
-    }
-
-    const whereProject: any = { id: projectId };
-    if (orgId) {
-      whereProject.organization_id = orgId;
-    }
-
-    const project = await prisma.project.findFirst({
-      where: whereProject,
-    });
-    if (!project) throw new Error('Project not found');
-
-    const doc = await prisma.projectDocument.findFirst({
-      where: { id: documentId, project_id: projectId },
-    });
-    if (!doc) throw new Error('Document not found in project');
-
-    let text = '';
-    const filePath = StorageService.getFilePath(doc.storage_key, false);
-    if (fs.existsSync(filePath)) {
-      try {
-        text = await DocumentParserService.extractText(filePath, doc.document_type);
-      } catch (e) {
-        text = '';
-      }
-    }
-
-    if (!text || !text.trim()) {
-      text = `# Functional Requirements Document\n\n- REQ-01: Core System Requirement\n- REQ-02: Security and Access Control`;
-      try {
-        fs.mkdirSync(path.dirname(filePath), { recursive: true });
-        fs.writeFileSync(filePath, text);
-      } catch (err) {}
-    }
-
-    let extracted = DocumentParserService.extractRequirements(text);
-    if (!extracted || extracted.length === 0) {
-      extracted = [
-        {
-          code: 'REQ-01',
-          title: 'Core System Requirement',
-          description: 'Parsed requirement item from document specification',
-          section: 'System Requirements',
-        },
-      ];
-    }
-
-    // Remove previous requirements to prevent duplicates
-    await prisma.documentRequirement.deleteMany({
-      where: { document_id: documentId },
-    });
-
-    await prisma.documentRequirement.createMany({
-      data: extracted.map((req) => ({
-        document_id: documentId,
-        code: req.code || 'REQ-01',
-        title: req.title,
-        description: req.description || null,
-        section: req.section || null,
-        status: RequirementStatus.PENDING,
-      })),
-    });
-
-    return await prisma.projectDocument.findUnique({
-      where: { id: documentId },
-      include: {
-        requirements: {
-          orderBy: { created_at: 'asc' },
-        },
-      },
-    });
   }
 
   /**

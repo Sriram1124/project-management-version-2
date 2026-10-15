@@ -2,10 +2,12 @@
   "name": "internhub-workspace",
   "private": true,
   "scripts": {
-    "dev:manager": "npm --prefix manager run dev",
-    "dev:intern": "npm --prefix intern_dashboard run dev",
-    "build:manager": "npm --prefix manager run build",
-    "build:intern": "npm --prefix intern_dashboard run build"
+    "dev": "npm --prefix frontend run dev",
+    "start": "npm --prefix frontend run dev",
+    "dev:frontend": "npm --prefix frontend run dev",
+    "dev:backend": "npm --prefix backend-node run dev",
+    "build": "npm --prefix frontend run build",
+    "build:frontend": "npm --prefix frontend run build",
+    "build:backend": "npm --prefix backend-node run typecheck"
   }
 }
-

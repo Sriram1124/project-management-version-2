@@ -22,9 +22,7 @@
     "express": "^5.2.1",
     "ioredis": "^6.0.0",
     "jsonwebtoken": "^9.0.3",
-    "mammoth": "^1.13.0",
-    "multer": "^2.4.0",
-    "pdf-parse": "^2.4.5"
+    "multer": "^2.4.0"
   },
   "prisma": {
     "seed": "npx tsx prisma/seed.ts"

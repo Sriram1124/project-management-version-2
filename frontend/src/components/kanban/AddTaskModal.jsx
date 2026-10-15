@@ -38,6 +38,7 @@ export default function AddTaskModal({
   parentItem = null,
   allowedTypes = null,
   sprints = [],
+  isKanban = false,
   onTaskCreated,
   onToast,
 }) {
@@ -281,9 +282,10 @@ export default function AddTaskModal({
 
     if (targetProjId) {
       const effectiveParentId = parentItem ? parentItem.id : parentId;
-      if (type !== 'EPIC' && !effectiveParentId) {
+      const isParentOptional = type === 'STORY' || type === 'BUG';
+      if (type !== 'EPIC' && !effectiveParentId && !isParentOptional) {
         setError(
-          `A parent work item is required for ${type}. Only EPIC can be created at the project root.`
+          `A parent work item is required for ${type}.`
         );
         return;
       }
@@ -332,6 +334,7 @@ export default function AddTaskModal({
       setSubmitting(true);
       setError('');
 
+      const effectiveParentId = parentItem ? parentItem.id : parentId;
       const payload = {
         title: title.trim(),
         description: description.trim() || null,
@@ -340,7 +343,7 @@ export default function AddTaskModal({
         priority,
         story_points: type === 'EPIC' ? 0 : sp > 0 ? sp : 0,
         project_id: targetProjId,
-        parent_id: parentId || null,
+        parent_id: effectiveParentId || null,
         sprint_id: sprintId || null,
         start_date: startDate ? new Date(startDate).toISOString() : null,
         due_date: dueDate ? new Date(dueDate).toISOString() : null,
@@ -539,7 +542,7 @@ export default function AddTaskModal({
                 <label className="block text-[11px] font-bold text-purple-900 uppercase tracking-wider mb-1 flex items-center gap-1.5">
                   <GitFork className="w-3.5 h-3.5 text-purple-600" />
                   <span>
-                    Parent {type === 'STORY' ? 'Epic *' : type === 'TASK' ? 'Story *' : type === 'SUBTASK' ? 'Task *' : 'Epic or Story *'}
+                    Parent {type === 'STORY' ? 'Epic (Optional)' : type === 'BUG' ? 'Epic or Story (Optional)' : type === 'TASK' ? 'Story *' : type === 'SUBTASK' ? 'Task *' : 'Parent Item *'}
                   </span>
                 </label>
 
@@ -549,24 +552,30 @@ export default function AddTaskModal({
                     <span>Loading potential parent items...</span>
                   </div>
                 ) : potentialParents.length === 0 ? (
-                  <p className="text-[11px] text-amber-700 py-1 font-medium">
-                    {type === 'STORY'
-                      ? 'No Epics found in this project. Create an Epic first before creating a Story.'
-                      : type === 'TASK'
-                      ? 'No Stories found in this project. Create a Story first before creating a Task.'
-                      : type === 'SUBTASK'
-                      ? 'No Tasks found in this project. Create a Task first before creating a Subtask.'
-                      : 'No Epics or Stories found in this project. Create an Epic or Story first before creating a Bug.'}
-                  </p>
+                  type === 'STORY' || type === 'BUG' ? (
+                    <p className="text-[11px] text-slate-600 py-1 font-medium">
+                      No {type === 'STORY' ? 'Epics' : 'Epics or Stories'} found in this project. This item will be created as an independent, standalone {type === 'STORY' ? 'Story' : 'Bug'}.
+                    </p>
+                  ) : (
+                    <p className="text-[11px] text-amber-700 py-1 font-medium">
+                      {type === 'TASK'
+                        ? 'No Stories found in this project. Create a Story first before creating a Task.'
+                        : 'No Tasks found in this project. Create a Task first before creating a Subtask.'}
+                    </p>
+                  )
                 ) : (
                   <select
                     value={parentId}
                     onChange={(e) => setParentId(e.target.value)}
-                    required
+                    required={type === 'TASK' || type === 'SUBTASK'}
                     className="w-full px-3 py-2 rounded-lg border border-purple-200 bg-white text-slate-800 focus:outline-none focus:border-purple-600"
                   >
                     <option value="">
-                      Select Parent {type === 'STORY' ? 'Epic' : type === 'TASK' ? 'Story' : type === 'SUBTASK' ? 'Task' : 'Epic or Story'} *
+                      {type === 'STORY'
+                        ? 'None (Standalone Story - No Epic)'
+                        : type === 'BUG'
+                        ? 'None (Standalone Bug - No Parent)'
+                        : `Select Parent ${type === 'TASK' ? 'Story' : 'Task'} *`}
                     </option>
                     {potentialParents.map((p) => (
                       <option key={p.id} value={p.id}>
@@ -580,24 +589,26 @@ export default function AddTaskModal({
           ) : null}
 
           {/* Row: Sprint & Status */}
-          <div className="grid grid-cols-2 gap-3">
-            <div>
-              <label className="block text-[11px] font-bold text-slate-700 uppercase tracking-wider mb-1">
-                Sprint
-              </label>
-              <select
-                value={sprintId}
-                onChange={(e) => setSprintId(e.target.value)}
-                className="w-full px-3 py-2 rounded-xl border border-slate-200 bg-white text-slate-800 focus:outline-none focus:border-purple-600"
-              >
-                <option value="">Project Backlog (No Sprint)</option>
-                {availableSprints.map((s) => (
-                  <option key={s.id} value={s.id}>
-                    {s.name} {s.status === 'ACTIVE' ? '• Active' : ''}
-                  </option>
-                ))}
-              </select>
-            </div>
+          <div className={`grid ${isKanban ? 'grid-cols-1' : 'grid-cols-2'} gap-3`}>
+            {!isKanban && (
+              <div>
+                <label className="block text-[11px] font-bold text-slate-700 uppercase tracking-wider mb-1">
+                  Sprint
+                </label>
+                <select
+                  value={sprintId}
+                  onChange={(e) => setSprintId(e.target.value)}
+                  className="w-full px-3 py-2 rounded-xl border border-slate-200 bg-white text-slate-800 focus:outline-none focus:border-purple-600"
+                >
+                  <option value="">Project Backlog (No Sprint)</option>
+                  {availableSprints.map((s) => (
+                    <option key={s.id} value={s.id}>
+                      {s.name} {s.status === 'ACTIVE' ? '• Active' : ''}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            )}
 
             <div>
               <label className="block text-[11px] font-bold text-slate-700 uppercase tracking-wider mb-1">

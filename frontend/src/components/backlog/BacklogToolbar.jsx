@@ -38,6 +38,7 @@ export default function BacklogToolbar({
   onCollapseAll,
   allExpanded = false,
   readOnly = false,
+  isKanban = false,
 }) {
   const [openDropdown, setOpenDropdown] = useState(null);
   const [assigneeSearchQuery, setAssigneeSearchQuery] = useState('');
@@ -193,11 +194,17 @@ export default function BacklogToolbar({
 
             {openDropdown === 'groupby' && (
               <div className="absolute right-0 mt-1 w-44 bg-white rounded-md shadow-lg border border-slate-200 py-1 z-30">
-                {[
-                  { id: 'none', label: 'Stories & Tasks (Flat)' },
-                  { id: 'sprint', label: 'Sprint Groups' },
-                  { id: 'epic', label: 'Backlog' },
-                ].map((mode) => (
+                {(isKanban
+                  ? [
+                      { id: 'none', label: 'Stories & Tasks (Flat)' },
+                      { id: 'epic', label: 'Backlog' },
+                    ]
+                  : [
+                      { id: 'none', label: 'Stories & Tasks (Flat)' },
+                      { id: 'sprint', label: 'Sprint Groups' },
+                      { id: 'epic', label: 'Backlog' },
+                    ]
+                ).map((mode) => (
                   <button
                     key={mode.id}
                     type="button"
@@ -420,76 +427,78 @@ export default function BacklogToolbar({
             )}
           </div>
 
-          {/* Sprint Dropdown */}
-          <div className="relative">
-            <button
-              type="button"
-              onClick={() => toggleDropdown('sprint')}
-              className={`px-2 py-1 rounded-md border font-medium flex items-center gap-1 transition-colors ${
-                selectedSprintId
-                  ? 'border-purple-300 bg-purple-50/70 text-purple-700 font-semibold'
-                  : 'border-slate-200 text-slate-600 bg-white hover:bg-slate-50'
-              }`}
-            >
-              <span>
-                {selectedSprintId
-                  ? selectedSprintId === 'backlog'
+          {/* Sprint Dropdown (hidden in Kanban) */}
+          {!isKanban && (
+            <div className="relative">
+              <button
+                type="button"
+                onClick={() => toggleDropdown('sprint')}
+                className={`px-2 py-1 rounded-md border font-medium flex items-center gap-1 transition-colors ${
+                  selectedSprintId
+                    ? 'border-purple-300 bg-purple-50/70 text-purple-700 font-semibold'
+                    : 'border-slate-200 text-slate-600 bg-white hover:bg-slate-50'
+                }`}
+              >
+                <span>
+                  {selectedSprintId
+                    ? selectedSprintId === 'backlog'
                     ? 'Backlog'
                     : sprints.find((s) => s.id === selectedSprintId)?.name || 'Sprint'
-                  : 'Sprint'}
-              </span>
-              <ChevronDown className="w-3 h-3 text-slate-400" />
-            </button>
+                    : 'Sprint'}
+                </span>
+                <ChevronDown className="w-3 h-3 text-slate-400" />
+              </button>
 
-            {openDropdown === 'sprint' && (
-              <div className="absolute left-0 mt-1 w-48 bg-white rounded-md shadow-lg border border-slate-200 py-1 z-30">
-                <button
-                  type="button"
-                  onClick={() => {
-                    onSelectSprintId?.(null);
-                    setOpenDropdown(null);
-                  }}
-                  className={`w-full text-left px-3 py-1.5 text-xs hover:bg-slate-50 transition-colors flex items-center justify-between ${
-                    !selectedSprintId ? 'text-purple-700 font-semibold bg-purple-50/40' : 'text-slate-700'
-                  }`}
-                >
-                  <span>All Sprints</span>
-                  {!selectedSprintId && <Check className="w-3 h-3 text-purple-600" />}
-                </button>
-
-                <button
-                  type="button"
-                  onClick={() => {
-                    onSelectSprintId?.('backlog');
-                    setOpenDropdown(null);
-                  }}
-                  className={`w-full text-left px-3 py-1.5 text-xs hover:bg-slate-50 transition-colors flex items-center justify-between ${
-                    selectedSprintId === 'backlog' ? 'text-purple-700 font-semibold bg-purple-50/40' : 'text-slate-700'
-                  }`}
-                >
-                  <span>Backlog (Unassigned)</span>
-                  {selectedSprintId === 'backlog' && <Check className="w-3 h-3 text-purple-600" />}
-                </button>
-
-                {sprints.map((s) => (
+              {openDropdown === 'sprint' && (
+                <div className="absolute left-0 mt-1 w-48 bg-white rounded-md shadow-lg border border-slate-200 py-1 z-30">
                   <button
-                    key={s.id}
                     type="button"
                     onClick={() => {
-                      onSelectSprintId?.(s.id);
+                      onSelectSprintId?.(null);
                       setOpenDropdown(null);
                     }}
                     className={`w-full text-left px-3 py-1.5 text-xs hover:bg-slate-50 transition-colors flex items-center justify-between ${
-                      selectedSprintId === s.id ? 'text-purple-700 font-semibold bg-purple-50/40' : 'text-slate-700'
+                      !selectedSprintId ? 'text-purple-700 font-semibold bg-purple-50/40' : 'text-slate-700'
                     }`}
                   >
-                    <span className="truncate">{s.name}</span>
-                    {selectedSprintId === s.id && <Check className="w-3 h-3 text-purple-600" />}
+                    <span>All Sprints</span>
+                    {!selectedSprintId && <Check className="w-3 h-3 text-purple-600" />}
                   </button>
-                ))}
-              </div>
-            )}
-          </div>
+
+                  <button
+                    type="button"
+                    onClick={() => {
+                      onSelectSprintId?.('backlog');
+                      setOpenDropdown(null);
+                    }}
+                    className={`w-full text-left px-3 py-1.5 text-xs hover:bg-slate-50 transition-colors flex items-center justify-between ${
+                      selectedSprintId === 'backlog' ? 'text-purple-700 font-semibold bg-purple-50/40' : 'text-slate-700'
+                    }`}
+                  >
+                    <span>Backlog (Unassigned)</span>
+                    {selectedSprintId === 'backlog' && <Check className="w-3 h-3 text-purple-600" />}
+                  </button>
+
+                  {sprints.map((s) => (
+                    <button
+                      key={s.id}
+                      type="button"
+                      onClick={() => {
+                        onSelectSprintId?.(s.id);
+                        setOpenDropdown(null);
+                      }}
+                      className={`w-full text-left px-3 py-1.5 text-xs hover:bg-slate-50 transition-colors flex items-center justify-between ${
+                        selectedSprintId === s.id ? 'text-purple-700 font-semibold bg-purple-50/40' : 'text-slate-700'
+                      }`}
+                    >
+                      <span className="truncate">{s.name}</span>
+                      {selectedSprintId === s.id && <Check className="w-3 h-3 text-purple-600" />}
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
 
           <div className="h-4 w-[1px] bg-slate-200 mx-1 hidden sm:block" />
 

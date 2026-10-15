@@ -528,574 +528,424 @@ export default function ProjectTaskCharts({ projectId = null, members = [], read
   }
 
   return (
-    <div className="space-y-4 min-w-0 max-w-full">
-      {/* 1. HEADER BAR: Title, Subtitle, Tab Mode Switcher, Scope, Refresh */}
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-3 bg-white p-4 rounded-xl border border-slate-200/80 shadow-xs">
-        <div>
-          <h2 className="text-base font-bold text-slate-900 tracking-tight flex items-center gap-2">
-            <Award className="w-4 h-4 text-purple-600" />
-            <span>
-              {isInternUser
-                ? 'Task Analytics & Performance'
-                : viewMode === 'PERFORMANCE'
-                ? 'Team Members & Tech Leads Performance'
-                : viewMode === 'BOTH'
-                ? 'Project Analytics & Team Performance'
-                : 'Task Analytics & Work Distribution'}
-            </span>
-          </h2>
-          <p className="text-xs text-slate-500 mt-0.5">
-            {isInternUser
-              ? 'Real-time task status, workload, and individual performance metrics'
-              : viewMode === 'PERFORMANCE'
-              ? 'Individual completion rates, active work, and on-time delivery across team members'
-              : 'Real-time status breakdowns, priority distribution, and velocity metrics from Supabase database'}
-          </p>
-        </div>
-
-        {/* Header Actions / Controls */}
-        <div className="flex flex-wrap items-center gap-2.5">
-          {/* Intern Two-Tab Switcher: Tab A (Tasks & Graphs) vs Tab B (Individual Performance) */}
-          {isInternUser ? (
-            <div className="inline-flex items-center p-1 rounded-xl bg-slate-100 border border-slate-200/70 text-xs font-semibold">
-              <button
-                type="button"
-                onClick={() => setViewMode('TASKS')}
-                className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg transition-all cursor-pointer ${
-                  viewMode === 'TASKS'
-                    ? 'bg-white text-purple-700 font-bold shadow-xs'
-                    : 'text-slate-600 hover:text-slate-900'
-                }`}
-              >
-                <BarChart3 className="w-3.5 h-3.5" />
-                <span>Tasks & Graphs</span>
-              </button>
-              <button
-                type="button"
-                onClick={() => setViewMode('PERFORMANCE')}
-                className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg transition-all cursor-pointer ${
-                  viewMode === 'PERFORMANCE'
-                    ? 'bg-white text-purple-700 font-bold shadow-xs'
-                    : 'text-slate-600 hover:text-slate-900'
-                }`}
-              >
-                <User className="w-3.5 h-3.5" />
-                <span>Individual Performance</span>
-              </button>
+    <div className="min-w-0 max-w-full">
+      {/* UNIFIED TASK ANALYTICS CARD */}
+      <div className="bg-white rounded-2xl border border-slate-200/80 shadow-xs overflow-hidden">
+        {/* 1. HEADER ROW: Left: icon, title, description. Right: Refresh button */}
+        <div className="p-4 sm:p-5 flex flex-col md:flex-row md:items-center justify-between gap-3">
+          <div className="flex items-start gap-3">
+            <div className="w-9 h-9 rounded-xl bg-purple-50 border border-purple-100 text-purple-600 flex items-center justify-center shrink-0 mt-0.5">
+              <Award className="w-5 h-5 text-purple-600" />
             </div>
-          ) : (
-            /* Manager Three-Way Segmented Switcher */
-            <div className="inline-flex items-center p-1 rounded-xl bg-slate-100 border border-slate-200/70 text-xs font-semibold">
-              <button
-                type="button"
-                onClick={() => setViewMode('TASKS')}
-                className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg transition-all cursor-pointer ${
-                  viewMode === 'TASKS'
-                    ? 'bg-white text-purple-700 font-bold shadow-xs'
-                    : 'text-slate-600 hover:text-slate-900'
-                }`}
-              >
-                <BarChart3 className="w-3.5 h-3.5" />
-                <span>Tasks & Graphs</span>
-              </button>
-              <button
-                type="button"
-                onClick={() => setViewMode('PERFORMANCE')}
-                className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg transition-all cursor-pointer ${
-                  viewMode === 'PERFORMANCE'
-                    ? 'bg-white text-purple-700 font-bold shadow-xs'
-                    : 'text-slate-600 hover:text-slate-900'
-                }`}
-              >
-                <Award className="w-3.5 h-3.5" />
-                <span>Team Performance</span>
-              </button>
-              <button
-                type="button"
-                onClick={() => setViewMode('BOTH')}
-                className={`inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg transition-all cursor-pointer hidden lg:inline-flex ${
-                  viewMode === 'BOTH'
-                    ? 'bg-white text-purple-700 font-bold shadow-xs'
-                    : 'text-slate-600 hover:text-slate-900'
-                }`}
-              >
-                <span>Both</span>
-              </button>
+            <div>
+              <h2 className="text-base font-bold text-slate-900 tracking-tight">
+                {isInternUser
+                  ? 'Task Analytics & Performance'
+                  : 'Task Analytics & Work Distribution'}
+              </h2>
+              <p className="text-xs text-slate-500 mt-0.5">
+                {isInternUser
+                  ? 'Real-time task status, workload, and individual performance metrics'
+                  : 'Real-time status breakdowns, priority distribution, and velocity metrics from Supabase database'}
+              </p>
             </div>
-          )}
+          </div>
 
-          {/* Manager Scope Dropdown Filter */}
-          {!isInternUser && (
-            <div className="relative" ref={dropdownRef}>
-              <div className="inline-flex items-center rounded-xl border shadow-2xs overflow-hidden transition-all bg-white border-slate-200">
+          {/* Header Actions / Controls */}
+          <div className="flex flex-wrap items-center gap-2.5">
+            {/* Intern Two-Tab Switcher: Tab A (Tasks & Graphs) vs Tab B (Individual Performance) */}
+            {isInternUser && (
+              <div className="inline-flex items-center p-1 rounded-xl bg-slate-100 border border-slate-200/70 text-xs font-semibold">
                 <button
                   type="button"
-                  onClick={() => setIsDropdownOpen(!isDropdownOpen)}
-                  className={`inline-flex items-center gap-2 px-3.5 py-1.5 text-xs font-bold transition-all cursor-pointer ${
-                    selectedPerformanceFilter !== 'ALL'
-                      ? 'bg-purple-50 text-purple-900'
-                      : 'text-slate-700 hover:bg-slate-50'
+                  onClick={() => setViewMode('TASKS')}
+                  className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg transition-all cursor-pointer ${
+                    viewMode === 'TASKS'
+                      ? 'bg-white text-purple-700 font-bold shadow-xs'
+                      : 'text-slate-600 hover:text-slate-900'
                   }`}
                 >
-                  <UserCheck className="w-3.5 h-3.5 text-purple-600" />
-                  <span>
-                    {selectedPerformanceFilter === 'ALL'
-                      ? 'All Scope'
-                      : selectedPerformanceFilter === 'TECH_LEADS'
-                      ? 'Scope: Tech Leads'
-                      : `Scope: ${memberPerformanceMap.get(selectedPerformanceFilter)?.name || 'Selected Member'}`}
-                  </span>
-                  <ChevronDown className="w-3.5 h-3.5 text-slate-400 ml-0.5" />
+                  <BarChart3 className="w-3.5 h-3.5" />
+                  <span>Tasks & Graphs</span>
                 </button>
-
-                {selectedPerformanceFilter !== 'ALL' && (
-                  <button
-                    type="button"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      setSelectedPerformanceFilter('ALL');
-                      setIsDropdownOpen(false);
-                    }}
-                    title="Reset to All Project Tasks"
-                    className="px-2 py-1.5 bg-purple-100 hover:bg-purple-200 text-purple-700 border-l border-purple-200 transition-colors cursor-pointer"
-                  >
-                    <X className="w-3.5 h-3.5" />
-                  </button>
-                )}
+                <button
+                  type="button"
+                  onClick={() => setViewMode('PERFORMANCE')}
+                  className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg transition-all cursor-pointer ${
+                    viewMode === 'PERFORMANCE'
+                      ? 'bg-white text-purple-700 font-bold shadow-xs'
+                      : 'text-slate-600 hover:text-slate-900'
+                  }`}
+                >
+                  <User className="w-3.5 h-3.5" />
+                  <span>Individual Performance</span>
+                </button>
               </div>
+            )}
 
-              {isDropdownOpen && (
-                <div className="absolute right-0 top-full mt-1.5 w-72 rounded-xl bg-white border border-slate-200 shadow-xl p-2 z-30 text-slate-800 animate-in fade-in slide-in-from-top-1 duration-150">
-                  <div className="px-2 py-1.5 text-[10px] font-bold uppercase tracking-wider text-slate-400 border-b border-slate-100">
-                    Select View & Analytics Scope
-                  </div>
-
-                  <div className="py-1 space-y-0.5">
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setSelectedPerformanceFilter('ALL');
-                        setIsDropdownOpen(false);
-                      }}
-                      className={`w-full flex items-center justify-between px-2.5 py-2 rounded-lg text-xs font-semibold transition-colors cursor-pointer ${
-                        selectedPerformanceFilter === 'ALL'
-                          ? 'bg-purple-100 text-purple-900 font-bold'
-                          : 'hover:bg-slate-50 text-slate-700'
-                      }`}
-                    >
-                      <div className="flex items-center gap-2">
-                        <BarChart3 className="w-4 h-4 text-purple-600" />
-                        <div className="text-left">
-                          <span className="block leading-none">All Project Tasks (Default)</span>
-                          <span className="text-[10px] text-slate-400 font-normal">Full project tasks graph & mix</span>
-                        </div>
-                      </div>
-                    </button>
-                  </div>
-
-                  <div className="p-1 border-t border-slate-100">
-                    <div className="relative">
-                      <Search className="w-3 h-3 text-slate-400 absolute left-2.5 top-1/2 -translate-y-1/2" />
-                      <input
-                        type="text"
-                        value={memberSearchQuery}
-                        onChange={(e) => setMemberSearchQuery(e.target.value)}
-                        placeholder="Filter members..."
-                        className="w-full pl-7 pr-7 py-1 text-xs bg-slate-50 border border-slate-200 rounded-lg focus:outline-purple-500"
-                        onClick={(e) => e.stopPropagation()}
-                      />
-                    </div>
-                  </div>
-
-                  <div className="max-h-52 overflow-y-auto space-y-0.5 pr-0.5">
-                    {Array.from(memberPerformanceMap.values())
-                      .filter((mem) => {
-                        if (!memberSearchQuery.trim()) return true;
-                        const q = memberSearchQuery.toLowerCase();
-                        return (
-                          mem.name.toLowerCase().includes(q) ||
-                          mem.email.toLowerCase().includes(q) ||
-                          (mem.roleLabel && mem.roleLabel.toLowerCase().includes(q))
-                        );
-                      })
-                      .map((mem) => (
-                        <button
-                          key={mem.userId}
-                          type="button"
-                          onClick={() => {
-                            setSelectedPerformanceFilter(mem.userId);
-                            setIsDropdownOpen(false);
-                          }}
-                          className={`w-full flex items-center justify-between px-2.5 py-1.5 rounded-lg text-xs font-medium transition-colors cursor-pointer ${
-                            selectedPerformanceFilter === mem.userId
-                              ? 'bg-purple-50 text-purple-900 font-bold'
-                              : 'hover:bg-slate-50 text-slate-700'
-                          }`}
-                        >
-                          <div className="flex items-center gap-2 min-w-0 pr-2">
-                            <span className="truncate">{mem.name}</span>
-                            {mem.isTechLead && (
-                              <span className="px-1.5 py-0.2 rounded text-[9px] font-bold bg-purple-100 text-purple-700 shrink-0">
-                                Lead
-                              </span>
-                            )}
-                          </div>
-                          <span className="text-[10px] text-slate-400 shrink-0">
-                            {mem.completed}/{mem.totalAssigned} done
-                          </span>
-                        </button>
-                      ))}
-                  </div>
-                </div>
-              )}
-            </div>
-          )}
-
-          {/* Refresh Button */}
-          <button
-            type="button"
-            onClick={fetchAnalytics}
-            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-slate-50 hover:bg-slate-100 text-slate-700 border border-slate-200 text-xs font-semibold transition-colors cursor-pointer shadow-2xs"
-            title="Refresh current data"
-          >
-            <RefreshCw className="w-3.5 h-3.5 text-slate-500" />
-            <span>Refresh</span>
-          </button>
-        </div>
-      </div>
-
-      {/* 2. FILTERS & SCOPE BAR: Project, Sprint, Date Range Filter */}
-      <div className="flex flex-wrap items-center justify-between gap-3 bg-white p-3 rounded-xl border border-slate-200/80 shadow-2xs text-xs">
-        <div className="flex flex-wrap items-center gap-2.5">
-          {/* Project Filter */}
-          {accessibleProjects.length > 1 && (
-            <div className="inline-flex items-center gap-1.5">
-              <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Project:</span>
-              <select
-                value={selectedProjectId || ''}
-                onChange={(e) => setSelectedProjectId(e.target.value)}
-                className="bg-slate-50 border border-slate-200 rounded-lg px-2.5 py-1 text-xs font-semibold text-slate-700 focus:outline-purple-500 cursor-pointer"
-              >
-                <option value="">All Projects</option>
-                {accessibleProjects.map((p) => (
-                  <option key={p.id} value={p.id}>{p.name}</option>
-                ))}
-              </select>
-            </div>
-          )}
-
-          {/* Sprint Filter */}
-          {accessibleSprints.length > 0 && (
-            <div className="inline-flex items-center gap-1.5">
-              <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Sprint:</span>
-              <select
-                value={selectedSprintId || 'ALL'}
-                onChange={(e) => setSelectedSprintId(e.target.value)}
-                className="bg-slate-50 border border-slate-200 rounded-lg px-2.5 py-1 text-xs font-semibold text-slate-700 focus:outline-purple-500 cursor-pointer"
-              >
-                <option value="ALL">All Sprints</option>
-                {accessibleSprints.map((s) => (
-                  <option key={s.id} value={s.id}>{s.name}</option>
-                ))}
-              </select>
-            </div>
-          )}
-
-          {/* Date Range Filter */}
-          <div className="inline-flex items-center gap-1.5">
-            <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Date Range:</span>
-            <select
-              value={dateRangeFilter}
-              onChange={(e) => setDateRangeFilter(e.target.value)}
-              className="bg-slate-50 border border-slate-200 rounded-lg px-2.5 py-1 text-xs font-semibold text-slate-700 focus:outline-purple-500 cursor-pointer"
-            >
-              <option value="ALL">All Time</option>
-              <option value="7D">Last 7 Days</option>
-              <option value="14D">Last 14 Days</option>
-              <option value="30D">Last 30 Days</option>
-              <option value="THIS_MONTH">This Month</option>
-            </select>
-          </div>
-
-          {/* Clear Filters Button if any active */}
-          {(selectedSprintId !== 'ALL' || dateRangeFilter !== 'ALL' || (accessibleProjects.length > 1 && selectedProjectId)) && (
+            {/* Refresh Button */}
             <button
               type="button"
-              onClick={() => {
-                setSelectedProjectId(projectId || '');
-                setSelectedSprintId('ALL');
-                setDateRangeFilter('ALL');
-              }}
-              className="inline-flex items-center gap-1 text-[11px] font-semibold text-purple-600 hover:text-purple-800 transition-colors cursor-pointer ml-1"
+              onClick={fetchAnalytics}
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-slate-50 hover:bg-slate-100 text-slate-700 border border-slate-200 text-xs font-semibold transition-colors cursor-pointer shadow-2xs"
+              title="Refresh current data"
             >
-              <X className="w-3 h-3" />
-              <span>Reset Filters</span>
+              <RefreshCw className="w-3.5 h-3.5 text-slate-500" />
+              <span>Refresh</span>
             </button>
-          )}
+          </div>
         </div>
 
-        {/* Current Scope Badge */}
-        <div className="flex items-center gap-1.5 text-[11px] text-slate-500 font-medium">
-          <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 inline-block" />
-          <span>
-            {isInternUser ? 'Your Verified Personal Workload' : 'Project Scope'} (
-            <strong className="text-slate-800">{analytics.total}</strong> {analytics.total === 1 ? 'task' : 'tasks'})
-          </span>
-        </div>
-      </div>
+        {/* Divider below Header */}
+        <div className="border-t border-slate-100" />
 
-      {/* 3. TAB A: TASKS & GRAPHS VIEW (Visible in TASKS mode or manager BOTH mode) */}
-      {(viewMode === 'TASKS' || (!isInternUser && viewMode === 'BOTH')) && (
-        <div className="space-y-4">
-          {/* KPI Highlight Cards */}
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-            {/* 1. Tasks Assigned */}
-            <div className="bg-white p-4 rounded-xl border border-slate-200/80 shadow-2xs">
-              <div className="flex items-center justify-between">
-                <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">Tasks Assigned</span>
-                <div className="w-7 h-7 rounded-lg bg-purple-50 text-purple-600 flex items-center justify-center">
-                  <Layers className="w-3.5 h-3.5" />
-                </div>
+        {/* 2. FILTER ROW: Project, Sprint, Date Range Filter, Reset, Scope */}
+        <div className="px-4 py-3 sm:px-5 flex flex-wrap items-center justify-between gap-3 bg-slate-50/50 text-xs">
+          <div className="flex flex-wrap items-center gap-2.5">
+            {/* Project Filter */}
+            {accessibleProjects.length > 1 && (
+              <div className="inline-flex items-center gap-1.5">
+                <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Project:</span>
+                <select
+                  value={selectedProjectId || ''}
+                  onChange={(e) => setSelectedProjectId(e.target.value)}
+                  className="bg-white border border-slate-200 rounded-lg px-2.5 py-1 text-xs font-semibold text-slate-700 focus:outline-purple-500 cursor-pointer shadow-2xs"
+                >
+                  <option value="">All Projects</option>
+                  {accessibleProjects.map((p) => (
+                    <option key={p.id} value={p.id}>{p.name}</option>
+                  ))}
+                </select>
               </div>
-              <div className="text-2xl font-bold text-slate-900 mt-2">{analytics.total}</div>
-              <div className="text-[11px] text-slate-400 mt-0.5 truncate">
-                {isInternUser 
-                  ? 'Assigned to you in this project' 
-                  : selectedPerformanceFilter === 'ALL'
-                  ? 'Across entire project'
-                  : selectedPerformanceFilter === 'TECH_LEADS'
-                  ? 'Assigned to Tech Leads'
-                  : 'Assigned to selected member'}
+            )}
+
+            {/* Sprint Filter */}
+            {accessibleSprints.length > 0 && (
+              <div className="inline-flex items-center gap-1.5">
+                <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Sprint:</span>
+                <select
+                  value={selectedSprintId || 'ALL'}
+                  onChange={(e) => setSelectedSprintId(e.target.value)}
+                  className="bg-white border border-slate-200 rounded-lg px-2.5 py-1 text-xs font-semibold text-slate-700 focus:outline-purple-500 cursor-pointer shadow-2xs"
+                >
+                  <option value="ALL">All Sprints</option>
+                  {accessibleSprints.map((s) => (
+                    <option key={s.id} value={s.id}>{s.name}</option>
+                  ))}
+                </select>
               </div>
+            )}
+
+            {/* Date Range Filter */}
+            <div className="inline-flex items-center gap-1.5">
+              <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Date Range:</span>
+              <select
+                value={dateRangeFilter}
+                onChange={(e) => setDateRangeFilter(e.target.value)}
+                className="bg-white border border-slate-200 rounded-lg px-2.5 py-1 text-xs font-semibold text-slate-700 focus:outline-purple-500 cursor-pointer shadow-2xs"
+              >
+                <option value="ALL">All Time</option>
+                <option value="7D">Last 7 Days</option>
+                <option value="14D">Last 14 Days</option>
+                <option value="30D">Last 30 Days</option>
+                <option value="THIS_MONTH">This Month</option>
+              </select>
             </div>
 
-            {/* 2. Completed */}
-            <div className="bg-white p-4 rounded-xl border border-slate-200/80 shadow-2xs">
-              <div className="flex items-center justify-between">
-                <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">Completed</span>
-                <div className="w-7 h-7 rounded-lg bg-emerald-50 text-emerald-600 flex items-center justify-center">
-                  <CheckCircle2 className="w-3.5 h-3.5" />
-                </div>
-              </div>
-              <div className="text-2xl font-bold text-emerald-600 mt-2">{analytics.completed}</div>
-              <div className="text-[11px] text-slate-400 mt-0.5">
-                {analytics.completionRate}% completion rate ({analytics.inProgress} active)
-              </div>
-            </div>
-
-            {/* 3. On-Time Delivery */}
-            <div className="bg-white p-4 rounded-xl border border-slate-200/80 shadow-2xs">
-              <div className="flex items-center justify-between">
-                <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">On-Time Delivery</span>
-                <div className="w-7 h-7 rounded-lg bg-blue-50 text-blue-600 flex items-center justify-center">
-                  <CalendarCheck className="w-3.5 h-3.5" />
-                </div>
-              </div>
-              <div className="text-2xl font-bold text-blue-600 mt-2">{analytics.onTimeRate}%</div>
-              <div className="text-[11px] text-slate-400 mt-0.5">
-                {analytics.completedOnTime} completed on time
-              </div>
-            </div>
-
-            {/* 4. Past Due */}
-            <div className="bg-white p-4 rounded-xl border border-slate-200/80 shadow-2xs">
-              <div className="flex items-center justify-between">
-                <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">Past Due</span>
-                <div className="w-7 h-7 rounded-lg bg-rose-50 text-rose-600 flex items-center justify-center">
-                  <AlertTriangle className="w-3.5 h-3.5" />
-                </div>
-              </div>
-              <div className="text-2xl font-bold text-rose-600 mt-2">{analytics.pastDue}</div>
-              <div className="text-[11px] text-slate-400 mt-0.5 truncate">
-                {analytics.pastDue > 0 ? `${analytics.pastDue} overdue deadlines` : 'All tasks on schedule'}
-              </div>
-            </div>
+            {/* Clear Filters Button if any active */}
+            {(selectedSprintId !== 'ALL' || dateRangeFilter !== 'ALL' || (accessibleProjects.length > 1 && selectedProjectId)) && (
+              <button
+                type="button"
+                onClick={() => {
+                  setSelectedProjectId(projectId || '');
+                  setSelectedSprintId('ALL');
+                  setDateRangeFilter('ALL');
+                }}
+                className="inline-flex items-center gap-1 text-[11px] font-semibold text-purple-600 hover:text-purple-800 transition-colors cursor-pointer ml-1"
+              >
+                <X className="w-3 h-3" />
+                <span>Reset Filters</span>
+              </button>
+            )}
           </div>
 
-          {/* Main Visual Charts Grid */}
-          <div className="grid grid-cols-1 lg:grid-cols-12 gap-4">
-            {/* Chart 1: Status Distribution (Donut) - 5 Columns */}
-            <div className="lg:col-span-5 bg-white p-5 rounded-2xl border border-slate-200/80 shadow-card flex flex-col justify-between">
-              <div>
-                <div className="flex items-center justify-between pb-3 border-b border-slate-100">
-                  <div className="flex items-center gap-2">
-                    <PieChart className="w-4 h-4 text-purple-600" />
-                    <h3 className="text-xs font-bold text-slate-800 uppercase tracking-wider">Status Distribution</h3>
+          {/* Current Scope Badge */}
+          <div className="flex items-center gap-1.5 text-[11px] text-slate-500 font-medium">
+            <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 inline-block" />
+            <span>
+              {isInternUser ? 'Your Verified Personal Workload' : 'Project Scope'} (
+              <strong className="text-slate-800">{analytics.total}</strong> {analytics.total === 1 ? 'task' : 'tasks'})
+            </span>
+          </div>
+        </div>
+
+        {/* Divider below Filter Row */}
+        <div className="border-t border-slate-100" />
+
+        {/* 3. TAB A: TASKS & GRAPHS VIEW */}
+        {(viewMode === 'TASKS' || (!isInternUser && viewMode === 'BOTH')) && (
+          <div>
+            {/* KPI Row: 4 evenly spaced compact metric blocks */}
+            <div className="p-4 sm:p-5">
+              <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+                {/* 1. Tasks Assigned */}
+                <div className="p-3.5 rounded-xl bg-slate-50/70 border border-slate-100 flex flex-col justify-between">
+                  <div className="flex items-center justify-between">
+                    <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">Tasks Assigned</span>
+                    <div className="w-7 h-7 rounded-lg bg-purple-100/80 text-purple-600 flex items-center justify-center">
+                      <Layers className="w-3.5 h-3.5" />
+                    </div>
                   </div>
-                  <span className="text-[10px] font-bold text-purple-700 bg-purple-50 px-2 py-0.5 rounded-full border border-purple-200/60">
-                    Live Data
-                  </span>
+                  <div className="text-2xl font-bold text-slate-900 mt-2">{analytics.total}</div>
+                  <div className="text-[11px] text-slate-500 mt-0.5 truncate">
+                    {isInternUser 
+                      ? 'Assigned to you in this project' 
+                      : selectedPerformanceFilter === 'ALL'
+                      ? 'Across entire project'
+                      : selectedPerformanceFilter === 'TECH_LEADS'
+                      ? 'Assigned to Tech Leads'
+                      : 'Assigned to selected member'}
+                  </div>
                 </div>
 
-                {/* Donut Chart Visual */}
-                <div className="my-5 flex flex-col sm:flex-row items-center justify-center gap-6">
-                  <div className="relative flex items-center justify-center shrink-0">
-                    <svg width={donutSize} height={donutSize} className="transform -rotate-90">
-                      <circle
-                        cx={donutSize / 2}
-                        cy={donutSize / 2}
-                        r={radius}
-                        stroke="#F1F5F9"
-                        strokeWidth={strokeWidth}
-                        fill="transparent"
-                      />
-                      {donutSegments.map((seg) => (
+                {/* 2. Completed */}
+                <div className="p-3.5 rounded-xl bg-slate-50/70 border border-slate-100 flex flex-col justify-between">
+                  <div className="flex items-center justify-between">
+                    <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">Completed</span>
+                    <div className="w-7 h-7 rounded-lg bg-emerald-100/80 text-emerald-600 flex items-center justify-center">
+                      <CheckCircle2 className="w-3.5 h-3.5" />
+                    </div>
+                  </div>
+                  <div className="text-2xl font-bold text-emerald-600 mt-2">{analytics.completed}</div>
+                  <div className="text-[11px] text-slate-500 mt-0.5 truncate">
+                    {analytics.completionRate}% completion rate ({analytics.inProgress} active)
+                  </div>
+                </div>
+
+                {/* 3. On-Time Delivery */}
+                <div className="p-3.5 rounded-xl bg-slate-50/70 border border-slate-100 flex flex-col justify-between">
+                  <div className="flex items-center justify-between">
+                    <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">On-Time Delivery</span>
+                    <div className="w-7 h-7 rounded-lg bg-blue-100/80 text-blue-600 flex items-center justify-center">
+                      <CalendarCheck className="w-3.5 h-3.5" />
+                    </div>
+                  </div>
+                  <div className="text-2xl font-bold text-blue-600 mt-2">{analytics.onTimeRate}%</div>
+                  <div className="text-[11px] text-slate-500 mt-0.5 truncate">
+                    {analytics.completedOnTime} completed on time
+                  </div>
+                </div>
+
+                {/* 4. Past Due */}
+                <div className="p-3.5 rounded-xl bg-slate-50/70 border border-slate-100 flex flex-col justify-between">
+                  <div className="flex items-center justify-between">
+                    <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">Past Due</span>
+                    <div className="w-7 h-7 rounded-lg bg-rose-100/80 text-rose-600 flex items-center justify-center">
+                      <AlertTriangle className="w-3.5 h-3.5" />
+                    </div>
+                  </div>
+                  <div className="text-2xl font-bold text-rose-600 mt-2">{analytics.pastDue}</div>
+                  <div className="text-[11px] text-slate-500 mt-0.5 truncate">
+                    {analytics.pastDue > 0 ? `${analytics.pastDue} overdue deadlines` : 'All tasks on schedule'}
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* Divider between KPI Row and Analytics Row */}
+            <div className="border-t border-slate-100" />
+
+            {/* Analytics Row: 42% Status Distribution (col-span-5) | 58% Priority Mix (col-span-7) with thin vertical divider */}
+            <div className="grid grid-cols-1 lg:grid-cols-12 divide-y lg:divide-y-0 lg:divide-x divide-slate-100">
+              {/* Left: Status Distribution (approx 42% on desktop) */}
+              <div className="lg:col-span-5 p-5 sm:p-6 flex flex-col justify-between">
+                <div>
+                  <div className="flex items-center justify-between pb-3 border-b border-slate-100">
+                    <div className="flex items-center gap-2">
+                      <PieChart className="w-4 h-4 text-purple-600" />
+                      <h3 className="text-xs font-bold text-slate-800 uppercase tracking-wider">Status Distribution</h3>
+                    </div>
+                    <span className="text-[10px] font-bold text-purple-700 bg-purple-50 px-2 py-0.5 rounded-full border border-purple-200/60">
+                      Live Data
+                    </span>
+                  </div>
+
+                  {/* Donut Chart Visual */}
+                  <div className="my-5 flex flex-col sm:flex-row items-center justify-center gap-6">
+                    <div className="relative flex items-center justify-center shrink-0">
+                      <svg width={donutSize} height={donutSize} className="transform -rotate-90">
                         <circle
-                          key={seg.statusKey}
                           cx={donutSize / 2}
                           cy={donutSize / 2}
                           r={radius}
-                          stroke={seg.config.color}
+                          stroke="#F1F5F9"
                           strokeWidth={strokeWidth}
-                          strokeDasharray={seg.strokeDasharray}
-                          strokeDashoffset={seg.strokeDashoffset}
                           fill="transparent"
-                          strokeLinecap="round"
-                          className="transition-all duration-500 hover:opacity-85"
                         />
-                      ))}
-                    </svg>
+                        {donutSegments.map((seg) => (
+                          <circle
+                            key={seg.statusKey}
+                            cx={donutSize / 2}
+                            cy={donutSize / 2}
+                            r={radius}
+                            stroke={seg.config.color}
+                            strokeWidth={strokeWidth}
+                            strokeDasharray={seg.strokeDasharray}
+                            strokeDashoffset={seg.strokeDashoffset}
+                            fill="transparent"
+                            strokeLinecap="round"
+                            className="transition-all duration-500 hover:opacity-85"
+                          />
+                        ))}
+                      </svg>
 
-                    {/* Center metric */}
-                    <div className="absolute inset-0 flex flex-col items-center justify-center text-center">
-                      <span className="text-2xl font-extrabold text-slate-900 leading-none">
-                        {analytics.total}
-                      </span>
-                      <span className="text-[10px] text-slate-400 font-semibold uppercase tracking-wider mt-0.5">
-                        Items
-                      </span>
+                      {/* Center metric */}
+                      <div className="absolute inset-0 flex flex-col items-center justify-center text-center">
+                        <span className="text-2xl font-extrabold text-slate-900 leading-none">
+                          {analytics.total}
+                        </span>
+                        <span className="text-[10px] text-slate-400 font-semibold uppercase tracking-wider mt-0.5">
+                          Items
+                        </span>
+                      </div>
+                    </div>
+
+                    {/* Status Legend */}
+                    <div className="space-y-2 w-full max-w-[180px]">
+                      {Object.entries(STATUS_CONFIG).map(([key, config]) => {
+                        const count = analytics.statusCounts[key] || 0;
+                        const pct = analytics.total > 0 ? Math.round((count / analytics.total) * 100) : 0;
+                        return (
+                          <div key={key} className="flex items-center justify-between text-xs">
+                            <div className="flex items-center gap-2 min-w-0">
+                              <span 
+                                className="w-2.5 h-2.5 rounded-full shrink-0" 
+                                style={{ backgroundColor: config.color }} 
+                              />
+                              <span className="text-slate-600 truncate">{config.label}</span>
+                            </div>
+                            <div className="flex items-center gap-1.5 shrink-0 font-medium">
+                              <span className="text-slate-800 font-bold">{count}</span>
+                              <span className="text-slate-400 text-[10px]">({pct}%)</span>
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                </div>
+
+                {/* Bottom Progress Bar */}
+                <div className="pt-3 border-t border-slate-100">
+                  <div className="flex items-center justify-between text-xs mb-1.5 font-medium">
+                    <span className="text-slate-500">Overall Progress</span>
+                    <span className="text-purple-700 font-bold">{analytics.completionRate}% Done</span>
+                  </div>
+                  <div className="w-full h-2 rounded-full bg-slate-100 overflow-hidden flex">
+                    {donutSegments.map(seg => (
+                      <div
+                        key={seg.statusKey}
+                        style={{ 
+                          width: `${seg.percentage}%`, 
+                          backgroundColor: seg.config.color 
+                        }}
+                        className="h-full transition-all duration-300"
+                        title={`${seg.config.label}: ${seg.count} (${Math.round(seg.percentage)}%)`}
+                      />
+                    ))}
+                  </div>
+                </div>
+              </div>
+
+              {/* Right: Priority & Deliverable Mix (approx 58% on desktop) */}
+              <div className="lg:col-span-7 p-5 sm:p-6 flex flex-col justify-between">
+                <div>
+                  <div className="flex items-center justify-between pb-3 border-b border-slate-100">
+                    <div className="flex items-center gap-2">
+                      <BarChart3 className="w-4 h-4 text-purple-600" />
+                      <h3 className="text-xs font-bold text-slate-800 uppercase tracking-wider">Priority & Deliverable Mix</h3>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      {analytics.pastDue > 0 && (
+                        <span className="text-[10px] font-bold text-rose-700 bg-rose-50 px-2 py-0.5 rounded-full border border-rose-200/60 flex items-center gap-1">
+                          <AlertTriangle className="w-3 h-3 text-rose-600" />
+                          <span>{analytics.pastDue} Past Due</span>
+                        </span>
+                      )}
+                      <span className="text-[10px] text-slate-400 font-medium">Categorized</span>
                     </div>
                   </div>
 
-                  {/* Status Legend */}
-                  <div className="space-y-2 w-full max-w-[180px]">
-                    {Object.entries(STATUS_CONFIG).map(([key, config]) => {
-                      const count = analytics.statusCounts[key] || 0;
-                      const pct = analytics.total > 0 ? Math.round((count / analytics.total) * 100) : 0;
+                  {/* Priority Breakdown Bars */}
+                  <div className="mt-4 space-y-3">
+                    <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider block">
+                      Priority Volume
+                    </span>
+                    {Object.entries(PRIORITY_CONFIG).map(([key, config]) => {
+                      const count = analytics.priorityCounts[key] || 0;
+                      const pct = analytics.total > 0 ? (count / analytics.total) * 100 : 0;
                       return (
-                        <div key={key} className="flex items-center justify-between text-xs">
-                          <div className="flex items-center gap-2 min-w-0">
-                            <span 
-                              className="w-2.5 h-2.5 rounded-full shrink-0" 
-                              style={{ backgroundColor: config.color }} 
+                        <div key={key} className="space-y-1">
+                          <div className="flex items-center justify-between text-xs">
+                            <span className="font-semibold text-slate-700">{config.label}</span>
+                            <div className="flex items-center gap-1.5 text-xs">
+                              <span className="font-bold text-slate-900">{count}</span>
+                              <span className="text-slate-400 text-[10px]">({Math.round(pct)}%)</span>
+                            </div>
+                          </div>
+                          <div className="w-full h-2 rounded-full bg-slate-100 overflow-hidden">
+                            <div 
+                              className={`h-full rounded-full transition-all duration-500 ${config.barClass}`}
+                              style={{ width: `${pct}%` }}
                             />
-                            <span className="text-slate-600 truncate">{config.label}</span>
-                          </div>
-                          <div className="flex items-center gap-1.5 shrink-0 font-medium">
-                            <span className="text-slate-800 font-bold">{count}</span>
-                            <span className="text-slate-400 text-[10px]">({pct}%)</span>
                           </div>
                         </div>
                       );
                     })}
                   </div>
-                </div>
-              </div>
 
-              {/* Bottom Progress Bar */}
-              <div className="pt-3 border-t border-slate-100">
-                <div className="flex items-center justify-between text-xs mb-1.5 font-medium">
-                  <span className="text-slate-500">Overall Progress</span>
-                  <span className="text-purple-700 font-bold">{analytics.completionRate}% Done</span>
-                </div>
-                <div className="w-full h-2 rounded-full bg-slate-100 overflow-hidden flex">
-                  {donutSegments.map(seg => (
-                    <div
-                      key={seg.statusKey}
-                      style={{ 
-                        width: `${seg.percentage}%`, 
-                        backgroundColor: seg.config.color 
-                      }}
-                      className="h-full transition-all duration-300"
-                      title={`${seg.config.label}: ${seg.count} (${Math.round(seg.percentage)}%)`}
-                    />
-                  ))}
-                </div>
-              </div>
-            </div>
-
-            {/* Chart 2: Priority Volume & Work-Item Types - 7 Columns */}
-            <div className="lg:col-span-7 bg-white p-5 rounded-2xl border border-slate-200/80 shadow-card flex flex-col justify-between">
-              <div>
-                <div className="flex items-center justify-between pb-3 border-b border-slate-100">
-                  <div className="flex items-center gap-2">
-                    <BarChart3 className="w-4 h-4 text-purple-600" />
-                    <h3 className="text-xs font-bold text-slate-800 uppercase tracking-wider">Priority & Deliverable Mix</h3>
-                  </div>
-                  <span className="text-[10px] text-slate-400 font-medium">Categorized</span>
-                </div>
-
-                {/* Priority Breakdown Bars */}
-                <div className="mt-4 space-y-3">
-                  <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider block">
-                    Priority Volume
-                  </span>
-                  {Object.entries(PRIORITY_CONFIG).map(([key, config]) => {
-                    const count = analytics.priorityCounts[key] || 0;
-                    const pct = analytics.total > 0 ? (count / analytics.total) * 100 : 0;
-                    return (
-                      <div key={key} className="space-y-1">
-                        <div className="flex items-center justify-between text-xs">
-                          <span className="font-semibold text-slate-700">{config.label}</span>
-                          <div className="flex items-center gap-1.5 text-xs">
-                            <span className="font-bold text-slate-900">{count}</span>
-                            <span className="text-slate-400 text-[10px]">({Math.round(pct)}%)</span>
+                  {/* Work-Item Types Grid */}
+                  <div className="mt-5 pt-4 border-t border-slate-100">
+                    <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider block mb-2.5">
+                      Work-Item Types
+                    </span>
+                    <div className="grid grid-cols-2 sm:grid-cols-5 gap-2">
+                      {Object.entries(TYPE_CONFIG).map(([typeKey, config]) => {
+                        const count = analytics.typeCounts[typeKey] || 0;
+                        return (
+                          <div key={typeKey} className="p-2.5 rounded-xl bg-slate-50/70 border border-slate-200/60 text-center">
+                            <div className="text-[10px] font-bold uppercase tracking-wider text-slate-400">{config.label}</div>
+                            <div className="text-base font-extrabold text-slate-900 mt-1" style={{ color: config.color }}>
+                              {count}
+                            </div>
                           </div>
-                        </div>
-                        <div className="w-full h-2 rounded-full bg-slate-100 overflow-hidden">
-                          <div 
-                            className={`h-full rounded-full transition-all duration-500 ${config.barClass}`}
-                            style={{ width: `${pct}%` }}
-                          />
-                        </div>
-                      </div>
-                    );
-                  })}
-                </div>
-
-                {/* Work-Item Types Grid */}
-                <div className="mt-5 pt-4 border-t border-slate-100">
-                  <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider block mb-2.5">
-                    Work-Item Types
-                  </span>
-                  <div className="grid grid-cols-2 sm:grid-cols-5 gap-2">
-                    {Object.entries(TYPE_CONFIG).map(([typeKey, config]) => {
-                      const count = analytics.typeCounts[typeKey] || 0;
-                      return (
-                        <div key={typeKey} className="p-2.5 rounded-xl bg-slate-50/70 border border-slate-200/60 text-center">
-                          <div className="text-[10px] font-bold uppercase tracking-wider text-slate-400">{config.label}</div>
-                          <div className="text-base font-extrabold text-slate-900 mt-1" style={{ color: config.color }}>
-                            {count}
-                          </div>
-                        </div>
-                      );
-                    })}
+                        );
+                      })}
+                    </div>
                   </div>
                 </div>
-              </div>
 
-              {/* Scope & Database Sync Footer */}
-              <div className="mt-4 pt-3 border-t border-slate-100 flex flex-wrap items-center justify-between gap-2 text-xs text-slate-500">
-                <span className="flex items-center gap-1.5">
-                  <Users className="w-3.5 h-3.5 text-purple-600" />
-                  <span>
-                    Scope: <strong>{isInternUser ? 'Your Personal Workload (Private)' : selectedPerformanceFilter === 'ALL' ? `All Members (${members.length})` : selectedPerformanceFilter === 'TECH_LEADS' ? `Tech Leads (${techLeadUserIds.size})` : (memberPerformanceMap.get(selectedPerformanceFilter)?.name || 'Selected User')}</strong>
+                {/* Scope & Database Sync Footer */}
+                <div className="mt-4 pt-3 border-t border-slate-100 flex flex-wrap items-center justify-between gap-2 text-xs text-slate-500">
+                  <span className="flex items-center gap-1.5">
+                    <Users className="w-3.5 h-3.5 text-purple-600" />
+                    <span>
+                      Scope: <strong>{isInternUser ? 'Your Personal Workload (Private)' : selectedPerformanceFilter === 'ALL' ? `All Members (${members.length})` : selectedPerformanceFilter === 'TECH_LEADS' ? `Tech Leads (${techLeadUserIds.size})` : (memberPerformanceMap.get(selectedPerformanceFilter)?.name || 'Selected User')}</strong>
+                    </span>
                   </span>
-                </span>
-                <span className="text-purple-600 font-semibold flex items-center gap-1">
-                  <Sparkles className="w-3 h-3" />
-                  <span>Live Supabase Database Sync</span>
-                </span>
+                  <span className="text-purple-600 font-semibold flex items-center gap-1">
+                    <Sparkles className="w-3 h-3" />
+                    <span>Live Supabase Database Sync</span>
+                  </span>
+                </div>
               </div>
             </div>
           </div>
+        )}
 
-        </div>
-      )}
-
-      {/* 4. TAB B: INDIVIDUAL PERFORMANCE VIEW (For Intern) OR TEAM PERFORMANCE VIEW (For Manager) */}
-      {(viewMode === 'PERFORMANCE' || (!isInternUser && viewMode === 'BOTH')) && (
-        <div className="space-y-4">
+        {/* 4. TAB B: INDIVIDUAL PERFORMANCE VIEW (For Intern) OR TEAM PERFORMANCE VIEW (For Manager) */}
+        {(viewMode === 'PERFORMANCE' || (!isInternUser && viewMode === 'BOTH')) && (
+          <div className="border-t border-slate-100 p-4 sm:p-5 space-y-4">
           {/* INTERN INDIVIDUAL PERFORMANCE DASHBOARD */}
           {isInternUser ? (
             <div className="space-y-4">
@@ -1579,6 +1429,7 @@ export default function ProjectTaskCharts({ projectId = null, members = [], read
           )}
         </div>
       )}
+      </div>
     </div>
   );
 }

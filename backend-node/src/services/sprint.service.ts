@@ -89,6 +89,8 @@ export class SprintService {
 
     const { startDate, endDate } = this.validateDates(data.start_date, data.end_date);
 
+    const isKanban = project.methodology === 'KANBAN';
+
     let status: SprintStatus = SprintStatus.PLANNED;
     if ((data as any).status) {
       const upper = String((data as any).status).toUpperCase().trim();
@@ -98,7 +100,7 @@ export class SprintService {
       else if (upper === 'PLANNED') status = SprintStatus.PLANNED;
     }
 
-    if (status === SprintStatus.ACTIVE) {
+    if (!isKanban && status === SprintStatus.ACTIVE) {
       const existingActive = await prisma.sprint.findFirst({
         where: { project_id: projectId, status: SprintStatus.ACTIVE },
       });
@@ -160,10 +162,13 @@ export class SprintService {
             story_points: true,
             type: true,
             parent_id: true,
+            due_date: true,
           },
         },
       },
     });
+
+    const now = new Date();
 
     return sprints.map((s) => {
       // Find all parent IDs that have children in this sprint (to prevent double counting)
@@ -173,6 +178,17 @@ export class SprintService {
 
       const totalItems = eligibleLeaves.length;
       const completedItems = eligibleLeaves.filter((w) => w.status === WorkItemStatus.COMPLETED).length;
+      const inProgressItems = eligibleLeaves.filter((w) => w.status === WorkItemStatus.IN_PROGRESS || w.status === WorkItemStatus.IN_REVIEW).length;
+      const todoItems = eligibleLeaves.filter((w) => w.status === WorkItemStatus.TODO).length;
+      const blockedItems = eligibleLeaves.filter((w) => w.status === WorkItemStatus.BLOCKED).length;
+
+      const overdueItems = eligibleLeaves.filter((w: any) => {
+        if (w.status === WorkItemStatus.COMPLETED) return false;
+        if (w.due_date && new Date(w.due_date) < now) return true;
+        if (s.end_date && w.due_date && new Date(w.due_date) > new Date(s.end_date)) return true;
+        return false;
+      }).length;
+
       const completionPercentage = totalItems > 0 ? Math.round((completedItems / totalItems) * 100) : 0;
       const totalPoints = eligibleLeaves.reduce((acc: number, w: any) => acc + (Number(w.story_points) || 0), 0);
       const completedPoints = eligibleLeaves
@@ -184,6 +200,10 @@ export class SprintService {
         ...rest,
         total_items: totalItems,
         completed_items: completedItems,
+        in_progress_items: inProgressItems,
+        todo_items: todoItems,
+        blocked_items: blockedItems,
+        overdue_items: overdueItems,
         completion_percentage: completionPercentage,
         total_points: totalPoints,
         completed_points: completedPoints,
@@ -250,6 +270,18 @@ export class SprintService {
 
     const totalItems = eligibleLeaves.length;
     const completedItems = eligibleLeaves.filter((w) => w.status === WorkItemStatus.COMPLETED).length;
+    const inProgressItems = eligibleLeaves.filter((w) => w.status === WorkItemStatus.IN_PROGRESS || w.status === WorkItemStatus.IN_REVIEW).length;
+    const todoItems = eligibleLeaves.filter((w) => w.status === WorkItemStatus.TODO).length;
+    const blockedItems = eligibleLeaves.filter((w) => w.status === WorkItemStatus.BLOCKED).length;
+
+    const now = new Date();
+    const overdueItems = eligibleLeaves.filter((w: any) => {
+      if (w.status === WorkItemStatus.COMPLETED) return false;
+      if (w.due_date && new Date(w.due_date) < now) return true;
+      if (sprint.end_date && w.due_date && new Date(w.due_date) > new Date(sprint.end_date)) return true;
+      return false;
+    }).length;
+
     const completionPercentage = totalItems > 0 ? Math.round((completedItems / totalItems) * 100) : 0;
     const totalPoints = eligibleLeaves.reduce((acc: number, w: any) => acc + (Number(w.story_points) || 0), 0);
     const completedPoints = eligibleLeaves
@@ -260,6 +292,10 @@ export class SprintService {
       ...sprint,
       total_items: totalItems,
       completed_items: completedItems,
+      in_progress_items: inProgressItems,
+      todo_items: todoItems,
+      blocked_items: blockedItems,
+      overdue_items: overdueItems,
       completion_percentage: completionPercentage,
       total_points: totalPoints,
       completed_points: completedPoints,
@@ -295,9 +331,11 @@ export class SprintService {
       throw new Error('Project not found');
     }
 
+    const isKanban = project.methodology === 'KANBAN';
+
     return await prisma.$transaction(async (tx) => {
       // If activating a sprint, lock project row to serialize concurrent sprint lifecycle requests
-      if (data.status === SprintStatus.ACTIVE) {
+      if (!isKanban && data.status === SprintStatus.ACTIVE) {
         await tx.$executeRaw`SELECT id FROM "projects" WHERE id = ${projectId} FOR UPDATE;`;
       }
 
@@ -354,7 +392,9 @@ export class SprintService {
           });
           if (activeSprint) {
             throw new Error(
-              `Cannot activate sprint: Sprint "${activeSprint.name}" is currently active. Please complete or resolve it first.`
+              isKanban
+                ? `Cannot activate cycle: Cycle "${activeSprint.name}" is currently active. Please close or resolve it first.`
+                : `Cannot activate sprint: Sprint "${activeSprint.name}" is currently active. Please complete or resolve it first.`
             );
           }
           if (!existing.start_date && !updateData.start_date) {
@@ -379,14 +419,14 @@ export class SprintService {
   }
 
   /**
-   * Start a sprint (transactional with single active sprint guarantee and concurrency protection)
+   * Start a sprint (transactional with single active sprint guarantee and concurrency protection for Scrum)
    */
   static async startSprint(projectId: string, sprintId: string, user: any) {
     if (!projectId || projectId === 'undefined') {
       throw new Error('Project not found');
     }
     if (!sprintId || sprintId === 'undefined') {
-      throw new Error('Sprint not found in this project');
+      throw new Error('Sprint not found');
     }
 
     let orgId = user.organization_id;
@@ -407,9 +447,13 @@ export class SprintService {
       throw new Error('Project not found');
     }
 
+    const isKanban = project.methodology === 'KANBAN';
+
     return await prisma.$transaction(async (tx) => {
-      // Acquire exclusive lock on the project to serialize concurrent sprint activation requests
-      await tx.$executeRaw`SELECT id FROM "projects" WHERE id = ${projectId} FOR UPDATE;`;
+      // For Scrum: acquire exclusive lock on the project to serialize concurrent sprint activation requests
+      if (!isKanban) {
+        await tx.$executeRaw`SELECT id FROM "projects" WHERE id = ${projectId} FOR UPDATE;`;
+      }
 
       const sprintWhere: any = { id: sprintId, project_id: projectId };
       if (project.organization_id) {
@@ -430,7 +474,7 @@ export class SprintService {
         throw new Error('Cannot start a sprint that is already completed');
       }
 
-      // Check if any other sprint in this project is currently ACTIVE
+      // Check if any other sprint/cycle in this project is currently ACTIVE
       const activeSprint = await tx.sprint.findFirst({
         where: {
           project_id: projectId,
@@ -441,7 +485,9 @@ export class SprintService {
 
       if (activeSprint) {
         throw new Error(
-          `Cannot start sprint: Sprint "${activeSprint.name}" is currently active. Please complete or resolve it first.`
+          isKanban
+            ? `Cannot activate cycle: Cycle "${activeSprint.name}" is currently active. Please close or resolve it before activating another cycle.`
+            : `Cannot start sprint: Sprint "${activeSprint.name}" is currently active. Please complete or resolve it first.`
         );
       }
 
@@ -462,7 +508,7 @@ export class SprintService {
     projectId: string,
     sprintId: string,
     options: {
-      unfinished_action?: 'MOVE_TO_BACKLOG' | 'MOVE_TO_SPRINT';
+      unfinished_action?: 'MOVE_TO_BACKLOG' | 'MOVE_TO_SPRINT' | 'KEEP_IN_CYCLE';
       target_sprint_id?: string | null;
     },
     user: any
@@ -492,6 +538,8 @@ export class SprintService {
       throw new Error('Project not found');
     }
 
+    const isKanban = project.methodology === 'KANBAN';
+
     return await prisma.$transaction(async (tx) => {
       const sprintWhere: any = { id: sprintId, project_id: projectId };
       if (project.organization_id) {
@@ -510,35 +558,42 @@ export class SprintService {
       }
 
       // Handle incomplete work items
-      let destinationSprintId: string | null = null;
-      const shouldMoveToSprint = (options.unfinished_action === 'MOVE_TO_SPRINT' || !options.unfinished_action) && Boolean(options.target_sprint_id);
-      if (shouldMoveToSprint && options.target_sprint_id) {
-        if (options.target_sprint_id === sprintId) {
-          throw new Error('Target sprint cannot be the sprint being completed');
+      if (options.unfinished_action !== 'KEEP_IN_CYCLE') {
+        let destinationSprintId: string | null = null;
+        const shouldMoveToSprint =
+          (options.unfinished_action === 'MOVE_TO_SPRINT' || (!options.unfinished_action && !isKanban)) &&
+          Boolean(options.target_sprint_id);
+
+        if (shouldMoveToSprint && options.target_sprint_id) {
+          if (options.target_sprint_id === sprintId) {
+            throw new Error('Target sprint cannot be the sprint being completed');
+          }
+          const targetSprint = await tx.sprint.findFirst({
+            where: {
+              id: options.target_sprint_id,
+              project_id: projectId,
+              ...(project.organization_id ? { organization_id: project.organization_id } : {}),
+            },
+          });
+          if (!targetSprint) {
+            throw new Error('Target sprint for incomplete items not found in this project');
+          }
+          destinationSprintId = targetSprint.id;
         }
-        const targetSprint = await tx.sprint.findFirst({
+
+        // Move unfinished items (status != COMPLETED)
+        // In Scrum: uncompleted items move to backlog (null) or target sprint
+        // In Kanban: uncompleted items can return to unassigned continuous flow (null), or stay if explicitly kept
+        await tx.workItem.updateMany({
           where: {
-            id: options.target_sprint_id,
-            project_id: projectId,
-            ...(project.organization_id ? { organization_id: project.organization_id } : {}),
+            sprint_id: sprintId,
+            status: { not: WorkItemStatus.COMPLETED },
+          },
+          data: {
+            sprint_id: destinationSprintId,
           },
         });
-        if (!targetSprint) {
-          throw new Error('Target sprint for incomplete items not found in this project');
-        }
-        destinationSprintId = targetSprint.id;
       }
-
-      // Move unfinished items (status != COMPLETED)
-      await tx.workItem.updateMany({
-        where: {
-          sprint_id: sprintId,
-          status: { not: WorkItemStatus.COMPLETED },
-        },
-        data: {
-          sprint_id: destinationSprintId,
-        },
-      });
 
       return await tx.sprint.update({
         where: { id: sprintId },

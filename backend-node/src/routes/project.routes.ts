@@ -47,9 +47,6 @@ router.get('/:id/documents/:documentId/download', requirePermission('PROJECT_REA
 router.get('/:id/documents/:documentId/preview', requirePermission('PROJECT_READ'), ProjectController.previewDocument);
 router.patch('/:id/documents/:documentId', requirePermission('PROJECT_UPDATE'), ProjectController.updateDocument);
 router.delete('/:id/documents/:documentId', requirePermission('PROJECT_UPDATE'), ProjectController.deleteDocument);
-router.post('/:id/documents/:documentId/reparse', requirePermission('PROJECT_UPDATE'), ProjectController.reparseDocument);
-router.patch('/:id/documents/:documentId/requirements/:requirementId', requirePermission('PROJECT_UPDATE'), ProjectController.updateRequirement);
-router.put('/:id/documents/:documentId/requirements/:requirementId', requirePermission('PROJECT_UPDATE'), ProjectController.updateRequirement);
 
 export { router as projectRouter };
 

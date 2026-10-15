@@ -17,8 +17,9 @@ import { projectsService } from '../../services/projects.service';
 import { timesheetService } from '../../services/timesheet.service';
 import { useAuth } from '../../context/AuthContext';
 
-export default function KanbanBoard({ projectId, onToast, readOnly = false }) {
+export default function KanbanBoard({ projectId, project = null, isKanbanProject = false, onToast, readOnly = false }) {
   const { user: authUser } = useAuth();
+  const isKanban = isKanbanProject || project?.methodology === 'KANBAN';
   const [loading, setLoading] = useState(true);
   const [workItems, setWorkItems] = useState([]);
   const [sprints, setSprints] = useState([]);
@@ -56,12 +57,17 @@ export default function KanbanBoard({ projectId, onToast, readOnly = false }) {
       setWorkItems(itemsList || []);
       setMembers(membersList || []);
 
-      // Default selected sprint to ACTIVE sprint if exists
-      const active = (sprintsList || []).find((s) => s.status === 'ACTIVE');
-      if (active) {
-        setSelectedSprint(active.name);
-      } else {
+      // In Kanban projects, flow is continuous without mandatory sprint boundaries
+      if (isKanban) {
         setSelectedSprint('All Sprints');
+      } else {
+        // Default selected sprint to ACTIVE sprint if exists
+        const active = (sprintsList || []).find((s) => s.status === 'ACTIVE');
+        if (active) {
+          setSelectedSprint(active.name);
+        } else {
+          setSelectedSprint('All Sprints');
+        }
       }
     } catch (err) {
       console.error('Failed to load kanban data:', err);
@@ -69,7 +75,7 @@ export default function KanbanBoard({ projectId, onToast, readOnly = false }) {
     } finally {
       setLoading(false);
     }
-  }, [projectId]);
+  }, [projectId, isKanban]);
 
   useEffect(() => {
     loadProjectData();
@@ -338,6 +344,7 @@ export default function KanbanBoard({ projectId, onToast, readOnly = false }) {
   const completedTasks = filteredTasks.filter((t) => t.status === 'COMPLETED');
   const completedCount = completedTasks.length;
   const blockedCount = filteredTasks.filter((t) => t.status === 'BLOCKED').length;
+  const inProgressWipCount = filteredTasks.filter((t) => t.status === 'IN_PROGRESS' || t.status === 'IN_REVIEW').length;
   const incompleteCount = filteredTasks.length - completedCount;
 
   // Real Logged Hours & Story Points derived from filtered tasks
@@ -357,8 +364,34 @@ export default function KanbanBoard({ projectId, onToast, readOnly = false }) {
       .reduce((acc, t) => acc + (t.story_points || 0), 0);
   }, [filteredTasks]);
 
+  // Average cycle time for completed items (flow metric)
+  const avgCycleTimeFormatted = useMemo(() => {
+    const completedWithDates = filteredTasks.filter(
+      (t) => t.status === 'COMPLETED' && (t.completed_at || t.updated_at) && (t.start_date || t.created_at)
+    );
+    if (completedWithDates.length === 0) return null;
+    const totalMs = completedWithDates.reduce((sum, t) => {
+      const end = new Date(t.completed_at || t.updated_at).getTime();
+      const start = new Date(t.start_date || t.created_at).getTime();
+      return sum + Math.max(0, end - start);
+    }, 0);
+    const avgDays = totalMs / completedWithDates.length / (1000 * 60 * 60 * 24);
+    if (avgDays < 1) {
+      const avgHours = Math.round(avgDays * 24);
+      return `${avgHours || 1}h avg cycle`;
+    }
+    return `${avgDays.toFixed(1)}d avg cycle`;
+  }, [filteredTasks]);
+
   // Header display details
   const displaySprintHeader = useMemo(() => {
+    if (isKanban) {
+      return {
+        title: 'Continuous Flow',
+        sub: 'Work is pulled continuously without sprint boundaries',
+        isActive: true,
+      };
+    }
     if (selectedSprint === 'All Sprints') {
       return {
         title: 'All Sprints & Backlog',
@@ -393,13 +426,13 @@ export default function KanbanBoard({ projectId, onToast, readOnly = false }) {
       sub: '',
       isActive: false,
     };
-  }, [selectedSprint, sprints]);
+  }, [isKanban, selectedSprint, sprints]);
 
   if (loading && workItems.length === 0) {
     return (
       <div className="bg-white rounded-lg border border-slate-200 p-12 flex flex-col items-center justify-center min-h-[360px]">
         <Loader2 className="w-8 h-8 text-purple-600 animate-spin mb-3" />
-        <p className="text-xs font-semibold text-slate-700">Loading Kanban Board...</p>
+        <p className="text-xs font-semibold text-slate-700">Loading {isKanban ? 'Kanban Board' : 'Scrum Board'}...</p>
         <p className="text-[11px] text-slate-400 mt-1">Retrieving sprint and task metrics</p>
       </div>
     );
@@ -407,12 +440,12 @@ export default function KanbanBoard({ projectId, onToast, readOnly = false }) {
 
   return (
     <div className="space-y-2.5">
-      {/* KANBAN BOARD HEADER */}
+      {/* KANBAN / SCRUM BOARD HEADER */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 bg-white px-3 py-2 sm:py-2.5 rounded-md border border-slate-200">
         <div>
           <div className="flex items-center gap-2">
             <h2 className="text-base font-bold text-slate-900 tracking-tight">
-              Kanban Board
+              {isKanban ? 'Kanban Board' : 'Scrum Board'}
             </h2>
             <span className="text-slate-300">·</span>
             <span
@@ -430,16 +463,36 @@ export default function KanbanBoard({ projectId, onToast, readOnly = false }) {
             )}
           </div>
 
-          <div className="flex items-center gap-3 text-xs text-slate-500 mt-1 font-medium">
+          <div className="flex items-center gap-3 text-xs text-slate-500 mt-1 font-medium flex-wrap">
             <span>{filteredTasks.length} tasks</span>
             <span>•</span>
             <span className="text-emerald-700 font-semibold">{completedCount} completed</span>
             <span>•</span>
-            <span className="text-rose-700 font-semibold">{blockedCount} blocked</span>
-            {totalStoryPoints > 0 && (
+            {isKanban ? (
               <>
-                <span>•</span>
-                <span className="text-purple-700 font-semibold">{completedStoryPoints} / {totalStoryPoints} pts</span>
+                <span className="text-blue-700 font-semibold">{inProgressWipCount} in-progress WIP</span>
+                {avgCycleTimeFormatted && (
+                  <>
+                    <span>•</span>
+                    <span className="text-purple-700 font-semibold">~{avgCycleTimeFormatted}</span>
+                  </>
+                )}
+                {blockedCount > 0 && (
+                  <>
+                    <span>•</span>
+                    <span className="text-rose-700 font-semibold">{blockedCount} blocked</span>
+                  </>
+                )}
+              </>
+            ) : (
+              <>
+                <span className="text-rose-700 font-semibold">{blockedCount} blocked</span>
+                {totalStoryPoints > 0 && (
+                  <>
+                    <span>•</span>
+                    <span className="text-purple-700 font-semibold">{completedStoryPoints} / {totalStoryPoints} pts</span>
+                  </>
+                )}
               </>
             )}
           </div>
@@ -448,7 +501,7 @@ export default function KanbanBoard({ projectId, onToast, readOnly = false }) {
         {/* Action Buttons */}
         {canManage && (
           <div className="flex items-center gap-2 self-start sm:self-auto">
-            {activeSprint && (
+            {!isKanban && activeSprint && (
               <button
                 onClick={() => setIsCompleteSprintOpen(true)}
                 className="px-2.5 py-1.5 rounded-md border border-emerald-200 text-xs font-medium text-emerald-800 bg-emerald-50/50 hover:bg-emerald-100 transition-colors flex items-center gap-1.5 cursor-pointer"
@@ -471,6 +524,7 @@ export default function KanbanBoard({ projectId, onToast, readOnly = false }) {
 
       {/* FILTER BAR */}
       <FilterBar
+        isKanban={isKanban}
         searchQuery={searchQuery}
         onSearchChange={setSearchQuery}
         members={members}
@@ -520,8 +574,9 @@ export default function KanbanBoard({ projectId, onToast, readOnly = false }) {
         isOpen={isAddTaskOpen}
         onClose={() => setIsAddTaskOpen(false)}
         projectId={projectId}
+        isKanban={isKanban}
         initialStatus={addTaskColumnId}
-        initialSprintId={activeSprint?.id || null}
+        initialSprintId={isKanban ? null : (activeSprint?.id || null)}
         sprints={sprints}
         onTaskCreated={handleSaveTask}
         onToast={onToast}
