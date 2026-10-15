@@ -42,15 +42,34 @@ export class FormService {
       where.organization_id = organizationId;
     }
 
+    const targetInterns = organizationId
+      ? await prisma.user.count({
+          where: {
+            organization_id: organizationId,
+            is_active: true,
+            roles: { some: { role: { name: 'INTERN' } } },
+          },
+        })
+      : 0;
+
+    const totalActiveUsers = organizationId
+      ? await prisma.user.count({
+          where: { organization_id: organizationId, is_active: true },
+        })
+      : 0;
+
+    const totalTarget = targetInterns > 0 ? targetInterns : totalActiveUsers;
+
     if (userRole === 'INTERN') {
       where.status = FormStatus.PUBLISHED;
       where.OR = [
         { target_roles: { has: 'INTERN' } },
         { target_roles: { isEmpty: true } }
       ];
-      return prisma.form.findMany({
+      const forms = await prisma.form.findMany({
         where,
         include: {
+          creator: { select: { id: true, name: true, email: true } },
           questions: { orderBy: { order_index: 'asc' } },
           submissions: {
             where: userId ? { submitter_id: userId } : undefined,
@@ -59,16 +78,29 @@ export class FormService {
         },
         orderBy: { created_at: 'desc' }
       });
+
+      return forms.map((f) => ({
+        ...f,
+        totalTarget,
+        total_target: totalTarget,
+      }));
     }
 
-    return prisma.form.findMany({
+    const forms = await prisma.form.findMany({
       where,
       include: {
+        creator: { select: { id: true, name: true, email: true } },
         questions: { orderBy: { order_index: 'asc' } },
         _count: { select: { submissions: true } }
       },
       orderBy: { created_at: 'desc' }
     });
+
+    return forms.map((f) => ({
+      ...f,
+      totalTarget,
+      total_target: totalTarget,
+    }));
   }
 
   static async getForm(formId: string, organizationId?: string) {

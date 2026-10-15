@@ -320,7 +320,15 @@ export default function ManagerApp() {
         />
 
         {/* Page Content Container */}
-        <main className={`flex-1 min-h-0 min-w-0 overflow-y-auto overflow-x-hidden ${activeProjectId ? 'px-4 sm:px-6 pb-4 sm:pb-6 pt-0' : 'p-4 sm:p-6'}`}>
+        <main
+          className={`flex-1 min-h-0 min-w-0 ${
+            currentView === 'channels'
+              ? 'p-3 sm:p-4 md:p-5 flex flex-col overflow-hidden h-full'
+              : activeProjectId
+              ? 'px-4 sm:px-6 pb-4 sm:pb-6 pt-0 overflow-y-auto overflow-x-hidden'
+              : 'p-4 sm:p-6 overflow-y-auto overflow-x-hidden'
+          }`}
+        >
           {currentRole === 'intern' ? (
             <InternPortalView onSwitchToManager={() => setCurrentRole('manager')} />
           ) : activeProjectId ? (
