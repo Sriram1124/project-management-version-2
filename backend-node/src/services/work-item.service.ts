@@ -1,5 +1,6 @@
-import { WorkItemType, WorkItemStatus, WorkItemPriority } from '@prisma/client';
+import { WorkItemType, WorkItemStatus, WorkItemPriority, SprintStatus, ProjectStatus } from '@prisma/client';
 import { prisma } from '../lib/prisma';
+import { ProjectHealthService } from './project-health.service';
 
 export interface CreateWorkItemInput {
   title: string;
@@ -44,6 +45,7 @@ export interface WorkItemAnalyticsFilter {
   user_id?: string;
   project_id?: string;
   sprint_id?: string;
+  cohort_id?: string;
   start_date?: string;
   end_date?: string;
 }
@@ -75,6 +77,68 @@ export class WorkItemService {
   }
 
   /**
+   * Helper to resolve a member's effective project permissions
+   */
+  static async getMemberProjectPermissions(userId: string, projectId: string) {
+    if (!userId || !projectId) {
+      return {
+        isMember: false,
+        isOwner: false,
+        isCustomRole: false,
+        roleName: null,
+        permissions: new Set<string>(),
+      };
+    }
+
+    const project = await prisma.project.findUnique({
+      where: { id: projectId },
+      select: { owner_id: true, organization_id: true },
+    });
+
+    const isOwner = Boolean(project && project.owner_id === userId);
+
+    const membership = await prisma.projectMember.findFirst({
+      where: {
+        project_id: projectId,
+        user_id: userId,
+      },
+      include: {
+        role: {
+          include: {
+            permissions: {
+              include: {
+                permission: true,
+              },
+            },
+          },
+        },
+      },
+    });
+
+    const isMember = Boolean(membership || isOwner);
+    const isCustomRole = Boolean(membership?.role?.is_custom);
+    const roleName = membership?.role?.name || membership?.project_role || null;
+    const permissions = new Set<string>();
+
+    if (membership?.role?.permissions) {
+      for (const rp of membership.role.permissions) {
+        if (rp.permission?.name) {
+          permissions.add(rp.permission.name);
+        }
+      }
+    }
+
+    return {
+      isMember,
+      isOwner,
+      isCustomRole,
+      roleName,
+      permissions,
+      membership,
+    };
+  }
+
+  /**
    * Helper to verify if user has authority to assign tasks
    * (Admins, Managers, Tech Leads, Project Owners, or users with TASK_ASSIGN permission)
    */
@@ -85,6 +149,14 @@ export class WorkItemService {
     projectId?: string | null
   ): Promise<boolean> {
     if (this.isManagerOrAdmin(user)) return true;
+
+    // Check project custom role permissions if projectId is known
+    if (projectId) {
+      const permInfo = await this.getMemberProjectPermissions(user.id, projectId);
+      if (permInfo.isCustomRole) {
+        return permInfo.permissions.has('TASK_ASSIGN');
+      }
+    }
 
     // Project owner or task creator
     if (projectOwnerId && user.id === projectOwnerId) return true;
@@ -459,12 +531,20 @@ export class WorkItemService {
       if (!project) {
         throw new Error('Project not found in your organization');
       }
+      if (project.status === ProjectStatus.ARCHIVED) {
+        throw new Error('Cannot create work items in an archived project');
+      }
 
       const isMgr = this.isManagerOrAdmin(user);
-      if (!isMgr) {
-        const isMember = await this.verifyProjectMembership(projectId, user.id, orgId);
-        if (!isMember) {
-          throw new Error('Forbidden: you are not a member of this project');
+      const permInfo = await this.getMemberProjectPermissions(user.id, projectId);
+
+      if (!isMgr && !permInfo.isMember && !permInfo.isOwner) {
+        throw new Error('Forbidden: you are not a member of this project');
+      }
+
+      if (permInfo.isCustomRole && !isMgr && !permInfo.isOwner) {
+        if (!permInfo.permissions.has('TASK_CREATE')) {
+          throw new Error('Forbidden: your role does not have permission to create work items in this project');
         }
       }
     }
@@ -473,15 +553,18 @@ export class WorkItemService {
     await this.validateHierarchy(data.type, parentId, projectId, orgId);
 
     // Intern workflow permission check:
-    // Interns can only create child Tasks, Subtasks, or Bugs under an existing parent unless they can manage the project
+    // Interns can only create child Tasks, Subtasks, or Bugs under an existing parent unless they can manage the project or have custom role
     if (this.isIntern(user) && projectId) {
-      const canManage = await this.canManageProject(user, projectId, orgId);
-      if (!canManage) {
-        if (!parentId) {
-          throw new Error('Forbidden: interns cannot create root work items. Only child tasks or bugs are permitted.');
-        }
-        if (data.type === WorkItemType.EPIC || data.type === WorkItemType.STORY) {
-          throw new Error(`Forbidden: interns cannot create ${data.type} items. Only child tasks or bugs are permitted.`);
+      const permInfo = await this.getMemberProjectPermissions(user.id, projectId);
+      if (!permInfo.isCustomRole) {
+        const canManage = await this.canManageProject(user, projectId, orgId);
+        if (!canManage) {
+          if (!parentId) {
+            throw new Error('Forbidden: interns cannot create root work items. Only child tasks or bugs are permitted.');
+          }
+          if (data.type === WorkItemType.EPIC || data.type === WorkItemType.STORY) {
+            throw new Error(`Forbidden: interns cannot create ${data.type} items. Only child tasks or bugs are permitted.`);
+          }
         }
       }
     }
@@ -548,16 +631,13 @@ export class WorkItemService {
       if (sprint.project_id !== projectId) {
         throw new Error('Cannot assign work item to a sprint belonging to a different project');
       }
-      sprintId = sprint.id;
-    } else if (parentId) {
-      const parentItem = await prisma.workItem.findUnique({
-        where: { id: parentId },
-        select: { sprint_id: true },
-      });
-      if (parentItem?.sprint_id) {
-        sprintId = parentItem.sprint_id;
+      if (sprint.status === SprintStatus.COMPLETED) {
+        throw new Error('Cannot add new work items to a completed sprint or cycle');
       }
+      sprintId = sprint.id;
     }
+    // Note: Sprint assignment is strictly independent of parent Epic/Story relationships.
+    // Child items do NOT automatically inherit their parent's sprint.
 
     const status = data.status || WorkItemStatus.TODO;
     const priority = data.priority || WorkItemPriority.MEDIUM;
@@ -844,19 +924,41 @@ export class WorkItemService {
 
     // Access check
     if (currentItem.project_id) {
-      if (!isMgr) {
-        const project = await prisma.project.findUnique({
-          where: { id: currentItem.project_id },
-          select: { owner_id: true },
-        });
-        const isOwner = project && project.owner_id === user.id;
-        const isMember = await this.verifyProjectMembership(
-          currentItem.project_id,
-          user.id,
-          orgId
-        );
-        if (!isMember && !isOwner) {
-          throw new Error('Forbidden: you are not a member of this project');
+      const project = await prisma.project.findUnique({
+        where: { id: currentItem.project_id },
+        select: { owner_id: true, status: true },
+      });
+      if (project?.status === ProjectStatus.ARCHIVED) {
+        throw new Error('Cannot modify work items in an archived project');
+      }
+
+      const permInfo = await this.getMemberProjectPermissions(user.id, currentItem.project_id);
+      if (!isMgr && !permInfo.isOwner && !permInfo.isMember) {
+        throw new Error('Forbidden: you are not a member of this project');
+      }
+
+      // Granular permissions for custom roles
+      if (permInfo.isCustomRole && !isMgr && !permInfo.isOwner) {
+        if (!permInfo.permissions.has('TASK_UPDATE') && !permInfo.permissions.has('TASK_STATUS_TRANSITION')) {
+          throw new Error('Forbidden: your role does not have permission to update work items in this project');
+        }
+        if (!permInfo.permissions.has('TASK_UPDATE') && permInfo.permissions.has('TASK_STATUS_TRANSITION')) {
+          if (
+            input.title !== undefined ||
+            input.description !== undefined ||
+            input.priority !== undefined ||
+            input.story_points !== undefined ||
+            input.due_date !== undefined ||
+            input.start_date !== undefined ||
+            input.sprint_id !== undefined ||
+            input.parent_id !== undefined ||
+            input.type !== undefined
+          ) {
+            throw new Error('Forbidden: your role only has permission to transition task status, not modify task details');
+          }
+        }
+        if (input.assignee_ids !== undefined && !permInfo.permissions.has('TASK_ASSIGN')) {
+          throw new Error('Forbidden: your role does not have permission to assign or reassign tasks');
         }
       }
     } else {
@@ -871,15 +973,22 @@ export class WorkItemService {
     // Role-based field level permissions check for INTERN role
     const isInternUser = this.isIntern(user);
     if (isInternUser) {
-      const canManage = currentItem.project_id
-        ? await this.canManageProject(user, currentItem.project_id, orgId)
-        : false;
+      let isCustom = false;
+      if (currentItem.project_id) {
+        const pInfo = await this.getMemberProjectPermissions(user.id, currentItem.project_id);
+        isCustom = pInfo.isCustomRole;
+      }
 
-      if (!canManage) {
-        const isAssignedToUser = currentItem.assignees.some((a) => a.user_id === user.id);
-        if (!isAssignedToUser) {
-          throw new Error('Forbidden: you can only update tasks assigned to you');
-        }
+      if (!isCustom) {
+        const canManage = currentItem.project_id
+          ? await this.canManageProject(user, currentItem.project_id, orgId)
+          : false;
+
+        if (!canManage) {
+          const isAssignedToUser = currentItem.assignees.some((a) => a.user_id === user.id);
+          if (!isAssignedToUser) {
+            throw new Error('Forbidden: you can only update tasks assigned to you');
+          }
 
         // Interns cannot modify restricted fields
         if (input.assignee_ids !== undefined) {
@@ -911,6 +1020,7 @@ export class WorkItemService {
         }
       }
     }
+  }
 
     const dataToUpdate: any = {};
 
@@ -1010,6 +1120,9 @@ export class WorkItemService {
         }
         if (sprint.project_id !== currentItem.project_id) {
           throw new Error('Cannot assign work item to a sprint belonging to a different project');
+        }
+        if (sprint.status === SprintStatus.COMPLETED && currentItem.sprint_id !== sprint.id) {
+          throw new Error('Cannot move work items into a completed sprint or cycle');
         }
         dataToUpdate.sprint_id = sprint.id;
       }
@@ -1181,13 +1294,6 @@ export class WorkItemService {
       },
     });
 
-    if (input.sprint_id !== undefined) {
-      await prisma.workItem.updateMany({
-        where: { parent_id: id },
-        data: { sprint_id: dataToUpdate.sprint_id ?? null },
-      });
-    }
-
     return this.formatWorkItem(updated);
   }
 
@@ -1210,9 +1316,26 @@ export class WorkItemService {
     }
 
     if (item.project_id) {
-      const canManage = await this.canManageProject(user, item.project_id, orgId);
-      if (!isMgr && !canManage && item.created_by !== user.id) {
-        throw new Error('Forbidden: you do not have permission to delete this work item');
+      const project = await prisma.project.findUnique({
+        where: { id: item.project_id },
+        select: { status: true, owner_id: true },
+      });
+      if (project?.status === ProjectStatus.ARCHIVED) {
+        throw new Error('Cannot delete work items in an archived project');
+      }
+
+      const permInfo = await this.getMemberProjectPermissions(user.id, item.project_id);
+      if (!isMgr && !permInfo.isOwner) {
+        if (permInfo.isCustomRole) {
+          if (!permInfo.permissions.has('TASK_DELETE')) {
+            throw new Error('Forbidden: your role does not have permission to delete work items in this project');
+          }
+        } else {
+          const canManage = await this.canManageProject(user, item.project_id, orgId);
+          if (!canManage && item.created_by !== user.id) {
+            throw new Error('Forbidden: you do not have permission to delete this work item');
+          }
+        }
       }
     } else {
       if (this.isIntern(user)) {
@@ -1262,13 +1385,20 @@ export class WorkItemService {
       throw new Error('Work item not found');
     }
 
-    // Interns cannot assign or reassign work items unless they can manage the project
+    // Interns cannot assign or reassign work items unless they have custom role or can manage project
     if (this.isIntern(user)) {
-      const canManage = item.project_id
-        ? await this.canManageProject(user, item.project_id, orgId)
-        : false;
-      if (!canManage) {
-        throw new Error('Forbidden: interns cannot assign work items');
+      let isCustom = false;
+      if (item.project_id) {
+        const pInfo = await this.getMemberProjectPermissions(user.id, item.project_id);
+        isCustom = pInfo.isCustomRole && pInfo.permissions.has('TASK_ASSIGN');
+      }
+      if (!isCustom) {
+        const canManage = item.project_id
+          ? await this.canManageProject(user, item.project_id, orgId)
+          : false;
+        if (!canManage) {
+          throw new Error('Forbidden: interns cannot assign work items');
+        }
       }
     }
 
@@ -1365,13 +1495,20 @@ export class WorkItemService {
       throw new Error('Work item not found');
     }
 
-    // Interns cannot modify assignees unless authorized to manage the project
+    // Interns cannot modify assignees unless authorized to manage the project or have custom role with TASK_ASSIGN
     if (this.isIntern(user)) {
-      const canManage = item.project_id
-        ? await this.canManageProject(user, item.project_id, orgId)
-        : false;
-      if (!canManage) {
-        throw new Error('Forbidden: interns cannot reassign work items');
+      let isCustom = false;
+      if (item.project_id) {
+        const pInfo = await this.getMemberProjectPermissions(user.id, item.project_id);
+        isCustom = pInfo.isCustomRole && pInfo.permissions.has('TASK_ASSIGN');
+      }
+      if (!isCustom) {
+        const canManage = item.project_id
+          ? await this.canManageProject(user, item.project_id, orgId)
+          : false;
+        if (!canManage) {
+          throw new Error('Forbidden: interns cannot reassign work items');
+        }
       }
     }
 
@@ -1624,22 +1761,74 @@ export class WorkItemService {
     const todo = items.filter((w) => w.status === WorkItemStatus.TODO).length;
     const blocked = items.filter((w) => w.status === WorkItemStatus.BLOCKED).length;
 
-    const past_due = items.filter((w) => {
+    // Helper: effective deadline (if midnight UTC date-only, extend to end-of-day UTC so it is not prematurely overdue during its deadline day)
+    const getEffectiveDeadline = (dueDate: Date): Date => {
+      const d = new Date(dueDate);
+      if (d.getUTCHours() === 0 && d.getUTCMinutes() === 0 && d.getUTCSeconds() === 0) {
+        d.setUTCHours(23, 59, 59, 999);
+      }
+      return d;
+    };
+
+    // Current Overdue Work (Requirement 2):
+    // Count incomplete work items with a valid due date that has passed within reporting scope
+    const scheduled_items_count = items.filter((w) => {
+      if (!w.due_date) return false;
+      const d = new Date(w.due_date);
+      return !isNaN(d.getTime());
+    }).length;
+
+    const overdue_items = items.filter((w) => {
       if (w.status === WorkItemStatus.COMPLETED) return false;
       if (!w.due_date) return false;
-      return new Date(w.due_date) < now;
-    }).length;
+      const dueDate = new Date(w.due_date);
+      if (isNaN(dueDate.getTime())) return false;
+      return now > getEffectiveDeadline(dueDate);
+    });
+    const past_due = overdue_items.length;
+    const overdue_rate = scheduled_items_count > 0 ? Math.round((past_due / scheduled_items_count) * 100) : 0;
+    const overdue_label = past_due > 0
+      ? `${past_due} overdue of ${scheduled_items_count} with deadlines (${overdue_rate}%)`
+      : scheduled_items_count > 0
+      ? `0 overdue of ${scheduled_items_count} with deadlines (0%)`
+      : '0 overdue · No items with deadlines';
 
-    const completed_on_time = items.filter((w) => {
+    // Completed On-Time Rate (Requirement 1):
+    // Formula = (Eligible completed items delivered on or before due date / All eligible completed items with valid due date) * 100
+    // Exclude items without valid due dates or reliable completion timestamps from the denominator.
+    // Do not assume completed item was delivered on time simply because status is Completed.
+    const eligible_completed_items = items.filter((w) => {
       if (w.status !== WorkItemStatus.COMPLETED) return false;
-      if (!w.due_date) return true;
-      return new Date(w.completed_at || w.updated_at || w.due_date) <= new Date(w.due_date);
-    }).length;
+      if (!w.due_date) return false;
+      const dueDate = new Date(w.due_date);
+      if (isNaN(dueDate.getTime())) return false;
+      const compDate = w.completed_at ? new Date(w.completed_at) : (w.updated_at ? new Date(w.updated_at) : null);
+      if (!compDate || isNaN(compDate.getTime())) return false;
+      return true;
+    });
+
+    const completed_with_due_date_count = eligible_completed_items.length;
+
+    const completed_on_time_items = eligible_completed_items.filter((w) => {
+      const dueDate = new Date(w.due_date!);
+      const effectiveDeadline = getEffectiveDeadline(dueDate);
+      const compDate = w.completed_at ? new Date(w.completed_at) : new Date(w.updated_at);
+      return compDate <= effectiveDeadline;
+    });
+
+    const completed_on_time_count = completed_on_time_items.length;
+
+    // Display N/A (null in JSON) if no eligible completed items exist, not 0% or 100%
+    const completed_on_time_rate = completed_with_due_date_count > 0
+      ? Math.round((completed_on_time_count / completed_with_due_date_count) * 100)
+      : null;
+
+    const completed_on_time_label = completed_with_due_date_count > 0
+      ? `${completed_on_time_count} of ${completed_with_due_date_count} eligible completed items delivered on time`
+      : 'No eligible completed items with due dates';
 
     const completion_rate = total > 0 ? Math.round((completed / total) * 100) : 0;
-    const on_time_rate = completed > 0
-      ? Math.round((completed_on_time / completed) * 100)
-      : (total > 0 && past_due === 0 ? 100 : 0);
+    const on_time_rate = completed_on_time_rate; // backwards compatibility
 
     const status_counts = {
       COMPLETED: completed,
@@ -1664,21 +1853,106 @@ export class WorkItemService {
       BUG: items.filter((w) => w.type === WorkItemType.BUG).length,
     };
 
-    // Calculate story points strictly from eligible leaf tasks to avoid double-counting parent stories/epics
+    // Calculate story points strictly from eligible leaf deliverables (Story, Task, Subtask, Bug)
+    // without double-counting parent Epics or parent Stories with estimated child tasks
     const parentIdsWithChildren = new Set(items.map((w) => w.parent_id).filter(Boolean));
-    const eligibleTasks = items.filter(
-      (w) =>
-        (w.type === WorkItemType.TASK || w.type === WorkItemType.SUBTASK || w.type === WorkItemType.BUG) &&
-        !parentIdsWithChildren.has(w.id)
-    );
-    const story_points_total = eligibleTasks.reduce((sum, w) => sum + (Number(w.story_points) || 0), 0);
-    const story_points_completed = eligibleTasks
+    const eligibleLeaves = items.filter((w) => {
+      if (w.type === WorkItemType.EPIC) return false;
+      if (!parentIdsWithChildren.has(w.id)) return true;
+      // If item has children in current scope, check if children have story points
+      const children = items.filter((c) => c.parent_id === w.id);
+      const childPoints = children.reduce((sum, c) => sum + (Number(c.story_points) || 0), 0);
+      return childPoints === 0 && Number(w.story_points || 0) > 0;
+    });
+
+    const story_points_total = eligibleLeaves.reduce((sum, w) => sum + (Number(w.story_points) || 0), 0);
+    const story_points_completed = eligibleLeaves
       .filter((w) => w.status === WorkItemStatus.COMPLETED)
       .reduce((sum, w) => sum + (Number(w.story_points) || 0), 0);
     const story_points_remaining = Math.max(0, story_points_total - story_points_completed);
     const story_points_progress =
       story_points_total > 0 ? Math.round((story_points_completed / story_points_total) * 100) : null;
 
+    const estimated_items_count = eligibleLeaves.filter((w) => Number(w.story_points || 0) > 0).length;
+    const total_leaf_items_count = eligibleLeaves.length;
+    const has_estimated_work = story_points_total > 0;
+    const is_partially_estimated = estimated_items_count > 0 && estimated_items_count < total_leaf_items_count;
+
+    // Project Health & Schedule Risk Assessment (Requirement 3):
+    // Use the authoritative ProjectHealthService rather than arbitrary frontend thresholds.
+    // Work-item overdue status is kept strictly separate from project health.
+    let project_health: 'HEALTHY' | 'AT_RISK' | 'CRITICAL' | 'NOT_ASSESSED' = 'HEALTHY';
+    let project_health_reasons: string[] = [];
+    let project_health_warnings: string[] = [];
+
+    if (filters?.project_id) {
+      const projRecord = await prisma.project.findUnique({
+        where: { id: filters.project_id },
+        select: {
+          id: true,
+          name: true,
+          status: true,
+          start_date: true,
+          end_date: true,
+          work_items: {
+            select: {
+              id: true,
+              title: true,
+              type: true,
+              status: true,
+              priority: true,
+              due_date: true,
+              story_points: true,
+              parent_id: true,
+              sprint_id: true,
+            },
+          },
+          sprints: {
+            select: {
+              id: true,
+              status: true,
+              start_date: true,
+              end_date: true,
+            },
+          },
+        },
+      });
+
+      if (projRecord) {
+        const classified = ProjectHealthService.classifyProjectHealth(projRecord);
+        project_health = classified.health as any;
+        project_health_reasons = classified.reasons || [];
+        project_health_warnings = classified.warnings || [];
+      }
+    } else {
+      // Portfolio scope (All Projects or Cohort)
+      try {
+        const portfolio = await ProjectHealthService.getPortfolioHealth(user, {
+          cohort_id: filters?.cohort_id,
+        });
+        if (portfolio.summary.critical > 0) {
+          project_health = 'CRITICAL';
+          project_health_reasons.push(`${portfolio.summary.critical} project(s) in critical health`);
+        } else if (portfolio.summary.at_risk > 0) {
+          project_health = 'AT_RISK';
+          project_health_reasons.push(`${portfolio.summary.at_risk} project(s) at risk`);
+        } else if (portfolio.summary.healthy > 0) {
+          project_health = 'HEALTHY';
+          project_health_reasons.push(`All ${portfolio.summary.healthy} active project(s) healthy`);
+        } else {
+          project_health = 'NOT_ASSESSED';
+          project_health_reasons.push('No projects assessed with estimated work');
+        }
+      } catch {
+        project_health = 'HEALTHY';
+      }
+    }
+
+    const delivery_risk = project_health;
+    const delivery_risk_reasons = project_health_reasons.length > 0 ? project_health_reasons : ['All deliverables on track'];
+
+    const time_entries_count = timeEntries.length;
+    const has_time_entries = time_entries_count > 0;
     const total_logged_minutes = timeEntries.reduce((sum, e) => sum + (Number(e.duration_minutes) || 0), 0);
     const total_logged_hours = +(total_logged_minutes / 60).toFixed(1);
 
@@ -1695,11 +1969,21 @@ export class WorkItemService {
 
     // Formatted work item details for individual performance records
     const task_breakdown = items.map((w) => {
-      const is_past_due = Boolean(w.due_date && new Date(w.due_date) < now && w.status !== WorkItemStatus.COMPLETED);
-      const was_completed_on_time = Boolean(
-        w.status === WorkItemStatus.COMPLETED &&
-          (!w.due_date || new Date(w.completed_at || w.updated_at || w.due_date) <= new Date(w.due_date))
+      const has_valid_due_date = Boolean(w.due_date && !isNaN(new Date(w.due_date).getTime()));
+      const effective_deadline = has_valid_due_date ? getEffectiveDeadline(new Date(w.due_date!)) : null;
+      const is_past_due = Boolean(
+        w.status !== WorkItemStatus.COMPLETED &&
+          effective_deadline &&
+          now > effective_deadline
       );
+      const compDate = w.completed_at ? new Date(w.completed_at) : (w.updated_at ? new Date(w.updated_at) : null);
+      const is_eligible_completed = Boolean(
+        w.status === WorkItemStatus.COMPLETED &&
+          effective_deadline &&
+          compDate &&
+          !isNaN(compDate.getTime())
+      );
+      const was_completed_on_time = is_eligible_completed ? compDate! <= effective_deadline! : null;
       const logged_minutes = taskLoggedMinutesMap.get(w.id) || 0;
 
       return {
@@ -1718,6 +2002,7 @@ export class WorkItemService {
         sprint_name: w.sprint?.name || null,
         is_past_due,
         was_completed_on_time,
+        is_eligible_completed,
         logged_minutes,
         logged_hours: +(logged_minutes / 60).toFixed(1),
         assignees: w.assignees?.map((a: any) => ({
@@ -1826,9 +2111,22 @@ export class WorkItemService {
       todo,
       blocked,
       past_due,
-      completed_on_time,
+      overdue_items_count: past_due,
+      scheduled_items_count,
+      overdue_rate,
+      overdue_label,
+      delivery_risk,
+      delivery_risk_reasons,
+      project_health,
+      project_health_reasons,
+      project_health_warnings,
+      completed_on_time: completed_on_time_count,
+      completed_on_time_count,
+      completed_with_due_date_count,
+      completed_on_time_rate,
+      completed_on_time_label,
       completion_rate,
-      on_time_rate,
+      on_time_rate: completed_on_time_rate,
       status_counts,
       priority_counts,
       type_counts,
@@ -1836,6 +2134,12 @@ export class WorkItemService {
       story_points_completed,
       story_points_remaining,
       story_points_progress,
+      estimated_items_count,
+      total_leaf_items_count,
+      has_estimated_work,
+      is_partially_estimated,
+      time_entries_count,
+      has_time_entries,
       total_logged_minutes,
       total_logged_hours,
       task_breakdown,

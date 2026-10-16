@@ -114,35 +114,91 @@ export const requireRole = (allowedRoles: string[]) => {
   };
 };
 
-const PROJECT_MANAGEMENT_PERMISSIONS = [
+const PROJECT_PERMISSIONS = [
   'PROJECT_READ',
   'PROJECT_UPDATE',
+  'PROJECT_ARCHIVE',
+  'PROJECT_MEMBER_MANAGE',
+  'PROJECT_ROLE_ASSIGN',
+  'CUSTOM_ROLE_MANAGE',
   'TASK_READ',
   'TASK_CREATE',
   'TASK_UPDATE',
   'TASK_DELETE',
   'TASK_ASSIGN',
+  'TASK_STATUS_TRANSITION',
+  'SPRINT_READ',
+  'SPRINT_MANAGE',
+  'ROADMAP_MANAGE',
+  'DOCUMENT_READ',
   'DOCUMENT_UPLOAD',
+  'DOCUMENT_DELETE',
+  'ANALYTICS_READ',
 ];
 
-async function checkProjectLeadPermission(fullUser: any, req: Request, permissionToCheck: string): Promise<boolean> {
-  if (!PROJECT_MANAGEMENT_PERMISSIONS.includes(permissionToCheck)) {
+export async function checkProjectMemberPermission(
+  fullUser: any,
+  req: Request,
+  permissionToCheck: string
+): Promise<boolean> {
+  if (!fullUser || !fullUser.id) {
     return false;
   }
 
-  const projectId =
-    req.params.id ||
+  let projectId: string | null =
     req.params.projectId ||
+    req.params.id ||
     req.body?.project_id ||
     req.body?.projectId ||
     (req.query?.project_id as string) ||
-    (req.query?.projectId as string);
-
-  if (!projectId || typeof projectId !== 'string') {
-    return false;
-  }
+    (req.query?.projectId as string) ||
+    null;
 
   try {
+    // If not directly found or param is not project, resolve from workItem, document, or sprint
+    if (projectId) {
+      const isProjectDirect = await prisma.project.findUnique({
+        where: { id: projectId },
+        select: { id: true },
+      });
+      if (!isProjectDirect) {
+        // Maybe projectId is actually a work_item_id or document_id
+        const workItem = await prisma.workItem.findUnique({
+          where: { id: projectId },
+          select: { project_id: true },
+        });
+        if (workItem?.project_id) {
+          projectId = workItem.project_id;
+        } else {
+          const doc = await prisma.projectDocument.findUnique({
+            where: { id: projectId },
+            select: { project_id: true },
+          });
+          if (doc?.project_id) {
+            projectId = doc.project_id;
+          }
+        }
+      }
+    } else {
+      if (req.params.documentId) {
+        const doc = await prisma.projectDocument.findUnique({
+          where: { id: req.params.documentId },
+          select: { project_id: true },
+        });
+        if (doc?.project_id) projectId = doc.project_id;
+      } else if (req.params.sprintId) {
+        const sprint = await prisma.sprint.findUnique({
+          where: { id: req.params.sprintId },
+          select: { project_id: true },
+        });
+        if (sprint?.project_id) projectId = sprint.project_id;
+      }
+    }
+
+    if (!projectId || typeof projectId !== 'string') {
+      return false;
+    }
+
     const project = await prisma.project.findUnique({
       where: { id: projectId },
       select: { owner_id: true, organization_id: true },
@@ -152,39 +208,152 @@ async function checkProjectLeadPermission(fullUser: any, req: Request, permissio
       return false;
     }
 
+    // Project owner always has full project permissions
     if (project.owner_id === fullUser.id) {
       return true;
     }
 
+    // Organization Manager / Admin has full project permissions
     const isOrgManager =
       (req as any).user?.role === 'ADMIN' ||
       (req as any).user?.role === 'MANAGER' ||
-      fullUser.roles?.some((ur: any) => ur.role?.name === 'ADMIN' || ur.role?.name === 'MANAGER');
+      (req as any).user?.role === 'SUPER_ADMIN' ||
+      fullUser.roles?.some(
+        (ur: any) =>
+          ur.role?.name === 'ADMIN' ||
+          ur.role?.name === 'MANAGER' ||
+          ur.role?.name === 'SUPER_ADMIN'
+      );
 
-    if (isOrgManager && project.organization_id === fullUser.organization_id) {
+    if (isOrgManager && (!project.organization_id || project.organization_id === fullUser.organization_id)) {
       return true;
     }
 
+    // Query Project Membership with custom role and associated permissions
     const membership = await prisma.projectMember.findFirst({
       where: {
         project_id: projectId,
         user_id: fullUser.id,
       },
+      include: {
+        role: {
+          include: {
+            permissions: {
+              include: {
+                permission: true,
+              },
+            },
+          },
+        },
+      },
     });
 
-    const isOrgTechLead = Array.isArray(fullUser.roles) && fullUser.roles.some((ur: any) => ur.role?.name === 'TECH_LEAD');
-    if (membership) {
-      const isLeadOrOwner =
-        membership.project_role === 'TECH_LEAD' ||
-        membership.project_role === 'MANAGER' ||
-        isOrgTechLead;
-      return Boolean(isLeadOrOwner);
+    if (!membership) {
+      return false;
+    }
+
+    // 1. If assigned a Custom Role (or standard role via role_id)
+    if (membership.role) {
+      const grantedPermissions = new Set(
+        membership.role.permissions.map((rp) => rp.permission.name)
+      );
+
+      // Direct permission match
+      if (grantedPermissions.has(permissionToCheck)) {
+        return true;
+      }
+
+      // If user has TASK_UPDATE, allow TASK_STATUS_TRANSITION
+      if (permissionToCheck === 'TASK_STATUS_TRANSITION' && grantedPermissions.has('TASK_UPDATE')) {
+        return true;
+      }
+
+      // If user has PROJECT_UPDATE, allow non-destructive project management
+      if (
+        grantedPermissions.has('PROJECT_UPDATE') &&
+        (permissionToCheck === 'SPRINT_MANAGE' ||
+          permissionToCheck === 'ROADMAP_MANAGE' ||
+          permissionToCheck === 'DOCUMENT_UPLOAD' ||
+          permissionToCheck === 'DOCUMENT_DELETE')
+      ) {
+        return true;
+      }
+
+      // Read permissions baseline for any member
+      if (
+        (permissionToCheck === 'PROJECT_READ' || permissionToCheck === 'TASK_READ' || permissionToCheck === 'DOCUMENT_READ' || permissionToCheck === 'SPRINT_READ') &&
+        (grantedPermissions.has('PROJECT_READ') || grantedPermissions.has('TASK_READ'))
+      ) {
+        return true;
+      }
+
+      return false;
+    }
+
+    // 2. Standard Built-in project roles fallback
+    const isOrgTechLead =
+      Array.isArray(fullUser.roles) &&
+      fullUser.roles.some((ur: any) => ur.role?.name === 'TECH_LEAD');
+
+    if (
+      membership.project_role === 'TECH_LEAD' ||
+      membership.project_role === 'MANAGER' ||
+      isOrgTechLead
+    ) {
+      return true;
+    }
+
+    if (membership.project_role === 'DEVELOPER') {
+      const devPerms = [
+        'PROJECT_READ',
+        'TASK_READ',
+        'TASK_CREATE',
+        'TASK_UPDATE',
+        'TASK_STATUS_TRANSITION',
+        'DOCUMENT_READ',
+        'DOCUMENT_UPLOAD',
+        'SPRINT_READ',
+        'ANALYTICS_READ',
+      ];
+      return devPerms.includes(permissionToCheck);
+    }
+
+    if (membership.project_role === 'QA_TESTER') {
+      const qaPerms = [
+        'PROJECT_READ',
+        'TASK_READ',
+        'TASK_CREATE',
+        'TASK_UPDATE',
+        'TASK_STATUS_TRANSITION',
+        'DOCUMENT_READ',
+        'SPRINT_READ',
+      ];
+      return qaPerms.includes(permissionToCheck);
+    }
+
+    // Default read permissions for any project member
+    if (
+      permissionToCheck === 'PROJECT_READ' ||
+      permissionToCheck === 'TASK_READ' ||
+      permissionToCheck === 'DOCUMENT_READ' ||
+      permissionToCheck === 'SPRINT_READ'
+    ) {
+      return true;
     }
 
     return false;
   } catch (err) {
     return false;
   }
+}
+
+// Preserve backward-compatible alias
+async function checkProjectLeadPermission(
+  fullUser: any,
+  req: Request,
+  permissionToCheck: string
+): Promise<boolean> {
+  return checkProjectMemberPermission(fullUser, req, permissionToCheck);
 }
 
 export const requirePermission = (requiredPermission: string) => {

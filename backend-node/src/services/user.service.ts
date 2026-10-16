@@ -33,12 +33,57 @@ export interface InvalidCsvRow {
   cohort?: string | null;
 }
 
+export interface ExistingMemberDiff {
+  rowNumber: number;
+  name: string;
+  email: string;
+  type: string;
+  batch?: string | null;
+  subbatch?: string | null;
+  cohort_id?: string | null;
+  cohort?: string | null;
+  existingId: string;
+  existingUserCode?: string | null;
+  existingName: string;
+  existingBatch?: string | null;
+  existingSubbatch?: string | null;
+  existingIsActive: boolean;
+  changes: {
+    name?: { from: string; to: string };
+    batch?: { from: string | null; to: string | null };
+    subbatch?: { from: string | null; to: string | null };
+  };
+}
+
+export interface SkippedMemberInfo {
+  rowNumber: number;
+  name: string;
+  email: string;
+  type?: string;
+  reason: string;
+  existingUserCode?: string | null;
+  batch?: string | null;
+  subbatch?: string | null;
+}
+
+export interface DuplicateInCsvRow {
+  rowNumber: number;
+  originalRowNumber: number;
+  name: string;
+  email: string;
+  reason: string;
+}
+
 export interface CsvValidationResult {
   isValid: boolean;
   summary: {
     total: number;
     valid: number;
     invalid: number;
+    to_create: number;
+    to_skip: number;
+    to_update: number;
+    duplicate_in_csv: number;
   };
   detectedColumns: {
     all: string[];
@@ -47,6 +92,10 @@ export interface CsvValidationResult {
     optionalPresent: string[];
   };
   validRows: CsvRow[];
+  toCreateRows: CsvRow[];
+  toSkipRows: SkippedMemberInfo[];
+  toUpdateRows: ExistingMemberDiff[];
+  duplicateInCsvRows: DuplicateInCsvRow[];
   invalidRows: InvalidCsvRow[];
   errors: string[];
 }
@@ -319,13 +368,15 @@ export class UserService {
   }
 
   /**
-   * Validate CSV content for bulk import preview
+   * Validate CSV content for bulk import preview with comprehensive categorization:
+   * to_create, to_skip (identical or inactive), to_update (changed permitted fields),
+   * duplicate_in_csv, and invalid/rejected rows.
    */
   static async validateBulkCsv(csvContent: string, managerOrgId: string): Promise<CsvValidationResult> {
     if (!csvContent || typeof csvContent !== 'string') {
       return {
         isValid: false,
-        summary: { total: 0, valid: 0, invalid: 0 },
+        summary: { total: 0, valid: 0, invalid: 0, to_create: 0, to_skip: 0, to_update: 0, duplicate_in_csv: 0 },
         detectedColumns: {
           all: [],
           requiredPresent: [],
@@ -333,6 +384,10 @@ export class UserService {
           optionalPresent: [],
         },
         validRows: [],
+        toCreateRows: [],
+        toSkipRows: [],
+        toUpdateRows: [],
+        duplicateInCsvRows: [],
         invalidRows: [],
         errors: ['CSV content is empty or invalid.'],
       };
@@ -346,7 +401,7 @@ export class UserService {
     if (lines.length < 2) {
       return {
         isValid: false,
-        summary: { total: 0, valid: 0, invalid: 0 },
+        summary: { total: 0, valid: 0, invalid: 0, to_create: 0, to_skip: 0, to_update: 0, duplicate_in_csv: 0 },
         detectedColumns: {
           all: [],
           requiredPresent: [],
@@ -354,6 +409,10 @@ export class UserService {
           optionalPresent: [],
         },
         validRows: [],
+        toCreateRows: [],
+        toSkipRows: [],
+        toUpdateRows: [],
+        duplicateInCsvRows: [],
         invalidRows: [],
         errors: ['CSV file must contain a header row and at least one data row.'],
       };
@@ -371,7 +430,7 @@ export class UserService {
     ) {
       return {
         isValid: false,
-        summary: { total: 0, valid: 0, invalid: 0 },
+        summary: { total: 0, valid: 0, invalid: 0, to_create: 0, to_skip: 0, to_update: 0, duplicate_in_csv: 0 },
         detectedColumns: {
           all: rawHeaders,
           requiredPresent: ['name', 'email', 'type'].filter((h) => rawHeaders.includes(h)),
@@ -379,6 +438,10 @@ export class UserService {
           optionalPresent: [],
         },
         validRows: [],
+        toCreateRows: [],
+        toSkipRows: [],
+        toUpdateRows: [],
+        duplicateInCsvRows: [],
         invalidRows: [],
         errors: ['Security Violation: CSV cannot contain organization_id, password, user_id, or user_code columns.'],
       };
@@ -416,9 +479,13 @@ export class UserService {
     if (requiredMissing.length > 0) {
       return {
         isValid: false,
-        summary: { total: 0, valid: 0, invalid: 0 },
+        summary: { total: 0, valid: 0, invalid: 0, to_create: 0, to_skip: 0, to_update: 0, duplicate_in_csv: 0 },
         detectedColumns,
         validRows: [],
+        toCreateRows: [],
+        toSkipRows: [],
+        toUpdateRows: [],
+        duplicateInCsvRows: [],
         invalidRows: [],
         errors: [`Invalid CSV headers. Missing required columns: ${requiredMissing.join(', ')}. Expected at least: name,email,type`],
       };
@@ -443,9 +510,8 @@ export class UserService {
     }
 
     const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-    const emailCounts = new Map<string, number>();
 
-    // Pass 1: Parse rows and count occurrences of each normalized email across the entire CSV
+    // Pass 1: Parse rows and normalize
     const parsedDataRows: Array<{
       rowNumber: number;
       name: string;
@@ -477,27 +543,42 @@ export class UserService {
         rawCohort,
         type: (rawType === 'INTERN' || rawType === 'EMPLOYEE') ? rawType : undefined,
       });
-
-      if (email) {
-        emailCounts.set(email, (emailCounts.get(email) || 0) + 1);
-      }
     }
 
-    // Pass 2: Query DB for all unique valid emails present in CSV to check conflicts
-    const uniqueValidEmails = Array.from(emailCounts.keys()).filter((e) => emailRegex.test(e));
+    // Pass 2: Query DB for all unique valid candidate emails in this CSV
+    const candidateEmails = Array.from(new Set(parsedDataRows.map((r) => r.email).filter((e) => emailRegex.test(e))));
     const existingInDb = await prisma.user.findMany({
       where: {
-        email: { in: uniqueValidEmails },
+        email: { in: candidateEmails },
       },
-      select: { email: true },
+      select: {
+        id: true,
+        email: true,
+        name: true,
+        user_code: true,
+        batch: true,
+        subbatch: true,
+        cohort_id: true,
+        organization_id: true,
+        is_active: true,
+      },
     });
-    const existingDbEmails = new Set(existingInDb.map((u) => u.email.toLowerCase()));
 
-    const validRows: CsvRow[] = [];
+    const existingDbMap = new Map<string, typeof existingInDb[0]>();
+    for (const u of existingInDb) {
+      existingDbMap.set(u.email.toLowerCase().trim(), u);
+    }
+
+    const toCreateRows: CsvRow[] = [];
+    const toSkipRows: SkippedMemberInfo[] = [];
+    const toUpdateRows: ExistingMemberDiff[] = [];
+    const duplicateInCsvRows: DuplicateInCsvRow[] = [];
     const invalidRows: InvalidCsvRow[] = [];
     const errors: string[] = [];
 
-    // Pass 3: Validate each row independently
+    const seenEmailsInCsv = new Map<string, number>(); // email -> first rowNumber
+
+    // Pass 3: Classify each row independently
     for (const row of parsedDataRows) {
       let { rowNumber, name, email, rawType, rawBatch, rawSubbatch, rawCohort, type } = row;
       let failureReason = '';
@@ -508,10 +589,6 @@ export class UserService {
         failureReason = 'Name cannot exceed 100 characters.';
       } else if (!email || !emailRegex.test(email)) {
         failureReason = 'Invalid email format.';
-      } else if ((emailCounts.get(email) || 0) > 1) {
-        failureReason = 'Duplicate email in CSV.';
-      } else if (existingDbEmails.has(email)) {
-        failureReason = 'Email already exists.';
       } else if (!type) {
         failureReason = `Invalid type "${rawType}". Must be INTERN or EMPLOYEE.`;
       } else if (rawBatch && !['A', 'B', 'C', 'D'].includes(rawBatch)) {
@@ -527,7 +604,6 @@ export class UserService {
           if (!allSubbatches.includes(rawSubbatch)) {
             failureReason = `Invalid subbatch "${rawSubbatch}". Valid subbatches are ${allSubbatches.join(', ')}.`;
           } else {
-            // Infer batch from valid subbatch
             const inferred = Object.keys(VALID_BATCH_SUBBATCH).find((b) => VALID_BATCH_SUBBATCH[b].includes(rawSubbatch));
             if (inferred) rawBatch = inferred;
           }
@@ -555,8 +631,28 @@ export class UserService {
           cohort: rawCohort || null,
         });
         errors.push(`Row ${rowNumber}: ${name || 'Unnamed'} (${email || 'No email'}) - ${failureReason}`);
-      } else {
-        validRows.push({
+        continue;
+      }
+
+      // Check intra-CSV duplicates
+      if (seenEmailsInCsv.has(email)) {
+        const firstRow = seenEmailsInCsv.get(email)!;
+        duplicateInCsvRows.push({
+          rowNumber,
+          originalRowNumber: firstRow,
+          name,
+          email,
+          reason: `Duplicate row in CSV: email already appeared on row ${firstRow}.`,
+        });
+        continue;
+      }
+      seenEmailsInCsv.set(email, rowNumber);
+
+      // Check Database for existing member
+      const existingUser = existingDbMap.get(email);
+      if (!existingUser) {
+        // New member to create
+        const candidateRow: CsvRow = {
           rowNumber,
           name,
           email,
@@ -565,22 +661,99 @@ export class UserService {
           subbatch: rawSubbatch || null,
           cohort_id: resolvedCohortId,
           cohort: rawCohort || null,
+        };
+        toCreateRows.push(candidateRow);
+      } else if (existingUser.organization_id && existingUser.organization_id !== managerOrgId) {
+        // Cross-tenant email collision
+        const orgError = 'Email is already registered with another organization.';
+        invalidRows.push({
+          rowNumber,
+          name,
+          email,
+          reason: orgError,
+          batch: rawBatch || null,
+          subbatch: rawSubbatch || null,
+          cohort: rawCohort || null,
         });
+        errors.push(`Row ${rowNumber}: ${name} (${email}) - ${orgError}`);
+      } else if (!existingUser.is_active) {
+        // Inactive member: do not reactivate automatically
+        toSkipRows.push({
+          rowNumber,
+          name: existingUser.name,
+          email,
+          type: type!,
+          reason: 'Inactive member — skipped (will not be reactivated automatically)',
+          existingUserCode: existingUser.user_code,
+          batch: existingUser.batch,
+          subbatch: existingUser.subbatch,
+        });
+      } else {
+        // Active member in manager's organization: check if permitted fields changed
+        const nameDiff = existingUser.name.trim() !== name.trim();
+        const batchDiff = (existingUser.batch || '').trim() !== (rawBatch || '').trim();
+        const subbatchDiff = (existingUser.subbatch || '').trim() !== (rawSubbatch || '').trim();
+
+        if (!nameDiff && !batchDiff && !subbatchDiff) {
+          // Identical member data: safe skip
+          toSkipRows.push({
+            rowNumber,
+            name: existingUser.name,
+            email,
+            type: type!,
+            reason: 'Identical member data — skipped (no changes needed)',
+            existingUserCode: existingUser.user_code,
+            batch: existingUser.batch,
+            subbatch: existingUser.subbatch,
+          });
+        } else {
+          // Permitted fields have changed: may be updated upon confirmation
+          const changes: any = {};
+          if (nameDiff) changes.name = { from: existingUser.name, to: name };
+          if (batchDiff) changes.batch = { from: existingUser.batch || null, to: rawBatch || null };
+          if (subbatchDiff) changes.subbatch = { from: existingUser.subbatch || null, to: rawSubbatch || null };
+
+          toUpdateRows.push({
+            rowNumber,
+            name,
+            email,
+            type: type!,
+            batch: rawBatch || null,
+            subbatch: rawSubbatch || null,
+            cohort_id: resolvedCohortId,
+            cohort: rawCohort || null,
+            existingId: existingUser.id,
+            existingUserCode: existingUser.user_code,
+            existingName: existingUser.name,
+            existingBatch: existingUser.batch,
+            existingSubbatch: existingUser.subbatch,
+            existingIsActive: existingUser.is_active,
+            changes,
+          });
+        }
       }
     }
 
     const totalDataRows = parsedDataRows.length;
-    const isValid = invalidRows.length === 0 && validRows.length === totalDataRows;
+    const isValid = invalidRows.length === 0;
 
     return {
       isValid,
       summary: {
         total: totalDataRows,
-        valid: validRows.length,
+        valid: toCreateRows.length + toUpdateRows.length,
         invalid: invalidRows.length,
+        to_create: toCreateRows.length,
+        to_skip: toSkipRows.length,
+        to_update: toUpdateRows.length,
+        duplicate_in_csv: duplicateInCsvRows.length,
       },
       detectedColumns,
-      validRows,
+      validRows: toCreateRows, // For backward compatibility
+      toCreateRows,
+      toSkipRows,
+      toUpdateRows,
+      duplicateInCsvRows,
       invalidRows,
       errors,
     };
@@ -604,16 +777,35 @@ export class UserService {
   }
 
   /**
-   * Bulk create users in an all-or-nothing transaction with pre-validation and collision safety
+   * Bulk import users with safe, idempotent processing:
+   * - Deduplicates within the submitted batch (first occurrence processed, subsequent skipped)
+   * - Queries DB for existing users by normalized email
+   * - Skips existing active users with identical data (0 duplicates created)
+   * - Skips inactive members (never reactivates automatically)
+   * - If updateExisting is true, updates permitted fields (name, batch, subbatch) without touching
+   *   passwords, credentials, roles, permissions, cohort assignments, or account status
+   * - If updateExisting is false, skips existing members with changed data
+   * - Fails cross-tenant collisions
+   * - Inserts new users in an atomic transaction
+   * - Safely handles concurrent insertion collisions (P2002) with retry/skip
+   * - Returns detailed summary: created, skipped, updated, failed
    */
-  static async createUsersBulk(rows: CsvRow[], managerOrgId: string) {
+  static async createUsersBulk(
+    rows: CsvRow[],
+    managerOrgId: string,
+    optionsOrUpdateExisting?: boolean | { update_existing?: boolean }
+  ) {
     if (!rows || !Array.isArray(rows) || rows.length === 0) {
-      throw new Error('No valid candidate rows provided for bulk creation.');
+      throw new Error('No candidate rows provided for bulk import.');
     }
 
     if (!managerOrgId) {
       throw new Error('Manager organization context required.');
     }
+
+    const updateExisting = typeof optionsOrUpdateExisting === 'boolean'
+      ? optionsOrUpdateExisting
+      : Boolean(optionsOrUpdateExisting?.update_existing);
 
     // Role lookups
     const internRole = await prisma.role.findUnique({ where: { name: 'INTERN' } });
@@ -623,55 +815,220 @@ export class UserService {
       throw new Error('INTERN or EMPLOYEE role is not configured in the system.');
     }
 
-    // =========================================================================
-    // FINAL SERVER-SIDE REVALIDATION (Pre-Transaction)
-    // The database or batch may have changed between Preview and Confirm Import.
-    // Re-check all candidate emails against the database right before creation.
-    // =========================================================================
-    const normalizedCandidateEmails = rows.map((r) => r.email.trim().toLowerCase());
+    // Cohorts lookup for org
+    const orgCohorts = await prisma.cohort.findMany({
+      where: { organization_id: managerOrgId },
+      select: { id: true, code: true, name: true },
+    });
+    const cohortIdSet = new Set(orgCohorts.map((c) => c.id));
+    const cohortMap = new Map<string, string>();
+    for (const c of orgCohorts) {
+      cohortMap.set(c.code.toLowerCase().trim(), c.id);
+      cohortMap.set(c.name.toLowerCase().trim(), c.id);
+    }
 
-    // Check for internal duplicates within the submitted batch
-    const batchEmailSet = new Set<string>();
-    const duplicateBatchEmails: string[] = [];
-    for (const email of normalizedCandidateEmails) {
-      if (batchEmailSet.has(email)) {
-        duplicateBatchEmails.push(email);
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+    // Output tracking
+    const createdUsers: Array<{
+      name: string;
+      email: string;
+      user_code: string;
+      type: string;
+      batch: string | null;
+      subbatch: string | null;
+      temporary_password: string;
+    }> = [];
+
+    const updatedUsers: Array<{
+      id: string;
+      name: string;
+      email: string;
+      user_code: string;
+      batch: string | null;
+      subbatch: string | null;
+      changes: Record<string, { from: any; to: any }>;
+    }> = [];
+
+    const skippedUsers: Array<{
+      rowNumber?: number;
+      name: string;
+      email: string;
+      user_code?: string | null;
+      reason: string;
+    }> = [];
+
+    const failedRows: Array<{
+      rowNumber?: number;
+      name: string;
+      email: string;
+      reason: string;
+    }> = [];
+
+    // Deduplicate within the submitted rows
+    const seenEmailsInBatch = new Map<string, number>();
+    const sanitizedRows: Array<CsvRow & { normalizedEmail: string; resolvedCohortId: string | null }> = [];
+
+    for (let idx = 0; idx < rows.length; idx++) {
+      const row = rows[idx];
+      const rowNum = row.rowNumber || (idx + 1);
+      const name = (row.name || '').trim();
+      const email = (row.email || '').trim().toLowerCase();
+      const type = row.type ? (row.type.toUpperCase() as 'INTERN' | 'EMPLOYEE') : undefined;
+
+      if (!name) {
+        failedRows.push({ rowNumber: rowNum, name: 'Unnamed', email, reason: 'Name is required' });
+        continue;
       }
-      batchEmailSet.add(email);
-    }
-    if (duplicateBatchEmails.length > 0) {
-      const err: any = new Error(
-        `Bulk import could not be completed. Duplicate emails detected in import payload: ${duplicateBatchEmails.join(', ')}`
-      );
-      err.statusCode = 400;
-      throw err;
+      if (name.length > 100) {
+        failedRows.push({ rowNumber: rowNum, name, email, reason: 'Name cannot exceed 100 characters' });
+        continue;
+      }
+      if (!email || !emailRegex.test(email)) {
+        failedRows.push({ rowNumber: rowNum, name, email: email || 'No email', reason: 'Invalid email format' });
+        continue;
+      }
+      if (!type || (type !== 'INTERN' && type !== 'EMPLOYEE')) {
+        failedRows.push({ rowNumber: rowNum, name, email, reason: `Invalid type "${row.type}". Must be INTERN or EMPLOYEE.` });
+        continue;
+      }
+
+      // Check intra-batch duplicate
+      if (seenEmailsInBatch.has(email)) {
+        const firstRow = seenEmailsInBatch.get(email)!;
+        skippedUsers.push({
+          rowNumber: rowNum,
+          name,
+          email,
+          reason: `Duplicate row in CSV: email already appeared on row ${firstRow}.`,
+        });
+        continue;
+      }
+      seenEmailsInBatch.set(email, rowNum);
+
+      // Resolve cohort
+      let resolvedCohortId: string | null = null;
+      if (row.cohort_id && cohortIdSet.has(row.cohort_id)) {
+        resolvedCohortId = row.cohort_id;
+      } else if (row.cohort) {
+        resolvedCohortId = cohortMap.get(row.cohort.toLowerCase().trim()) || null;
+      }
+
+      sanitizedRows.push({
+        ...row,
+        rowNumber: rowNum,
+        name,
+        email,
+        type,
+        normalizedEmail: email,
+        resolvedCohortId,
+      });
     }
 
-    // Query DB for any existing emails in this candidate batch
-    const existingDbUsers = await prisma.user.findMany({
-      where: { email: { in: normalizedCandidateEmails } },
-      select: { email: true, name: true },
+    // Query DB for existing users
+    const candidateEmails = sanitizedRows.map((r) => r.normalizedEmail);
+    const existingUsers = await prisma.user.findMany({
+      where: { email: { in: candidateEmails } },
+      select: {
+        id: true,
+        email: true,
+        name: true,
+        user_code: true,
+        batch: true,
+        subbatch: true,
+        cohort_id: true,
+        organization_id: true,
+        is_active: true,
+      },
     });
 
-    if (existingDbUsers.length > 0) {
-      const conflictList = existingDbUsers.map((u) => u.email);
-      const err: any = new Error(
-        `Bulk import could not be completed. One or more users became unavailable before import confirmation: ${conflictList.join(', ')}`
-      );
-      err.statusCode = 409;
-      err.conflicts = conflictList;
-      throw err;
+    const existingMap = new Map<string, typeof existingUsers[0]>();
+    for (const u of existingUsers) {
+      existingMap.set(u.email.toLowerCase().trim(), u);
     }
 
-    // =========================================================================
-    // BATCH USER CODE RESERVATION & PASSWORD HASHING
-    // =========================================================================
-    // BATCH USER CODE RESERVATION & PASSWORD HASHING
-    // Generate codes and cryptographically secure passwords
-    // =========================================================================
-    const reservedCodesInBatch = new Set<string>();
+    // Rows to write in DB
+    const toCreateCandidates: typeof sanitizedRows = [];
+    const toUpdateDb: Array<{
+      id: string;
+      name: string;
+      batch: string | null;
+      subbatch: string | null;
+      user_code: string;
+      email: string;
+      changes: Record<string, { from: any; to: any }>;
+    }> = [];
 
-    // Pre-seed reserved codes with all existing user codes in the organization
+    for (const row of sanitizedRows) {
+      const existing = existingMap.get(row.normalizedEmail);
+
+      if (!existing) {
+        // New user
+        toCreateCandidates.push(row);
+      } else if (existing.organization_id && existing.organization_id !== managerOrgId) {
+        // Cross-tenant collision
+        failedRows.push({
+          rowNumber: row.rowNumber,
+          name: row.name,
+          email: row.normalizedEmail,
+          reason: 'Email is registered with another organization.',
+        });
+      } else if (!existing.is_active) {
+        // Inactive member: do not reactivate
+        skippedUsers.push({
+          rowNumber: row.rowNumber,
+          name: existing.name,
+          email: row.normalizedEmail,
+          user_code: existing.user_code,
+          reason: 'Inactive member — skipped (will not be reactivated automatically)',
+        });
+      } else {
+        // Active member in manager's org: check diffs
+        const nameDiff = existing.name.trim() !== row.name.trim();
+        const batchDiff = (existing.batch || '').trim() !== (row.batch || '').trim();
+        const subbatchDiff = (existing.subbatch || '').trim() !== (row.subbatch || '').trim();
+
+        if (!nameDiff && !batchDiff && !subbatchDiff) {
+          // Identical member: safe skip
+          skippedUsers.push({
+            rowNumber: row.rowNumber,
+            name: existing.name,
+            email: row.normalizedEmail,
+            user_code: existing.user_code,
+            reason: 'Identical member data — skipped (no changes needed)',
+          });
+        } else {
+          // Permitted fields have changed
+          const changes: Record<string, { from: any; to: any }> = {};
+          if (nameDiff) changes.name = { from: existing.name, to: row.name.trim() };
+          if (batchDiff) changes.batch = { from: existing.batch || null, to: row.batch || null };
+          if (subbatchDiff) changes.subbatch = { from: existing.subbatch || null, to: row.subbatch || null };
+
+          if (updateExisting) {
+            toUpdateDb.push({
+              id: existing.id,
+              name: row.name.trim(),
+              batch: row.batch || null,
+              subbatch: row.subbatch || null,
+              user_code: existing.user_code,
+              email: row.normalizedEmail,
+              changes,
+            });
+          } else {
+            skippedUsers.push({
+              rowNumber: row.rowNumber,
+              name: existing.name,
+              email: row.normalizedEmail,
+              user_code: existing.user_code,
+              reason: 'Existing member with changed data — skipped (update not confirmed)',
+            });
+          }
+        }
+      }
+    }
+
+    // Generate codes & passwords for users to create
+    const reservedCodesInBatch = new Set<string>();
     const existingOrgUsers = await prisma.user.findMany({
       where: { organization_id: managerOrgId },
       select: { user_code: true },
@@ -680,21 +1037,21 @@ export class UserService {
       if (u.user_code) reservedCodesInBatch.add(u.user_code);
     }
 
-    const usersToCreate: Array<{
+    const usersToCreateData: Array<{
       id: string;
       name: string;
       email: string;
       user_code: string;
       type: 'INTERN' | 'EMPLOYEE';
-      batch?: string | null;
-      subbatch?: string | null;
-      cohort_id?: string | null;
+      batch: string | null;
+      subbatch: string | null;
+      cohort_id: string | null;
       temporary_password: string;
       password_hash: string;
       role_id: string;
     }> = [];
 
-    for (const row of rows) {
+    for (const row of toCreateCandidates) {
       const prefix = row.type === 'INTERN' ? 'INT' : 'EMP';
       const userCode = await this.generateUserCode(prefix, managerOrgId, reservedCodesInBatch);
       const tempPassword = this.generateTemporaryPassword();
@@ -702,83 +1059,174 @@ export class UserService {
       const roleId = row.type === 'INTERN' ? internRole.id : employeeRole.id;
       const id = crypto.randomUUID();
 
-      usersToCreate.push({
+      usersToCreateData.push({
         id,
-        name: row.name.trim(),
-        email: row.email.trim().toLowerCase(),
+        name: row.name,
+        email: row.normalizedEmail,
         user_code: userCode,
         type: row.type,
         batch: row.batch || null,
         subbatch: row.subbatch || null,
-        cohort_id: row.cohort_id || null,
+        cohort_id: row.resolvedCohortId,
         temporary_password: tempPassword,
         password_hash: pwdHash,
         role_id: roleId,
       });
     }
 
-    // =========================================================================
-    // ATOMIC TRANSACTION
-    // High-performance batch createMany ensures complete all-or-nothing atomicity
-    // with sub-second execution speed, preventing connection/transaction timeouts.
-    // =========================================================================
-    try {
-      const usersData = usersToCreate.map((u) => ({
-        id: u.id,
-        name: u.name,
-        email: u.email,
-        user_code: u.user_code,
-        password_hash: u.password_hash,
-        organization_id: managerOrgId,
-        cohort_id: u.cohort_id || null,
-        batch: u.batch || null,
-        subbatch: u.subbatch || null,
-        must_change_password: true,
-        is_active: true,
-      }));
-
-      const rolesData = usersToCreate.map((u) => ({
-        user_id: u.id,
-        role_id: u.role_id,
-      }));
-
+    // Execute updates in transaction if confirmed
+    if (toUpdateDb.length > 0) {
       await prisma.$transaction(
         async (tx) => {
-          await tx.user.createMany({ data: usersData });
-          await tx.userRole.createMany({ data: rolesData });
+          for (const u of toUpdateDb) {
+            await tx.user.update({
+              where: { id: u.id },
+              data: {
+                name: u.name,
+                batch: u.batch,
+                subbatch: u.subbatch,
+              },
+            });
+          }
         },
-        { timeout: 30000, maxWait: 10000 }
+        { timeout: 30000 }
       );
 
-      const createdUsers = usersToCreate.map((u) => ({
-        name: u.name,
-        email: u.email,
-        user_code: u.user_code,
-        type: u.type,
-        batch: u.batch || null,
-        subbatch: u.subbatch || null,
-        temporary_password: u.temporary_password,
-      }));
-
-      return {
-        summary: {
-          total: rows.length,
-          created: createdUsers.length,
-          failed: 0,
-        },
-        created_users: createdUsers,
-      };
-    } catch (err: any) {
-      if (err.code === 'P2002') {
-        const cleanErr: any = new Error(
-          'Bulk import could not be completed. One or more users already exist or could not be assigned a unique User ID. Please review the validation results and try again.'
-        );
-        cleanErr.statusCode = 409;
-        cleanErr.details = err.meta;
-        throw cleanErr;
+      for (const u of toUpdateDb) {
+        updatedUsers.push({
+          id: u.id,
+          name: u.name,
+          email: u.email,
+          user_code: u.user_code,
+          batch: u.batch,
+          subbatch: u.subbatch,
+          changes: u.changes,
+        });
       }
-      throw err;
     }
+
+    // Execute inserts with concurrent collision handling (P2002)
+    if (usersToCreateData.length > 0) {
+      try {
+        const usersData = usersToCreateData.map((u) => ({
+          id: u.id,
+          name: u.name,
+          email: u.email,
+          user_code: u.user_code,
+          password_hash: u.password_hash,
+          organization_id: managerOrgId,
+          cohort_id: u.cohort_id || null,
+          batch: u.batch || null,
+          subbatch: u.subbatch || null,
+          must_change_password: true,
+          is_active: true,
+        }));
+
+        const rolesData = usersToCreateData.map((u) => ({
+          user_id: u.id,
+          role_id: u.role_id,
+        }));
+
+        await prisma.$transaction(
+          async (tx) => {
+            await tx.user.createMany({ data: usersData });
+            await tx.userRole.createMany({ data: rolesData });
+          },
+          { timeout: 30000, maxWait: 10000 }
+        );
+
+        for (const u of usersToCreateData) {
+          createdUsers.push({
+            name: u.name,
+            email: u.email,
+            user_code: u.user_code,
+            type: u.type,
+            batch: u.batch || null,
+            subbatch: u.subbatch || null,
+            temporary_password: u.temporary_password,
+          });
+        }
+      } catch (err: any) {
+        if (err.code === 'P2002') {
+          // Concurrent collision handling: find collided emails and re-process safely
+          const collisionEmails = usersToCreateData.map((u) => u.email);
+          const collidedUsers = await prisma.user.findMany({
+            where: { email: { in: collisionEmails } },
+            select: { id: true, email: true, name: true, user_code: true },
+          });
+          const collidedEmailSet = new Set(collidedUsers.map((u) => u.email.toLowerCase()));
+
+          const remainingToCreate = usersToCreateData.filter((u) => !collidedEmailSet.has(u.email));
+          for (const u of usersToCreateData) {
+            if (collidedEmailSet.has(u.email)) {
+              const matched = collidedUsers.find((c) => c.email.toLowerCase() === u.email);
+              skippedUsers.push({
+                name: u.name,
+                email: u.email,
+                user_code: matched?.user_code,
+                reason: 'Created concurrently by another import — skipped',
+              });
+            }
+          }
+
+          if (remainingToCreate.length > 0) {
+            const remUsers = remainingToCreate.map((u) => ({
+              id: u.id,
+              name: u.name,
+              email: u.email,
+              user_code: u.user_code,
+              password_hash: u.password_hash,
+              organization_id: managerOrgId,
+              cohort_id: u.cohort_id || null,
+              batch: u.batch || null,
+              subbatch: u.subbatch || null,
+              must_change_password: true,
+              is_active: true,
+            }));
+            const remRoles = remainingToCreate.map((u) => ({
+              user_id: u.id,
+              role_id: u.role_id,
+            }));
+
+            await prisma.$transaction(
+              async (tx) => {
+                await tx.user.createMany({ data: remUsers });
+                await tx.userRole.createMany({ data: remRoles });
+              },
+              { timeout: 30000, maxWait: 10000 }
+            );
+
+            for (const u of remainingToCreate) {
+              createdUsers.push({
+                name: u.name,
+                email: u.email,
+                user_code: u.user_code,
+                type: u.type,
+                batch: u.batch || null,
+                subbatch: u.subbatch || null,
+                temporary_password: u.temporary_password,
+              });
+            }
+          }
+        } else {
+          throw err;
+        }
+      }
+    }
+
+    return {
+      summary: {
+        total: rows.length,
+        created: createdUsers.length,
+        skipped: skippedUsers.length,
+        updated: updatedUsers.length,
+        failed: failedRows.length,
+      },
+      created_users: createdUsers,
+      updated_users: updatedUsers,
+      skipped_users: skippedUsers,
+      failed_rows: failedRows,
+    };
   }
 
   /**

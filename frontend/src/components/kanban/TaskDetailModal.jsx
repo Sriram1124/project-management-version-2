@@ -194,6 +194,19 @@ export default function TaskDetailModal({
     }
   };
 
+  const handleSprintChange = async (newSprintId) => {
+    try {
+      const targetId = !newSprintId || newSprintId === 'backlog' ? null : newSprintId;
+      const updated = await workItemsService.updateWorkItem(liveTask.id, { sprint_id: targetId });
+      setLiveTask(updated);
+      const sName = targetId ? projectSprints.find((s) => s.id === targetId)?.name || 'Sprint' : 'Backlog';
+      onToast?.(`Assigned to ${sName}`);
+      onTaskUpdated?.(updated);
+    } catch (err) {
+      setError(err.message || 'Failed to update sprint assignment');
+    }
+  };
+
   const handleToggleDone = async () => {
     const isCurrentlyDone = (status === 'COMPLETED' || liveTask?.status === 'COMPLETED');
     const nextStatus = isCurrentlyDone ? 'TODO' : 'COMPLETED';
@@ -497,8 +510,8 @@ export default function TaskDetailModal({
             </div>
           )}
 
-          {/* Status, Priority & Story Points Row */}
-          <div className={`grid gap-3 p-3.5 bg-slate-50/80 rounded-xl border border-slate-200/70 ${liveTask.type !== 'EPIC' && liveTask.type !== 'STORY' ? 'grid-cols-3' : 'grid-cols-2'}`}>
+          {/* Status, Priority, Sprint/Cycle & Story Points Row */}
+          <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 p-3.5 bg-slate-50/80 rounded-xl border border-slate-200/70">
             <div>
               <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1">
                 Status
@@ -507,7 +520,7 @@ export default function TaskDetailModal({
                 <select
                   value={status}
                   onChange={(e) => handleStatusChange(e.target.value)}
-                  className="w-full px-2.5 py-1.5 rounded-lg border border-slate-200 bg-white text-slate-800 font-semibold focus:outline-none focus:border-purple-600"
+                  className="w-full px-2.5 py-1.5 rounded-lg border border-slate-200 bg-white text-slate-800 font-semibold focus:outline-none focus:border-purple-600 text-xs"
                 >
                   {STATUS_OPTIONS.map((st) => (
                     <option key={st.id} value={st.id}>
@@ -530,7 +543,7 @@ export default function TaskDetailModal({
                 <select
                   value={priority}
                   onChange={(e) => handlePriorityChange(e.target.value)}
-                  className="w-full px-2.5 py-1.5 rounded-lg border border-slate-200 bg-white text-slate-800 font-semibold focus:outline-none focus:border-purple-600"
+                  className="w-full px-2.5 py-1.5 rounded-lg border border-slate-200 bg-white text-slate-800 font-semibold focus:outline-none focus:border-purple-600 text-xs"
                 >
                   {PRIORITY_OPTIONS.map((p) => (
                     <option key={p.id} value={p.id}>
@@ -544,6 +557,32 @@ export default function TaskDetailModal({
                 </div>
               )}
             </div>
+
+            {Boolean(liveTask.project_id) && liveTask.type !== 'EPIC' && (
+              <div>
+                <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1">
+                  Sprint / Cycle
+                </label>
+                {canEditFields ? (
+                  <select
+                    value={liveTask.sprint_id || 'backlog'}
+                    onChange={(e) => handleSprintChange(e.target.value)}
+                    className="w-full px-2.5 py-1.5 rounded-lg border border-slate-200 bg-white text-slate-800 font-semibold focus:outline-none focus:border-purple-600 text-xs"
+                  >
+                    <option value="backlog">Backlog (Unassigned)</option>
+                    {projectSprints.map((s) => (
+                      <option key={s.id} value={s.id} disabled={s.status === 'COMPLETED' && liveTask.sprint_id !== s.id}>
+                        {s.name} {s.status === 'COMPLETED' ? '(Completed)' : s.status === 'ACTIVE' ? '(Active)' : ''}
+                      </option>
+                    ))}
+                  </select>
+                ) : (
+                  <div className="px-2.5 py-1.5 rounded-lg border border-slate-200 bg-slate-100 text-slate-700 font-semibold text-xs truncate">
+                    {liveTask.sprint?.name || projectSprints.find((s) => s.id === liveTask.sprint_id)?.name || 'Backlog (Unassigned)'}
+                  </div>
+                )}
+              </div>
+            )}
 
             {liveTask.type !== 'EPIC' && liveTask.type !== 'STORY' && (
               <div>

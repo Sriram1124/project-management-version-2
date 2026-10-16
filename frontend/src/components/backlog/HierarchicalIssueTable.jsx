@@ -257,8 +257,8 @@ export function getEpicSprintSummary(epic, allWorkItems = [], sprints = []) {
       const unassignedWord = unassignedCount === 1 ? 'item' : 'items';
       return {
         type: 'PARTIAL_SPRINT',
-        label: `${s.name} · ${s.count} (${unassignedCount} unassigned)`,
-        badgeClass: 'bg-purple-50 text-purple-700 border-purple-200 font-medium',
+        label: `${s.name}: ${s.count} · ${unassignedCount} in Backlog`,
+        badgeClass: 'bg-amber-50 text-amber-800 border-amber-300 font-medium',
         title: `${s.name}: ${s.count} ${itemWord} · Backlog: ${unassignedCount} ${unassignedWord}`,
         details: [
           { name: s.name, count: s.count, isBacklog: false },
@@ -274,10 +274,13 @@ export function getEpicSprintSummary(epic, allWorkItems = [], sprints = []) {
     parts.push(`Backlog: ${unassignedCount} ${unassignedCount === 1 ? 'item' : 'items'}`);
   }
 
+  const multiSuffix = unassignedCount > 0 ? ` · ${unassignedCount} in Backlog` : '';
   return {
     type: 'MULTIPLE_SPRINTS',
-    label: `Multiple sprints (${distinctSprints.length})`,
-    badgeClass: 'bg-indigo-50 text-indigo-700 border-indigo-200 font-medium',
+    label: `Multiple sprints (${distinctSprints.length})${multiSuffix}`,
+    badgeClass: unassignedCount > 0
+      ? 'bg-amber-50 text-amber-800 border-amber-300 font-medium'
+      : 'bg-indigo-50 text-indigo-700 border-indigo-200 font-medium',
     title: `Descendants span multiple sprints:\n${parts.join('\n')}`,
     details: [
       ...distinctSprints.map((s) => ({ name: s.name, count: s.count, isBacklog: false })),
@@ -468,7 +471,7 @@ function HierarchicalRow({
         onDragStart={(e) => canDrag && onDragStart?.(e, item.id)}
         onDragEnd={onDragEnd}
         onClick={() => onSelectIssue?.(item)}
-        className={`grid grid-cols-[minmax(260px,2.5fr)_90px_120px_110px_125px_60px_85px_95px_75px] items-center gap-2 px-3 py-2 text-xs transition-colors cursor-pointer select-none ${
+        className={`grid grid-cols-[minmax(260px,2.5fr)_90px_120px_110px_minmax(140px,1.3fr)_60px_85px_95px_75px] items-center gap-2 px-3 py-2 text-xs transition-colors cursor-pointer select-none ${
           isSelected
             ? 'bg-purple-50/90 border-l-2 border-l-purple-600'
             : isContextualParent && !isFlatView
@@ -715,7 +718,7 @@ function HierarchicalRow({
                     setMenuOpen(menuOpen === 'epicSprint' ? null : 'epicSprint');
                   }
                 }}
-                className={`px-1.5 py-0.5 rounded text-[11px] border truncate max-w-[120px] block select-none ${
+                className={`px-1.5 py-0.5 rounded text-[11px] border truncate max-w-[200px] block select-none ${
                   epicSprintSummary?.details?.length > 1 ? 'cursor-pointer hover:ring-1 hover:ring-purple-300' : 'cursor-default'
                 } ${epicSprintSummary?.badgeClass || 'bg-slate-50 text-slate-500 border-slate-200'}`}
                 title={epicSprintSummary?.title || 'Sprint summary'}
@@ -1205,7 +1208,7 @@ export default function HierarchicalIssueTable({
   return (
     <div className="rounded-md border border-slate-200 bg-white overflow-hidden shadow-xs">
       {/* Table Header: Precise columns matching Jira */}
-      <div className="grid grid-cols-[minmax(260px,2.5fr)_90px_120px_110px_125px_60px_85px_95px_75px] items-center gap-2 px-3 py-2 bg-slate-50 border-b border-slate-200 text-[11px] font-bold text-slate-500 uppercase tracking-wider select-none">
+      <div className="grid grid-cols-[minmax(260px,2.5fr)_90px_120px_110px_minmax(140px,1.3fr)_60px_85px_95px_75px] items-center gap-2 px-3 py-2 bg-slate-50 border-b border-slate-200 text-[11px] font-bold text-slate-500 uppercase tracking-wider select-none">
         <div>Key &amp; Summary</div>
         <div>Priority</div>
         <div>Assignee</div>

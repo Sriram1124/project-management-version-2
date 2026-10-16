@@ -150,6 +150,11 @@ export default function ProjectBacklogTab({ projectId, project = null, isKanbanP
     return eligibleLeaves.reduce((acc, curr) => acc + (Number(curr.story_points) || 0), 0);
   }, [workItems]);
 
+  // Total unassigned items in Backlog / Continuous Flow
+  const unassignedCount = useMemo(() => {
+    return workItems.filter((w) => w.type !== 'EPIC' && !w.sprint_id).length;
+  }, [workItems]);
+
   // Toggle single row expand
   const handleToggleExpand = useCallback((id) => {
     setExpandedIds((prev) => {
@@ -560,6 +565,7 @@ export default function ProjectBacklogTab({ projectId, project = null, isKanbanP
         issuesCount={actionableWorkItems.length}
         epicsCount={epics.length}
         totalSP={totalSP}
+        unassignedCount={unassignedCount}
         searchQuery={searchQuery}
         onSearchChange={setSearchQuery}
         selectedAssignee={selectedAssignee}

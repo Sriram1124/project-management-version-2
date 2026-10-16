@@ -164,7 +164,7 @@ export class UserController {
 
   /**
    * POST /api/users/bulk
-   * Confirms bulk creation of users in an all-or-nothing transaction
+   * Confirms bulk creation/update of users in a safe, idempotent transaction
    */
   static async createBulk(req: Request, res: Response): Promise<void> {
     try {
@@ -177,26 +177,23 @@ export class UserController {
       }
 
       let rowsToCreate = req.body?.rows;
+      const updateExisting = Boolean(req.body?.update_existing);
 
       // Also support direct CSV upload and create
       if (!rowsToCreate && req.file) {
         const csvText = req.file.buffer.toString('utf-8');
         const validation = await UserService.validateBulkCsv(csvText, managerOrgId);
-        if (!validation.isValid) {
-          res.status(400).json({
-            error: 'Bulk import could not be completed.',
-            reason: 'CSV validation failed. Please resolve errors before creating users.',
-            errors: validation.errors,
-          });
-          return;
-        }
-        rowsToCreate = validation.validRows;
+        rowsToCreate = [
+          ...validation.toCreateRows,
+          ...(updateExisting ? validation.toUpdateRows : []),
+          ...validation.toSkipRows,
+        ];
       }
 
       if (!rowsToCreate || !Array.isArray(rowsToCreate) || rowsToCreate.length === 0) {
         res.status(400).json({
           error: 'Bulk import could not be completed.',
-          reason: 'No valid candidate rows confirmed for bulk creation.',
+          reason: 'No candidate rows provided for bulk import.',
         });
         return;
       }
@@ -212,23 +209,16 @@ export class UserController {
         }
       }
 
-      const result = await UserService.createUsersBulk(rowsToCreate, managerOrgId);
-      res.status(201).json(result);
+      const result = await UserService.createUsersBulk(rowsToCreate, managerOrgId, updateExisting);
+      const statusCode = result.summary.created > 0 ? 201 : 200;
+      res.status(statusCode).json(result);
     } catch (error: any) {
       console.error('createBulk error occurred:', error);
-      const statusCode =
-        error.statusCode ||
-        (error.message?.includes('already exist') ||
-        error.message?.includes('unavailable') ||
-        error.message?.includes('conflict')
-          ? 409
-          : 500);
+      const statusCode = error.statusCode || 500;
 
       res.status(statusCode).json({
         error: 'Bulk import could not be completed.',
-        reason:
-          error.message ||
-          'One or more users already exist or could not be assigned a unique User ID. Please review the validation results and try again.',
+        reason: error.message || 'An error occurred during bulk import.',
         conflicts: error.conflicts || [],
       });
     }

@@ -393,6 +393,9 @@ export default function ManagerApp() {
                   onPostForm={handlePostChannelForm}
                   onSubmitResponse={handleSubmitChannelFormResponse}
                   onToast={triggerToast}
+                  selectedCohort={cohorts.find((c) => c.id === selectedCohortId) || cohorts[0]}
+                  selectedCohortId={selectedCohortId}
+                  cohorts={cohorts}
                 />
               )}
             </>

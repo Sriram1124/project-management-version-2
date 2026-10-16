@@ -226,4 +226,37 @@ export class FormController {
       FormController.handleError(res, err);
     }
   }
+
+  static async getOverdueSummary(req: Request, res: Response): Promise<void> {
+    try {
+      const fullUser = (req as any).fullUser || {};
+      const user = (req as any).user || {};
+      const orgId = fullUser.organization_id || user.organization_id;
+      const cohortId = (req.query.cohort_id as string) || (req.query.cohortId as string) || undefined;
+      const formId = (req.query.form_id as string) || (req.query.formId as string) || undefined;
+
+      const data = await FormService.getOverdueData(orgId, cohortId, formId);
+      res.status(200).json(data);
+    } catch (err: any) {
+      FormController.handleError(res, err);
+    }
+  }
+
+  static async exportOverdueReport(req: Request, res: Response): Promise<void> {
+    try {
+      const fullUser = (req as any).fullUser || {};
+      const user = (req as any).user || {};
+      const orgId = fullUser.organization_id || user.organization_id;
+      const cohortId = (req.query.cohort_id as string) || (req.query.cohortId as string) || undefined;
+      const formId = (req.query.form_id as string) || (req.query.formId as string) || undefined;
+
+      const result = await FormService.generateOverdueCsv(orgId, cohortId, formId);
+      res.setHeader('Content-Type', 'text/csv; charset=utf-8');
+      res.setHeader('Content-Disposition', `attachment; filename="${result.filename}"`);
+      res.status(200).send(result.csv);
+    } catch (err: any) {
+      FormController.handleError(res, err);
+    }
+  }
 }
+

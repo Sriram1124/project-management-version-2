@@ -349,10 +349,14 @@ export default function ProjectTaskCharts({ projectId = null, members = [], read
         inReview: analyticsData.in_review || 0,
         todo: analyticsData.todo || 0,
         blocked: analyticsData.blocked || 0,
-        pastDue: analyticsData.past_due || 0,
-        completedOnTime: analyticsData.completed_on_time || 0,
+        pastDue: analyticsData.past_due ?? analyticsData.overdue_items_count ?? 0,
+        overdueRate: analyticsData.overdue_rate || 0,
+        scheduledItemsCount: analyticsData.scheduled_items_count || 0,
+        completedOnTime: analyticsData.completed_on_time_count ?? analyticsData.completed_on_time ?? 0,
+        completedWithDueDateCount: analyticsData.completed_with_due_date_count ?? 0,
+        completedOnTimeRate: analyticsData.completed_on_time_rate,
         completionRate: analyticsData.completion_rate || 0,
-        onTimeRate: analyticsData.on_time_rate || 0,
+        onTimeRate: analyticsData.completed_on_time_rate ?? analyticsData.on_time_rate ?? null,
         statusCounts: analyticsData.status_counts || {},
         priorityCounts: analyticsData.priority_counts || {},
         typeCounts: analyticsData.type_counts || {},
@@ -391,22 +395,38 @@ export default function ProjectTaskCharts({ projectId = null, members = [], read
     const blocked = items.filter(w => w.status === 'BLOCKED').length;
     const todo = items.filter(w => w.status === 'TODO').length;
     
+    const scheduledItems = items.filter(w => Boolean(w.due_date && !isNaN(new Date(w.due_date).getTime())));
     const pastDue = items.filter(w => {
       if (w.status === 'COMPLETED') return false;
       if (!w.due_date) return false;
-      return new Date(w.due_date) < new Date();
+      const d = new Date(w.due_date);
+      if (isNaN(d.getTime())) return false;
+      if (d.getUTCHours() === 0 && d.getUTCMinutes() === 0 && d.getUTCSeconds() === 0) d.setUTCHours(23, 59, 59, 999);
+      return new Date() > d;
     }).length;
 
-    const completedOnTime = items.filter(w => {
+    const eligibleCompletedItems = items.filter(w => {
       if (w.status !== 'COMPLETED') return false;
-      if (!w.due_date) return true;
-      return new Date(w.completed_at || w.updated_at || w.due_date) <= new Date(w.due_date);
+      if (!w.due_date) return false;
+      const d = new Date(w.due_date);
+      if (isNaN(d.getTime())) return false;
+      const compDate = w.completed_at ? new Date(w.completed_at) : (w.updated_at ? new Date(w.updated_at) : null);
+      return compDate && !isNaN(compDate.getTime());
+    });
+    const completedWithDueDateCount = eligibleCompletedItems.length;
+
+    const completedOnTime = eligibleCompletedItems.filter(w => {
+      const d = new Date(w.due_date);
+      if (d.getUTCHours() === 0 && d.getUTCMinutes() === 0 && d.getUTCSeconds() === 0) d.setUTCHours(23, 59, 59, 999);
+      const compDate = w.completed_at ? new Date(w.completed_at) : new Date(w.updated_at);
+      return compDate <= d;
     }).length;
 
     const completionRate = total > 0 ? Math.round((completed / total) * 100) : 0;
-    const onTimeRate = completed > 0 
-      ? Math.round((completedOnTime / completed) * 100) 
-      : (total > 0 && pastDue === 0 ? 100 : 0);
+    const completedOnTimeRate = completedWithDueDateCount > 0 
+      ? Math.round((completedOnTime / completedWithDueDateCount) * 100) 
+      : null;
+    const onTimeRate = completedOnTimeRate;
 
     return {
       total,
@@ -416,7 +436,11 @@ export default function ProjectTaskCharts({ projectId = null, members = [], read
       todo,
       blocked,
       pastDue,
+      scheduledItemsCount: scheduledItems.length,
+      overdueRate: scheduledItems.length > 0 ? Math.round((pastDue / scheduledItems.length) * 100) : 0,
       completedOnTime,
+      completedWithDueDateCount,
+      completedOnTimeRate,
       onTimeRate,
       completionRate,
       statusCounts: { COMPLETED: completed, IN_PROGRESS: inProgress, IN_REVIEW: inReview, TODO: todo, BLOCKED: blocked },
@@ -722,31 +746,43 @@ export default function ProjectTaskCharts({ projectId = null, members = [], read
                   </div>
                 </div>
 
-                {/* 3. On-Time Delivery */}
+                {/* 3. Completed On-Time Rate */}
                 <div className="p-3.5 rounded-xl bg-slate-50/70 border border-slate-100 flex flex-col justify-between">
                   <div className="flex items-center justify-between">
-                    <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">On-Time Delivery</span>
+                    <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">Completed On-Time Rate</span>
                     <div className="w-7 h-7 rounded-lg bg-blue-100/80 text-blue-600 flex items-center justify-center">
                       <CalendarCheck className="w-3.5 h-3.5" />
                     </div>
                   </div>
-                  <div className="text-2xl font-bold text-blue-600 mt-2">{analytics.onTimeRate}%</div>
+                  <div className="text-2xl font-bold text-blue-600 mt-2">
+                    {analytics.completedOnTimeRate !== null && analytics.completedOnTimeRate !== undefined
+                      ? `${analytics.completedOnTimeRate}%`
+                      : (analytics.onTimeRate !== null && analytics.onTimeRate !== undefined ? `${analytics.onTimeRate}%` : 'N/A')}
+                  </div>
                   <div className="text-[11px] text-slate-500 mt-0.5 truncate">
-                    {analytics.completedOnTime} completed on time
+                    {analytics.completedWithDueDateCount > 0
+                      ? `${analytics.completedOnTime} of ${analytics.completedWithDueDateCount} delivered on time`
+                      : 'No completed items with due dates'}
                   </div>
                 </div>
 
-                {/* 4. Past Due */}
+                {/* 4. Overdue Items */}
                 <div className="p-3.5 rounded-xl bg-slate-50/70 border border-slate-100 flex flex-col justify-between">
                   <div className="flex items-center justify-between">
-                    <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">Past Due</span>
+                    <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">Overdue Items</span>
                     <div className="w-7 h-7 rounded-lg bg-rose-100/80 text-rose-600 flex items-center justify-center">
                       <AlertTriangle className="w-3.5 h-3.5" />
                     </div>
                   </div>
-                  <div className="text-2xl font-bold text-rose-600 mt-2">{analytics.pastDue}</div>
+                  <div className={`text-2xl font-bold mt-2 ${analytics.pastDue > 0 ? 'text-rose-600' : 'text-slate-800'}`}>
+                    {analytics.pastDue}
+                  </div>
                   <div className="text-[11px] text-slate-500 mt-0.5 truncate">
-                    {analytics.pastDue > 0 ? `${analytics.pastDue} overdue deadlines` : 'All tasks on schedule'}
+                    {analytics.pastDue > 0
+                      ? `${analytics.pastDue} overdue of ${analytics.scheduledItemsCount || 0} with deadlines (${analytics.overdueRate || 0}%)`
+                      : (analytics.scheduledItemsCount > 0
+                          ? `0 overdue of ${analytics.scheduledItemsCount} with deadlines (0%)`
+                          : '0 overdue · No items with deadlines')}
                   </div>
                 </div>
               </div>

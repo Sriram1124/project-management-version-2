@@ -57,9 +57,14 @@ export const projectsService = {
     });
   },
 
-  async addMember(id, userId) {
-    const res = await api.post(`/projects/${id}/members`, { userId });
-    return res.member;
+  async addMember(id, userId, role) {
+    const res = await api.post(`/projects/${id}/members`, { userId, role });
+    return res.member || res;
+  },
+
+  async addMembers(id, userIds, role) {
+    const res = await api.post(`/projects/${id}/members`, { userIds, role });
+    return res.members || (res.member ? [res.member] : []);
   },
 
   async removeMember(id, userId) {
@@ -123,5 +128,20 @@ export const projectsService = {
     const qs = query.toString() ? `?${query.toString()}` : '';
     const res = await api.get(`/users${qs}`);
     return res.users || [];
+  },
+
+  async getAvailablePermissions() {
+    const res = await api.get('/projects/permissions/registry');
+    return res.data || res.permissions || res;
+  },
+
+  async getProjectRoles(id) {
+    const res = await api.get(`/projects/${id}/roles`);
+    return res.roles || res.data || [];
+  },
+
+  async createCustomRole(id, data) {
+    const res = await api.post(`/projects/${id}/roles`, data);
+    return res.role || res.data || res;
   },
 };

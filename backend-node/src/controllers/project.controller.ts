@@ -175,9 +175,42 @@ export class ProjectController {
     try {
       const user = (req as any).fullUser;
       const { id } = req.params;
-      const userId = req.body.userId || req.body.user_id || req.body.id;
       const role = req.body.role || req.body.project_role || req.body.projectRole;
+      const userIds = Array.isArray(req.body.userIds) 
+        ? req.body.userIds 
+        : (Array.isArray(req.body.memberIds) ? req.body.memberIds : null);
 
+      if (userIds && userIds.length > 0) {
+        const addedMembers: any[] = [];
+        for (const uid of userIds) {
+          try {
+            const member = await ProjectService.addProjectMember(id, uid, user, role);
+            addedMembers.push({
+              ...member,
+              member,
+              id: member.user_id,
+              project_id: member.project_id,
+              user_id: member.user_id,
+              userId: member.user_id,
+              name: member.user?.name,
+              email: member.user?.email,
+              role: member.role || member.project_role,
+              project_role: member.project_role || member.role,
+              user: member.user,
+            });
+          } catch (e: any) {
+            console.warn(`Could not add member ${uid} to project ${id}:`, e?.message);
+          }
+        }
+        res.status(201).json({
+          members: addedMembers,
+          count: addedMembers.length,
+          success: true,
+        });
+        return;
+      }
+
+      const userId = req.body.userId || req.body.user_id || req.body.id;
       const member = await ProjectService.addProjectMember(id, userId, user, role);
       res.status(201).json({
         ...member,
@@ -186,7 +219,10 @@ export class ProjectController {
         project_id: member.project_id,
         user_id: member.user_id,
         userId: member.user_id,
+        name: member.user?.name,
+        email: member.user?.email,
         role: member.role || member.project_role,
+        project_role: member.project_role || member.role,
         user: member.user,
       });
     } catch (error) {
@@ -237,6 +273,38 @@ export class ProjectController {
         data: members,
         roles: normalizedAssignments,
       });
+    } catch (error) {
+      ProjectController.handleError(res, error);
+    }
+  }
+
+  static async getAvailablePermissions(req: Request, res: Response): Promise<void> {
+    try {
+      const user = (req as any).fullUser;
+      const permissions = await ProjectService.getAvailablePermissions(user);
+      res.status(200).json({ permissions, data: permissions });
+    } catch (error) {
+      ProjectController.handleError(res, error);
+    }
+  }
+
+  static async getProjectRoles(req: Request, res: Response): Promise<void> {
+    try {
+      const user = (req as any).fullUser;
+      const { id } = req.params;
+      const roles = await ProjectService.getProjectRoles(id, user);
+      res.status(200).json({ roles, data: roles });
+    } catch (error) {
+      ProjectController.handleError(res, error);
+    }
+  }
+
+  static async createCustomRole(req: Request, res: Response): Promise<void> {
+    try {
+      const user = (req as any).fullUser;
+      const { id } = req.params;
+      const role = await ProjectService.createCustomRole(id, req.body, user);
+      res.status(201).json({ role, data: role, message: 'Custom role created successfully' });
     } catch (error) {
       ProjectController.handleError(res, error);
     }

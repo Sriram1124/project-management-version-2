@@ -47,7 +47,9 @@ export class ProjectService {
    * Helper to check if user has admin, manager or super admin role
    */
   private static isManagerOrAdmin(user: any): boolean {
-    if (user.role === 'ADMIN' || user.role === 'MANAGER' || user.role === 'SUPER_ADMIN') return true;
+    if (!user) return false;
+    const roleStr = typeof user.role === 'string' ? user.role : user.role?.name;
+    if (roleStr === 'ADMIN' || roleStr === 'MANAGER' || roleStr === 'SUPER_ADMIN') return true;
     if (Array.isArray(user.roles)) {
       return user.roles.some(
         (ur: any) =>
@@ -58,6 +60,19 @@ export class ProjectService {
           ur.name === 'MANAGER' ||
           ur.name === 'SUPER_ADMIN'
       );
+    }
+    return false;
+  }
+
+  /**
+   * Helper to check if user has super admin role
+   */
+  private static isSuperAdmin(user: any): boolean {
+    if (!user) return false;
+    const roleStr = typeof user.role === 'string' ? user.role : user.role?.name;
+    if (roleStr === 'SUPER_ADMIN') return true;
+    if (Array.isArray(user.roles)) {
+      return user.roles.some((ur: any) => ur.role?.name === 'SUPER_ADMIN' || ur.name === 'SUPER_ADMIN');
     }
     return false;
   }
@@ -568,10 +583,19 @@ export class ProjectService {
             email: true,
           },
         },
+        role: {
+          include: {
+            permissions: {
+              include: {
+                permission: true,
+              },
+            },
+          },
+        },
       },
     });
 
-    const result = members.map((m) => ({
+    const result = members.map((m: any) => ({
       user_id: m.user.id,
       userId: m.user.id,
       id: m.user.id,
@@ -579,6 +603,16 @@ export class ProjectService {
       email: m.user.email,
       project_role: m.project_role || null,
       role: m.project_role || null,
+      role_id: m.role_id || m.role?.id || null,
+      role_details: m.role
+        ? {
+            id: m.role.id,
+            name: m.role.name,
+            description: m.role.description,
+            is_custom: m.role.is_custom,
+            permissions: m.role.permissions?.map((rp: any) => rp.permission.name) || [],
+          }
+        : null,
       user: m.user,
     }));
 
@@ -607,11 +641,398 @@ export class ProjectService {
   ] as const;
 
   /**
+   * Permissions metadata registry
+   */
+  static readonly PERMISSION_METADATA: Record<
+    string,
+    { label: string; group: string; description: string; adminOnly?: boolean }
+  > = {
+    // Projects
+    PROJECT_READ: { label: 'View Projects', group: 'Projects', description: 'View project details, members, documents, and sprints' },
+    PROJECT_CREATE: { label: 'Create Projects', group: 'Projects', description: 'Create new projects in the organization', adminOnly: true },
+    PROJECT_UPDATE: { label: 'Manage Projects', group: 'Projects', description: 'Edit project details, methodology, members, and settings' },
+    PROJECT_DELETE: { label: 'Delete / Archive Projects', group: 'Projects', description: 'Archive or permanently delete projects', adminOnly: true },
+
+    // Tasks & Work Items
+    TASK_READ: { label: 'View Tasks', group: 'Tasks & Sprints', description: 'View work items, backlog, and sprint boards' },
+    TASK_CREATE: { label: 'Create Tasks', group: 'Tasks & Sprints', description: 'Create epics, stories, tasks, bugs, and subtasks' },
+    TASK_UPDATE: { label: 'Edit Tasks', group: 'Tasks & Sprints', description: 'Update task status, priority, story points, and details' },
+    TASK_DELETE: { label: 'Delete Tasks', group: 'Tasks & Sprints', description: 'Remove work items from projects and backlogs' },
+    TASK_ASSIGN: { label: 'Assign Tasks', group: 'Tasks & Sprints', description: 'Assign tasks to team members' },
+
+    // Documents
+    DOCUMENT_UPLOAD: { label: 'Upload Documents', group: 'Documents', description: 'Upload and attach project specifications and files' },
+
+    // Forms
+    FORM_READ: { label: 'View Forms', group: 'Forms & Surveys', description: 'Access organization and project feedback forms' },
+    FORM_CREATE: { label: 'Create Forms', group: 'Forms & Surveys', description: 'Design new forms and evaluation templates', adminOnly: true },
+    FORM_UPDATE: { label: 'Edit Forms', group: 'Forms & Surveys', description: 'Modify existing forms and field requirements', adminOnly: true },
+    FORM_DELETE: { label: 'Delete Forms', group: 'Forms & Surveys', description: 'Remove forms and question schemas', adminOnly: true },
+    FORM_SUBMIT: { label: 'Submit Forms', group: 'Forms & Surveys', description: 'Submit responses to active project forms' },
+
+    // Attendance
+    ATTENDANCE_READ: { label: 'View Attendance', group: 'Attendance & Tracking', description: 'View work session logs and timesheet entries' },
+    ATTENDANCE_CREATE: { label: 'Log Attendance', group: 'Attendance & Tracking', description: 'Start and log work sessions and time entries' },
+    ATTENDANCE_UPDATE: { label: 'Manage Attendance', group: 'Attendance & Tracking', description: 'Review, modify, or approve work session timesheets' },
+
+    // Evaluations
+    EVALUATION_READ: { label: 'View Evaluations', group: 'Performance', description: 'Read intern and team performance evaluations' },
+    EVALUATION_CREATE: { label: 'Conduct Evaluations', group: 'Performance', description: 'Submit performance reviews and scorecards' },
+    EVALUATION_UPDATE: { label: 'Modify Evaluations', group: 'Performance', description: 'Update submitted evaluations and performance metrics' },
+
+    // Notifications
+    NOTIFICATION_READ: { label: 'Read Notifications', group: 'Notifications', description: 'Receive system and project alerts' },
+    NOTIFICATION_CREATE: { label: 'Send Notifications', group: 'Notifications', description: 'Broadcast notifications to project members' },
+
+    // User Management
+    USER_READ: { label: 'View Users', group: 'User Management', description: 'View member directory and contact info' },
+    USER_CREATE: { label: 'Provision Users', group: 'User Management', description: 'Create individual organization accounts', adminOnly: true },
+    USER_BULK_CREATE: { label: 'Bulk Import Users', group: 'User Management', description: 'Upload CSV rosters to provision members', adminOnly: true },
+    USER_UPDATE: { label: 'Edit Users', group: 'User Management', description: 'Modify user profiles, cohorts, or batches', adminOnly: true },
+    USER_DELETE: { label: 'Deactivate Users', group: 'User Management', description: 'Soft-deactivate members in the organization', adminOnly: true },
+
+    // Organization
+    ORGANIZATION_READ: { label: 'View Organization', group: 'Organization', description: 'View organization profile and policies' },
+    ORGANIZATION_CREATE: { label: 'Create Organization', group: 'Organization', description: 'Provision new tenant organizations', adminOnly: true },
+    ORGANIZATION_UPDATE: { label: 'Edit Organization', group: 'Organization', description: 'Update organization settings and work policies', adminOnly: true },
+    ORGANIZATION_DELETE: { label: 'Delete Organization', group: 'Organization', description: 'Delete organization and purge tenant data', adminOnly: true },
+  };
+
+  /**
+   * Get all registered system permissions grouped logically
+   */
+  static async getAvailablePermissions(user: any) {
+    const isSuper = this.isSuperAdmin(user);
+    const dbPermissions = await prisma.permission.findMany({
+      orderBy: { name: 'asc' },
+    });
+
+    const permissions = dbPermissions.map((p) => {
+      const meta = this.PERMISSION_METADATA[p.name] || {
+        label: p.name.replace(/_/g, ' '),
+        group: 'Other',
+        description: p.description || 'System permission',
+      };
+      return {
+        id: p.id,
+        name: p.name,
+        label: meta.label,
+        group: meta.group,
+        category: meta.group,
+        description: meta.description,
+        admin_only: Boolean(meta.adminOnly),
+        assignable: isSuper || !meta.adminOnly,
+      };
+    });
+
+    // Grouping
+    const groups: Record<string, typeof permissions> = {};
+    for (const p of permissions) {
+      if (!groups[p.group]) {
+        groups[p.group] = [];
+      }
+      groups[p.group].push(p);
+    }
+
+    return {
+      permissions,
+      groups,
+      categories: Object.keys(groups),
+      totalCount: permissions.length,
+    };
+  }
+
+  /**
+   * Ensure built-in project roles exist in Role table with default permissions
+   */
+  static async ensureBuiltInProjectRoles() {
+    const BUILTIN_ROLES: Record<string, { label: string; perms: string[] }> = {
+      DEVELOPER: {
+        label: 'Developer',
+        perms: ['PROJECT_READ', 'TASK_READ', 'TASK_UPDATE', 'FORM_READ', 'FORM_SUBMIT', 'DOCUMENT_UPLOAD'],
+      },
+      QA_TESTER: {
+        label: 'QA Tester',
+        perms: ['PROJECT_READ', 'TASK_READ', 'TASK_UPDATE', 'FORM_READ', 'DOCUMENT_UPLOAD'],
+      },
+      TECH_LEAD: {
+        label: 'Tech Lead',
+        perms: ['PROJECT_READ', 'PROJECT_UPDATE', 'TASK_READ', 'TASK_CREATE', 'TASK_UPDATE', 'TASK_ASSIGN', 'FORM_READ', 'DOCUMENT_UPLOAD'],
+      },
+      UI_UX_DESIGNER: {
+        label: 'UI/UX Designer',
+        perms: ['PROJECT_READ', 'TASK_READ', 'TASK_UPDATE', 'DOCUMENT_UPLOAD'],
+      },
+      DEVOPS_ENGINEER: {
+        label: 'DevOps Engineer',
+        perms: ['PROJECT_READ', 'TASK_READ', 'TASK_UPDATE', 'DOCUMENT_UPLOAD'],
+      },
+      BUSINESS_ANALYST: {
+        label: 'Business Analyst',
+        perms: ['PROJECT_READ', 'TASK_READ', 'FORM_READ', 'DOCUMENT_UPLOAD'],
+      },
+      PROJECT_COORDINATOR: {
+        label: 'Project Coordinator',
+        perms: ['PROJECT_READ', 'TASK_READ', 'TASK_CREATE', 'TASK_UPDATE', 'TASK_ASSIGN', 'FORM_READ', 'DOCUMENT_UPLOAD'],
+      },
+    };
+
+    for (const [roleName, config] of Object.entries(BUILTIN_ROLES)) {
+      const existing = await prisma.role.findFirst({
+        where: { name: roleName },
+      });
+      if (!existing) {
+        try {
+          const created = await prisma.role.create({
+            data: {
+              name: roleName,
+              description: config.label,
+              is_custom: false,
+            },
+          });
+          for (const permName of config.perms) {
+            const p = await prisma.permission.findFirst({ where: { name: permName } });
+            if (p) {
+              await prisma.rolePermission.create({
+                data: { role_id: created.id, permission_id: p.id },
+              }).catch(() => {});
+            }
+          }
+        } catch (e) {
+          // Ignore concurrent seed collision
+        }
+      }
+    }
+  }
+
+  /**
+   * Get all roles available for a specific project
+   * Returns built-in roles + custom roles scoped to this project or organization
+   */
+  static async getProjectRoles(projectId: string, user: any) {
+    await this.ensureBuiltInProjectRoles();
+
+    const project = await prisma.project.findUnique({
+      where: { id: projectId },
+      select: { id: true, organization_id: true },
+    });
+    if (!project) {
+      throw new Error('Project not found');
+    }
+
+    const roles = await prisma.role.findMany({
+      where: {
+        OR: [
+          { is_custom: false, organization_id: null }, // Global built-in roles
+          { organization_id: project.organization_id, project_id: projectId }, // Project-specific custom roles
+          { organization_id: project.organization_id, project_id: null }, // Org-level custom roles
+        ],
+      },
+      include: {
+        permissions: {
+          include: {
+            permission: true,
+          },
+        },
+      },
+      orderBy: [
+        { is_custom: 'asc' },
+        { name: 'asc' },
+      ],
+    });
+
+    const BUILTIN_LABELS: Record<string, string> = {
+      DEVELOPER: 'Developer',
+      QA_TESTER: 'QA Tester',
+      TECH_LEAD: 'Tech Lead',
+      UI_UX_DESIGNER: 'UI/UX Designer',
+      DEVOPS_ENGINEER: 'DevOps Engineer',
+      BUSINESS_ANALYST: 'Business Analyst',
+      PROJECT_COORDINATOR: 'Project Coordinator',
+      MANAGER: 'Manager',
+      EMPLOYEE: 'Employee',
+      INTERN: 'Intern',
+      ADMIN: 'Admin',
+      SUPER_ADMIN: 'Super Admin',
+    };
+
+    return roles.map((r) => ({
+      id: r.id,
+      name: r.name,
+      label: BUILTIN_LABELS[r.name] || r.description || r.name,
+      description: r.description || (r.is_custom ? 'Custom project role' : 'Standard built-in role'),
+      is_custom: Boolean(r.is_custom),
+      organization_id: r.organization_id,
+      project_id: r.project_id,
+      permissions: r.permissions.map((rp) => rp.permission.name),
+      permission_count: r.permissions.length,
+      created_at: r.created_at,
+    }));
+  }
+
+  /**
+   * Create a custom role scoped to a project and its organization
+   */
+  static async createCustomRole(
+    projectId: string,
+    data: { name: string; description?: string; permissions: string[] },
+    user: any
+  ) {
+    if (!projectId || projectId === 'undefined') {
+      throw new Error('Project not found');
+    }
+
+    // 1. Authorization: Only managers, admins, super admins, or project owners/leads can create custom roles
+    const isSuper = this.isSuperAdmin(user);
+    const isManagerOrAdmin = this.isManagerOrAdmin(user);
+    const isProjectOwner = user.id && (await prisma.project.findFirst({ where: { id: projectId, owner_id: user.id } }));
+    if (!isManagerOrAdmin && !isProjectOwner && !isSuper) {
+      const err: any = new Error('Unauthorized: Only managers, administrators, or project owners can create custom roles');
+      err.statusCode = 403;
+      throw err;
+    }
+
+    // 2. Project check & tenant isolation
+    const project = await prisma.project.findUnique({ where: { id: projectId } });
+    if (!project) {
+      const err: any = new Error('Project not found');
+      err.statusCode = 404;
+      throw err;
+    }
+
+    if (!isSuper && user.organization_id && project.organization_id && user.organization_id !== project.organization_id) {
+      const err: any = new Error('Forbidden: You do not have access to this project');
+      err.statusCode = 403;
+      throw err;
+    }
+
+    // 3. Validation: Role Name
+    const rawName = data?.name;
+    if (!rawName || typeof rawName !== 'string' || !rawName.trim()) {
+      const err: any = new Error('Role name is required');
+      err.statusCode = 400;
+      throw err;
+    }
+
+    const trimmedName = rawName.trim();
+    if (trimmedName.length < 2) {
+      const err: any = new Error('Role name must be at least 2 characters long');
+      err.statusCode = 400;
+      throw err;
+    }
+    if (trimmedName.length > 50) {
+      const err: any = new Error('Role name must not exceed 50 characters');
+      err.statusCode = 400;
+      throw err;
+    }
+
+    // Check duplicate name within scope (case-insensitive)
+    const existingDuplicate = await prisma.role.findFirst({
+      where: {
+        name: { equals: trimmedName, mode: 'insensitive' },
+        OR: [
+          { organization_id: null, project_id: null }, // Built-in collision
+          { organization_id: project.organization_id, project_id: projectId }, // Project collision
+          { organization_id: project.organization_id, project_id: null }, // Org collision
+        ],
+      },
+    });
+
+    if (existingDuplicate) {
+      const err: any = new Error(`A role with the name "${trimmedName}" already exists in this scope.`);
+      err.statusCode = 409;
+      throw err;
+    }
+
+    // 4. Validation: Permissions
+    const requestedPerms = data?.permissions;
+    if (!Array.isArray(requestedPerms) || requestedPerms.length === 0) {
+      const err: any = new Error('At least one permission must be selected for the custom role');
+      err.statusCode = 400;
+      throw err;
+    }
+
+    const cleanedPerms = requestedPerms
+      .filter((p): p is string => typeof p === 'string' && Boolean(p.trim()))
+      .map((p) => p.trim());
+
+    if (cleanedPerms.length === 0) {
+      const err: any = new Error('At least one valid permission must be selected');
+      err.statusCode = 400;
+      throw err;
+    }
+
+    // Fetch valid permissions from database registry
+    const dbPermissions = await prisma.permission.findMany({
+      where: { name: { in: cleanedPerms } },
+    });
+
+    if (dbPermissions.length !== cleanedPerms.length) {
+      const validSet = new Set(dbPermissions.map((p) => p.name));
+      const invalid = cleanedPerms.filter((p) => !validSet.has(p));
+      const err: any = new Error(`Invalid permissions: ${invalid.join(', ')}. All permissions must exist in the permissions registry.`);
+      err.statusCode = 400;
+      throw err;
+    }
+
+    // Prevent privilege escalation: Non-super-admins cannot grant admin-only destructive permissions
+    if (!isSuper) {
+      for (const p of dbPermissions) {
+        const meta = this.PERMISSION_METADATA[p.name];
+        if (meta?.adminOnly) {
+          const err: any = new Error(
+            `Unauthorized permission: You do not have authorization to grant administrative permission "${p.name}".`
+          );
+          err.statusCode = 403;
+          throw err;
+        }
+      }
+    }
+
+    // 5. Transactional Creation
+    const trimmedDesc = typeof data.description === 'string' && data.description.trim() ? data.description.trim() : null;
+
+    const createdRole = await prisma.$transaction(async (tx) => {
+      const role = await tx.role.create({
+        data: {
+          name: trimmedName,
+          description: trimmedDesc,
+          organization_id: project.organization_id,
+          project_id: projectId,
+          is_custom: true,
+        },
+      });
+
+      await tx.rolePermission.createMany({
+        data: dbPermissions.map((p) => ({
+          role_id: role.id,
+          permission_id: p.id,
+        })),
+      });
+
+      return role;
+    });
+
+    return {
+      id: createdRole.id,
+      name: createdRole.name,
+      label: createdRole.name,
+      description: createdRole.description,
+      is_custom: true,
+      organization_id: createdRole.organization_id,
+      project_id: createdRole.project_id,
+      permissions: dbPermissions.map((p) => p.name),
+      permission_count: dbPermissions.length,
+      created_at: createdRole.created_at,
+    };
+  }
+
+  /**
    * Update project member roles
    */
   static async updateProjectMemberRoles(
     projectId: string,
-    roleAssignments: Array<{ user_id: string; project_role?: string | null }>,
+    roleAssignments: Array<{ user_id: string; project_role?: string | null; role_id?: string | null }>,
     user: any
   ) {
     if (!projectId || projectId === 'undefined') {
@@ -644,18 +1065,73 @@ export class ProjectService {
       if (!item.user_id) continue;
 
       let normalizedRole: string | null = null;
-      if (item.project_role && typeof item.project_role === 'string' && item.project_role.trim()) {
-        const candidate = item.project_role.trim().toUpperCase();
-        if (candidate === 'LEAD') {
-          normalizedRole = 'TECH_LEAD';
-        } else if (candidate === 'MEMBER') {
-          normalizedRole = 'DEVELOPER';
-        } else if (!this.ALLOWED_PROJECT_ROLES.includes(candidate as any)) {
+      let roleIdToPersist: string | null = null;
+
+      if (item.role_id) {
+        const directRole = await prisma.role.findUnique({
+          where: { id: item.role_id },
+        });
+        if (!directRole) {
+          throw new Error(`Role not found: ${item.role_id}`);
+        }
+        // Strict project scope check: custom role cannot belong to another project
+        if (directRole.project_id && directRole.project_id !== projectId) {
           throw new Error(
-            `Invalid project role: ${item.project_role}. Allowed roles: ${this.ALLOWED_PROJECT_ROLES.join(', ')}`
+            `Cross-project role assignment rejected: Role "${directRole.name}" is scoped to project ${directRole.project_id} and cannot be assigned in project ${projectId}.`
           );
+        }
+        if (directRole.organization_id && directRole.organization_id !== project.organization_id) {
+          throw new Error('Cross-organization role assignment rejected.');
+        }
+        roleIdToPersist = directRole.id;
+        normalizedRole = directRole.name;
+      } else if (item.project_role && typeof item.project_role === 'string' && item.project_role.trim()) {
+        const candidate = item.project_role.trim();
+        const candidateUpper = candidate.toUpperCase();
+
+        if (candidateUpper === 'LEAD') {
+          normalizedRole = 'TECH_LEAD';
+        } else if (candidateUpper === 'MEMBER') {
+          normalizedRole = 'DEVELOPER';
+        } else if (this.ALLOWED_PROJECT_ROLES.includes(candidateUpper as any)) {
+          normalizedRole = candidateUpper;
         } else {
-          normalizedRole = candidate;
+          // Check if candidate matches a custom role strictly for this project or organization
+          const customRole = await prisma.role.findFirst({
+            where: {
+              name: { equals: candidate, mode: 'insensitive' },
+              OR: [
+                { project_id: projectId },
+                { organization_id: project.organization_id, project_id: null },
+                { organization_id: null, project_id: null },
+              ],
+            },
+          });
+
+          if (!customRole) {
+            throw new Error(
+              `Invalid project role: ${item.project_role}. Role not recognized or not available in this project.`
+            );
+          }
+          normalizedRole = customRole.name;
+          roleIdToPersist = customRole.id;
+        }
+      }
+
+      // If we don't have roleIdToPersist yet, lookup by role name within permitted scope
+      if (!roleIdToPersist && normalizedRole) {
+        const r = await prisma.role.findFirst({
+          where: {
+            name: normalizedRole,
+            OR: [
+              { project_id: projectId },
+              { organization_id: project.organization_id, project_id: null },
+              { organization_id: null, project_id: null },
+            ],
+          },
+        });
+        if (r) {
+          roleIdToPersist = r.id;
         }
       }
 
@@ -678,6 +1154,7 @@ export class ProjectService {
           },
           data: {
             project_role: normalizedRole,
+            role_id: roleIdToPersist,
           },
         });
       } else {
@@ -686,6 +1163,7 @@ export class ProjectService {
             project_id: projectId,
             user_id: item.user_id,
             project_role: normalizedRole,
+            role_id: roleIdToPersist,
           },
         });
       }
@@ -697,7 +1175,13 @@ export class ProjectService {
   /**
    * Add a member to a project
    */
-  static async addProjectMember(projectId: string, targetUserId: string, user: any, role?: string) {
+  static async addProjectMember(
+    projectId: string,
+    targetUserId: string,
+    user: any,
+    role?: string,
+    roleId?: string
+  ) {
     if (!projectId || projectId === 'undefined') {
       throw new Error('Project not found');
     }
@@ -733,7 +1217,36 @@ export class ProjectService {
       where: targetWhere,
     });
     if (!targetUser) {
-      throw new Error('User not found in your organization');
+      throw new Error('User found or does not belong to your organization');
+    }
+
+    // Resolve role and role_id if provided
+    let normalizedRole: string | null = role ? role.trim() : null;
+    let roleIdToPersist: string | null = roleId || null;
+
+    if (normalizedRole || roleIdToPersist) {
+      const matchedRole = await prisma.role.findFirst({
+        where: {
+          OR: [
+            ...(roleIdToPersist ? [{ id: roleIdToPersist }] : []),
+            ...(normalizedRole ? [{ name: { equals: normalizedRole, mode: 'insensitive' as const } }] : []),
+          ],
+          AND: [
+            {
+              OR: [
+                { project_id: projectId },
+                { organization_id: project.organization_id },
+                { organization_id: null, project_id: null },
+              ],
+            },
+          ],
+        },
+      });
+
+      if (matchedRole) {
+        normalizedRole = matchedRole.name;
+        roleIdToPersist = matchedRole.id;
+      }
     }
 
     // Check if already a member
@@ -756,7 +1269,7 @@ export class ProjectService {
     });
 
     if (existingMember) {
-      if (role && existingMember.project_role !== role) {
+      if (normalizedRole && existingMember.project_role !== normalizedRole) {
         await prisma.projectMember.update({
           where: {
             project_id_user_id: {
@@ -765,15 +1278,17 @@ export class ProjectService {
             },
           },
           data: {
-            project_role: role,
+            project_role: normalizedRole,
+            role_id: roleIdToPersist || existingMember.role_id,
           },
         });
       }
       return {
         project_id: existingMember.project_id,
         user_id: existingMember.user_id,
-        role: role || existingMember.project_role,
-        project_role: role || existingMember.project_role,
+        role: normalizedRole || existingMember.project_role,
+        project_role: normalizedRole || existingMember.project_role,
+        role_id: roleIdToPersist || existingMember.role_id,
         user: {
           id: existingMember.user.id,
           name: existingMember.user.name,
@@ -786,7 +1301,8 @@ export class ProjectService {
       data: {
         project_id: projectId,
         user_id: targetUserId,
-        project_role: role || null,
+        project_role: normalizedRole || null,
+        role_id: roleIdToPersist || null,
       },
       include: {
         user: {
@@ -804,6 +1320,7 @@ export class ProjectService {
       user_id: newMember.user_id,
       role: newMember.project_role,
       project_role: newMember.project_role,
+      role_id: newMember.role_id,
       user: {
         id: newMember.user.id,
         name: newMember.user.name,

@@ -1,9 +1,14 @@
 import { Worker, Job } from 'bullmq';
 import { prisma } from '../lib/prisma';
-import { getRedisConnection } from '../lib/redis';
+import { createNewRedisConnection, getRedisConfig } from '../lib/redis';
 import { NOTIFICATION_QUEUE_NAME, NotificationJobData } from '../queues/notification.queue';
 
-console.log('[Worker] Initializing BullMQ Notification Worker...');
+const redisConfig = getRedisConfig();
+console.log(`[Worker] Initializing BullMQ Notification Worker with broker: ${redisConfig.maskedUrl}...`);
+
+if (!redisConfig.isConfigured) {
+  console.warn('[Worker] Warning: REDIS_URL not configured. Notification worker requires a Redis broker to process background jobs.');
+}
 
 export const notificationWorker = new Worker<NotificationJobData>(
   NOTIFICATION_QUEUE_NAME,
@@ -75,7 +80,7 @@ export const notificationWorker = new Worker<NotificationJobData>(
     };
   },
   {
-    connection: getRedisConnection(),
+    connection: createNewRedisConnection(), // Dedicated connection for worker
     concurrency: 5,
   }
 );

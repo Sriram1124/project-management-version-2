@@ -160,13 +160,15 @@ export class ProjectHealthService {
     const parentIdsWithChildren = new Set(workItems.map((w: any) => w.parent_id).filter(Boolean));
 
     // 2. Identify eligible leaf deliverables:
-    // Any work item in the project that is NOT an Epic and has NO children in the project.
-    // This includes:
-    // - Leaf tasks, subtasks, and bugs
-    // - Standalone stories (stories with no child tasks, estimated directly)
-    const eligibleLeaves = workItems.filter(
-      (w: any) => w.type !== WorkItemType.EPIC && !parentIdsWithChildren.has(w.id)
-    );
+    // Any work item in the project that is NOT an Epic and has NO children in the project,
+    // OR has children but none of the children have estimated story points, while the parent item itself has story points.
+    const eligibleLeaves = workItems.filter((w: any) => {
+      if (w.type === WorkItemType.EPIC) return false;
+      if (!parentIdsWithChildren.has(w.id)) return true;
+      const children = workItems.filter((c: any) => c.parent_id === w.id);
+      const childPoints = children.reduce((sum: number, c: any) => sum + (Number(c.story_points) || 0), 0);
+      return childPoints === 0 && Number(w.story_points || 0) > 0;
+    });
 
     // 3. Compute story-level progress and metrics
     const stories = workItems.filter((w: any) => w.type === WorkItemType.STORY);
@@ -546,9 +548,20 @@ export class ProjectHealthService {
       }
     }
 
-    // Rule D: Task-level overdue deliverables
-    if (overdue_tasks > 0) {
-      atRiskReasons.push(`${overdue_tasks} deliverable(s) overdue (${maxTaskOverdueDays}d delay)`);
+    // Rule D: Material volume or delay of overdue deliverables
+    // A single low-impact overdue task (<= 7 days delay, low/medium priority, minimal SP impact)
+    // must NOT cause project-wide AT_RISK classification; record it as a warning instead.
+    const overdueSp = overdueTasksList.reduce((s: number, t: any) => s + (Number(t.story_points) || 0), 0);
+    const overdueSpRatio = remaining_sp > 0 ? overdueSp / remaining_sp : 0;
+    const isMaterialOverdueRisk =
+      (overdue_tasks >= 2 && maxTaskOverdueDays > 7) ||
+      overdue_tasks >= 3 ||
+      (overdue_tasks > 0 && overdueSpRatio >= 0.3);
+
+    if (isMaterialOverdueRisk) {
+      atRiskReasons.push(`${overdue_tasks} deliverables overdue (${maxTaskOverdueDays}d delay) · Material delivery impact`);
+    } else if (overdue_tasks > 0) {
+      warnings.push(`${overdue_tasks} non-critical deliverable(s) overdue (${maxTaskOverdueDays}d delay) · Low delivery impact`);
     }
 
     // Rule E: Imminent project deadline (< 7 days) with low progress (< 40%)

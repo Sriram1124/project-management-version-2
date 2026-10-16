@@ -1,7 +1,8 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { createPortal } from 'react-dom';
-import { X, Search, ShieldCheck, Loader2, Users, AlertCircle, Check } from 'lucide-react';
+import { X, Search, ShieldCheck, ShieldPlus, Loader2, Users, AlertCircle, Check } from 'lucide-react';
 import { projectsService } from '../../services/projects.service';
+import AddCustomRoleModal from './AddCustomRoleModal';
 
 export const PROJECT_ROLES = [
   { value: '', label: 'Not Assigned' },
@@ -31,13 +32,30 @@ export default function AssignProjectRolesModal({
   projectName = '',
   members = [],
   onSuccess,
+  onToast,
 }) {
   const [searchQuery, setSearchQuery] = useState('');
   const [roleMap, setRoleMap] = useState({});
+  const [projectRoles, setProjectRoles] = useState([]);
+  const [loadingRoles, setLoadingRoles] = useState(false);
+  const [isAddCustomRoleOpen, setIsAddCustomRoleOpen] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
 
-  // Sync roleMap whenever modal opens or members change
+  const fetchRoles = useCallback(async () => {
+    if (!projectId) return;
+    try {
+      setLoadingRoles(true);
+      const roles = await projectsService.getProjectRoles(projectId);
+      setProjectRoles(Array.isArray(roles) ? roles : []);
+    } catch (err) {
+      console.warn('Could not fetch custom roles, using defaults:', err);
+    } finally {
+      setLoadingRoles(false);
+    }
+  }, [projectId]);
+
+  // Sync roleMap and fetch roles whenever modal opens
   useEffect(() => {
     if (isOpen) {
       const initialMap = {};
@@ -50,8 +68,31 @@ export default function AssignProjectRolesModal({
       setRoleMap(initialMap);
       setSearchQuery('');
       setError('');
+      fetchRoles();
     }
-  }, [isOpen, members]);
+  }, [isOpen, members, fetchRoles]);
+
+  const standardRoles = useMemo(() => {
+    if (!projectRoles.length) {
+      return PROJECT_ROLES.filter((r) => r.value);
+    }
+    return projectRoles
+      .filter((r) => !r.is_custom && r.name !== 'ADMIN' && r.name !== 'SUPER_ADMIN')
+      .map((r) => ({
+        value: r.name,
+        label: r.label || PROJECT_ROLE_LABELS[r.name] || r.name,
+      }));
+  }, [projectRoles]);
+
+  const customRoles = useMemo(() => {
+    return projectRoles
+      .filter((r) => r.is_custom)
+      .map((r) => ({
+        value: r.name,
+        label: r.label || r.name,
+        description: r.description,
+      }));
+  }, [projectRoles]);
 
   const filteredMembers = useMemo(() => {
     const q = searchQuery.trim().toLowerCase();
@@ -134,13 +175,23 @@ export default function AssignProjectRolesModal({
               </p>
             </div>
           </div>
-          <button
-            onClick={onClose}
-            disabled={saving}
-            className="w-8 h-8 rounded-lg text-slate-400 hover:text-slate-600 hover:bg-slate-100 flex items-center justify-center transition-colors disabled:opacity-50"
-          >
-            <X className="w-4 h-4" />
-          </button>
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={() => setIsAddCustomRoleOpen(true)}
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-purple-50 hover:bg-purple-100 text-purple-700 text-xs font-bold border border-purple-200 transition-colors cursor-pointer shadow-2xs"
+            >
+              <ShieldPlus className="w-3.5 h-3.5" />
+              <span>Add Custom Role</span>
+            </button>
+            <button
+              onClick={onClose}
+              disabled={saving}
+              className="w-8 h-8 rounded-lg text-slate-400 hover:text-slate-600 hover:bg-slate-100 flex items-center justify-center transition-colors disabled:opacity-50 cursor-pointer"
+            >
+              <X className="w-4 h-4" />
+            </button>
+          </div>
         </div>
 
         {/* Search bar inside Role Assignment Panel */}
@@ -239,11 +290,23 @@ export default function AssignProjectRolesModal({
                         disabled={saving}
                         className="px-3 py-1.5 text-xs font-medium bg-white border border-slate-200 rounded-lg text-slate-800 focus:outline-hidden focus:ring-2 focus:ring-purple-500/20 focus:border-purple-500 transition-all cursor-pointer shadow-2xs"
                       >
-                        {PROJECT_ROLES.map((role) => (
-                          <option key={role.value} value={role.value}>
-                            {role.label}
-                          </option>
-                        ))}
+                        <option value="">Not Assigned</option>
+                        {customRoles.length > 0 && (
+                          <optgroup label="Custom Project Roles">
+                            {customRoles.map((role) => (
+                              <option key={role.value} value={role.value}>
+                                {role.label}
+                              </option>
+                            ))}
+                          </optgroup>
+                        )}
+                        <optgroup label="Standard Roles">
+                          {standardRoles.map((role) => (
+                            <option key={role.value} value={role.value}>
+                              {role.label}
+                            </option>
+                          ))}
+                        </optgroup>
                       </select>
                     </div>
                   </div>
@@ -289,6 +352,24 @@ export default function AssignProjectRolesModal({
         </div>
 
       </div>
+
+      {isAddCustomRoleOpen && (
+        <AddCustomRoleModal
+          isOpen={isAddCustomRoleOpen}
+          onClose={() => setIsAddCustomRoleOpen(false)}
+          projectId={projectId}
+          projectName={projectName}
+          onRoleCreated={(newRole) => {
+            fetchRoles();
+            onToast?.({
+              type: 'success',
+              title: 'Custom Role Available',
+              message: `Role "${newRole.name}" is now available to assign.`,
+            });
+          }}
+          onToast={onToast}
+        />
+      )}
     </div>
   );
 

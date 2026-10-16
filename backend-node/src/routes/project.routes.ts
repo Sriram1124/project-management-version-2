@@ -16,6 +16,7 @@ router.use(authenticate);
 
 // ── Tech Leads Oversight ───────────────────────────────────────────────────
 router.get('/tech-leads', requirePermission('PROJECT_READ'), ProjectController.getTechLeads);
+router.get('/permissions/registry', requirePermission('PROJECT_READ'), ProjectController.getAvailablePermissions);
 
 // ── Project CRUD ─────────────────────────────────────────────────────────────
 router.get('/health-overview', requirePermission('PROJECT_READ'), ProjectController.getHealthOverview);
@@ -25,11 +26,13 @@ router.get('/:id', requirePermission('PROJECT_READ'), ProjectController.getById)
 router.patch('/:id', requirePermission('PROJECT_UPDATE'), ProjectController.update);
 router.post('/:id/archive', requirePermission('PROJECT_UPDATE'), ProjectController.archive);
 
-// ── Project Members ──────────────────────────────────────────────────────────
+// ── Project Members & Roles ────────────────────────────────────────────────────
 router.get('/:id/members', requirePermission('PROJECT_READ'), ProjectController.getMembers);
 router.post('/:id/members', requirePermission('PROJECT_UPDATE'), ProjectController.addMember);
 router.patch('/:id/members/roles', requirePermission('PROJECT_UPDATE'), ProjectController.updateMemberRoles);
 router.delete('/:id/members/:userId', requirePermission('PROJECT_UPDATE'), ProjectController.removeMember);
+router.get('/:id/roles', requirePermission('PROJECT_READ'), ProjectController.getProjectRoles);
+router.post('/:id/roles', requirePermission('PROJECT_UPDATE'), ProjectController.createCustomRole);
 
 // ── Project Sprints ──────────────────────────────────────────────────────────
 router.get('/:id/sprints', requirePermission('PROJECT_READ'), SprintController.list);

@@ -23,6 +23,7 @@ model Organization {
   notifications Notification[]
   cohorts       Cohort[]
   action_items  ActionItem[]
+  roles         Role[]
   work_policy   OrganizationWorkPolicy?
   audit_logs    AuditLog[]
 
@@ -156,15 +157,23 @@ model TimeEntry {
 }
 
 model Role {
-  id          String   @id @default(uuid())
-  name        String   @unique
-  description String?
-  created_at  DateTime @default(now())
-  updated_at  DateTime @updatedAt
+  id              String   @id @default(uuid())
+  name            String   @unique
+  description     String?
+  organization_id String?
+  project_id      String?
+  is_custom       Boolean  @default(false)
+  created_at      DateTime @default(now())
+  updated_at      DateTime @updatedAt
 
-  users       UserRole[]
-  permissions RolePermission[]
+  organization    Organization?    @relation(fields: [organization_id], references: [id], onDelete: Cascade)
+  project         Project?         @relation(fields: [project_id], references: [id], onDelete: Cascade)
+  users           UserRole[]
+  permissions     RolePermission[]
+  project_members ProjectMember[]
 
+  @@index([organization_id])
+  @@index([project_id])
   @@map("roles")
 }
 
@@ -253,6 +262,7 @@ model Project {
   forms        Form[]
   time_entries TimeEntry[]
   action_items ActionItem[]
+  roles        Role[]
 
   @@map("projects")
 }
@@ -261,9 +271,11 @@ model ProjectMember {
   project_id   String
   user_id      String
   project_role String?
+  role_id      String?
 
   project Project @relation(fields: [project_id], references: [id], onDelete: Cascade)
   user    User    @relation(fields: [user_id], references: [id], onDelete: Cascade)
+  role    Role?   @relation(fields: [role_id], references: [id], onDelete: SetNull)
 
   @@id([project_id, user_id])
   @@map("project_members")

@@ -67,5 +67,21 @@ export const formsService = {
   isOverdue: (form) => {
     if (!form.deadline) return false;
     return new Date(form.deadline) < new Date() && form.status !== 'SUBMITTED';
+  },
+
+  getOverdueSummary: async (cohortId, formId) => {
+    const q = new URLSearchParams();
+    if (cohortId && cohortId !== 'ALL') q.set('cohort_id', cohortId);
+    if (formId) q.set('form_id', formId);
+    const qs = q.toString() ? `?${q.toString()}` : '';
+    return await api.get(`/forms/overdue/summary${qs}`);
+  },
+
+  downloadOverdueReport: async (cohortId, defaultFilename = 'Overdue_Members_Report.csv', formId) => {
+    const q = new URLSearchParams();
+    if (cohortId && cohortId !== 'ALL') q.set('cohort_id', cohortId);
+    if (formId) q.set('form_id', formId);
+    const qs = q.toString() ? `?${q.toString()}` : '';
+    return await api.downloadFile(`/forms/overdue/export${qs}`, defaultFilename);
   }
 };

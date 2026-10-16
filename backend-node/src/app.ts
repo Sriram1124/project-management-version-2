@@ -12,6 +12,9 @@ import { timesheetRouter } from './routes/timesheet.routes';
 import { cohortRouter } from './routes/cohort.routes';
 import { actionItemRouter } from './routes/action-item.routes';
 
+import { prisma } from './lib/prisma';
+import { getRedisConfig, testRedisConnection } from './lib/redis';
+
 const app = express();
 
 app.use(cors({
@@ -25,6 +28,37 @@ app.use(cookieParser());
 app.use((req, res, next) => {
   console.log(`[${new Date().toISOString()}] ${req.method} ${req.url}`);
   next();
+});
+
+// Diagnostic Health Endpoint
+app.get('/api/health', async (req, res) => {
+  let dbStatus = 'connected';
+  try {
+    await prisma.$queryRaw`SELECT 1`;
+  } catch (err: any) {
+    dbStatus = `error: ${err.message}`;
+  }
+
+  const redisConfig = getRedisConfig();
+  const redisHealth = redisConfig.isConfigured
+    ? await testRedisConnection()
+    : { connected: false, error: 'REDIS_URL not configured', url: redisConfig.maskedUrl };
+
+  res.status(200).json({
+    status: dbStatus === 'connected' ? 'ok' : 'degraded',
+    timestamp: new Date().toISOString(),
+    database: dbStatus,
+    redis: {
+      configured: redisConfig.isConfigured,
+      connected: redisHealth.connected,
+      url: redisConfig.maskedUrl,
+      mode: redisHealth.connected ? 'async_queue' : 'synchronous_fallback',
+      ...(redisHealth.latencyMs !== undefined ? { latency_ms: redisHealth.latencyMs } : {}),
+      ...(redisHealth.error ? { error: redisHealth.error } : {}),
+    },
+    version: '1.0.0',
+    uptime: Math.round(process.uptime()),
+  });
 });
 
 app.use('/api/auth', authRouter);

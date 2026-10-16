@@ -17,7 +17,9 @@ import {
   Sparkles,
   ArrowRight,
   ShieldCheck,
-  ChevronRight
+  ChevronRight,
+  Download,
+  AlertTriangle
 } from 'lucide-react';
 import PostFormModal from './PostFormModal';
 import FillFormModal from './FillFormModal';
@@ -30,7 +32,10 @@ import ViewSubmissionsDrawer from '../modals/ViewSubmissionsDrawer';
 export default function TeamsChannelView({ 
   onPostForm, 
   onSubmitResponse, 
-  onToast 
+  onToast,
+  selectedCohort,
+  selectedCohortId,
+  cohorts
 }) {
   const [activeChannel, setActiveChannel] = useState('forms-and-surveys');
   const [filterTab, setFilterTab] = useState('all'); // 'all' | 'active' | 'completed'
@@ -42,10 +47,40 @@ export default function TeamsChannelView({
   const [selectedFormForEdit, setSelectedFormForEdit] = useState(null);
   const [chatMessage, setChatMessage] = useState('');
 
+  // Overdue report & statistics state
+  const [overdueStats, setOverdueStats] = useState({
+    totalOverdueCount: 0,
+    overdueMembersCount: 0,
+    formsCount: 0,
+    cohortScopeName: 'All Cohorts',
+    details: [],
+    summary: [],
+  });
+  const [isDownloadingOverdue, setIsDownloadingOverdue] = useState(false);
+
+  const loadOverdueStats = async () => {
+    try {
+      const data = await formsService.getOverdueSummary(selectedCohortId);
+      if (data) {
+        setOverdueStats({
+          totalOverdueCount: data.totalOverdueCount ?? 0,
+          overdueMembersCount: data.overdueMembersCount ?? 0,
+          formsCount: data.formsCount ?? 0,
+          cohortScopeName: data.cohortScopeName || (selectedCohort?.name || 'All Cohorts'),
+          details: data.details || [],
+          summary: data.summary || [],
+        });
+      }
+    } catch (err) {
+      console.error('Failed to load overdue statistics:', err);
+    }
+  };
+
   const loadForms = async () => {
     try {
       const data = await formsService.getForms();
       setForms(data);
+      loadOverdueStats();
     } catch (e) {
       console.error('Failed to load forms');
     }
@@ -53,7 +88,57 @@ export default function TeamsChannelView({
 
   React.useEffect(() => {
     loadForms();
-  }, []);
+  }, [selectedCohortId]);
+
+  const handleDownloadOverdueReport = async () => {
+    if (overdueStats.overdueMembersCount === 0) {
+      onToast?.(`No members have overdue form submissions for ${selectedCohort?.name || 'the current cohort'}`);
+      return;
+    }
+
+    setIsDownloadingOverdue(true);
+    try {
+      const dateStr = new Date().toISOString().slice(0, 10);
+      const scope = selectedCohort?.name ? selectedCohort.name.replace(/\s+/g, '_') : 'All_Cohorts';
+      const filename = `Overdue_Members_Report_${scope}_${dateStr}.csv`;
+      
+      await formsService.downloadOverdueReport(selectedCohortId, filename);
+      onToast?.(`Downloaded overdue members report (${overdueStats.overdueMembersCount} member${overdueStats.overdueMembersCount === 1 ? '' : 's'})`);
+    } catch (err) {
+      console.error('Download failed:', err);
+      onToast?.(err.message || 'Failed to download overdue members report');
+    } finally {
+      setIsDownloadingOverdue(false);
+    }
+  };
+
+  const handleDownloadFormOverdue = async (form, count) => {
+    if (!form.deadline) {
+      onToast?.(`"${form.title}" has no deadline set. Set a deadline to track overdue members.`);
+      return;
+    }
+    const isPast = new Date(form.deadline) < new Date();
+    if (!isPast) {
+      const formattedDue = new Date(form.deadline).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+      onToast?.(`"${form.title}" deadline has not passed yet (Due ${formattedDue}).`);
+      return;
+    }
+    if (count === 0) {
+      onToast?.(`All eligible members have submitted "${form.title}". No overdue submissions.`);
+      return;
+    }
+
+    try {
+      const dateStr = new Date().toISOString().slice(0, 10);
+      const safeTitle = form.title.replace(/[^a-zA-Z0-9_-]/g, '_');
+      const filename = `Overdue_Members_${safeTitle}_${dateStr}.csv`;
+      await formsService.downloadOverdueReport(selectedCohortId, filename, form.id);
+      onToast?.(`Downloaded overdue report for "${form.title}" (${count} member${count === 1 ? '' : 's'})`);
+    } catch (err) {
+      console.error('Download failed:', err);
+      onToast?.(err.message || `Failed to download overdue report for "${form.title}"`);
+    }
+  };
 
   const channelsList = [
     { id: 'forms-and-surveys', name: 'forms-and-surveys', count: forms.length, isPrimary: true },
@@ -140,10 +225,10 @@ export default function TeamsChannelView({
               <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Channel Audience</span>
               <div className="flex items-center gap-1.5 text-xs text-slate-700 font-semibold">
                 <Users className="w-3.5 h-3.5 text-purple-600 shrink-0" />
-                <span className="truncate">Organization Members</span>
+                <span className="truncate">{selectedCohort?.name || 'All Cohort Members'}</span>
               </div>
               <p className="text-[10px] text-slate-500 leading-normal">
-                Forms posted by the Manager are visible to active organization members for submission.
+                Forms posted by the Manager are visible to active {selectedCohort?.name || 'organization'} members for submission.
               </p>
             </div>
           </div>
@@ -164,8 +249,8 @@ export default function TeamsChannelView({
       {/* RIGHT MAIN FEED */}
       <div className="flex-1 min-w-0 min-h-0 flex flex-col h-full bg-[#FBFBFE] overflow-hidden">
         {/* Channel Header */}
-        <div className="h-12 px-4 sm:px-5 border-b border-slate-200 flex items-center justify-between bg-white shrink-0">
-          <div className="flex items-center gap-2.5 min-w-0">
+        <div className="h-12 px-3 sm:px-5 border-b border-slate-200 flex items-center justify-between bg-white shrink-0 gap-2">
+          <div className="flex items-center gap-2 sm:gap-2.5 min-w-0">
             <div className="p-1.5 rounded-lg bg-purple-50 border border-purple-100 text-purple-700 shrink-0">
               <Hash className="w-4 h-4" />
             </div>
@@ -182,7 +267,7 @@ export default function TeamsChannelView({
             </div>
           </div>
 
-          <div className="flex items-center gap-2 shrink-0">
+          <div className="flex items-center gap-1.5 sm:gap-2 shrink-0">
             {/* Filter Tabs */}
             <div className="flex items-center bg-slate-100 p-0.5 rounded-lg text-xs font-medium text-slate-600">
               <button
@@ -211,9 +296,40 @@ export default function TeamsChannelView({
               </button>
             </div>
 
+            {/* Download Overdue Members Report Button */}
+            <button
+              onClick={handleDownloadOverdueReport}
+              disabled={isDownloadingOverdue}
+              title={
+                overdueStats.overdueMembersCount > 0
+                  ? `Download report of ${overdueStats.overdueMembersCount} member(s) with overdue form submissions (${overdueStats.totalOverdueCount} total)`
+                  : 'No members have overdue form submissions in this scope'
+              }
+              className={`h-7 px-2 sm:px-2.5 rounded-lg text-xs font-semibold flex items-center gap-1.5 transition-colors cursor-pointer shrink-0 border ${
+                overdueStats.overdueMembersCount > 0
+                  ? 'border-purple-300 bg-purple-50 hover:bg-purple-100 text-purple-700 shadow-2xs active:bg-purple-200'
+                  : 'border-slate-200 bg-slate-50 text-slate-400 hover:bg-slate-100 hover:text-slate-600'
+              }`}
+            >
+              <Download className={`w-3.5 h-3.5 ${isDownloadingOverdue ? 'animate-bounce text-purple-600' : ''}`} />
+              <span className="hidden xl:inline">Download Overdue Members</span>
+              <span className="xl:hidden hidden md:inline">Overdue Report</span>
+              <span className="md:hidden">Overdue</span>
+              {overdueStats.overdueMembersCount > 0 ? (
+                <span className="px-1.5 py-0.2 rounded-full text-[10px] font-bold bg-purple-200 text-purple-800">
+                  {overdueStats.overdueMembersCount}
+                </span>
+              ) : (
+                <span className="px-1.5 py-0.2 rounded-full text-[10px] font-medium bg-slate-200/70 text-slate-500">
+                  0
+                </span>
+              )}
+            </button>
+
+            {/* Post New Form Button */}
             <button
               onClick={() => setIsPostModalOpen(true)}
-              className="px-2.5 sm:px-3 py-1 rounded-lg text-xs font-semibold bg-purple-600 hover:bg-purple-700 text-white flex items-center gap-1.5 shadow-2xs transition-colors cursor-pointer shrink-0"
+              className="h-7 px-2 sm:px-2.5 rounded-lg text-xs font-semibold bg-purple-600 hover:bg-purple-700 text-white flex items-center gap-1.5 shadow-2xs transition-colors cursor-pointer shrink-0"
             >
               <Plus className="w-3.5 h-3.5" />
               <span className="hidden sm:inline">Post New Form</span>
@@ -253,6 +369,9 @@ export default function TeamsChannelView({
 
               const category = form.category || 'General Form';
               const targetAudience = form.targetAudience || (form.target_roles?.length > 0 ? form.target_roles.join(', ') : 'All Members');
+
+              const overdueForThisForm = (overdueStats.details || []).filter((d) => d.formId === form.id);
+              const isFormPastDeadline = Boolean(form.deadline && new Date(form.deadline) < new Date());
 
               return (
                 <div 
@@ -391,13 +510,35 @@ export default function TeamsChannelView({
                         )}
 
                         {form.status !== 'DRAFT' && (
-                          <button
-                            onClick={() => setSelectedFormForView(form)}
-                            className="h-7 px-2.5 rounded-md text-xs font-semibold text-slate-700 bg-white border border-slate-200 hover:bg-slate-100 flex items-center gap-1.5 transition-colors shadow-2xs cursor-pointer"
-                          >
-                            <Users className="w-3 h-3 text-purple-600" />
-                            <span>View Submissions ({submissionsCount})</span>
-                          </button>
+                          <>
+                            <button
+                              onClick={() => setSelectedFormForView(form)}
+                              className="h-7 px-2.5 rounded-md text-xs font-semibold text-slate-700 bg-white border border-slate-200 hover:bg-slate-100 flex items-center gap-1.5 transition-colors shadow-2xs cursor-pointer"
+                            >
+                              <Users className="w-3 h-3 text-purple-600" />
+                              <span>View Submissions ({submissionsCount})</span>
+                            </button>
+                            <button
+                              onClick={() => handleDownloadFormOverdue(form, overdueForThisForm.length)}
+                              className={`h-7 px-2.5 rounded-md text-xs font-semibold flex items-center gap-1.5 transition-colors shadow-2xs cursor-pointer border ${
+                                overdueForThisForm.length > 0
+                                  ? 'border-purple-300 bg-purple-50 hover:bg-purple-100 text-purple-700'
+                                  : 'border-slate-200 bg-white hover:bg-slate-100 text-slate-700'
+                              }`}
+                              title={
+                                !form.deadline
+                                  ? `No deadline set for "${form.title}"`
+                                  : !isFormPastDeadline
+                                  ? `Deadline is ${formattedDeadline} (not overdue yet)`
+                                  : overdueForThisForm.length > 0
+                                  ? `Download report of ${overdueForThisForm.length} overdue member(s)`
+                                  : `All eligible members have submitted "${form.title}"`
+                              }
+                            >
+                              <Download className={`w-3 h-3 ${overdueForThisForm.length > 0 ? 'text-purple-600' : 'text-slate-400'}`} />
+                              <span>Overdue ({overdueForThisForm.length})</span>
+                            </button>
+                          </>
                         )}
                       </div>
 

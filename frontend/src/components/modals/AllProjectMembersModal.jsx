@@ -7,12 +7,16 @@ import {
   Users, 
   ChevronDown, 
   ShieldCheck,
+  ShieldPlus,
   Check,
   Trash2,
   Loader2,
-  AlertTriangle
+  AlertTriangle,
+  UserPlus
 } from 'lucide-react';
 import { PROJECT_ROLE_LABELS } from './AssignProjectRolesModal';
+import AddProjectMembersModal from './AddProjectMembersModal';
+import AddCustomRoleModal from './AddCustomRoleModal';
 import { projectsService } from '../../services/projects.service';
 
 export default function AllProjectMembersModal({
@@ -23,8 +27,11 @@ export default function AllProjectMembersModal({
   projectId,
   canAssignRoles = false,
   canRemoveMembers = false,
+  canAddMembers = false,
   onOpenAssignRoles,
   onMemberRemoved,
+  onMembersAdded,
+  onToast,
 }) {
   if (!isOpen) return null;
 
@@ -37,7 +44,11 @@ export default function AllProjectMembersModal({
   const [memberToRemove, setMemberToRemove] = useState(null);
   const [bulkRemoving, setBulkRemoving] = useState(false);
   const [removeError, setRemoveError] = useState('');
+  const [isAddMembersOpen, setIsAddMembersOpen] = useState(false);
+  const [isAddCustomRoleOpen, setIsAddCustomRoleOpen] = useState(false);
   const filterRef = useRef(null);
+
+  const allowAddMembers = canAddMembers || canAssignRoles;
 
   // Close filter popover on click outside
   useEffect(() => {
@@ -224,6 +235,26 @@ export default function AllProjectMembersModal({
           </div>
 
           <div className="flex items-center gap-2">
+            {allowAddMembers && (
+              <button
+                type="button"
+                onClick={() => setIsAddMembersOpen(true)}
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-purple-600 hover:bg-purple-700 active:bg-purple-800 text-white text-xs font-bold transition-all cursor-pointer shadow-2xs hover:shadow-xs"
+              >
+                <UserPlus className="w-3.5 h-3.5" />
+                <span>Add Members</span>
+              </button>
+            )}
+            {canAssignRoles && (
+              <button
+                type="button"
+                onClick={() => setIsAddCustomRoleOpen(true)}
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-purple-50 hover:bg-purple-100 text-purple-700 text-xs font-bold border border-purple-200 transition-colors cursor-pointer shadow-2xs"
+              >
+                <ShieldPlus className="w-3.5 h-3.5" />
+                <span>Add Custom Role</span>
+              </button>
+            )}
             {canAssignRoles && (
               <button
                 type="button"
@@ -440,7 +471,25 @@ export default function AllProjectMembersModal({
 
         {/* Filtered Members Grid */}
         <div className="flex-1 overflow-y-auto p-6">
-          {filteredMembers.length === 0 ? (
+          {members.length === 0 ? (
+            <div className="py-16 text-center text-slate-400">
+              <Users className="w-10 h-10 text-slate-300 mx-auto mb-2" />
+              <h4 className="text-sm font-bold text-slate-700">No Members in Project</h4>
+              <p className="text-xs text-slate-400 mt-1 mb-4">
+                Get started by adding team members from your organization.
+              </p>
+              {allowAddMembers && (
+                <button
+                  type="button"
+                  onClick={() => setIsAddMembersOpen(true)}
+                  className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-purple-600 hover:bg-purple-700 text-white text-xs font-bold transition-all shadow-xs cursor-pointer"
+                >
+                  <UserPlus className="w-4 h-4" />
+                  <span>Add First Member</span>
+                </button>
+              )}
+            </div>
+          ) : filteredMembers.length === 0 ? (
             <div className="py-16 text-center text-slate-400">
               <Users className="w-10 h-10 text-slate-300 mx-auto mb-2" />
               <h4 className="text-sm font-bold text-slate-700">No Members Match Filter</h4>
@@ -615,6 +664,35 @@ export default function AllProjectMembersModal({
           </div>
         </div>
       )}
+
+      {/* Add Project Members Modal */}
+      <AddProjectMembersModal
+        isOpen={isAddMembersOpen}
+        onClose={() => setIsAddMembersOpen(false)}
+        projectId={projectId}
+        projectName={projectName}
+        existingMembers={members}
+        onSuccess={(addedList) => {
+          onMembersAdded?.(addedList);
+        }}
+        onToast={onToast}
+      />
+
+      {/* Add Custom Role Modal */}
+      <AddCustomRoleModal
+        isOpen={isAddCustomRoleOpen}
+        onClose={() => setIsAddCustomRoleOpen(false)}
+        projectId={projectId}
+        projectName={projectName}
+        onRoleCreated={(newRole) => {
+          onToast?.({
+            type: 'success',
+            title: 'Custom Role Created',
+            message: `Role "${newRole.name}" created successfully.`,
+          });
+        }}
+        onToast={onToast}
+      />
     </div>
   );
 

@@ -86,6 +86,9 @@ export class SprintService {
     if (!project) {
       throw new Error('Project not found');
     }
+    if (project.status === 'ARCHIVED') {
+      throw new Error('Cannot create sprints or cycles in an archived project');
+    }
 
     const { startDate, endDate } = this.validateDates(data.start_date, data.end_date);
 
@@ -330,6 +333,9 @@ export class SprintService {
     if (!project) {
       throw new Error('Project not found');
     }
+    if (project.status === 'ARCHIVED') {
+      throw new Error('Cannot update sprints or cycles in an archived project');
+    }
 
     const isKanban = project.methodology === 'KANBAN';
 
@@ -446,6 +452,9 @@ export class SprintService {
     if (!project) {
       throw new Error('Project not found');
     }
+    if (project.status === 'ARCHIVED') {
+      throw new Error('Cannot start sprints or cycles in an archived project');
+    }
 
     const isKanban = project.methodology === 'KANBAN';
 
@@ -536,6 +545,9 @@ export class SprintService {
     });
     if (!project) {
       throw new Error('Project not found');
+    }
+    if (project.status === 'ARCHIVED') {
+      throw new Error('Cannot complete sprints or cycles in an archived project');
     }
 
     const isKanban = project.methodology === 'KANBAN';
@@ -632,6 +644,9 @@ export class SprintService {
     });
     if (!project) {
       throw new Error('Project not found');
+    }
+    if (project.status === 'ARCHIVED') {
+      throw new Error('Cannot delete sprints or cycles in an archived project');
     }
 
     return await prisma.$transaction(async (tx) => {

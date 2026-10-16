@@ -24,6 +24,7 @@ import {
   AlertCircle,
   Activity,
   ArrowUpRight,
+  Shield,
 } from 'lucide-react';
 import { projectsService } from '../../services/projects.service';
 import { workItemsService } from '../../services/workItems.service';
@@ -843,15 +844,53 @@ export default function ReportsView({ onToast, selectedCohort, selectedCohortId 
                           : selectedScopeMember?.name || 'Individual'}
                       </span>
                     </div>
+
+                    {/* Completion Rate Pill */}
                     <div className="px-3 py-1.5 rounded-xl bg-emerald-50 border border-emerald-200 text-xs font-semibold text-emerald-800 flex items-center gap-1.5">
                       <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
-                      <span>{analytics?.completion_rate || 0}% Completion Rate</span>
+                      <span>{analytics?.completion_rate || 0}% Completion</span>
                     </div>
+
+                    {/* Project Health / Schedule Risk Pill (Requirement 3) */}
+                    {(analytics?.project_health || analytics?.delivery_risk) && (
+                      <div
+                        className={`px-3 py-1.5 rounded-xl border text-xs font-semibold flex items-center gap-1.5 ${
+                          (analytics.project_health === 'CRITICAL' || analytics.delivery_risk === 'CRITICAL' || analytics.delivery_risk === 'HIGH')
+                            ? 'bg-rose-50 border-rose-200 text-rose-800'
+                            : (analytics.project_health === 'AT_RISK' || analytics.delivery_risk === 'AT_RISK' || analytics.delivery_risk === 'MEDIUM')
+                            ? 'bg-amber-50 border-amber-200 text-amber-800'
+                            : analytics.project_health === 'NOT_ASSESSED'
+                            ? 'bg-slate-100 border-slate-200 text-slate-700'
+                            : 'bg-emerald-50 border-emerald-200 text-emerald-800'
+                        }`}
+                        title={
+                          (analytics.project_health_reasons?.length ? analytics.project_health_reasons.join(' · ') : null) ||
+                          (analytics.delivery_risk_reasons?.join(' · ')) ||
+                          'Project health classification based on story points, blockers, and cycle context'
+                        }
+                      >
+                        <Shield className="w-3.5 h-3.5" />
+                        <span>Project Health: {analytics.project_health || analytics.delivery_risk}</span>
+                      </div>
+                    )}
+
+                    {/* Blocked Deliverables Pill (Separated from Logged Effort) */}
+                    {analytics?.blocked > 0 ? (
+                      <div className="px-3 py-1.5 rounded-xl bg-rose-50 border border-rose-200 text-xs font-semibold text-rose-800 flex items-center gap-1.5">
+                        <AlertTriangle className="w-3.5 h-3.5 text-rose-600" />
+                        <span>{analytics.blocked} Blocked</span>
+                      </div>
+                    ) : (
+                      <div className="px-3 py-1.5 rounded-xl bg-slate-50 border border-slate-200/80 text-xs font-medium text-slate-600 flex items-center gap-1.5">
+                        <CheckCircle2 className="w-3.5 h-3.5 text-slate-400" />
+                        <span>0 Blocked</span>
+                      </div>
+                    )}
                   </div>
                 </div>
 
-                {/* 4 KPI Cards */}
-                <div className="grid grid-cols-2 lg:grid-cols-4 gap-3.5 pt-5">
+                {/* 5 Distinct KPI Cards */}
+                <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3.5 pt-5">
                   {/* Card 1: Assigned Work Items */}
                   <div className="p-4 rounded-xl bg-slate-50/70 border border-slate-200/70">
                     <div className="flex items-center justify-between text-slate-500 mb-2">
@@ -860,54 +899,99 @@ export default function ReportsView({ onToast, selectedCohort, selectedCohortId 
                     </div>
                     <div className="text-2xl font-bold text-slate-900">{analytics?.total || 0}</div>
                     <div className="text-[11px] text-slate-500 mt-1">
-                      {analytics?.completed || 0} completed · {(analytics?.in_progress || 0) + (analytics?.in_review || 0)} in progress
+                      {analytics?.completed || 0} completed · {(analytics?.in_progress || 0) + (analytics?.in_review || 0)} in progress · {analytics?.todo || 0} todo
                     </div>
                   </div>
 
-                  {/* Card 2: On-Time Delivery */}
+                  {/* Card 2: Completed On-Time Rate (Requirement 1) */}
                   <div className="p-4 rounded-xl bg-slate-50/70 border border-slate-200/70">
                     <div className="flex items-center justify-between text-slate-500 mb-2">
-                      <span className="text-xs font-medium">On-Time Delivery</span>
-                      <TrendingUp className="w-4 h-4 text-emerald-500" />
+                      <span className="text-xs font-medium">Completed On-Time Rate</span>
+                      <TrendingUp className={`w-4 h-4 ${analytics?.completed_on_time_rate !== null && analytics?.completed_on_time_rate !== undefined ? (analytics.completed_on_time_rate >= 80 ? 'text-emerald-500' : 'text-amber-500') : 'text-slate-400'}`} />
                     </div>
-                    <div className="text-2xl font-bold text-slate-900">{analytics?.on_time_rate || 0}%</div>
+                    <div className="text-2xl font-bold text-slate-900">
+                      {analytics?.completed_on_time_rate !== null && analytics?.completed_on_time_rate !== undefined
+                        ? `${analytics.completed_on_time_rate}%`
+                        : 'N/A'}
+                    </div>
                     <div className="text-[11px] text-slate-500 mt-1">
-                      {analytics?.completed_on_time || 0} on-time · {analytics?.past_due || 0} past due
+                      {analytics?.completed_with_due_date_count > 0 ? (
+                        <span>
+                          {analytics.completed_on_time_count} of {analytics.completed_with_due_date_count} eligible completed items delivered on time
+                        </span>
+                      ) : (
+                        <span className="text-slate-400">No completed items with due dates</span>
+                      )}
                     </div>
                   </div>
 
-                  {/* Card 3: Story Points Velocity */}
+                  {/* Card 3: Current Overdue Work (Requirement 2) */}
+                  <div className="p-4 rounded-xl bg-slate-50/70 border border-slate-200/70">
+                    <div className="flex items-center justify-between text-slate-500 mb-2">
+                      <span className="text-xs font-medium">Overdue Items</span>
+                      <Clock className={`w-4 h-4 ${analytics?.past_due > 0 ? 'text-amber-600' : 'text-slate-400'}`} />
+                    </div>
+                    <div className={`text-2xl font-bold ${analytics?.past_due > 0 ? 'text-amber-700' : 'text-slate-900'}`}>
+                      {analytics?.past_due || 0}
+                    </div>
+                    <div className="text-[11px] text-slate-500 mt-1">
+                      {analytics?.past_due > 0 ? (
+                        <span className="text-amber-800 font-medium">
+                          {analytics.past_due} overdue of {analytics.scheduled_items_count || 0} with deadlines ({analytics.overdue_rate || 0}%)
+                        </span>
+                      ) : (
+                        <span>
+                          {analytics?.scheduled_items_count > 0
+                            ? `0 overdue of ${analytics.scheduled_items_count} with deadlines (0%)`
+                            : '0 overdue · No items with deadlines'}
+                        </span>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Card 4: Story Points Velocity */}
                   <div className="p-4 rounded-xl bg-slate-50/70 border border-slate-200/70">
                     <div className="flex items-center justify-between text-slate-500 mb-2">
                       <span className="text-xs font-medium">Story Points</span>
                       <CheckSquare className="w-4 h-4 text-blue-500" />
                     </div>
-                    <div className="text-2xl font-bold text-slate-900">
-                      {analytics?.story_points_completed || 0}
-                      <span className="text-sm font-normal text-slate-400"> / {analytics?.story_points_total || 0} pts</span>
-                    </div>
-                    <div className="text-[11px] text-slate-500 mt-1">
-                      {analytics?.story_points_progress !== null ? `${analytics?.story_points_progress}% completed` : 'No points assigned'}
-                    </div>
+                    {analytics?.story_points_total > 0 ? (
+                      <>
+                        <div className="text-2xl font-bold text-slate-900">
+                          {analytics.story_points_completed}
+                          <span className="text-sm font-normal text-slate-400"> / {analytics.story_points_total} pts</span>
+                        </div>
+                        <div className="text-[11px] text-slate-500 mt-1">
+                          {analytics.story_points_progress !== null ? `${analytics.story_points_progress}% completed · ${analytics.story_points_remaining || 0} pts remaining` : 'Points estimated'}
+                        </div>
+                      </>
+                    ) : (
+                      <>
+                        <div className="text-2xl font-bold text-slate-400">
+                          Not estimated
+                        </div>
+                        <div className="text-[11px] text-slate-400 mt-1">
+                          No story points assigned
+                        </div>
+                      </>
+                    )}
                   </div>
 
-                  {/* Card 4: Logged Hours & Blockers */}
+                  {/* Card 5: Logged Effort (Clean separation from blockers) */}
                   <div className="p-4 rounded-xl bg-slate-50/70 border border-slate-200/70">
                     <div className="flex items-center justify-between text-slate-500 mb-2">
                       <span className="text-xs font-medium">Logged Effort</span>
-                      <Clock className="w-4 h-4 text-amber-500" />
+                      <Clock className="w-4 h-4 text-indigo-500" />
                     </div>
                     <div className="text-2xl font-bold text-slate-900">
                       {analytics?.total_logged_hours || 0}
                       <span className="text-sm font-normal text-slate-400"> hrs</span>
                     </div>
-                    <div className="text-[11px] text-slate-500 mt-1 flex items-center gap-1.5">
-                      {analytics?.blocked > 0 ? (
-                        <span className="text-rose-600 font-semibold flex items-center gap-1">
-                          <AlertTriangle className="w-3 h-3" /> {analytics.blocked} blocked
-                        </span>
+                    <div className="text-[11px] text-slate-500 mt-1">
+                      {analytics?.has_time_entries ? (
+                        <span>{analytics.time_entries_count} time {analytics.time_entries_count === 1 ? 'entry' : 'entries'} logged</span>
                       ) : (
-                        <span className="text-emerald-600 font-medium">0 active blockers</span>
+                        <span className="text-slate-400">No time entries recorded</span>
                       )}
                     </div>
                   </div>
@@ -1086,10 +1170,23 @@ export default function ReportsView({ onToast, selectedCohort, selectedCohortId 
                       <div className="mt-5 pt-4 border-t border-slate-100 flex items-center justify-between">
                         <div className="text-xs">
                           <div className="font-semibold text-slate-800">Past Due Work</div>
-                          <div className="text-[11px] text-slate-500">Unresolved past due date</div>
+                          <div className="text-[11px] text-slate-500">
+                            {analytics?.scheduled_items_count > 0
+                              ? `${analytics.scheduled_items_count} with deadline`
+                              : 'Unresolved past deadline'}
+                          </div>
                         </div>
-                        <div className={`text-base font-bold ${analytics?.past_due > 0 ? 'text-rose-600' : 'text-emerald-600'}`}>
-                          {analytics?.past_due || 0} items
+                        <div className={`text-right ${analytics?.past_due > 0 ? 'text-amber-700' : 'text-emerald-600'}`}>
+                          <div className="text-base font-bold">
+                            {analytics?.past_due > 0
+                              ? `${analytics.past_due} of ${analytics.total || 0} items`
+                              : '0 overdue'}
+                          </div>
+                          {analytics?.past_due > 0 && (
+                            <div className="text-[10px] text-slate-400 font-medium">
+                              {analytics.overdue_rate}% of scheduled
+                            </div>
+                          )}
                         </div>
                       </div>
                     </div>

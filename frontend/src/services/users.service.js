@@ -35,10 +35,10 @@ export const usersService = {
   },
 
   /**
-   * Confirm bulk creation with validated rows
+   * Confirm bulk creation with validated rows and optional update confirmation
    */
-  async confirmBulkImport(rows) {
-    return await api.post('/users/bulk', { rows });
+  async confirmBulkImport(rows, updateExisting = false) {
+    return await api.post('/users/bulk', { rows, update_existing: updateExisting });
   },
 
   /**

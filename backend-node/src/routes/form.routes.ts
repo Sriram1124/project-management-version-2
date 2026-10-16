@@ -10,6 +10,10 @@ router.use(authenticate);
 // Get forms
 router.get('/', FormController.listForms);
 
+// Overdue members summary & report export (before /:id)
+router.get('/overdue/summary', requireAnyPermission('FORM_READ', 'PROJECT_READ'), FormController.getOverdueSummary);
+router.get('/overdue/export', requireAnyPermission('FORM_READ', 'PROJECT_READ'), FormController.exportOverdueReport);
+
 // Manager only: create/update forms
 router.post('/', requireAnyPermission('FORM_CREATE', 'PROJECT_CREATE'), FormController.createForm);
 router.get('/:id', FormController.getForm);
