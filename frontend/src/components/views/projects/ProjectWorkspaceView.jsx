@@ -10,6 +10,7 @@ import ProjectMomTab from './ProjectMomTab';
 import { projectsService } from '../../../services/projects.service';
 import { useAuth } from '../../../context/AuthContext';
 import { getProjectMethodology, getProjectTabs, isKanbanProject } from '../../../utils/methodology';
+import ProjectMethodologyBadge from './ProjectMethodologyBadge';
 
 export default function ProjectWorkspaceView({ 
   projectId,
@@ -114,13 +115,7 @@ export default function ProjectWorkspaceView({
             {liveProject?.name && (
               <>
                 <span className="font-bold text-slate-900">{liveProject.name}</span>
-                <span className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider ${
-                  isKanban
-                    ? 'bg-indigo-50 text-indigo-700 border border-indigo-200'
-                    : 'bg-purple-50 text-purple-700 border border-purple-200'
-                }`}>
-                  {isKanban ? 'Kanban Project' : 'Scrum Project'}
-                </span>
+                <ProjectMethodologyBadge methodology={liveProject.methodology} />
                 <span className="text-slate-300 select-none">·</span>
               </>
             )}

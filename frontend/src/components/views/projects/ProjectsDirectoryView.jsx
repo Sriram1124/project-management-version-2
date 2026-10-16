@@ -18,6 +18,7 @@ import {
 } from 'lucide-react';
 import { projectsService } from '../../../services/projects.service';
 import { useAuth } from '../../../context/AuthContext';
+import ProjectMethodologyBadge from './ProjectMethodologyBadge';
 
 export default function ProjectsDirectoryView({ onSelectProject, isIntern = false }) {
   const { user: authUser } = useAuth();
@@ -484,13 +485,7 @@ export default function ProjectsDirectoryView({ onSelectProject, isIntern = fals
                                 <span className="font-bold text-slate-900 group-hover:text-purple-700 transition-colors text-xs leading-snug">
                                   {proj.name}
                                 </span>
-                                <span className={`px-1.5 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider ${
-                                  proj.methodology === 'KANBAN'
-                                    ? 'bg-indigo-50 text-indigo-700 border border-indigo-200'
-                                    : 'bg-purple-50 text-purple-700 border border-purple-200'
-                                }`}>
-                                  {proj.methodology === 'KANBAN' ? 'Kanban' : 'Scrum'}
-                                </span>
+                                <ProjectMethodologyBadge methodology={proj.methodology} />
                               </div>
                               <div className="text-[10px] text-slate-400 font-mono mt-0.5">
                                 ID: {proj.id.slice(0, 8)}...
@@ -976,13 +971,7 @@ export default function ProjectsDirectoryView({ onSelectProject, isIntern = fals
                 </label>
                 <div className="flex items-center justify-between p-2.5 rounded-xl border border-slate-200 bg-slate-50/80">
                   <div className="flex items-center gap-2">
-                    <span className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider ${
-                      editForm.methodology === 'KANBAN'
-                        ? 'bg-indigo-50 text-indigo-700 border border-indigo-200'
-                        : 'bg-purple-50 text-purple-700 border border-purple-200'
-                    }`}>
-                      {editForm.methodology === 'KANBAN' ? 'Kanban Project' : 'Scrum Project'}
-                    </span>
+                    <ProjectMethodologyBadge methodology={editForm.methodology} />
                     <span className="text-[11px] text-slate-500">
                       {editForm.methodology === 'KANBAN' ? 'Continuous workflow' : 'Sprint iterations & planning'}
                     </span>

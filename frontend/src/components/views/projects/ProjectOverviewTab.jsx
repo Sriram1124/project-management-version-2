@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import ProjectFilesSection from './ProjectFilesSection';
+import ProjectMethodologyBadge from './ProjectMethodologyBadge';
 import { 
   FolderKanban, 
   Calendar, 
@@ -182,13 +183,7 @@ export default function ProjectOverviewTab({ projectId, project, onToast, readOn
               <span className={`px-2.5 py-0.5 rounded-full text-xs font-semibold border ${getStatusBadgeStyle(projectStatus)}`}>
                 {projectStatus}
               </span>
-              <span className={`px-2.5 py-0.5 rounded-full text-xs font-semibold border ${
-                projectMethodology === 'KANBAN'
-                  ? 'bg-amber-50 text-amber-700 border-amber-200'
-                  : 'bg-indigo-50 text-indigo-700 border-indigo-200'
-              }`}>
-                {projectMethodology === 'KANBAN' ? 'Kanban' : 'Scrum'}
-              </span>
+              <ProjectMethodologyBadge methodology={projectMethodology} />
             </div>
           </div>
         </div>

@@ -33,6 +33,7 @@ import PersonalKanbanBoard from './PersonalKanbanBoard';
 import HierarchyTreeView from './HierarchyTreeView';
 import ProjectSprintWorkspaceTab from '../../../components/views/projects/ProjectSprintWorkspaceTab';
 import ProjectCycleWorkspaceTab from '../../../components/views/projects/ProjectCycleWorkspaceTab';
+import ProjectMethodologyBadge from '../../../components/views/projects/ProjectMethodologyBadge';
 
 export default function ScopedProjectView({
   project,
@@ -188,13 +189,7 @@ export default function ScopedProjectView({
                 <span className="text-[10px] font-bold text-emerald-700 bg-emerald-50 border border-emerald-200 px-2 py-0.5 rounded">
                   {project.status || 'ACTIVE'}
                 </span>
-                <span className={`text-[10px] font-bold px-2 py-0.5 rounded uppercase tracking-wider ${
-                  isKanban
-                    ? 'bg-indigo-50 text-indigo-700 border border-indigo-200'
-                    : 'bg-purple-50 text-purple-700 border border-purple-200'
-                }`}>
-                  {isKanban ? 'Kanban Project' : 'Scrum Project'}
-                </span>
+                <ProjectMethodologyBadge methodology={project.methodology} />
               </div>
               <h2 className="text-base font-bold text-slate-900 mt-0.5">
                 {project.name}
