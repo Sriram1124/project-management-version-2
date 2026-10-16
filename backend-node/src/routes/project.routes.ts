@@ -49,7 +49,7 @@ router.post('/:id/documents', requireAnyPermission('DOCUMENT_UPLOAD', 'PROJECT_U
 router.get('/:id/documents/:documentId/download', requirePermission('PROJECT_READ'), ProjectController.downloadDocument);
 router.get('/:id/documents/:documentId/preview', requirePermission('PROJECT_READ'), ProjectController.previewDocument);
 router.patch('/:id/documents/:documentId', requirePermission('PROJECT_UPDATE'), ProjectController.updateDocument);
-router.delete('/:id/documents/:documentId', requirePermission('PROJECT_UPDATE'), ProjectController.deleteDocument);
+router.delete('/:id/documents/:documentId', requireAnyPermission('DOCUMENT_DELETE', 'PROJECT_UPDATE'), ProjectController.deleteDocument);
 
 export { router as projectRouter };
 

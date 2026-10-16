@@ -1683,21 +1683,24 @@ export class ProjectService {
       });
     }
 
-    if (document) {
-      await prisma.projectDocument.delete({
-        where: { id: document.id },
-      });
+    if (!document) {
+      throw new Error('Document not found in project');
+    }
 
-      // Delete physical file from storage
-      if (document.storage_key) {
-        await StorageService.deleteFile(document.storage_key).catch(() => {});
-      }
+    await prisma.projectDocument.delete({
+      where: { id: document.id },
+    });
+
+    // Delete physical file from storage
+    if (document.storage_key) {
+      await StorageService.deleteFile(document.storage_key).catch(() => {});
     }
 
     return {
       message: 'Document deleted successfully',
       success: true,
-      id: document?.id || documentId,
+      id: document.id,
+      name: document.name,
     };
   }
 

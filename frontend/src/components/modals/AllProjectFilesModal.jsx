@@ -9,6 +9,7 @@ import {
   Image as ImageIcon,
   Download, 
   Eye, 
+  Trash2,
   Loader2 
 } from 'lucide-react';
 
@@ -18,8 +19,10 @@ export default function AllProjectFilesModal({
   files = [],
   projectName = '',
   projectId,
+  readOnly = false,
   onPreview,
   onDownload,
+  onDelete,
 }) {
   if (!isOpen) return null;
 
@@ -178,6 +181,22 @@ export default function AllProjectFilesModal({
                       )}
                       <span>Download</span>
                     </button>
+
+                    {/* Option 3: Delete */}
+                    {!readOnly && onDelete && (
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          onDelete(file);
+                        }}
+                        className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold text-rose-600 bg-rose-50 hover:bg-rose-100 border border-rose-200 transition-colors cursor-pointer shadow-2xs"
+                        title={`Delete ${file.name}`}
+                      >
+                        <Trash2 className="w-3.5 h-3.5 text-rose-500" />
+                        <span>Delete</span>
+                      </button>
+                    )}
                   </div>
                 </div>
               ))}

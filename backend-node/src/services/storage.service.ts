@@ -66,8 +66,9 @@ export class StorageService {
    * Delete a file from storage if it exists
    */
   static async deleteFile(storageKey: string): Promise<void> {
+    if (!storageKey || typeof storageKey !== 'string') return;
     try {
-      const filePath = this.getFilePath(storageKey);
+      const filePath = this.getFilePath(storageKey, false);
       if (fs.existsSync(filePath)) {
         await fs.promises.unlink(filePath);
       }
