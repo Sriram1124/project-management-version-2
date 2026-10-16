@@ -76,11 +76,50 @@ const api = {
       ...options.headers,
     };
 
-    let response = await fetch(`${API_URL}${endpoint}`, {
-      ...options,
-      headers,
-      credentials: 'include',
-    });
+    // Timeout & AbortController handling
+    const controller = new AbortController();
+    const timeoutMs = options.timeout !== undefined ? options.timeout : 25000;
+    let timeoutId = null;
+    let didTimeout = false;
+
+    if (timeoutMs && timeoutMs > 0) {
+      timeoutId = setTimeout(() => {
+        didTimeout = true;
+        controller.abort(new Error(`Request timed out after ${timeoutMs}ms`));
+      }, timeoutMs);
+    }
+
+    let onExternalAbort = null;
+    if (options.signal) {
+      if (options.signal.aborted) {
+        controller.abort(options.signal.reason);
+      } else {
+        onExternalAbort = () => controller.abort(options.signal.reason);
+        options.signal.addEventListener('abort', onExternalAbort);
+      }
+    }
+
+    const { timeout: _unusedTimeout, signal: _unusedSignal, ...fetchOptions } = options;
+
+    let response;
+    try {
+      response = await fetch(`${API_URL}${endpoint}`, {
+        ...fetchOptions,
+        signal: controller.signal,
+        headers,
+        credentials: 'include',
+      });
+    } catch (err) {
+      if (didTimeout) {
+        throw new Error('Request timed out. The server took too long to respond. Please try again.');
+      }
+      throw err;
+    } finally {
+      if (timeoutId) clearTimeout(timeoutId);
+      if (options.signal && onExternalAbort) {
+        options.signal.removeEventListener('abort', onExternalAbort);
+      }
+    }
 
     if (response.status === 401 && !endpoint.includes('/auth/login') && !endpoint.includes('/auth/refresh')) {
       if (!isRefreshing) {
@@ -92,7 +131,8 @@ const api = {
           // Retry original request with new token
           headers.Authorization = `Bearer ${newToken}`;
           response = await fetch(`${API_URL}${endpoint}`, {
-            ...options,
+            ...fetchOptions,
+            signal: controller.signal,
             headers,
             credentials: 'include',
           });
@@ -108,7 +148,8 @@ const api = {
         if (retryToken) {
           headers.Authorization = `Bearer ${retryToken}`;
           response = await fetch(`${API_URL}${endpoint}`, {
-            ...options,
+            ...fetchOptions,
+            signal: controller.signal,
             headers,
             credentials: 'include',
           });
@@ -124,27 +165,30 @@ const api = {
     return response.json();
   },
 
-  get(endpoint) {
-    return this.fetchWithAuth(endpoint, { method: 'GET' });
+  get(endpoint, options = {}) {
+    return this.fetchWithAuth(endpoint, { method: 'GET', ...options });
   },
 
-  post(endpoint, body) {
+  post(endpoint, body, options = {}) {
     return this.fetchWithAuth(endpoint, {
       method: 'POST',
       body: JSON.stringify(body),
+      ...options,
     });
   },
 
-  patch(endpoint, body) {
+  patch(endpoint, body, options = {}) {
     return this.fetchWithAuth(endpoint, {
       method: 'PATCH',
       body: JSON.stringify(body),
+      ...options,
     });
   },
 
-  delete(endpoint) {
+  delete(endpoint, options = {}) {
     return this.fetchWithAuth(endpoint, {
       method: 'DELETE',
+      ...options,
     });
   },
 

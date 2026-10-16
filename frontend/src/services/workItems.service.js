@@ -5,7 +5,7 @@ export const workItemsService = {
    * List work items with optional filters:
    * project_id, type, status, priority, assigned_to_me, my_personal
    */
-  async listWorkItems(filters = {}) {
+  async listWorkItems(filters = {}, options = {}) {
     const params = new URLSearchParams();
     if (filters.project_id) params.append('project_id', filters.project_id);
     if (filters.type) params.append('type', filters.type);
@@ -19,7 +19,7 @@ export const workItemsService = {
 
     const qs = params.toString();
     const endpoint = `/work-items${qs ? `?${qs}` : ''}`;
-    const data = await api.get(endpoint);
+    const data = await api.get(endpoint, options);
     return data.work_items || [];
   },
 
@@ -165,7 +165,7 @@ export const workItemsService = {
   /**
    * Get server-calculated analytics scoped to user / filters
    */
-  async getAnalytics(filters = {}) {
+  async getAnalytics(filters = {}, options = {}) {
     const params = new URLSearchParams();
     if (filters.project_id) params.append('project_id', filters.project_id);
     if (filters.sprint_id && filters.sprint_id !== 'ALL') params.append('sprint_id', filters.sprint_id);
@@ -175,7 +175,7 @@ export const workItemsService = {
 
     const qs = params.toString();
     const endpoint = `/work-items/analytics${qs ? `?${qs}` : ''}`;
-    const data = await api.get(endpoint);
+    const data = await api.get(endpoint, options);
     return data.analytics || null;
   },
 

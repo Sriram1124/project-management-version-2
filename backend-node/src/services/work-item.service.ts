@@ -1628,44 +1628,57 @@ export class WorkItemService {
       orgId = firstOrg?.id;
     }
     const isMgr = this.isManagerOrAdmin(user);
-    const authorizedLeadProjects = orgId ? await this.getAuthorizedLeadProjectIds(user, orgId) : [];
-    const isLeadAnyProject = authorizedLeadProjects.length > 0;
-
+    let authorizedLeadProjects: string[] = [];
+    let isLeadAnyProject = false;
     let targetUserId: string | null = null;
     let isActingAsLead = false;
+    let project: any = null;
 
     if (filters?.project_id) {
       const whereProject: any = { id: filters.project_id };
       if (orgId) {
         whereProject.organization_id = orgId;
       }
-      const project = await prisma.project.findFirst({
+      project = await prisma.project.findFirst({
         where: whereProject,
-        select: { id: true, name: true, owner_id: true },
+        select: { id: true, name: true, owner_id: true, status: true, start_date: true, end_date: true },
       });
       if (!project) {
         throw new Error('Project not found in your organization');
       }
 
-      if (isMgr || project.owner_id === user.id || authorizedLeadProjects.includes(filters.project_id)) {
-        // Authorized Manager or Tech Lead for this project
+      if (isMgr || project.owner_id === user.id) {
+        // Authorized Manager or Project Owner
         isActingAsLead = true;
         if (filters?.user_id) {
           targetUserId = filters.user_id;
         }
       } else {
-        // Regular intern or user not authorized to lead this project
-        const isMember = await this.verifyProjectMembership(filters.project_id, user.id, orgId);
-        if (!isMember) {
+        // Check project membership and project role for this specific project
+        const membership = await prisma.projectMember.findFirst({
+          where: { project_id: filters.project_id, user_id: user.id },
+          select: { project_role: true },
+        });
+
+        const isLead = membership?.project_role === 'TECH_LEAD' || membership?.project_role === 'MANAGER' || this.isOrgTechLead(user);
+        if (isLead) {
+          isActingAsLead = true;
+          if (filters?.user_id) {
+            targetUserId = filters.user_id;
+          }
+        } else if (membership) {
+          if (filters?.user_id && filters.user_id !== user.id) {
+            throw new Error('Forbidden: interns can only view their own performance analytics');
+          }
+          targetUserId = user.id;
+        } else {
           throw new Error('Forbidden: you are not authorized to access analytics for this project');
         }
-        if (filters?.user_id && filters.user_id !== user.id) {
-          throw new Error('Forbidden: interns can only view their own performance analytics');
-        }
-        targetUserId = user.id;
       }
     } else {
       // No specific project provided in filters
+      authorizedLeadProjects = orgId ? await this.getAuthorizedLeadProjectIds(user, orgId) : [];
+      isLeadAnyProject = authorizedLeadProjects.length > 0;
       if (isMgr || isLeadAnyProject) {
         isActingAsLead = true;
         if (filters?.user_id) {
@@ -1703,29 +1716,6 @@ export class WorkItemService {
       where.sprint_id = filters.sprint_id;
     }
 
-    // Work items
-    const items = await prisma.workItem.findMany({
-      where,
-      include: {
-        project: { select: { id: true, name: true } },
-        sprint: { select: { id: true, name: true } },
-        assignees: {
-          include: {
-            user: { select: { id: true, name: true, email: true } },
-          },
-        },
-        time_entries: targetUserId
-          ? {
-              where: { user_id: targetUserId },
-              select: { id: true, duration_minutes: true, date: true, start_time: true, end_time: true },
-            }
-          : {
-              select: { id: true, duration_minutes: true, date: true, start_time: true, end_time: true },
-            },
-      },
-      orderBy: { created_at: 'desc' },
-    });
-
     // Time entries for actual work time
     const timeWhere: any = { organization_id: orgId };
     if (targetUserId) {
@@ -1740,18 +1730,94 @@ export class WorkItemService {
         lte: new Date(filters.end_date),
       };
     }
-    const timeEntries = await prisma.timeEntry.findMany({
-      where: timeWhere,
-      select: {
-        id: true,
-        task_id: true,
-        duration_minutes: true,
-        date: true,
-        start_time: true,
-        end_time: true,
-      },
-      orderBy: { start_time: 'desc' },
-    });
+
+    const targetProjectForMembers = filters?.project_id || (isLeadAnyProject && authorizedLeadProjects.length === 1 ? authorizedLeadProjects[0] : null);
+
+    // Parallel execution of all analytics data queries
+    const [items, timeEntries, accessibleSprints, accessibleProjects, pMembers] = await Promise.all([
+      prisma.workItem.findMany({
+        where,
+        select: {
+          id: true,
+          title: true,
+          type: true,
+          status: true,
+          priority: true,
+          due_date: true,
+          completed_at: true,
+          updated_at: true,
+          story_points: true,
+          parent_id: true,
+          sprint_id: true,
+          project_id: true,
+          project: { select: { id: true, name: true } },
+          sprint: { select: { id: true, name: true } },
+          assignees: {
+            select: {
+              user_id: true,
+              user: { select: { id: true, name: true, email: true } },
+            },
+          },
+        },
+        orderBy: { created_at: 'desc' },
+      }),
+      prisma.timeEntry.findMany({
+        where: timeWhere,
+        select: {
+          id: true,
+          task_id: true,
+          duration_minutes: true,
+          date: true,
+          start_time: true,
+          end_time: true,
+        },
+        orderBy: { start_time: 'desc' },
+      }),
+      filters?.project_id
+        ? prisma.sprint.findMany({
+            where: {
+              organization_id: orgId,
+              project_id: filters.project_id,
+            },
+            select: { id: true, name: true, status: true, start_date: true, end_date: true },
+            orderBy: { created_at: 'asc' },
+          })
+        : Promise.resolve([]),
+      isMgr
+        ? prisma.project.findMany({
+            where: { organization_id: orgId },
+            select: { id: true, name: true },
+            orderBy: { name: 'asc' },
+          })
+        : isLeadAnyProject
+        ? prisma.project.findMany({
+            where: {
+              organization_id: orgId,
+              id: { in: authorizedLeadProjects },
+            },
+            select: { id: true, name: true },
+            orderBy: { name: 'asc' },
+          })
+        : prisma.project.findMany({
+            where: {
+              organization_id: orgId,
+              members: { some: { user_id: user.id } },
+            },
+            select: { id: true, name: true },
+            orderBy: { name: 'asc' },
+          }),
+      targetProjectForMembers
+        ? prisma.projectMember.findMany({
+            where: { project_id: targetProjectForMembers },
+            select: {
+              project_role: true,
+              user: {
+                select: { id: true, name: true, email: true },
+              },
+            },
+          })
+        : Promise.resolve([]),
+    ]);
 
     const now = new Date();
     const total = items.length;
@@ -1885,7 +1951,37 @@ export class WorkItemService {
     let project_health_reasons: string[] = [];
     let project_health_warnings: string[] = [];
 
-    if (filters?.project_id) {
+    if (filters?.project_id && project) {
+      const projRecord = {
+        id: project.id,
+        name: project.name,
+        status: project.status,
+        start_date: project.start_date,
+        end_date: project.end_date,
+        work_items: items.map((w) => ({
+          id: w.id,
+          title: w.title,
+          type: w.type,
+          status: w.status,
+          priority: w.priority,
+          due_date: w.due_date,
+          story_points: w.story_points,
+          parent_id: w.parent_id,
+          sprint_id: w.sprint_id,
+        })),
+        sprints: accessibleSprints.map((s) => ({
+          id: s.id,
+          status: s.status,
+          start_date: s.start_date,
+          end_date: s.end_date,
+        })),
+      };
+
+      const classified = ProjectHealthService.classifyProjectHealth(projRecord);
+      project_health = classified.health as any;
+      project_health_reasons = classified.reasons || [];
+      project_health_warnings = classified.warnings || [];
+    } else if (filters?.project_id) {
       const projRecord = await prisma.project.findUnique({
         where: { id: filters.project_id },
         select: {
@@ -2042,64 +2138,14 @@ export class WorkItemService {
       });
     }
 
-    // Projects accessible for filtering
-    const accessibleProjects = isMgr
-      ? await prisma.project.findMany({
-          where: { organization_id: orgId },
-          select: { id: true, name: true },
-          orderBy: { name: 'asc' },
-        })
-      : isLeadAnyProject
-      ? await prisma.project.findMany({
-          where: {
-            organization_id: orgId,
-            id: { in: authorizedLeadProjects },
-          },
-          select: { id: true, name: true },
-          orderBy: { name: 'asc' },
-        })
-      : await prisma.project.findMany({
-          where: {
-            organization_id: orgId,
-            members: { some: { user_id: user.id } },
-          },
-          select: { id: true, name: true },
-          orderBy: { name: 'asc' },
-        });
-
-    // Sprints for selected project
-    let accessibleSprints: { id: string; name: string }[] = [];
-    if (filters?.project_id) {
-      accessibleSprints = await prisma.sprint.findMany({
-        where: {
-          organization_id: orgId,
-          project_id: filters.project_id,
-        },
-        select: { id: true, name: true },
-        orderBy: { created_at: 'asc' },
-      });
-    }
-
-    // Members for selected project or single lead project
-    let projectMembers: any[] = [];
-    const targetProjectForMembers = filters?.project_id || (isLeadAnyProject && authorizedLeadProjects.length === 1 ? authorizedLeadProjects[0] : null);
-    if (targetProjectForMembers) {
-      const pMembers = await prisma.projectMember.findMany({
-        where: { project_id: targetProjectForMembers },
-        include: {
-          user: {
-            select: { id: true, name: true, email: true },
-          },
-        },
-      });
-      projectMembers = pMembers.map((pm) => ({
-        id: pm.user.id,
-        user_id: pm.user.id,
-        name: pm.user.name,
-        email: pm.user.email,
-        project_role: pm.project_role,
-      }));
-    }
+    // Project members mapped from pre-fetched parallel query
+    const projectMembers = pMembers.map((pm: any) => ({
+      id: pm.user?.id,
+      user_id: pm.user?.id,
+      name: pm.user?.name,
+      email: pm.user?.email,
+      project_role: pm.project_role,
+    }));
 
     return {
       is_tech_lead: isActingAsLead || isLeadAnyProject,

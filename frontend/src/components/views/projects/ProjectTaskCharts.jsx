@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo, useRef } from 'react';
+import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import { 
   BarChart3, 
   PieChart, 
@@ -96,6 +96,7 @@ export default function ProjectTaskCharts({ projectId = null, members = [], read
   const [isDropdownOpen, setIsDropdownOpen] = useState(false);
   const [memberSearchQuery, setMemberSearchQuery] = useState('');
   const dropdownRef = useRef(null);
+  const abortControllerRef = useRef(null);
 
   // Intern Personal Table Search & Filter (Tab B)
   const [personalSearchQuery, setPersonalSearchQuery] = useState('');
@@ -140,9 +141,17 @@ export default function ProjectTaskCharts({ projectId = null, members = [], read
     };
   };
 
-  const fetchAnalytics = async () => {
+  const fetchAnalytics = useCallback(async () => {
+    // Abort any ongoing request before firing a new one
+    if (abortControllerRef.current) {
+      abortControllerRef.current.abort();
+    }
+    const controller = new AbortController();
+    abortControllerRef.current = controller;
+
     setLoading(true);
     setError(null);
+
     try {
       const filterPayload = {};
       const activeProjId = selectedProjectId || projectId;
@@ -154,38 +163,46 @@ export default function ProjectTaskCharts({ projectId = null, members = [], read
         filterPayload.end_date = end;
       }
 
-      // Fetch analytics via server-scoped endpoint and list items for team breakdown
-      const [analyticsRes, itemsRes] = await Promise.all([
-        workItemsService.getAnalytics(filterPayload).catch((err) => {
-          console.warn('Backend analytics endpoint notice:', err);
-          return null;
-        }),
-        activeProjId 
-          ? workItemsService.listWorkItems({ project_id: activeProjId }).catch(() => []) 
-          : isInternUser 
-          ? workItemsService.listWorkItems({ assigned_to_me: true }).catch(() => [])
-          : workItemsService.listWorkItems().catch(() => []),
-      ]);
+      // Fetch analytics via server-scoped endpoint with cancellation signal
+      const analyticsRes = await workItemsService.getAnalytics(filterPayload, {
+        signal: controller.signal,
+      });
 
-      let sanitizedItems = itemsRes || [];
-      if (analyticsRes?.lead_project_ids?.length > 0 && !isManager && !activeProjId) {
+      if (!analyticsRes) {
+        throw new Error('No analytics data received from server');
+      }
+
+      // Populate workItems directly from analytics task_breakdown without redundant secondary round-trip
+      let sanitizedItems = analyticsRes.task_breakdown || [];
+      if (analyticsRes.lead_project_ids?.length > 0 && !isManager && !activeProjId) {
         const leadSet = new Set(analyticsRes.lead_project_ids);
         sanitizedItems = sanitizedItems.filter((it) => leadSet.has(it.project_id));
       }
 
       setAnalyticsData(analyticsRes);
       setWorkItems(sanitizedItems);
+      setError(null);
     } catch (err) {
+      if (err.name === 'AbortError' || controller.signal.aborted) {
+        return; // Request was cleanly cancelled, do not update state
+      }
       console.error('Failed to fetch task analytics:', err);
       setError(err.message || 'Failed to load task analytics');
     } finally {
-      setLoading(false);
+      if (!controller.signal.aborted) {
+        setLoading(false);
+      }
     }
-  };
+  }, [selectedProjectId, projectId, selectedSprintId, dateRangeFilter, isManager]);
 
   useEffect(() => {
     fetchAnalytics();
-  }, [selectedProjectId, selectedSprintId, dateRangeFilter, projectId]);
+    return () => {
+      if (abortControllerRef.current) {
+        abortControllerRef.current.abort();
+      }
+    };
+  }, [fetchAnalytics]);
 
   // Accessible filter options returned from server
   const accessibleProjects = useMemo(() => {
