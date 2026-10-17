@@ -57,8 +57,21 @@ export default function InternApp({ onLogout, onSelectProject, onToast }) {
     return 'dashboard';
   };
 
-  const [currentTab, setCurrentTab] = useState(() => getTabFromPath(location.pathname));
-  const [selectedProjectId, setSelectedProjectId] = useState(null);
+  const getInitialProjectId = () => {
+    try {
+      const sp = new URLSearchParams(window.location.search);
+      return sp.get('projectId') || sp.get('project') || null;
+    } catch {
+      return null;
+    }
+  };
+
+  const initialProjId = getInitialProjectId();
+  const [currentTab, setCurrentTab] = useState(() => {
+    if (initialProjId) return 'projects';
+    return getTabFromPath(location.pathname);
+  });
+  const [selectedProjectId, setSelectedProjectId] = useState(initialProjId);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [workItems, setWorkItems] = useState([]);
   const [loadingTasks, setLoadingTasks] = useState(false);
@@ -67,20 +80,42 @@ export default function InternApp({ onLogout, onSelectProject, onToast }) {
   const [notificationPopup, setNotificationPopup] = useState(false);
 
   useEffect(() => {
+    const sp = new URLSearchParams(location.search);
+    const pId = sp.get('projectId') || sp.get('project') || null;
+    if (pId !== selectedProjectId) {
+      setSelectedProjectId(pId);
+      if (pId) setCurrentTab('projects');
+    }
     const tabFromUrl = getTabFromPath(location.pathname);
-    if (tabFromUrl !== currentTab) {
+    if (tabFromUrl !== currentTab && !pId) {
       setCurrentTab(tabFromUrl);
     }
-  }, [location.pathname]);
+  }, [location.pathname, location.search, selectedProjectId, currentTab]);
 
   const handleTabChange = (tabId) => {
     setSelectedProjectId(null);
     setCurrentTab(tabId);
     setMobileMenuOpen(false);
-    if (tabId === 'dashboard') {
-      navigate('/intern/dashboard');
+    const sp = new URLSearchParams(window.location.search);
+    sp.delete('projectId');
+    sp.delete('project');
+    const qs = sp.toString();
+    const dest = tabId === 'dashboard' ? '/intern/dashboard' : `/intern/${tabId}`;
+    navigate(qs ? `${dest}?${qs}` : dest);
+  };
+
+  const handleSelectInternProject = (projectId) => {
+    setSelectedProjectId(projectId);
+    setCurrentTab('projects');
+    const sp = new URLSearchParams(window.location.search);
+    if (projectId) {
+      sp.set('projectId', projectId);
+      navigate(`/intern/projects?${sp.toString()}`, { replace: false });
     } else {
-      navigate(`/intern/${tabId}`);
+      sp.delete('projectId');
+      sp.delete('project');
+      const qs = sp.toString();
+      navigate(qs ? `/intern/projects?${qs}` : '/intern/projects', { replace: false });
     }
   };
 
@@ -136,13 +171,20 @@ export default function InternApp({ onLogout, onSelectProject, onToast }) {
       hasLoadedNotifications = true;
     });
     const notificationRefreshInterval = window.setInterval(() => {
+      if (typeof document !== 'undefined' && document.hidden) return;
       notificationsService.loadNotifications();
-    }, 5000);
+    }, 20000);
+
+    const handleWorkItemsSync = () => {
+      loadWorkItems();
+    };
+    window.addEventListener('work-items-updated', handleWorkItemsSync);
 
     return () => {
       unsubForms();
       unsubNotifs();
       window.clearInterval(notificationRefreshInterval);
+      window.removeEventListener('work-items-updated', handleWorkItemsSync);
     };
   }, []);
 
@@ -377,10 +419,7 @@ export default function InternApp({ onLogout, onSelectProject, onToast }) {
                 onOpenTaskModal={(t) => setSelectedTask(t)}
                 onOpenFormModal={(f) => setSelectedForm(f)}
                 onNavigateTab={(tabId) => handleTabChange(tabId)}
-                onSelectProject={(projectId) => {
-                  setSelectedProjectId(projectId);
-                  handleTabChange('projects');
-                }}
+                onSelectProject={(projectId) => handleSelectInternProject(projectId)}
                 onToggleTask={handleToggleTask}
               />
             )}
@@ -396,13 +435,13 @@ export default function InternApp({ onLogout, onSelectProject, onToast }) {
               selectedProjectId ? (
                 <ProjectWorkspaceView
                   projectId={selectedProjectId}
-                  onBackToDirectory={() => setSelectedProjectId(null)}
+                  onBackToDirectory={() => handleSelectInternProject(null)}
                   readOnly={!isTechLead}
                   onToast={onToast}
                 />
               ) : (
                 <ProjectsDirectoryView
-                  onSelectProject={(projectId) => setSelectedProjectId(projectId)}
+                  onSelectProject={(projectId) => handleSelectInternProject(projectId)}
                   isIntern={true}
                 />
               )

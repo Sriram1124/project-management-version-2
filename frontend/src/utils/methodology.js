@@ -7,12 +7,12 @@ export const METHODOLOGY_META = {
   SCRUM: {
     id: 'SCRUM',
     name: 'Scrum',
-    tagline: 'Sprint-based planning and delivery',
-    description: 'Sprint planning, time-boxed iterations, sprint backlogs, and burndown progress tracking.',
+    tagline: 'Cycle-based planning and delivery',
+    description: 'Cycle planning, time-boxed iterations, cycle backlogs, and burndown progress tracking.',
     bullets: [
-      'Sprint planning and time-boxed iterations',
-      'Product backlog and sprint backlog',
-      'Sprint-based progress tracking',
+      'Cycle planning and time-boxed iterations',
+      'Product backlog and cycle backlog',
+      'Cycle-based progress tracking',
     ],
     boardTabId: 'scrum',
     boardLabel: 'Scrum Board',
@@ -25,7 +25,7 @@ export const METHODOLOGY_META = {
     bullets: [
       'Continuous flow of work',
       'Work-in-progress visibility',
-      'No mandatory sprint planning',
+      'No mandatory cycle planning',
     ],
     boardTabId: 'kanban',
     boardLabel: 'Kanban Board',
@@ -66,7 +66,7 @@ export function getProjectTabs(projectOrMethodology) {
   return [
     { id: 'overview', label: 'Overview' },
     { id: 'roadmap', label: 'Roadmap' },
-    { id: 'sprint', label: 'Sprint Workspace' },
+    { id: 'sprint', label: 'Cycle Workspace' },
     { id: 'backlog', label: 'Backlog' },
     { id: 'scrum', label: 'Scrum Board' },
     { id: 'action-items', label: 'Action Items' },

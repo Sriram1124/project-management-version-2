@@ -21,6 +21,9 @@ import { useAuth } from './context/AuthContext';
 import { notificationsService } from './services/notifications.service';
 import { cohortsService } from './services/cohorts.service';
 
+// Module-level cache to ensure zero-latency renders across component remounts
+let cachedCohortsList = null;
+
 export default function ManagerApp() {
   const { user: authUser, logout } = useAuth();
   const location = useLocation();
@@ -35,14 +38,42 @@ export default function ManagerApp() {
     return 'dashboard';
   };
 
-  const [currentRole, setCurrentRole] = useState('manager'); // 'manager' | 'intern'
-  const [currentView, setCurrentView] = useState(() => getViewFromPath(location.pathname));
-  const [activeProjectId, setActiveProjectId] = useState(null);
-  const [activeProjectName, setActiveProjectName] = useState(null);
-  const [activeProjectTab, setActiveProjectTab] = useState('overview');
+  const getInitialProjectState = () => {
+    try {
+      const sp = new URLSearchParams(window.location.search);
+      const projId = sp.get('projectId') || sp.get('project') || null;
+      const tab = sp.get('tab') || 'overview';
+      return { projId, tab };
+    } catch {
+      return { projId: null, tab: 'overview' };
+    }
+  };
 
-  // Cohort state management
-  const [cohorts, setCohorts] = useState([]);
+  const initialProjectState = getInitialProjectState();
+  const [currentRole, setCurrentRole] = useState('manager'); // 'manager' | 'intern'
+  const [currentView, setCurrentView] = useState(() => {
+    if (initialProjectState.projId) return 'projects';
+    return getViewFromPath(location.pathname);
+  });
+  const [activeProjectId, setActiveProjectId] = useState(initialProjectState.projId);
+  const [activeProjectName, setActiveProjectName] = useState(null);
+  const [activeProjectTab, setActiveProjectTab] = useState(initialProjectState.tab);
+
+  // Cohort state management - initialize from module cache or sessionStorage for instant render
+  const [cohorts, setCohorts] = useState(() => {
+    if (cachedCohortsList && cachedCohortsList.length > 0) return cachedCohortsList;
+    try {
+      const stored = sessionStorage.getItem('internhub_cohorts');
+      if (stored) {
+        const parsed = JSON.parse(stored);
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          cachedCohortsList = parsed;
+          return parsed;
+        }
+      }
+    } catch (e) {}
+    return [];
+  });
   const [selectedCohortId, setSelectedCohortId] = useState(() => {
     return localStorage.getItem('selected_cohort_id') || null;
   });
@@ -53,6 +84,11 @@ export default function ManagerApp() {
       .then((data) => {
         if (isMounted && Array.isArray(data) && data.length > 0) {
           setCohorts(data);
+          cachedCohortsList = data;
+          try {
+            sessionStorage.setItem('internhub_cohorts', JSON.stringify(data));
+          } catch (e) {}
+
           // Default to stored cohort if valid, else first cohort (Cohort 1)
           const stored = localStorage.getItem('selected_cohort_id');
           const found = data.find((c) => c.id === stored);
@@ -81,11 +117,21 @@ export default function ManagerApp() {
   };
 
   useEffect(() => {
+    const sp = new URLSearchParams(location.search);
+    const pId = sp.get('projectId') || sp.get('project') || null;
+    const tab = sp.get('tab') || 'overview';
+    if (pId !== activeProjectId) {
+      setActiveProjectId(pId);
+      if (pId) setCurrentView('projects');
+    }
+    if (tab !== activeProjectTab) {
+      setActiveProjectTab(tab);
+    }
     const v = getViewFromPath(location.pathname);
-    if (v !== currentView && !activeProjectId) {
+    if (v !== currentView && !pId) {
       setCurrentView(v);
     }
-  }, [location.pathname, activeProjectId]);
+  }, [location.pathname, location.search, activeProjectId, activeProjectTab, currentView]);
 
   const handleNavigate = (viewId) => {
     setCurrentView(viewId);
@@ -209,15 +255,33 @@ export default function ManagerApp() {
     setActiveProjectName(projectName || null);
     setActiveProjectTab('overview');
     setCurrentView('projects');
-    window.history.pushState({ view: 'projects', projectId: projectId }, '', window.location.pathname);
+    const sp = new URLSearchParams(window.location.search);
+    sp.set('projectId', projectId);
+    sp.set('tab', 'overview');
+    navigate(`/manager/projects?${sp.toString()}`, { replace: false });
     triggerToast(projectName ? `Loaded Project: ${projectName}` : 'Loaded Project Workspace');
+  };
+
+  const handleProjectTabChange = (tabId) => {
+    setActiveProjectTab(tabId);
+    if (activeProjectId) {
+      const sp = new URLSearchParams(window.location.search);
+      sp.set('projectId', activeProjectId);
+      sp.set('tab', tabId);
+      navigate(`/manager/projects?${sp.toString()}`, { replace: true });
+    }
   };
 
   const handleExitProject = () => {
     setActiveProjectId(null);
     setActiveProjectName(null);
     setCurrentView('projects');
-    window.history.pushState({ view: 'projects', projectId: null }, '', window.location.pathname);
+    const sp = new URLSearchParams(window.location.search);
+    sp.delete('projectId');
+    sp.delete('project');
+    sp.delete('tab');
+    const qs = sp.toString();
+    navigate(qs ? `/manager/projects?${qs}` : '/manager/projects', { replace: false });
   };
 
   const handleTogglePerspective = () => {
@@ -336,7 +400,7 @@ export default function ManagerApp() {
               projectId={activeProjectId}
               onBackToDirectory={handleExitProject}
               activeTab={activeProjectTab}
-              onTabChange={(tabId) => setActiveProjectTab(tabId)}
+              onTabChange={handleProjectTabChange}
               onOpenSearch={() => setIsSearchOpen(true)}
               onActionTrigger={(action) => triggerToast(`Action opened: ${action}`)}
               onToast={triggerToast}

@@ -451,6 +451,32 @@ export default function WorkItemDetailModal({
                 </div>
               </div>
 
+              {/* Cycle Assignment & Story Points */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div className="p-3 bg-slate-50 border border-slate-200 rounded-xl">
+                  <span className="text-[10px] font-bold uppercase text-slate-400 block mb-1">
+                    Cycle Assignment
+                  </span>
+                  <div className="flex items-center gap-2 text-slate-800 font-semibold text-xs">
+                    <Layers className="w-3.5 h-3.5 text-purple-600" />
+                    <span>
+                      {item.sprint?.name || item.sprint_name || (item.project_id ? 'Backlog (Unassigned)' : 'Personal Task')}
+                    </span>
+                  </div>
+                </div>
+
+                <div className="p-3 bg-slate-50 border border-slate-200 rounded-xl">
+                  <span className="text-[10px] font-bold uppercase text-slate-400 block mb-1">
+                    Story Points
+                  </span>
+                  <div className="flex items-center gap-2 text-slate-800 font-semibold text-xs">
+                    <span className="px-2 py-0.5 rounded bg-purple-100 text-purple-700 font-bold text-xs">
+                      {item.story_points ?? 0} pts
+                    </span>
+                  </div>
+                </div>
+              </div>
+
               {/* Assignees Section */}
               <div>
                 <h4 className="text-[11px] font-bold uppercase text-slate-400 tracking-wider mb-2">

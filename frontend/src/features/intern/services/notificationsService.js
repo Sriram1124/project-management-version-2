@@ -23,7 +23,7 @@ export const notificationsService = {
   loadNotifications: async () => {
     try {
       const data = await apiNotifications.getNotifications();
-      notificationsData = (data || []).map((n) => ({
+      const nextData = (data || []).map((n) => ({
         id: n.id,
         title: n.title,
         message: n.message,
@@ -32,7 +32,18 @@ export const notificationsService = {
         created_at: n.created_at ? new Date(n.created_at).toLocaleDateString([], { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' }) : 'Just now',
         raw: n,
       }));
-      notifyListeners();
+
+      const hasChanged =
+        nextData.length !== notificationsData.length ||
+        nextData.some((n, idx) => {
+          const prev = notificationsData[idx];
+          return !prev || prev.id !== n.id || prev.is_read !== n.is_read;
+        });
+
+      if (hasChanged) {
+        notificationsData = nextData;
+        notifyListeners();
+      }
       return notificationsData;
     } catch (err) {
       console.error('Failed to load notifications from API:', err);

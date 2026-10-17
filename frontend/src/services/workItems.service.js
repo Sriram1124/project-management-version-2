@@ -16,6 +16,8 @@ export const workItemsService = {
     }
     if (filters.assigned_to_me) params.append('assigned_to_me', 'true');
     if (filters.my_personal) params.append('my_personal', 'true');
+    if (filters.overdue_only) params.append('overdue_only', 'true');
+    if (filters.limit) params.append('limit', String(filters.limit));
 
     const qs = params.toString();
     const endpoint = `/work-items${qs ? `?${qs}` : ''}`;

@@ -13,25 +13,33 @@ import {
 import { workItemsService } from '../services/workItemsService';
 
 export default function MySprintSection({
-  sprintName = 'Sprint 05: Authentication & Access Control',
-  sprintDates = 'Oct 1 — Oct 14, 2025',
+  cycleName = 'Cycle 05: Authentication & Access Control',
+  cycleDates = 'Active Iteration',
+  sprintName,
+  sprintDates,
+  activeCycle = null,
   workItems = [],
   onTaskClick,
   onToggleTask
 }) {
-  // Filter items in active sprint (Mobile App Dev project tasks)
-  const sprintTasks = workItems.filter(
-    (w) => w.project_id === 'PROJ-MAD-2025'
+  const effectiveName = activeCycle?.name || sprintName || cycleName;
+  const effectiveDates = activeCycle?.start_date && activeCycle?.end_date
+    ? `${new Date(activeCycle.start_date).toLocaleDateString([], { month: 'short', day: 'numeric' })} — ${new Date(activeCycle.end_date).toLocaleDateString([], { month: 'short', day: 'numeric' })}`
+    : (sprintDates || cycleDates);
+
+  // Filter items in active cycle
+  const cycleTasks = workItems.filter(
+    (w) => (activeCycle ? w.sprint_id === activeCycle.id : (w.sprint_id || w.project_id === 'PROJ-MAD-2025'))
   );
 
-  const completed = sprintTasks.filter((t) => t.status === 'COMPLETED').length;
-  const inProgress = sprintTasks.filter((t) => t.status === 'IN_PROGRESS').length;
-  const inReview = sprintTasks.filter((t) => t.status === 'IN_REVIEW').length;
-  const todo = sprintTasks.filter((t) => t.status === 'TODO').length;
-  const blocked = sprintTasks.filter((t) => t.status === 'BLOCKED').length;
-  const overdue = sprintTasks.filter((t) => workItemsService.isOverdue(t)).length;
+  const completed = cycleTasks.filter((t) => t.status === 'COMPLETED').length;
+  const inProgress = cycleTasks.filter((t) => t.status === 'IN_PROGRESS').length;
+  const inReview = cycleTasks.filter((t) => t.status === 'IN_REVIEW').length;
+  const todo = cycleTasks.filter((t) => t.status === 'TODO').length;
+  const blocked = cycleTasks.filter((t) => t.status === 'BLOCKED').length;
+  const overdue = cycleTasks.filter((t) => workItemsService.isOverdue(t)).length;
 
-  const total = sprintTasks.length;
+  const total = cycleTasks.length;
   const percentage = total > 0 ? Math.round((completed / total) * 100) : 0;
 
   return (
@@ -41,26 +49,26 @@ export default function MySprintSection({
         <div>
           <div className="flex items-center gap-2">
             <span className="flex items-center gap-1 text-[10px] font-bold uppercase tracking-wider text-purple-700 bg-purple-100 px-2 py-0.5 rounded">
-              <Zap className="w-3 h-3 fill-purple-600" /> Active Sprint
+              <Zap className="w-3 h-3 fill-purple-600" /> Active Cycle
             </span>
             <span className="text-xs text-slate-400 font-mono">
-              Sprint 05
+              {effectiveName.split(':')[0] || 'Cycle'}
             </span>
           </div>
           <h3 className="text-base font-bold text-slate-900 mt-1">
-            {sprintName}
+            {effectiveName}
           </h3>
           <div className="flex items-center gap-2 text-xs text-slate-500 mt-1">
             <Calendar className="w-3.5 h-3.5 text-slate-400" />
-            <span>{sprintDates}</span>
+            <span>{effectiveDates}</span>
             <span>•</span>
             <span className="font-semibold text-purple-700">
-              Your Sprint Contribution: {total} Assigned Tasks
+              Your Cycle Contribution: {total} Assigned Tasks
             </span>
           </div>
         </div>
 
-        {/* Sprint Personal Progress Bar */}
+        {/* Cycle Personal Progress Bar */}
         <div className="sm:text-right min-w-[180px]">
           <div className="flex items-center justify-between sm:justify-end gap-2 text-xs">
             <span className="text-[11px] font-bold text-slate-500">
@@ -77,7 +85,7 @@ export default function MySprintSection({
             />
           </div>
           <span className="text-[10px] text-slate-400 block mt-1">
-            {completed} of {total} sprint items delivered
+            {completed} of {total} cycle items delivered
           </span>
         </div>
       </div>
@@ -124,13 +132,13 @@ export default function MySprintSection({
         </div>
       </div>
 
-      {/* Intern's Sprint Tickets List */}
+      {/* Intern's Cycle Tickets List */}
       <div className="space-y-2 pt-1">
         <h4 className="text-[11px] font-bold uppercase text-slate-400 tracking-wider">
-          My Sprint Work Items ({sprintTasks.length})
+          My Cycle Work Items ({cycleTasks.length})
         </h4>
 
-        {sprintTasks.map((t) => {
+        {cycleTasks.map((t) => {
           const isOverdue = workItemsService.isOverdue(t);
           const isDone = t.status === 'COMPLETED';
 

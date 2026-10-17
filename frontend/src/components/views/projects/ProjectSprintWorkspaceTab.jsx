@@ -370,13 +370,13 @@ export default function ProjectSprintWorkspaceTab({
     return (
       <div className="bg-white rounded-lg border border-slate-200 p-12 flex flex-col items-center justify-center min-h-[360px]">
         <Loader2 className="w-8 h-8 text-purple-600 animate-spin mb-3" />
-        <p className="text-xs font-semibold text-slate-700">Loading Sprint Workspace...</p>
-        <p className="text-[11px] text-slate-400 mt-1">Retrieving sprint cycle and commitments</p>
+        <p className="text-xs font-semibold text-slate-700">Loading Cycle Workspace...</p>
+        <p className="text-[11px] text-slate-400 mt-1">Retrieving cycle commitments and status</p>
       </div>
     );
   }
 
-  // If no sprints exist in the project
+  // If no cycles exist in the project
   if (sprints.length === 0) {
     return (
       <div className="space-y-6">
@@ -384,17 +384,19 @@ export default function ProjectSprintWorkspaceTab({
           <div className="w-12 h-12 rounded-2xl bg-purple-50 text-purple-600 flex items-center justify-center mx-auto mb-3">
             <Calendar className="w-6 h-6" />
           </div>
-          <h3 className="text-base font-bold text-slate-900 mb-1">No Sprints Configured</h3>
+          <h3 className="text-base font-bold text-slate-900 mb-1">No Cycles Configured</h3>
           <p className="text-xs text-slate-500 leading-relaxed max-w-md mx-auto mb-5">
-            This project does not have any sprint cycles created yet. Plan your first sprint to start tracking iterations and burndown.
+            This project does not have any cycles created yet. Plan your first cycle to start tracking iterations and burndown.
           </p>
-          <button
-            onClick={() => setIsCreateSprintOpen(true)}
-            className="px-4 py-2 rounded-xl bg-purple-700 hover:bg-purple-800 text-white text-xs font-semibold transition-colors inline-flex items-center gap-1.5 shadow-sm cursor-pointer"
-          >
-            <Plus className="w-4 h-4" />
-            <span>Create Sprint</span>
-          </button>
+          {!readOnly && (
+            <button
+              onClick={() => setIsCreateSprintOpen(true)}
+              className="px-4 py-2 rounded-xl bg-purple-700 hover:bg-purple-800 text-white text-xs font-semibold transition-colors inline-flex items-center gap-1.5 shadow-sm cursor-pointer"
+            >
+              <Plus className="w-4 h-4" />
+              <span>Create Cycle</span>
+            </button>
+          )}
         </div>
 
         <CreateSprintModal
@@ -403,7 +405,7 @@ export default function ProjectSprintWorkspaceTab({
           projectId={projectId}
           existingSprints={sprints}
           onSuccess={() => {
-            onToast?.('Sprint created successfully');
+            onToast?.('Cycle created successfully');
             loadData();
           }}
         />
@@ -421,12 +423,12 @@ export default function ProjectSprintWorkspaceTab({
   return (
     <div className="space-y-6">
 
-      {/* SPRINT WORKSPACE HEADER & SUMMARY */}
+      {/* CYCLE WORKSPACE HEADER & SUMMARY */}
       <div className="bg-white rounded-lg border border-slate-200 p-5">
         <div className="flex flex-col lg:flex-row lg:items-start justify-between gap-4">
-          {/* Sprint Details & Goal */}
+          {/* Cycle Details & Goal */}
           <div className="space-y-2 max-w-3xl">
-            {/* Sprint Selector & Status */}
+            {/* Cycle Selector & Status */}
             <div className="flex flex-wrap items-center gap-2">
               <span
                 className={`text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded ${
@@ -438,10 +440,10 @@ export default function ProjectSprintWorkspaceTab({
                 }`}
               >
                 {currentSprint?.status === 'ACTIVE'
-                  ? 'Active Sprint'
+                  ? 'Active Cycle'
                   : currentSprint?.status === 'COMPLETED'
-                  ? 'Completed Sprint'
-                  : 'Planned Sprint'}
+                  ? 'Completed Cycle'
+                  : 'Planned Cycle'}
               </span>
               <span className="text-slate-300">•</span>
 
@@ -469,7 +471,7 @@ export default function ProjectSprintWorkspaceTab({
             <div>
               <span className="text-xs font-semibold text-slate-700">Goal: </span>
               <span className="text-xs text-slate-600 leading-relaxed">
-                {currentSprint?.goal || 'No specific goal set for this sprint cycle.'}
+                {currentSprint?.goal || 'No specific goal set for this cycle.'}
               </span>
             </div>
 
@@ -509,7 +511,7 @@ export default function ProjectSprintWorkspaceTab({
                 </>
               )}
               <span className="text-slate-300">•</span>
-              <div className="flex items-center gap-1 text-rose-700">
+              <div className="flex items-center gap-1.5 text-rose-700">
                 <AlertCircle className="w-3.5 h-3.5" />
                 <span className="font-bold">{blockedCount}</span>
                 <span>blocked</span>
@@ -527,7 +529,7 @@ export default function ProjectSprintWorkspaceTab({
                   className="px-3 py-1.5 rounded-md bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-semibold transition-colors flex items-center gap-1.5 shadow-xs cursor-pointer disabled:opacity-50"
                 >
                   <Play className="w-3.5 h-3.5 fill-current" />
-                  <span>Start Sprint</span>
+                  <span>Start Cycle</span>
                 </button>
               )}
 
@@ -537,7 +539,7 @@ export default function ProjectSprintWorkspaceTab({
                   className="px-3 py-1.5 rounded-md border border-slate-200 hover:bg-slate-50 text-slate-700 text-xs font-medium transition-colors flex items-center gap-1.5 cursor-pointer"
                 >
                   <Check className="w-3.5 h-3.5 text-slate-500" />
-                  <span>Complete Sprint</span>
+                  <span>Complete Cycle</span>
                 </button>
               )}
 
@@ -545,20 +547,20 @@ export default function ProjectSprintWorkspaceTab({
                 <button
                   onClick={() => setEditingSprint(currentSprint)}
                   className="px-2.5 py-1.5 rounded-md border border-slate-200 hover:bg-slate-50 text-slate-700 text-xs font-medium transition-colors flex items-center gap-1.5 cursor-pointer"
-                  title="Edit or delete current sprint"
+                  title="Edit or delete current cycle"
                 >
                   <Edit3 className="w-3.5 h-3.5 text-slate-500" />
-                  <span>Edit Sprint</span>
+                  <span>Edit Cycle</span>
                 </button>
               )}
 
               <button
                 onClick={() => setIsCreateSprintOpen(true)}
                 className="px-2.5 py-1.5 rounded-md border border-slate-200 hover:bg-slate-50 text-slate-700 text-xs font-medium transition-colors flex items-center gap-1.5 cursor-pointer"
-                title="Plan next sprint cycle"
+                title="Plan next cycle"
               >
                 <Plus className="w-3.5 h-3.5 text-slate-500" />
-                <span>New Sprint</span>
+                <span>New Cycle</span>
               </button>
             </div>
           )}
@@ -648,22 +650,22 @@ export default function ProjectSprintWorkspaceTab({
         </div>
       </div>
 
-      {/* SPRINT PERFORMANCE & SCHEDULE SUMMARY TABLE */}
+      {/* CYCLE PERFORMANCE & SCHEDULE SUMMARY TABLE */}
       <div className="bg-white rounded-lg border border-slate-200 overflow-hidden shadow-2xs">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 p-3.5 bg-slate-50/80 border-b border-slate-200">
           <div className="flex items-center gap-2">
             <span className="w-2.5 h-2.5 rounded-full bg-purple-600 shrink-0" />
             <h3 className="text-xs font-bold uppercase tracking-wider text-slate-800">
-              Sprint Schedule & Completion Summary
+              Cycle Schedule & Completion Summary
             </h3>
             <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-purple-100 text-purple-700 border border-purple-200/80">
-              {sprints.length} {sprints.length === 1 ? 'Sprint' : 'Sprints'}
+              {sprints.length} {sprints.length === 1 ? 'Cycle' : 'Cycles'}
             </span>
           </div>
 
           <div className="flex items-center gap-2 text-xs">
             <span className="text-slate-400 text-[11px] hidden sm:inline">
-              Track schedule adherence and whether sprints ended early, on-time, or late
+              Track schedule adherence and whether cycles ended early, on-time, or late
             </span>
             <button
               type="button"
@@ -681,7 +683,7 @@ export default function ProjectSprintWorkspaceTab({
             <table className="w-full text-left text-xs border-collapse">
               <thead className="bg-slate-50/60 border-b border-slate-200 text-slate-500 font-semibold uppercase tracking-wider text-[10px]">
                 <tr>
-                  <th className="py-2.5 px-3.5">Sprint</th>
+                  <th className="py-2.5 px-3.5">Cycle</th>
                   <th className="py-2.5 px-3.5">Status</th>
                   <th className="py-2.5 px-3.5">Planned Schedule</th>
                   <th className="py-2.5 px-3.5">Actual End / Updated</th>

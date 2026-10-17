@@ -162,7 +162,7 @@ export default function ScopedProjectView({
     { id: 'kanban', label: isKanban ? 'Kanban Board' : 'Scrum Board' },
     ...(isKanban
       ? [{ id: 'cycles', label: 'Planning & Cycles' }]
-      : [{ id: 'sprint', label: 'Sprint Workspace' }]),
+      : [{ id: 'sprint', label: 'Cycle Workspace' }]),
   ];
 
   return (

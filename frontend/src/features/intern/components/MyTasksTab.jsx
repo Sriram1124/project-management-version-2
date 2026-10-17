@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import { 
   CheckSquare, 
   Search, 
@@ -30,8 +30,22 @@ export default function MyTasksTab({
   showViewSwitcher = true
 }) {
   const [filterType, setFilterType] = useState('ALL'); // 'ALL' | 'DUE_TODAY' | 'OVERDUE' | 'IN_PROGRESS' | 'COMPLETED' | 'PERSONAL'
+  const [selectedCycleId, setSelectedCycleId] = useState('ALL'); // 'ALL' | 'BACKLOG' | cycleId
   const [search, setSearch] = useState('');
   const [viewMode, setViewMode] = useState('board'); // 'list' | 'board' | 'hierarchy'
+
+  // Extract all cycles present across the intern's assigned work items
+  const availableCycles = useMemo(() => {
+    const map = new Map();
+    workItems.forEach((w) => {
+      if (w.sprint?.id) {
+        map.set(w.sprint.id, { id: w.sprint.id, name: w.sprint.name, status: w.sprint.status });
+      } else if (w.sprint_id) {
+        map.set(w.sprint_id, { id: w.sprint_id, name: w.sprint_name || 'Cycle', status: null });
+      }
+    });
+    return Array.from(map.values());
+  }, [workItems]);
 
   // Filtering
   const filteredItems = workItems.filter((item) => {
@@ -42,6 +56,13 @@ export default function MyTasksTab({
       projectName.toLowerCase().includes(search.toLowerCase());
 
     if (!matchSearch) return false;
+
+    // Cycle filter
+    if (selectedCycleId === 'BACKLOG') {
+      if (item.sprint_id !== null && item.sprint_id !== undefined) return false;
+    } else if (selectedCycleId !== 'ALL') {
+      if (item.sprint_id !== selectedCycleId && item.sprint?.id !== selectedCycleId) return false;
+    }
 
     // Filter tab
     if (filterType === 'DUE_TODAY') return workItemsService.isDueToday(item);
@@ -100,7 +121,26 @@ export default function MyTasksTab({
           </p>
         </div>
 
-        <div className="flex items-center gap-2.5">
+        <div className="flex flex-wrap items-center gap-2.5">
+          {availableCycles.length > 0 && (
+            <div className="flex items-center gap-1.5 text-xs text-slate-600 bg-slate-50 border border-slate-200 px-2.5 py-1.5 rounded-xl">
+              <span className="text-[10px] font-bold uppercase text-slate-400">Cycle:</span>
+              <select
+                value={selectedCycleId}
+                onChange={(e) => setSelectedCycleId(e.target.value)}
+                className="bg-transparent text-xs font-semibold text-slate-800 focus:outline-none cursor-pointer"
+              >
+                <option value="ALL">All Cycles ({workItems.length})</option>
+                <option value="BACKLOG">Backlog / Unassigned ({workItems.filter(w => !w.sprint_id).length})</option>
+                {availableCycles.map((c) => (
+                  <option key={c.id} value={c.id}>
+                    {c.name} {c.status ? `(${c.status})` : ''}
+                  </option>
+                ))}
+              </select>
+            </div>
+          )}
+
           <div className="relative">
             <Search className="w-3.5 h-3.5 text-slate-400 absolute left-2.5 top-1/2 -translate-y-1/2" />
             <input
@@ -332,6 +372,21 @@ export default function MyTasksTab({
                             <span className="text-slate-600 font-medium">
                               {projectName}
                             </span>
+                            {(item.sprint?.name || item.sprint_name) ? (
+                              <>
+                                <span>•</span>
+                                <span className="text-purple-700 bg-purple-50 px-1.5 py-0.2 rounded font-semibold text-[10px] border border-purple-200">
+                                  {item.sprint?.name || item.sprint_name}
+                                </span>
+                              </>
+                            ) : !isPersonal ? (
+                              <>
+                                <span>•</span>
+                                <span className="text-slate-500 bg-slate-100 px-1.5 py-0.2 rounded text-[10px]">
+                                  Backlog
+                                </span>
+                              </>
+                            ) : null}
                             <span>•</span>
                             <span
                               className={

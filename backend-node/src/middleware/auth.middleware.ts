@@ -13,14 +13,19 @@ interface CachedUserSession {
 const userSessionCache = new Map<string, CachedUserSession>();
 const USER_CACHE_TTL_MS = 30_000;
 
+// In-flight lookup deduplication to prevent database connection spikes/stampedes under concurrent requests
+const inFlightUserLookups = new Map<string, Promise<{ user: any; dbDuration: number }>>();
+
 let cachedDefaultOrgId: string | null = null;
 let cachedDefaultOrgExpiry = 0;
 
 export function invalidateUserSessionCache(userId?: string): void {
   if (userId) {
     userSessionCache.delete(userId);
+    inFlightUserLookups.delete(userId);
   } else {
     userSessionCache.clear();
+    inFlightUserLookups.clear();
   }
 }
 
@@ -36,7 +41,14 @@ export const authenticate = async (req: Request, res: Response, next: NextFuncti
     }
 
     const token = authHeader.split(' ')[1];
-    const payload = jwt.verify(token, ACCESS_SECRET) as any;
+    let payload: any;
+    try {
+      payload = jwt.verify(token, ACCESS_SECRET) as any;
+    } catch (jwtError) {
+      (req as any)._authDuration = performance.now() - authStart;
+      res.status(401).json({ error: 'Invalid access token' });
+      return;
+    }
 
     const now = Date.now();
     const cached = userSessionCache.get(payload.userId);
@@ -45,68 +57,84 @@ export const authenticate = async (req: Request, res: Response, next: NextFuncti
     if (cached && (now - cached.cachedAt < USER_CACHE_TTL_MS)) {
       user = cached.user;
     } else {
-      const dbStart = performance.now();
-      user = await prisma.user.findUnique({
-        where: { id: payload.userId },
-        select: {
-          id: true,
-          name: true,
-          email: true,
-          user_code: true,
-          batch: true,
-          is_active: true,
-          must_change_password: true,
-          organization_id: true,
-          organization: {
-            select: { id: true, name: true, is_active: true }
-          },
-          roles: {
+      let lookupPromise = inFlightUserLookups.get(payload.userId);
+      if (!lookupPromise) {
+        lookupPromise = (async () => {
+          const dbStart = performance.now();
+          const dbUser = await prisma.user.findUnique({
+            where: { id: payload.userId },
             select: {
-              role: {
+              id: true,
+              name: true,
+              email: true,
+              user_code: true,
+              batch: true,
+              is_active: true,
+              must_change_password: true,
+              organization_id: true,
+              organization: {
+                select: { id: true, name: true, is_active: true }
+              },
+              roles: {
                 select: {
-                  id: true,
-                  name: true,
-                  permissions: {
+                  role: {
                     select: {
-                      permission: {
-                        select: { name: true }
+                      id: true,
+                      name: true,
+                      permissions: {
+                        select: {
+                          permission: {
+                            select: { name: true }
+                          }
+                        }
                       }
                     }
                   }
                 }
+              },
+              project_memberships: {
+                where: { project_role: 'TECH_LEAD' },
+                select: { project_id: true }
               }
             }
-          },
-          project_memberships: {
-            where: { project_role: 'TECH_LEAD' },
-            select: { project_id: true }
-          }
-        }
-      });
-      dbDuration = performance.now() - dbStart;
+          });
+          let duration = performance.now() - dbStart;
 
-      if (user && user.is_active) {
-        // Handle fallback organization if unassigned
-        if (!user.organization_id) {
-          if (cachedDefaultOrgId && now < cachedDefaultOrgExpiry) {
-            user.organization_id = cachedDefaultOrgId;
-          } else {
-            const orgStart = performance.now();
-            const firstOrg = await prisma.organization.findFirst({
-              where: { is_active: true },
-              select: { id: true }
-            });
-            dbDuration += (performance.now() - orgStart);
-            if (firstOrg) {
-              cachedDefaultOrgId = firstOrg.id;
-              cachedDefaultOrgExpiry = now + 5 * 60 * 1000;
-              user.organization_id = firstOrg.id;
+          if (dbUser && dbUser.is_active) {
+            // Handle fallback organization if unassigned
+            if (!dbUser.organization_id) {
+              const currentNow = Date.now();
+              if (cachedDefaultOrgId && currentNow < cachedDefaultOrgExpiry) {
+                dbUser.organization_id = cachedDefaultOrgId;
+              } else {
+                const orgStart = performance.now();
+                const firstOrg = await prisma.organization.findFirst({
+                  where: { is_active: true },
+                  select: { id: true }
+                });
+                duration += (performance.now() - orgStart);
+                if (firstOrg) {
+                  cachedDefaultOrgId = firstOrg.id;
+                  cachedDefaultOrgExpiry = currentNow + 5 * 60 * 1000;
+                  dbUser.organization_id = firstOrg.id;
+                }
+              }
             }
-          }
-        }
 
-        userSessionCache.set(payload.userId, { user, cachedAt: now });
+            userSessionCache.set(payload.userId, { user: dbUser, cachedAt: Date.now() });
+          }
+
+          return { user: dbUser, dbDuration: duration };
+        })().finally(() => {
+          inFlightUserLookups.delete(payload.userId);
+        });
+
+        inFlightUserLookups.set(payload.userId, lookupPromise);
       }
+
+      const lookupResult = await lookupPromise;
+      user = lookupResult.user;
+      dbDuration = lookupResult.dbDuration;
     }
 
     if (!user || !user.is_active) {
@@ -153,10 +181,30 @@ export const authenticate = async (req: Request, res: Response, next: NextFuncti
     (req as any)._authDbDuration = dbDuration;
 
     next();
-  } catch (error) {
+  } catch (error: any) {
     (req as any)._authDuration = performance.now() - authStart;
     (req as any)._authDbDuration = dbDuration;
-    res.status(401).json({ error: 'Invalid access token' });
+
+    // Distinguish database connection/query failures from token errors
+    const isDbError =
+      error?.code === 'P2024' ||
+      error?.name === 'PrismaClientInitializationError' ||
+      error?.name === 'PrismaClientKnownRequestError' ||
+      error?.name === 'PrismaClientRustPanicError' ||
+      error?.name === 'PrismaClientUnknownRequestError' ||
+      error?.message?.includes('FATAL') ||
+      error?.message?.includes('connection') ||
+      error?.message?.includes('timeout');
+
+    if (isDbError) {
+      res.status(503).json({
+        error: 'Service temporarily unavailable: database connection issue',
+        code: 'DB_CONNECTION_ERROR'
+      });
+      return;
+    }
+
+    res.status(500).json({ error: 'Internal server error during authentication' });
   }
 };
 

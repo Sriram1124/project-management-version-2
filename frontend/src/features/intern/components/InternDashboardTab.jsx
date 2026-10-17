@@ -223,15 +223,15 @@ export default function InternDashboardTab({
 
             <div className="p-8 text-center bg-slate-50/50 rounded-xl border border-dashed border-slate-200 text-xs">
               <BarChart3 className="w-8 h-8 text-purple-400 mx-auto mb-2" />
-              <p className="font-semibold text-slate-700 text-sm">Sprint Velocity & Burndown</p>
+              <p className="font-semibold text-slate-700 text-sm">Cycle Velocity & Burndown</p>
               <p className="text-[11px] text-slate-400 mt-1 max-w-sm mx-auto leading-relaxed">
-                Task completion curves, sprint analytics, and individual velocity tracking will be available in the V2 Work Management module.
+                Task completion curves, cycle analytics, and individual velocity tracking will be available in the V2 Work Management module.
               </p>
             </div>
           </div>
 
           <div className="text-[11px] text-slate-400 font-medium">
-            Daily completed tasks and cumulative velocity across sprint cycles
+            Daily completed tasks and cumulative velocity across cycle iterations
           </div>
         </div>
       </div>

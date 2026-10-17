@@ -39,6 +39,8 @@ export interface WorkItemFilter {
   priority?: string;
   assigned_to_me?: boolean;
   my_personal?: boolean;
+  overdue_only?: boolean;
+  limit?: number;
 }
 
 export interface WorkItemAnalyticsFilter {
@@ -778,8 +780,24 @@ export class WorkItemService {
       };
     }
 
+    if (filters?.overdue_only) {
+      where.due_date = { lt: new Date() };
+      where.status = { not: WorkItemStatus.COMPLETED };
+    }
+
+    let takeLimit: number | undefined = undefined;
+    if (filters?.limit !== undefined && filters?.limit !== null) {
+      const parsed = Number(filters.limit);
+      if (Number.isInteger(parsed) && parsed > 0) {
+        takeLimit = Math.min(parsed, 1000);
+      }
+    } else if (filters?.overdue_only) {
+      takeLimit = 250;
+    }
+
     const items = await prisma.workItem.findMany({
       where,
+      take: takeLimit,
       include: {
         creator: {
           select: { id: true, name: true, email: true },
@@ -794,7 +812,16 @@ export class WorkItemService {
           select: { id: true, title: true, type: true, status: true, priority: true },
         },
         children: {
-          include: {
+          select: {
+            id: true,
+            title: true,
+            type: true,
+            status: true,
+            priority: true,
+            story_points: true,
+            due_date: true,
+            parent_id: true,
+            created_at: true,
             creator: {
               select: { id: true, name: true, email: true },
             },

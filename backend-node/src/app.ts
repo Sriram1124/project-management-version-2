@@ -12,7 +12,7 @@ import { timesheetRouter } from './routes/timesheet.routes';
 import { cohortRouter } from './routes/cohort.routes';
 import { actionItemRouter } from './routes/action-item.routes';
 
-import { prisma } from './lib/prisma';
+import { prisma, getSanitizedDatabaseInfo } from './lib/prisma';
 import { getRedisConfig, testRedisConnection } from './lib/redis';
 
 const app = express();
@@ -75,7 +75,10 @@ app.get('/api/health', async (req, res) => {
   res.status(200).json({
     status: dbStatus === 'connected' ? 'ok' : 'degraded',
     timestamp: new Date().toISOString(),
-    database: dbStatus,
+    database: {
+      status: dbStatus,
+      ...getSanitizedDatabaseInfo(),
+    },
     redis: {
       configured: redisConfig.isConfigured,
       connected: redisHealth.connected,

@@ -1,6 +1,8 @@
 const getApiBaseUrl = () => {
-  if (import.meta.env.VITE_API_URL) return import.meta.env.VITE_API_URL;
-  if (typeof window !== 'undefined' && window.location.hostname === 'localhost') {
+  if (typeof import.meta !== 'undefined' && import.meta.env && import.meta.env.VITE_API_URL) {
+    return import.meta.env.VITE_API_URL;
+  }
+  if (typeof window !== 'undefined' && window.location && window.location.hostname === 'localhost') {
     return 'http://localhost:3001/api';
   }
   return 'http://127.0.0.1:3001/api';
@@ -8,70 +10,209 @@ const getApiBaseUrl = () => {
 
 const API_URL = getApiBaseUrl();
 
-let isRefreshing = false;
-let refreshSubscribers = [];
-
-function subscribeTokenRefresh(cb) {
-  refreshSubscribers.push(cb);
+// Safe JWT parser handling base64url encoding and UTF-8 characters without throwing
+export function parseJwt(token) {
+  if (!token || typeof token !== 'string') return null;
+  const parts = token.split('.');
+  if (parts.length !== 3) return null;
+  try {
+    const base64 = parts[1].replace(/-/g, '+').replace(/_/g, '/');
+    const padded = base64.padEnd(base64.length + ((4 - (base64.length % 4)) % 4), '=');
+    const binary = typeof atob === 'function'
+      ? atob(padded)
+      : (typeof Buffer !== 'undefined' ? Buffer.from(padded, 'base64').toString('binary') : null);
+    if (!binary) return null;
+    const jsonStr = decodeURIComponent(
+      Array.prototype.map
+        .call(binary, (c) => '%' + ('00' + c.charCodeAt(0).toString(16)).slice(-2))
+        .join('')
+    );
+    return JSON.parse(jsonStr);
+  } catch {
+    try {
+      const base64 = parts[1].replace(/-/g, '+').replace(/_/g, '/');
+      const binary = typeof atob === 'function'
+        ? atob(base64)
+        : (typeof Buffer !== 'undefined' ? Buffer.from(base64, 'base64').toString('utf8') : null);
+      return binary ? JSON.parse(binary) : null;
+    } catch {
+      return null;
+    }
+  }
 }
 
-function onRefreshed(token) {
-  refreshSubscribers.forEach((cb) => cb(token));
-  refreshSubscribers = [];
+// Check if JWT token is expired, with a safety buffer (default 15 seconds)
+export function isJwtExpired(token, bufferSeconds = 15) {
+  if (!token) return true;
+  const payload = parseJwt(token);
+  if (!payload || !payload.exp) return true;
+  return Date.now() >= (payload.exp * 1000) - (bufferSeconds * 1000);
 }
 
-function onRefreshFailed() {
-  refreshSubscribers.forEach((cb) => cb(null));
-  refreshSubscribers = [];
+// Identify public endpoints that must not require auth or block on token refresh
+export function isPublicEndpoint(endpoint, options = {}) {
+  if (options.isPublic || options.skipAuth) return true;
+  if (!endpoint || typeof endpoint !== 'string') return false;
+  const cleanEndpoint = endpoint.split('?')[0];
+  return (
+    cleanEndpoint.endsWith('/auth/login') ||
+    cleanEndpoint.endsWith('/auth/organizations') ||
+    cleanEndpoint.endsWith('/auth/refresh')
+  );
 }
 
-function clearAuthSession() {
-  localStorage.removeItem('accessToken');
-  localStorage.removeItem('refreshToken');
-  localStorage.removeItem('sessionId');
-  localStorage.removeItem('user');
-  if (window.location.pathname !== '/login') {
+// Single in-flight refresh promise to guarantee all concurrent requests share one refresh operation
+let refreshPromise = null;
+
+// In-flight GET request deduplication: avoids duplicate concurrent roundtrips
+const inFlightGetRequests = new Map();
+
+export function clearAuthSession() {
+  inFlightGetRequests.clear();
+  if (typeof window !== 'undefined' && window.localStorage) {
+    localStorage.removeItem('accessToken');
+    localStorage.removeItem('refreshToken');
+    localStorage.removeItem('sessionId');
+    localStorage.removeItem('user');
+    localStorage.removeItem('user_last_verified');
+  }
+
+  if (typeof window !== 'undefined' && typeof window.dispatchEvent === 'function') {
+    try {
+      window.dispatchEvent(new CustomEvent('auth:unauthorized'));
+    } catch (e) {
+      // Ignore event dispatch failure in non-browser env
+    }
+  }
+
+  if (typeof window !== 'undefined' && window.location && window.location.pathname !== '/login') {
     window.location.href = '/login';
   }
 }
 
-async function tryRefreshToken() {
-  try {
-    const refreshToken = localStorage.getItem('refreshToken');
-    const sessionId = localStorage.getItem('sessionId');
+export function refreshAccessToken() {
+  if (refreshPromise) {
+    return refreshPromise;
+  }
 
-    const res = await fetch(`${API_URL}/auth/refresh`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ refreshToken, sessionId }),
-      credentials: 'include',
-    });
-    if (!res.ok) {
+  refreshPromise = (async () => {
+    try {
+      const refreshToken = typeof window !== 'undefined' && window.localStorage
+        ? localStorage.getItem('refreshToken')
+        : null;
+      const sessionId = typeof window !== 'undefined' && window.localStorage
+        ? localStorage.getItem('sessionId')
+        : null;
+
+      if (!refreshToken) {
+        throw new Error('No refresh token available');
+      }
+
+      const res = await fetch(`${API_URL}/auth/refresh`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ refreshToken, sessionId }),
+        credentials: 'include',
+      });
+
+      if (!res.ok) {
+        throw new Error(`Token refresh failed with status ${res.status}`);
+      }
+
+      const data = await res.json();
+      if (!data?.accessToken) {
+        throw new Error('Refresh response missing access token');
+      }
+
+      if (typeof window !== 'undefined' && window.localStorage) {
+        localStorage.setItem('accessToken', data.accessToken);
+        if (data.refreshToken) {
+          localStorage.setItem('refreshToken', data.refreshToken);
+        }
+        if (data.sessionId) {
+          localStorage.setItem('sessionId', data.sessionId);
+        }
+      }
+
+      if (typeof window !== 'undefined' && typeof window.dispatchEvent === 'function') {
+        try {
+          window.dispatchEvent(
+            new CustomEvent('auth:token-refreshed', { detail: { accessToken: data.accessToken } })
+          );
+        } catch (e) {
+          // Ignore
+        }
+      }
+
+      return data.accessToken;
+    } catch (err) {
+      clearAuthSession();
+      throw err;
+    } finally {
+      refreshPromise = null;
+    }
+  })();
+
+  return refreshPromise;
+}
+
+// Ensures an access token is valid before sending an authenticated request
+async function ensureValidAccessToken() {
+  // If a refresh is already in-flight, await it so we don't send stale tokens
+  if (refreshPromise) {
+    try {
+      const newToken = await refreshPromise;
+      if (newToken) return newToken;
+    } catch {
       return null;
     }
-    const data = await res.json();
-    if (data?.accessToken) {
-      localStorage.setItem('accessToken', data.accessToken);
-      if (data.refreshToken) {
-        localStorage.setItem('refreshToken', data.refreshToken);
+  }
+
+  const token = typeof window !== 'undefined' && window.localStorage
+    ? localStorage.getItem('accessToken')
+    : null;
+  const refreshToken = typeof window !== 'undefined' && window.localStorage
+    ? localStorage.getItem('refreshToken')
+    : null;
+
+  // If token is missing or expired, attempt proactive refresh if refreshToken exists
+  if (!token || isJwtExpired(token)) {
+    if (refreshToken) {
+      try {
+        const refreshedToken = await refreshAccessToken();
+        return refreshedToken;
+      } catch {
+        return null;
       }
-      if (data.sessionId) {
-        localStorage.setItem('sessionId', data.sessionId);
-      }
-      return data.accessToken;
     }
     return null;
-  } catch (e) {
-    return null;
   }
+
+  return token;
 }
 
 const api = {
   async fetchWithAuth(endpoint, options = {}) {
-    let token = localStorage.getItem('accessToken');
+    const isPublic = isPublicEndpoint(endpoint, options);
+
+    // 1. Proactive token validation for authenticated requests
+    let token = null;
+    if (!isPublic) {
+      token = await ensureValidAccessToken();
+      const hasRefreshToken = typeof window !== 'undefined' && window.localStorage
+        ? !!localStorage.getItem('refreshToken')
+        : false;
+
+      // If we cannot obtain a valid token and no refresh token exists, fail cleanly
+      if (!token && !hasRefreshToken) {
+        clearAuthSession();
+        throw new Error('Authentication required');
+      }
+    }
 
     const headers = {
-      'Content-Type': 'application/json',
+      ...(options.body && !(options.body instanceof FormData) && { 'Content-Type': 'application/json' }),
+      ...(!options.body && options.method && options.method !== 'GET' && options.method !== 'HEAD' && { 'Content-Type': 'application/json' }),
       ...(token && { Authorization: `Bearer ${token}` }),
       ...options.headers,
     };
@@ -99,7 +240,15 @@ const api = {
       }
     }
 
-    const { timeout: _unusedTimeout, signal: _unusedSignal, ...fetchOptions } = options;
+    const {
+      timeout: _unusedTimeout,
+      signal: _unusedSignal,
+      isPublic: _unusedPublic,
+      skipAuth: _unusedSkipAuth,
+      responseType,
+      _retry,
+      ...fetchOptions
+    } = options;
 
     let response;
     try {
@@ -121,39 +270,31 @@ const api = {
       }
     }
 
-    if (response.status === 401 && !endpoint.includes('/auth/login') && !endpoint.includes('/auth/refresh')) {
-      if (!isRefreshing) {
-        isRefreshing = true;
-        const newToken = await tryRefreshToken();
-        isRefreshing = false;
-        if (newToken) {
-          onRefreshed(newToken);
-          // Retry original request with new token
-          headers.Authorization = `Bearer ${newToken}`;
-          response = await fetch(`${API_URL}${endpoint}`, {
-            ...fetchOptions,
-            signal: controller.signal,
-            headers,
-            credentials: 'include',
-          });
-        } else {
-          onRefreshFailed();
+    // 2. Reactive 401 handling: retry at most once using refreshed token
+    if (response.status === 401 && !isPublic) {
+      if (!_retry) {
+        try {
+          const newToken = await refreshAccessToken();
+          if (newToken) {
+            headers.Authorization = `Bearer ${newToken}`;
+            response = await fetch(`${API_URL}${endpoint}`, {
+              ...fetchOptions,
+              signal: controller.signal,
+              headers,
+              credentials: 'include',
+            });
+          }
+        } catch (refreshErr) {
           clearAuthSession();
+          throw refreshErr;
         }
-      } else {
-        // Wait for existing refresh to complete
-        const retryToken = await new Promise((resolve) => {
-          subscribeTokenRefresh((t) => resolve(t));
-        });
-        if (retryToken) {
-          headers.Authorization = `Bearer ${retryToken}`;
-          response = await fetch(`${API_URL}${endpoint}`, {
-            ...fetchOptions,
-            signal: controller.signal,
-            headers,
-            credentials: 'include',
-          });
-        }
+      }
+
+      // If still 401 after retry (or was already a retry attempt)
+      if (response.status === 401) {
+        clearAuthSession();
+        const errorData = await response.json().catch(() => ({}));
+        throw new Error(errorData.error || errorData.message || 'Unauthorized');
       }
     }
 
@@ -162,17 +303,35 @@ const api = {
       throw new Error(errorData.error || errorData.message || 'API Request Failed');
     }
 
+    if (response.status === 204) {
+      return null;
+    }
+
+    if (responseType === 'blob') {
+      return response.blob();
+    }
+
     return response.json();
   },
 
   get(endpoint, options = {}) {
-    return this.fetchWithAuth(endpoint, { method: 'GET', ...options });
+    // Deduplicate identical concurrent in-flight GET requests
+    const cacheKey = endpoint;
+    if (inFlightGetRequests.has(cacheKey)) {
+      return inFlightGetRequests.get(cacheKey);
+    }
+    const p = this.fetchWithAuth(endpoint, { method: 'GET', ...options })
+      .finally(() => {
+        inFlightGetRequests.delete(cacheKey);
+      });
+    inFlightGetRequests.set(cacheKey, p);
+    return p;
   },
 
   post(endpoint, body, options = {}) {
     return this.fetchWithAuth(endpoint, {
       method: 'POST',
-      body: JSON.stringify(body),
+      body: typeof body === 'string' ? body : JSON.stringify(body),
       ...options,
     });
   },
@@ -180,7 +339,15 @@ const api = {
   patch(endpoint, body, options = {}) {
     return this.fetchWithAuth(endpoint, {
       method: 'PATCH',
-      body: JSON.stringify(body),
+      body: typeof body === 'string' ? body : JSON.stringify(body),
+      ...options,
+    });
+  },
+
+  put(endpoint, body, options = {}) {
+    return this.fetchWithAuth(endpoint, {
+      method: 'PUT',
+      body: typeof body === 'string' ? body : JSON.stringify(body),
       ...options,
     });
   },
@@ -192,86 +359,35 @@ const api = {
     });
   },
 
-  async upload(endpoint, formData) {
-    let token = localStorage.getItem('accessToken');
-    const headers = {
-      ...(token && { Authorization: `Bearer ${token}` }),
-    };
-
-    let response = await fetch(`${API_URL}${endpoint}`, {
+  async upload(endpoint, formData, options = {}) {
+    return this.fetchWithAuth(endpoint, {
       method: 'POST',
-      headers,
       body: formData,
-      credentials: 'include',
+      ...options,
     });
-
-    if (response.status === 401 && !endpoint.includes('/auth/login') && !endpoint.includes('/auth/refresh')) {
-      const newToken = await tryRefreshToken();
-      if (newToken) {
-        headers.Authorization = `Bearer ${newToken}`;
-        response = await fetch(`${API_URL}${endpoint}`, {
-          method: 'POST',
-          headers,
-          body: formData,
-          credentials: 'include',
-        });
-      } else {
-        clearAuthSession();
-      }
-    }
-
-    if (!response.ok) {
-      const errorData = await response.json().catch(() => ({}));
-      throw new Error(errorData.error || errorData.message || 'Upload failed');
-    }
-
-    return response.json();
   },
 
-  async getBlob(endpoint) {
-    let token = localStorage.getItem('accessToken');
-    const headers = {
-      ...(token && { Authorization: `Bearer ${token}` }),
-    };
-
-    let response = await fetch(`${API_URL}${endpoint}`, {
+  async getBlob(endpoint, options = {}) {
+    return this.fetchWithAuth(endpoint, {
       method: 'GET',
-      headers,
-      credentials: 'include',
+      responseType: 'blob',
+      ...options,
     });
-
-    if (response.status === 401 && !endpoint.includes('/auth/login') && !endpoint.includes('/auth/refresh')) {
-      const newToken = await tryRefreshToken();
-      if (newToken) {
-        headers.Authorization = `Bearer ${newToken}`;
-        response = await fetch(`${API_URL}${endpoint}`, {
-          method: 'GET',
-          headers,
-          credentials: 'include',
-        });
-      } else {
-        clearAuthSession();
-      }
-    }
-
-    if (!response.ok) {
-      const errorData = await response.json().catch(() => ({}));
-      throw new Error(errorData.error || errorData.message || 'Failed to fetch file');
-    }
-
-    return response.blob();
   },
 
-  async downloadFile(endpoint, defaultFilename = 'download') {
-    const blob = await this.getBlob(endpoint);
-    const url = window.URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = defaultFilename;
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
-    setTimeout(() => window.URL.revokeObjectURL(url), 1000);
+  async downloadFile(endpoint, defaultFilename = 'download', options = {}) {
+    const blob = await this.getBlob(endpoint, options);
+    if (typeof window !== 'undefined' && window.URL && document) {
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = defaultFilename;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      setTimeout(() => window.URL.revokeObjectURL(url), 1000);
+    }
+    return blob;
   },
 };
 

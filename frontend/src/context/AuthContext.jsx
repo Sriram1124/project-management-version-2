@@ -1,27 +1,16 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
 import { authService } from '../services/auth.service';
+import { isJwtExpired } from '../services/api';
 
 const AuthContext = createContext(null);
-
-// Helper to check if a JWT is expired without server round-trip
-function isJwtExpired(token) {
-  if (!token) return true;
-  try {
-    const parts = token.split('.');
-    if (parts.length !== 3) return true;
-    const payload = JSON.parse(atob(parts[1]));
-    if (!payload.exp) return false;
-    // Buffer of 15 seconds before expiry
-    return Date.now() >= payload.exp * 1000 - 15000;
-  } catch (e) {
-    return true;
-  }
-}
 
 export const AuthProvider = ({ children }) => {
   // Hydrate user immediately from localStorage to avoid flashes or unauthenticated redirects on refresh
   const [user, setUser] = useState(() => {
     try {
+      const token = typeof window !== 'undefined' ? localStorage.getItem('accessToken') : null;
+      const refreshToken = typeof window !== 'undefined' ? localStorage.getItem('refreshToken') : null;
+      if (!token && !refreshToken) return null;
       const cached = localStorage.getItem('user');
       return cached ? JSON.parse(cached) : null;
     } catch (e) {
@@ -29,27 +18,43 @@ export const AuthProvider = ({ children }) => {
     }
   });
 
-  // Only block with isLoading if an accessToken exists but user is not hydrated yet
+  // Only block with isLoading if tokens exist but user is not hydrated yet
   const [isLoading, setIsLoading] = useState(() => {
     const token = typeof window !== 'undefined' ? localStorage.getItem('accessToken') : null;
-    if (!token) return false;
+    const refreshToken = typeof window !== 'undefined' ? localStorage.getItem('refreshToken') : null;
+    if (!token && !refreshToken) return false;
     const cachedUser = typeof window !== 'undefined' ? localStorage.getItem('user') : null;
     return !cachedUser;
   });
+
+  // Listen for unauthorized/logout events dispatched from api.js
+  useEffect(() => {
+    const handleUnauthorized = () => {
+      setUser(null);
+      setIsLoading(false);
+    };
+
+    window.addEventListener('auth:unauthorized', handleUnauthorized);
+    return () => {
+      window.removeEventListener('auth:unauthorized', handleUnauthorized);
+    };
+  }, []);
 
   useEffect(() => {
     let isMounted = true;
 
     const initAuth = async () => {
       const token = localStorage.getItem('accessToken');
-      if (token) {
+      const refreshToken = localStorage.getItem('refreshToken');
+
+      if (token || refreshToken) {
         const lastVerifiedStr = localStorage.getItem('user_last_verified');
         const lastVerified = lastVerifiedStr ? Number(lastVerifiedStr) : 0;
         const now = Date.now();
         const cachedUser = localStorage.getItem('user');
 
         // Throttle verification: if user was verified in last 60s and token is not expired, skip redundant /me fetch
-        if (cachedUser && (now - lastVerified < 60_000) && !isJwtExpired(token)) {
+        if (cachedUser && (now - lastVerified < 60_000) && token && !isJwtExpired(token)) {
           if (isMounted) setIsLoading(false);
           return;
         }
@@ -61,20 +66,22 @@ export const AuthProvider = ({ children }) => {
             setUser(activeUser);
             localStorage.setItem('user', JSON.stringify(activeUser));
             localStorage.setItem('user_last_verified', String(Date.now()));
+          } else if (!activeUser) {
+            // If getCurrentUser returned null because refresh failed
+            if (!localStorage.getItem('accessToken') && !localStorage.getItem('refreshToken')) {
+              if (isMounted) setUser(null);
+            }
           }
         } catch (e) {
           // If token expired and couldn't be refreshed, clear auth state
-          if (e.message?.includes('401') || e.message?.includes('Unauthorized') || e.message?.includes('Invalid access token')) {
-            if (isMounted) {
-              localStorage.removeItem('accessToken');
-              localStorage.removeItem('refreshToken');
-              localStorage.removeItem('sessionId');
-              localStorage.removeItem('user');
-              localStorage.removeItem('user_last_verified');
-              setUser(null);
-            }
+          if (isMounted) {
+            localStorage.removeItem('accessToken');
+            localStorage.removeItem('refreshToken');
+            localStorage.removeItem('sessionId');
+            localStorage.removeItem('user');
+            localStorage.removeItem('user_last_verified');
+            setUser(null);
           }
-          // On network blip, preserve cached user so user is not logged out
         }
       } else {
         if (isMounted) {

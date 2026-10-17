@@ -85,7 +85,21 @@ export class WorkItemController {
   static async list(req: Request, res: Response): Promise<void> {
     try {
       const user = (req as any).fullUser;
-      const { project_id, sprint_id, type, status, priority, assigned_to_me, my_personal } = req.query;
+      const { project_id, sprint_id, type, status, priority, assigned_to_me, my_personal, overdue_only, limit } = req.query;
+
+      let validatedLimit: number | undefined = undefined;
+      if (limit !== undefined && limit !== null && limit !== '') {
+        const parsed = Number(limit);
+        if (isNaN(parsed) || !Number.isInteger(parsed) || parsed <= 0) {
+          res.status(400).json({ error: 'Invalid limit: must be a positive integer greater than 0' });
+          return;
+        }
+        if (parsed > 1000) {
+          res.status(400).json({ error: 'Invalid limit: maximum allowed limit is 1000' });
+          return;
+        }
+        validatedLimit = parsed;
+      }
 
       const workItems = await WorkItemService.listWorkItems(user, {
         project_id: project_id as string,
@@ -95,6 +109,8 @@ export class WorkItemController {
         priority: priority as string,
         assigned_to_me: assigned_to_me === 'true',
         my_personal: my_personal === 'true',
+        overdue_only: overdue_only === 'true',
+        limit: validatedLimit,
       });
 
       res.status(200).json({ work_items: workItems });

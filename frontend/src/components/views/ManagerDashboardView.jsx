@@ -28,40 +28,59 @@ export default function ManagerDashboardView({
   // If Cohort 2 is selected, render the clean future/empty state
   const isFutureCohort = selectedCohort?.code === 'cohort-2' || (selectedCohort?.name?.toLowerCase().includes('cohort 2') && (!selectedCohort?._count?.users || selectedCohort?._count?.users === 0));
 
-  const fetchDashboardData = React.useCallback(() => {
-    const userParams = selectedCohort?.id ? { cohort_id: selectedCohort.id } : {};
+  // Fetch cohort-independent data (projects and work items) once on mount
+  const fetchGlobalData = React.useCallback(() => {
     return Promise.all([
       projectsService.getProjects().catch(() => ({ projects: [] })),
+      workItemsService.listWorkItems({ overdue_only: true }).catch(() => []),
+    ]).then(([projData, workData]) => {
+      setProjects(Array.isArray(projData) ? projData : (projData?.projects || []));
+      setWorkItems(Array.isArray(workData) ? workData : []);
+    });
+  }, []);
+
+  // Fetch cohort-scoped data (users and health overview) whenever selectedCohort changes
+  const fetchCohortData = React.useCallback(() => {
+    if (!selectedCohort?.id) return Promise.resolve();
+    const userParams = { cohort_id: selectedCohort.id };
+    setHealthLoading(true);
+    return Promise.all([
       projectsService.getUsers(userParams).catch(() => ({ users: [] })),
-      workItemsService.listWorkItems().catch(() => []),
       projectsService.getHealthOverview(userParams).catch((err) => {
         console.error('Failed to load project health overview:', err);
         return null;
       }),
-    ]).then(([projData, userData, workData, healthData]) => {
-      setProjects(Array.isArray(projData) ? projData : (projData?.projects || []));
+    ]).then(([userData, healthData]) => {
       const loadedUsers = Array.isArray(userData) ? userData : (userData?.users || []);
       setUsers(loadedUsers);
-      setWorkItems(Array.isArray(workData) ? workData : []);
       setHealthOverview(healthData);
-      setLoading(false);
       setHealthLoading(false);
     });
   }, [selectedCohort?.id]);
 
+  // Initial load: fetch global data once on mount
   useEffect(() => {
     setLoading(true);
-    setHealthLoading(true);
-    fetchDashboardData();
-  }, [fetchDashboardData]);
+    fetchGlobalData().finally(() => {
+      setLoading(false);
+    });
+  }, [fetchGlobalData]);
+
+  // When selectedCohort changes, only re-fetch cohort-scoped data (avoid duplicate projects/workItems requests)
+  useEffect(() => {
+    if (selectedCohort?.id) {
+      fetchCohortData();
+    }
+  }, [fetchCohortData, selectedCohort?.id]);
 
   useEffect(() => {
     const handleSync = () => {
-      fetchDashboardData();
+      fetchGlobalData();
+      fetchCohortData();
     };
     window.addEventListener('work-items-updated', handleSync);
     return () => window.removeEventListener('work-items-updated', handleSync);
-  }, [fetchDashboardData]);
+  }, [fetchGlobalData, fetchCohortData]);
 
   if (isFutureCohort) {
     return (
