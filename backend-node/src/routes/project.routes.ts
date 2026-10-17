@@ -25,6 +25,7 @@ router.post('/', requirePermission('PROJECT_CREATE'), ProjectController.create);
 router.get('/:id', requirePermission('PROJECT_READ'), ProjectController.getById);
 router.patch('/:id', requirePermission('PROJECT_UPDATE'), ProjectController.update);
 router.post('/:id/archive', requirePermission('PROJECT_UPDATE'), ProjectController.archive);
+router.get('/:id/extension-requests', requirePermission('PROJECT_READ'), ProjectController.getExtensionRequests);
 
 // ── Project Members & Roles ────────────────────────────────────────────────────
 router.get('/:id/members', requirePermission('PROJECT_READ'), ProjectController.getMembers);

@@ -26,4 +26,9 @@ router.post('/:id/comments', WorkItemController.addComment);
 router.put('/:id/comments/:commentId', WorkItemController.updateComment);
 router.delete('/:id/comments/:commentId', WorkItemController.deleteComment);
 
+// ── WorkItem Due-Date Extensions ──────────────────────────────────────────
+router.post('/:id/extension-request', WorkItemController.requestExtension);
+router.get('/:id/extension-requests', WorkItemController.getExtensionRequests);
+router.post('/:id/extension-requests/:requestId/decision', WorkItemController.decideExtension);
+
 export { router as workItemRouter };

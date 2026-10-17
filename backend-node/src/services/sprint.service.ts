@@ -166,6 +166,15 @@ export class SprintService {
             type: true,
             parent_id: true,
             due_date: true,
+            time_entries: {
+              select: {
+                id: true,
+                duration_minutes: true,
+                date: true,
+                user_id: true,
+                user: { select: { id: true, name: true, email: true } },
+              },
+            },
           },
         },
       },
@@ -198,6 +207,45 @@ export class SprintService {
         .filter((w: any) => w.status === WorkItemStatus.COMPLETED)
         .reduce((acc: number, w: any) => acc + (Number(w.story_points) || 0), 0);
 
+      // Aggregations for cycle time tracking
+      let totalLoggedMinutes = 0;
+      let cycleRangeLoggedMinutes = 0;
+      const internTimeMap = new Map<string, { user_id: string; name: string; email: string | null; logged_minutes: number }>();
+
+      const cycleStart = s.start_date ? new Date(s.start_date) : null;
+      const cycleEnd = s.end_date ? new Date(s.end_date) : null;
+      if (cycleEnd) {
+        cycleEnd.setHours(23, 59, 59, 999);
+      }
+
+      s.work_items.forEach((item: any) => {
+        const entries = item.time_entries || [];
+        entries.forEach((entry: any) => {
+          const mins = Number(entry.duration_minutes) || 0;
+          totalLoggedMinutes += mins;
+
+          if (cycleStart && cycleEnd) {
+            const entryDate = new Date(entry.date);
+            if (entryDate >= cycleStart && entryDate <= cycleEnd) {
+              cycleRangeLoggedMinutes += mins;
+            }
+          }
+
+          if (entry.user_id) {
+            const existing = internTimeMap.get(entry.user_id) || {
+              user_id: entry.user_id,
+              name: entry.user?.name || 'Intern',
+              email: entry.user?.email || null,
+              logged_minutes: 0,
+            };
+            existing.logged_minutes += mins;
+            internTimeMap.set(entry.user_id, existing);
+          }
+        });
+      });
+
+      const timeByIntern = Array.from(internTimeMap.values()).sort((a, b) => b.logged_minutes - a.logged_minutes);
+
       const { work_items, _count, ...rest } = s;
       return {
         ...rest,
@@ -212,6 +260,11 @@ export class SprintService {
         completed_points: completedPoints,
         remaining_points: Math.max(0, totalPoints - completedPoints),
         incomplete_items: Math.max(0, totalItems - completedItems),
+        total_logged_minutes: totalLoggedMinutes,
+        total_logged_hours: +(totalLoggedMinutes / 60).toFixed(1),
+        cycle_range_logged_minutes: cycleRangeLoggedMinutes,
+        cycle_range_logged_hours: +(cycleRangeLoggedMinutes / 60).toFixed(1),
+        time_by_intern: timeByIntern,
       };
     });
   }
@@ -259,7 +312,13 @@ export class SprintService {
               select: { id: true, title: true, type: true },
             },
             time_entries: {
-              select: { id: true, duration_minutes: true },
+              select: {
+                id: true,
+                duration_minutes: true,
+                date: true,
+                user_id: true,
+                user: { select: { id: true, name: true, email: true } },
+              },
             },
           },
         },
@@ -293,8 +352,64 @@ export class SprintService {
       .filter((w: any) => w.status === WorkItemStatus.COMPLETED)
       .reduce((acc: number, w: any) => acc + (Number(w.story_points) || 0), 0);
 
+    let sprintTotalLogged = 0;
+    let sprintCycleRangeLogged = 0;
+    const sprintInternMap = new Map<string, { user_id: string; name: string; email: string | null; logged_minutes: number }>();
+    const sprintStart = sprint.start_date ? new Date(sprint.start_date) : null;
+    const sprintEnd = sprint.end_date ? new Date(sprint.end_date) : null;
+    if (sprintEnd) {
+      sprintEnd.setHours(23, 59, 59, 999);
+    }
+
+    const formattedWorkItems = sprint.work_items.map((w: any) => {
+      const entries = w.time_entries || [];
+      const logged_minutes = entries.reduce((acc: number, e: any) => acc + (Number(e.duration_minutes) || 0), 0);
+      const userMap = new Map<string, { user_id: string; name: string; email: string | null; logged_minutes: number }>();
+
+      entries.forEach((e: any) => {
+        const mins = Number(e.duration_minutes) || 0;
+        sprintTotalLogged += mins;
+
+        if (sprintStart && sprintEnd) {
+          const entryDate = new Date(e.date);
+          if (entryDate >= sprintStart && entryDate <= sprintEnd) {
+            sprintCycleRangeLogged += mins;
+          }
+        }
+
+        if (e.user_id) {
+          const ex = sprintInternMap.get(e.user_id) || {
+            user_id: e.user_id,
+            name: e.user?.name || 'Intern',
+            email: e.user?.email || null,
+            logged_minutes: 0,
+          };
+          ex.logged_minutes += mins;
+          sprintInternMap.set(e.user_id, ex);
+
+          const taskEx = userMap.get(e.user_id) || {
+            user_id: e.user_id,
+            name: e.user?.name || 'Intern',
+            email: e.user?.email || null,
+            logged_minutes: 0,
+          };
+          taskEx.logged_minutes += mins;
+          userMap.set(e.user_id, taskEx);
+        }
+      });
+
+      return {
+        ...w,
+        logged_minutes,
+        time_by_intern: Array.from(userMap.values()),
+      };
+    });
+
+    const timeByIntern = Array.from(sprintInternMap.values()).sort((a, b) => b.logged_minutes - a.logged_minutes);
+
     return {
       ...sprint,
+      work_items: formattedWorkItems,
       total_items: totalItems,
       completed_items: completedItems,
       in_progress_items: inProgressItems,
@@ -306,6 +421,11 @@ export class SprintService {
       completed_points: completedPoints,
       remaining_points: Math.max(0, totalPoints - completedPoints),
       incomplete_items: Math.max(0, totalItems - completedItems),
+      total_logged_minutes: sprintTotalLogged,
+      total_logged_hours: +(sprintTotalLogged / 60).toFixed(1),
+      cycle_range_logged_minutes: sprintCycleRangeLogged,
+      cycle_range_logged_hours: +(sprintCycleRangeLogged / 60).toFixed(1),
+      time_by_intern: timeByIntern,
     };
   }
 

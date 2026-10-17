@@ -1,6 +1,7 @@
 import { Request, Response } from 'express';
 import { ProjectService } from '../services/project.service';
 import { ProjectHealthService } from '../services/project-health.service';
+import { WorkItemService } from '../services/work-item.service';
 
 export class ProjectController {
   private static handleError(res: Response, error: any) {
@@ -437,6 +438,18 @@ export class ProjectController {
         techLeads: tech_leads,
         data: tech_leads,
       });
+    } catch (error) {
+      ProjectController.handleError(res, error);
+    }
+  }
+
+  static async getExtensionRequests(req: Request, res: Response): Promise<void> {
+    try {
+      const user = (req as any).fullUser;
+      const { id } = req.params;
+      const statusFilter = typeof req.query.status === 'string' ? req.query.status : undefined;
+      const requests = await WorkItemService.getProjectExtensionRequests(id, user, statusFilter);
+      res.status(200).json({ extension_requests: requests, requests, data: requests });
     } catch (error) {
       ProjectController.handleError(res, error);
     }

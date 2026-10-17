@@ -29,6 +29,10 @@ export function invalidateUserSessionCache(userId?: string): void {
   }
 }
 
+export function setUserSessionInCache(userId: string, user: any): void {
+  userSessionCache.set(userId, { user, cachedAt: Date.now() });
+}
+
 export const authenticate = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
   const authStart = performance.now();
   let dbDuration = 0;

@@ -27,6 +27,7 @@ model Organization {
   roles         Role[]
   work_policy   OrganizationWorkPolicy?
   audit_logs    AuditLog[]
+  extension_requests WorkItemExtensionRequest[]
 
   @@map("organizations")
 }
@@ -83,6 +84,8 @@ model User {
   created_action_items   ActionItem[]            @relation("ActionItemCreator")
   work_item_comments     WorkItemComment[]       @relation("WorkItemCommentAuthor")
   audit_logs             AuditLog[]
+  requested_extensions   WorkItemExtensionRequest[] @relation("ExtensionRequester")
+  reviewed_extensions    WorkItemExtensionRequest[] @relation("ExtensionReviewer")
 
   @@unique([organization_id, user_code])
   @@index([cohort_id])
@@ -264,6 +267,7 @@ model Project {
   time_entries TimeEntry[]
   action_items ActionItem[]
   roles        Role[]
+  extension_requests WorkItemExtensionRequest[]
 
   @@map("projects")
 }
@@ -376,6 +380,7 @@ model WorkItem {
   comments      WorkItemComment[]
   time_entries  TimeEntry[]
   work_sessions WorkSession[]
+  extension_requests WorkItemExtensionRequest[]
 
   @@index([organization_id])
   @@index([project_id])
@@ -623,4 +628,41 @@ model AuditLog {
   @@index([target_type, target_id])
   @@index([action, created_at])
   @@map("audit_logs")
+}
+
+enum ExtensionRequestStatus {
+  PENDING
+  APPROVED
+  REJECTED
+}
+
+model WorkItemExtensionRequest {
+  id                 String                 @id @default(uuid())
+  organization_id    String
+  project_id         String
+  task_id            String                 @map("task_id")
+  requester_id       String
+  original_due_date  DateTime?
+  requested_due_date DateTime
+  reason             String                 @db.Text
+  status             ExtensionRequestStatus @default(PENDING)
+  reviewer_id        String?
+  decision_note      String?                @db.Text
+  created_at         DateTime               @default(now())
+  reviewed_at        DateTime?
+  updated_at         DateTime               @updatedAt
+
+  organization Organization @relation(fields: [organization_id], references: [id], onDelete: Cascade)
+  project      Project      @relation(fields: [project_id], references: [id], onDelete: Cascade)
+  task         WorkItem     @relation(fields: [task_id], references: [id], onDelete: Cascade)
+  requester    User         @relation("ExtensionRequester", fields: [requester_id], references: [id], onDelete: Cascade)
+  reviewer     User?        @relation("ExtensionReviewer", fields: [reviewer_id], references: [id], onDelete: SetNull)
+
+  @@index([organization_id])
+  @@index([project_id])
+  @@index([task_id])
+  @@index([requester_id])
+  @@index([status])
+  @@index([task_id, status])
+  @@map("work_item_extension_requests")
 }

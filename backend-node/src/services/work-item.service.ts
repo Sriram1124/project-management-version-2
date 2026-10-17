@@ -1,6 +1,8 @@
-import { WorkItemType, WorkItemStatus, WorkItemPriority, SprintStatus, ProjectStatus } from '@prisma/client';
+import { WorkItemType, WorkItemStatus, WorkItemPriority, SprintStatus, ProjectStatus, ExtensionRequestStatus } from '@prisma/client';
 import { prisma } from '../lib/prisma';
 import { ProjectHealthService } from './project-health.service';
+import { AuditService } from './audit.service';
+import { NotificationService } from './notification.service';
 
 export interface CreateWorkItemInput {
   title: string;
@@ -456,12 +458,32 @@ export class WorkItemService {
       ? item.time_entries.reduce((sum: number, entry: any) => sum + (Number(entry.duration_minutes) || 0), 0)
       : 0;
 
+    const time_by_intern = Array.isArray(item.time_entries)
+      ? Object.values(
+          item.time_entries.reduce((acc: any, entry: any) => {
+            const uid = entry.user_id;
+            if (!uid) return acc;
+            if (!acc[uid]) {
+              acc[uid] = {
+                user_id: uid,
+                name: entry.user?.name || 'Intern',
+                email: entry.user?.email || null,
+                logged_minutes: 0,
+              };
+            }
+            acc[uid].logged_minutes += Number(entry.duration_minutes) || 0;
+            return acc;
+          }, {})
+        )
+      : [];
+
     const primaryAssignee = formattedAssignees[0] || null;
 
     return {
       ...item,
       is_overdue,
       logged_minutes,
+      time_by_intern,
       assignees: formattedAssignees,
       assignee: primaryAssignee,
       assignee_id: primaryAssignee?.user_id || null,
@@ -870,7 +892,13 @@ export class WorkItemService {
           },
         },
         time_entries: {
-          select: { id: true, duration_minutes: true },
+          select: {
+            id: true,
+            duration_minutes: true,
+            date: true,
+            user_id: true,
+            user: { select: { id: true, name: true, email: true } },
+          },
         },
       },
       orderBy: { created_at: 'desc' },
@@ -920,7 +948,13 @@ export class WorkItemService {
           },
         },
         time_entries: {
-          select: { id: true, duration_minutes: true },
+          select: {
+            id: true,
+            duration_minutes: true,
+            date: true,
+            user_id: true,
+            user: { select: { id: true, name: true, email: true } },
+          },
         },
       },
     });
@@ -1348,7 +1382,13 @@ export class WorkItemService {
           },
         },
         time_entries: {
-          select: { id: true, duration_minutes: true },
+          select: {
+            id: true,
+            duration_minutes: true,
+            date: true,
+            user_id: true,
+            user: { select: { id: true, name: true, email: true } },
+          },
         },
       },
     });
@@ -1793,7 +1833,7 @@ export class WorkItemService {
     const targetProjectForMembers = filters?.project_id || (isLeadAnyProject && authorizedLeadProjects.length === 1 ? authorizedLeadProjects[0] : null);
 
     // Parallel execution of all analytics data queries
-    const [items, timeEntries, accessibleSprints, accessibleProjects, pMembers] = await Promise.all([
+    const [items, timeEntries, accessibleSprints, accessibleProjects, pMembers, allExtensionRequests] = await Promise.all([
       prisma.workItem.findMany({
         where,
         select: {
@@ -1876,6 +1916,17 @@ export class WorkItemService {
             },
           })
         : Promise.resolve([]),
+      prisma.workItemExtensionRequest.findMany({
+        where: {
+          ...(orgId ? { organization_id: orgId } : {}),
+          ...(filters?.project_id ? { project_id: filters.project_id } : {}),
+        },
+        include: {
+          requester: { select: { id: true, name: true, email: true } },
+          reviewer: { select: { id: true, name: true, email: true } },
+        },
+        orderBy: { created_at: 'asc' },
+      }),
     ]);
 
     const now = new Date();
@@ -2122,8 +2173,38 @@ export class WorkItemService {
       }
     }
 
+    // Scope extension requests to items in scope
+    const itemIdsInScope = new Set(items.map((w) => w.id));
+    const scopedExtensions = allExtensionRequests.filter((r) => itemIdsInScope.has(r.task_id));
+    const taskExtensionsMap = new Map<string, any[]>();
+    for (const req of scopedExtensions) {
+      const list = taskExtensionsMap.get(req.task_id) || [];
+      list.push(req);
+      taskExtensionsMap.set(req.task_id, list);
+    }
+
     // Formatted work item details for individual performance records
     const task_breakdown = items.map((w) => {
+      const exts = taskExtensionsMap.get(w.id) || [];
+      const approvedExts = exts.filter((r) => r.status === ExtensionRequestStatus.APPROVED);
+      const pendingExts = exts.filter((r) => r.status === ExtensionRequestStatus.PENDING);
+      const rejectedExts = exts.filter((r) => r.status === ExtensionRequestStatus.REJECTED);
+      const has_extension = approvedExts.length > 0;
+      const has_pending_extension = pendingExts.length > 0;
+      const extension_status = has_pending_extension ? 'PENDING' : has_extension ? 'APPROVED' : rejectedExts.length > 0 ? 'REJECTED' : 'NONE';
+
+      const additional_days_granted = approvedExts.reduce((sum, r) => {
+        if (r.original_due_date && r.requested_due_date) {
+          const diffMs = new Date(r.requested_due_date).getTime() - new Date(r.original_due_date).getTime();
+          return sum + Math.max(0, Math.round(diffMs / (1000 * 60 * 60 * 24)));
+        }
+        return sum;
+      }, 0);
+
+      const original_due_date = approvedExts.length > 0
+        ? (approvedExts[0].original_due_date || w.due_date)
+        : (exts.length > 0 && exts[0].original_due_date ? exts[0].original_due_date : w.due_date);
+
       const has_valid_due_date = Boolean(w.due_date && !isNaN(new Date(w.due_date).getTime()));
       const effective_deadline = has_valid_due_date ? getEffectiveDeadline(new Date(w.due_date!)) : null;
       const is_past_due = Boolean(
@@ -2139,6 +2220,14 @@ export class WorkItemService {
           !isNaN(compDate.getTime())
       );
       const was_completed_on_time = is_eligible_completed ? compDate! <= effective_deadline! : null;
+
+      // Original deadline adherence check
+      const has_valid_original_due = Boolean(original_due_date && !isNaN(new Date(original_due_date).getTime()));
+      const original_effective_deadline = has_valid_original_due ? getEffectiveDeadline(new Date(original_due_date)) : null;
+      const was_completed_by_original_deadline = (w.status === WorkItemStatus.COMPLETED && compDate && original_effective_deadline)
+        ? compDate <= original_effective_deadline
+        : null;
+
       const logged_minutes = taskLoggedMinutesMap.get(w.id) || 0;
 
       return {
@@ -2148,6 +2237,7 @@ export class WorkItemService {
         status: w.status,
         priority: w.priority,
         due_date: w.due_date,
+        original_due_date,
         completed_at: w.completed_at,
         updated_at: w.updated_at,
         story_points: w.story_points || 0,
@@ -2157,7 +2247,15 @@ export class WorkItemService {
         sprint_name: w.sprint?.name || null,
         is_past_due,
         was_completed_on_time,
+        was_completed_by_approved_deadline: was_completed_on_time,
+        was_completed_by_original_deadline,
         is_eligible_completed,
+        extension_status,
+        has_extension,
+        has_pending_extension,
+        extension_requests_count: exts.length,
+        approved_extensions_count: approvedExts.length,
+        additional_days_granted,
         logged_minutes,
         logged_hours: +(logged_minutes / 60).toFixed(1),
         assignees: w.assignees?.map((a: any) => ({
@@ -2168,6 +2266,34 @@ export class WorkItemService {
         })) || [],
       };
     });
+
+    const eligible_original_deadline_completed = task_breakdown.filter(
+      (t) => t.status === WorkItemStatus.COMPLETED && t.was_completed_by_original_deadline !== null
+    );
+    const original_deadline_on_time_count = eligible_original_deadline_completed.filter(
+      (t) => t.was_completed_by_original_deadline === true
+    ).length;
+    const original_deadline_on_time_rate = eligible_original_deadline_completed.length > 0
+      ? Math.round((original_deadline_on_time_count / eligible_original_deadline_completed.length) * 100)
+      : null;
+
+    const total_extension_requests = scopedExtensions.length;
+    const approved_extension_requests = scopedExtensions.filter((r) => r.status === ExtensionRequestStatus.APPROVED).length;
+    const rejected_extension_requests = scopedExtensions.filter((r) => r.status === ExtensionRequestStatus.REJECTED).length;
+    const pending_extension_requests = scopedExtensions.filter((r) => r.status === ExtensionRequestStatus.PENDING).length;
+    const tasks_affected_count = new Set(scopedExtensions.map((r) => r.task_id)).size;
+    const tasks_with_approved_extensions_count = new Set(
+      scopedExtensions.filter((r) => r.status === ExtensionRequestStatus.APPROVED).map((r) => r.task_id)
+    ).size;
+    const total_additional_days_granted = scopedExtensions
+      .filter((r) => r.status === ExtensionRequestStatus.APPROVED)
+      .reduce((sum, r) => {
+        if (r.original_due_date && r.requested_due_date) {
+          const diffMs = new Date(r.requested_due_date).getTime() - new Date(r.original_due_date).getTime();
+          return sum + Math.max(0, Math.round(diffMs / (1000 * 60 * 60 * 24)));
+        }
+        return sum;
+      }, 0);
 
     // Daily trends over the last 14 days
     const trends: { date: string; completed: number; logged_hours: number }[] = [];
@@ -2232,6 +2358,22 @@ export class WorkItemService {
       completed_on_time_label,
       completion_rate,
       on_time_rate: completed_on_time_rate,
+      original_deadline_adherence_rate: original_deadline_on_time_rate,
+      approved_deadline_adherence_rate: completed_on_time_rate,
+      extension_metrics: {
+        total_requests: total_extension_requests,
+        approved_requests: approved_extension_requests,
+        rejected_requests: rejected_extension_requests,
+        pending_requests: pending_extension_requests,
+        tasks_affected_count,
+        tasks_with_approved_extensions_count,
+        total_additional_days_granted,
+        original_on_time_count: original_deadline_on_time_count,
+        original_on_time_rate: original_deadline_on_time_rate,
+        approved_on_time_count: completed_on_time_count,
+        approved_on_time_rate: completed_on_time_rate,
+        display_label: `${approved_extension_requests} approved / ${total_extension_requests} requested`,
+      },
       status_counts,
       priority_counts,
       type_counts,
@@ -2502,5 +2644,397 @@ export class WorkItemService {
     });
 
     return { success: true, message: 'Comment deleted successfully' };
+  }
+
+  /**
+   * Request a due-date extension for a work item
+   */
+  static async requestExtension(
+    workItemId: string,
+    user: any,
+    data: { requested_due_date: string | Date; reason: string }
+  ) {
+    if (!data?.reason || typeof data.reason !== 'string' || !data.reason.trim()) {
+      const err: any = new Error('Reason is mandatory for requesting an extension');
+      err.statusCode = 400;
+      throw err;
+    }
+    if (data.reason.trim().length > 2000) {
+      const err: any = new Error('Reason cannot exceed 2000 characters');
+      err.statusCode = 400;
+      throw err;
+    }
+    if (!data?.requested_due_date) {
+      const err: any = new Error('Requested new due date is required');
+      err.statusCode = 400;
+      throw err;
+    }
+    const requestedDate = new Date(data.requested_due_date);
+    if (isNaN(requestedDate.getTime())) {
+      const err: any = new Error('Invalid requested due date');
+      err.statusCode = 400;
+      throw err;
+    }
+
+    const item = await this.verifyWorkItemAccess(workItemId, user);
+    if (item.project?.status === ProjectStatus.ARCHIVED) {
+      const err: any = new Error('Cannot request extensions for work items in an archived project');
+      err.statusCode = 400;
+      throw err;
+    }
+
+    if (item.due_date) {
+      const currentDue = new Date(item.due_date);
+      if (requestedDate.getTime() <= currentDue.getTime()) {
+        const err: any = new Error('The requested date must be later than the current due date');
+        err.statusCode = 400;
+        throw err;
+      }
+    } else {
+      if (requestedDate.getTime() <= Date.now()) {
+        const err: any = new Error('The requested date must be a future date');
+        err.statusCode = 400;
+        throw err;
+      }
+    }
+
+    // Check for existing pending request
+    const existingPending = await prisma.workItemExtensionRequest.findFirst({
+      where: {
+        task_id: workItemId,
+        status: ExtensionRequestStatus.PENDING,
+      },
+    });
+    if (existingPending) {
+      const err: any = new Error('A pending extension request already exists for this task');
+      err.statusCode = 400;
+      throw err;
+    }
+
+    const projectId = item.project_id || '';
+    if (!projectId) {
+      const err: any = new Error('Due-date extensions are only supported for project work items');
+      err.statusCode = 400;
+      throw err;
+    }
+
+    const extRequest = await prisma.workItemExtensionRequest.create({
+      data: {
+        organization_id: item.organization_id,
+        project_id: projectId,
+        task_id: workItemId,
+        requester_id: user.id,
+        original_due_date: item.due_date ? new Date(item.due_date) : null,
+        requested_due_date: requestedDate,
+        reason: data.reason.trim(),
+        status: ExtensionRequestStatus.PENDING,
+      },
+      include: {
+        requester: { select: { id: true, name: true, email: true } },
+        reviewer: { select: { id: true, name: true, email: true } },
+        task: { select: { id: true, title: true, due_date: true, status: true, priority: true } },
+      },
+    });
+
+    // Submitting a request must NOT change the task's due date.
+
+    // Audit log
+    try {
+      await AuditService.record({
+        actorId: user.id,
+        organizationId: item.organization_id,
+        action: 'WORK_ITEM_EXTENSION_REQUESTED',
+        targetType: 'WorkItem',
+        targetId: workItemId,
+        metadata: {
+          requestId: extRequest.id,
+          task_title: item.title,
+          original_due_date: item.due_date,
+          requested_due_date: extRequest.requested_due_date,
+          reason: extRequest.reason,
+        },
+      });
+    } catch (auditErr) {
+      console.warn('Failed to record extension request audit log:', auditErr);
+    }
+
+    // Task discussion / activity record
+    try {
+      await prisma.workItemComment.create({
+        data: {
+          work_item_id: workItemId,
+          author_id: user.id,
+          content: `📅 Requested due-date extension to ${requestedDate.toLocaleDateString()}.\nReason: ${extRequest.reason}`,
+        },
+      });
+    } catch (commentErr) {
+      console.warn('Failed to create extension request comment:', commentErr);
+    }
+
+    // Notify authorized project managers / leads
+    try {
+      const project = await prisma.project.findUnique({
+        where: { id: projectId },
+        include: {
+          members: {
+            where: { project_role: { in: ['MANAGER', 'TECH_LEAD'] } },
+            select: { user_id: true },
+          },
+        },
+      });
+      const recipientIds = new Set<string>();
+      if (project?.owner_id && project.owner_id !== user.id) {
+        recipientIds.add(project.owner_id);
+      }
+      project?.members?.forEach((m) => {
+        if (m.user_id !== user.id) recipientIds.add(m.user_id);
+      });
+
+      if (recipientIds.size > 0) {
+        await NotificationService.createNotification({
+          organizationId: item.organization_id,
+          senderId: user.id,
+          title: `Extension Request: ${item.title}`,
+          message: `${user.name || user.email} requested an extension for "${item.title}" to ${requestedDate.toLocaleDateString()}. Reason: ${extRequest.reason}`,
+          type: 'SYSTEM',
+          recipientIds: Array.from(recipientIds),
+        });
+      }
+    } catch (notifErr) {
+      console.warn('Failed to dispatch extension request notification:', notifErr);
+    }
+
+    return extRequest;
+  }
+
+  /**
+   * List all extension requests for a specific work item
+   */
+  static async getExtensionRequests(workItemId: string, user: any) {
+    await this.verifyWorkItemAccess(workItemId, user);
+    return prisma.workItemExtensionRequest.findMany({
+      where: { task_id: workItemId },
+      include: {
+        requester: { select: { id: true, name: true, email: true } },
+        reviewer: { select: { id: true, name: true, email: true } },
+        task: { select: { id: true, title: true, due_date: true, status: true, priority: true } },
+      },
+      orderBy: { created_at: 'desc' },
+    });
+  }
+
+  /**
+   * Decide (Approve or Reject) an extension request
+   */
+  static async decideExtension(
+    workItemId: string,
+    requestId: string,
+    user: any,
+    data: { decision: 'APPROVE' | 'REJECT'; decision_note?: string }
+  ) {
+    const rawDecision = String(data?.decision || '').toUpperCase();
+    if (rawDecision !== 'APPROVE' && rawDecision !== 'REJECT') {
+      const err: any = new Error("Decision must be either 'APPROVE' or 'REJECT'");
+      err.statusCode = 400;
+      throw err;
+    }
+
+    const item = await this.verifyWorkItemAccess(workItemId, user);
+    const orgId = this.getUserOrgId(user);
+    const isMgr = this.isManagerOrAdmin(user);
+
+    let isAuthorizedReviewer = isMgr;
+    if (!isAuthorizedReviewer && item.project_id) {
+      const project = await prisma.project.findUnique({
+        where: { id: item.project_id },
+        select: { owner_id: true },
+      });
+      if (project?.owner_id === user.id) {
+        isAuthorizedReviewer = true;
+      } else {
+        const membership = await prisma.projectMember.findFirst({
+          where: { project_id: item.project_id, user_id: user.id },
+          select: { project_role: true },
+        });
+        if (membership?.project_role === 'TECH_LEAD' || membership?.project_role === 'MANAGER' || this.isOrgTechLead(user)) {
+          isAuthorizedReviewer = true;
+        }
+      }
+    }
+
+    if (!isAuthorizedReviewer) {
+      const err: any = new Error('Forbidden: only managers and tech leads can review extension requests');
+      err.statusCode = 403;
+      throw err;
+    }
+
+    const reqRecord = await prisma.workItemExtensionRequest.findFirst({
+      where: { id: requestId, task_id: workItemId },
+    });
+    if (!reqRecord) {
+      const err: any = new Error('Extension request not found');
+      err.statusCode = 404;
+      throw err;
+    }
+    if (reqRecord.status !== ExtensionRequestStatus.PENDING) {
+      const err: any = new Error(`Extension request has already been ${reqRecord.status.toLowerCase()}`);
+      err.statusCode = 400;
+      throw err;
+    }
+
+    const isApproved = rawDecision === 'APPROVE';
+    const newStatus = isApproved ? ExtensionRequestStatus.APPROVED : ExtensionRequestStatus.REJECTED;
+    const note = data.decision_note ? data.decision_note.trim() : null;
+
+    const [updatedReq, updatedWorkItem] = await prisma.$transaction(async (tx) => {
+      const reqUpdated = await tx.workItemExtensionRequest.update({
+        where: { id: requestId },
+        data: {
+          status: newStatus,
+          reviewer_id: user.id,
+          decision_note: note,
+          reviewed_at: new Date(),
+        },
+        include: {
+          requester: { select: { id: true, name: true, email: true } },
+          reviewer: { select: { id: true, name: true, email: true } },
+          task: { select: { id: true, title: true, due_date: true, status: true, priority: true } },
+        },
+      });
+
+      let taskUpdated = item;
+      if (isApproved) {
+        taskUpdated = await tx.workItem.update({
+          where: { id: workItemId },
+          data: {
+            due_date: reqRecord.requested_due_date,
+          },
+          include: {
+            creator: { select: { id: true, name: true, email: true } },
+            project: { select: { id: true, name: true, status: true, owner_id: true } },
+            sprint: { select: { id: true, name: true, status: true } },
+            parent: { select: { id: true, title: true, type: true, status: true, priority: true } },
+            assignees: { include: { user: { select: { id: true, name: true, email: true } } } },
+          },
+        });
+      }
+
+      return [reqUpdated, taskUpdated];
+    });
+
+    // Audit trail
+    try {
+      await AuditService.record({
+        actorId: user.id,
+        organizationId: item.organization_id,
+        action: isApproved ? 'WORK_ITEM_EXTENSION_APPROVED' : 'WORK_ITEM_EXTENSION_REJECTED',
+        targetType: 'WorkItem',
+        targetId: workItemId,
+        metadata: {
+          requestId: updatedReq.id,
+          decision: newStatus,
+          original_due_date: reqRecord.original_due_date,
+          new_due_date: isApproved ? updatedReq.requested_due_date : reqRecord.original_due_date,
+          decision_note: note,
+        },
+      });
+    } catch (auditErr) {
+      console.warn('Failed to record extension decision audit log:', auditErr);
+    }
+
+    // Task discussion / activity comment
+    try {
+      await prisma.workItemComment.create({
+        data: {
+          work_item_id: workItemId,
+          author_id: user.id,
+          content: isApproved
+            ? `✅ Extension Approved by ${user.name || user.email}. New due date: ${new Date(updatedReq.requested_due_date).toLocaleDateString()}.${note ? `\nNote: ${note}` : ''}`
+            : `❌ Extension Rejected by ${user.name || user.email}.${note ? `\nReason: ${note}` : ''}`,
+        },
+      });
+    } catch (commentErr) {
+      console.warn('Failed to create extension decision comment:', commentErr);
+    }
+
+    // Notify intern
+    try {
+      if (updatedReq.requester_id) {
+        await NotificationService.createNotification({
+          organizationId: item.organization_id,
+          senderId: user.id,
+          title: isApproved ? `Extension Approved: ${item.title}` : `Extension Rejected: ${item.title}`,
+          message: isApproved
+            ? `Your due-date extension request for "${item.title}" was approved until ${new Date(updatedReq.requested_due_date).toLocaleDateString()}.${note ? ` Note: ${note}` : ''}`
+            : `Your due-date extension request for "${item.title}" was rejected.${note ? ` Note: ${note}` : ''}`,
+          type: 'SYSTEM',
+          recipientIds: [updatedReq.requester_id],
+        });
+      }
+    } catch (notifErr) {
+      console.warn('Failed to notify requester of extension decision:', notifErr);
+    }
+
+    return {
+      request: updatedReq,
+      work_item: this.formatWorkItem(updatedWorkItem),
+    };
+  }
+
+  /**
+   * List all extension requests for a project
+   */
+  static async getProjectExtensionRequests(projectId: string, user: any, statusFilter?: string) {
+    const orgId = this.getUserOrgId(user);
+    const isMgr = this.isManagerOrAdmin(user);
+
+    const project = await prisma.project.findFirst({
+      where: { id: projectId, organization_id: orgId },
+      select: { id: true, owner_id: true },
+    });
+    if (!project) {
+      const err: any = new Error('Project not found');
+      err.statusCode = 404;
+      throw err;
+    }
+
+    if (!isMgr && project.owner_id !== user.id) {
+      const isMember = await this.verifyProjectMembership(projectId, user.id, orgId);
+      if (!isMember) {
+        const err: any = new Error('Forbidden: you are not authorized to view this project');
+        err.statusCode = 403;
+        throw err;
+      }
+    }
+
+    const where: any = { project_id: projectId };
+    if (statusFilter && ['PENDING', 'APPROVED', 'REJECTED'].includes(statusFilter.toUpperCase())) {
+      where.status = statusFilter.toUpperCase() as ExtensionRequestStatus;
+    }
+
+    return prisma.workItemExtensionRequest.findMany({
+      where,
+      include: {
+        requester: { select: { id: true, name: true, email: true } },
+        reviewer: { select: { id: true, name: true, email: true } },
+        task: {
+          select: {
+            id: true,
+            title: true,
+            status: true,
+            priority: true,
+            due_date: true,
+            story_points: true,
+            assignees: {
+              select: {
+                user_id: true,
+                user: { select: { id: true, name: true, email: true } },
+              },
+            },
+          },
+        },
+      },
+      orderBy: { created_at: 'desc' },
+    });
   }
 }

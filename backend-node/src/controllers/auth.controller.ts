@@ -83,6 +83,10 @@ export class AuthController {
       });
     } catch (error: any) {
       console.error('[AuthController.login] Error during login:', error);
+      if (error.statusCode === 403 || error.code === 'ORGANIZATION_SUSPENDED') {
+        res.status(403).json({ error: error.message, code: error.code || 'ORGANIZATION_SUSPENDED' });
+        return;
+      }
       if (error.message === 'Invalid credentials' || error.message === 'User is inactive') {
         res.status(401).json({ error: error.message });
       } else {

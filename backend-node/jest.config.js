@@ -1,0 +1,21 @@
+module.exports = {
+  preset: 'ts-jest',
+  testEnvironment: 'node',
+  roots: ['<rootDir>/src', '<rootDir>/tests'],
+  testMatch: ['<rootDir>/tests/**/*.test.ts'],
+  moduleFileExtensions: ['ts', 'js', 'json', 'node'],
+  setupFilesAfterEnv: ['<rootDir>/tests/setup.ts'],
+  testTimeout: 15000,
+  verbose: true,
+  forceExit: true,
+  clearMocks: true,
+  resetMocks: false,
+  restoreMocks: true,
+  collectCoverageFrom: [
+    'src/**/*.ts',
+    '!src/server.ts',
+    '!src/**/*.test.ts',
+    '!src/workers/**',
+    '!src/types/**',
+  ],
+};

@@ -6,6 +6,11 @@ export class WorkItemController {
   private static handleError(res: Response, error: any) {
     const msg = error?.message || 'Internal server error';
 
+    if (error?.statusCode && typeof error.statusCode === 'number') {
+      res.status(error.statusCode).json({ error: msg, work_item: {} });
+      return;
+    }
+
     if (
       msg.includes('not found') ||
       msg === 'Work item not found' ||
@@ -249,6 +254,41 @@ export class WorkItemController {
       const user = (req as any).fullUser;
       const { id, commentId } = req.params;
       const result = await WorkItemService.deleteComment(id, commentId, user);
+      res.status(200).json(result);
+    } catch (error) {
+      WorkItemController.handleError(res, error);
+    }
+  }
+
+  static async requestExtension(req: Request, res: Response): Promise<void> {
+    try {
+      const user = (req as any).fullUser;
+      const { id } = req.params;
+      const { requested_due_date, reason } = req.body || {};
+      const request = await WorkItemService.requestExtension(id, user, { requested_due_date, reason });
+      res.status(201).json({ extension_request: request, request, data: request });
+    } catch (error) {
+      WorkItemController.handleError(res, error);
+    }
+  }
+
+  static async getExtensionRequests(req: Request, res: Response): Promise<void> {
+    try {
+      const user = (req as any).fullUser;
+      const { id } = req.params;
+      const requests = await WorkItemService.getExtensionRequests(id, user);
+      res.status(200).json({ extension_requests: requests, requests, data: requests });
+    } catch (error) {
+      WorkItemController.handleError(res, error);
+    }
+  }
+
+  static async decideExtension(req: Request, res: Response): Promise<void> {
+    try {
+      const user = (req as any).fullUser;
+      const { id, requestId } = req.params;
+      const { decision, decision_note } = req.body || {};
+      const result = await WorkItemService.decideExtension(id, requestId, user, { decision, decision_note });
       res.status(200).json(result);
     } catch (error) {
       WorkItemController.handleError(res, error);
