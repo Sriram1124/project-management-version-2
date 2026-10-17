@@ -100,7 +100,11 @@ export const workItemsService = {
   async addAssignee(id, userId) {
     if (!id || !userId) throw new Error('Work item ID and user ID are required');
     const data = await api.post(`/work-items/${id}/assignees`, { user_id: userId });
-    return data.work_item;
+    const item = data.work_item || data;
+    if (typeof window !== 'undefined') {
+      window.dispatchEvent(new CustomEvent('work-items-updated', { detail: { action: 'update', id, item } }));
+    }
+    return item;
   },
 
   /**
@@ -108,7 +112,11 @@ export const workItemsService = {
    */
   async removeAssignee(id, userId) {
     if (!id || !userId) throw new Error('Work item ID and user ID are required');
-    return await api.delete(`/work-items/${id}/assignees/${userId}`);
+    const res = await api.delete(`/work-items/${id}/assignees/${userId}`);
+    if (typeof window !== 'undefined') {
+      window.dispatchEvent(new CustomEvent('work-items-updated', { detail: { action: 'update', id, removedUserId: userId } }));
+    }
+    return res;
   },
 
   /**

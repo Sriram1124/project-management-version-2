@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import FilterBar from './FilterBar';
 import KanbanColumn from './KanbanColumn';
 import AddTaskModal from './AddTaskModal';
@@ -25,6 +25,11 @@ export default function KanbanBoard({ projectId, project = null, isKanbanProject
   const [sprints, setSprints] = useState([]);
   const [members, setMembers] = useState([]);
   const [draggedTaskId, setDraggedTaskId] = useState(null);
+  const hasLoadedRef = useRef(false);
+
+  useEffect(() => {
+    hasLoadedRef.current = false;
+  }, [projectId]);
 
   // Filter States
   const [searchQuery, setSearchQuery] = useState('');
@@ -44,10 +49,12 @@ export default function KanbanBoard({ projectId, project = null, isKanbanProject
   const [isCompleteSprintOpen, setIsCompleteSprintOpen] = useState(false);
 
   // Load project data
-  const loadProjectData = useCallback(async () => {
+  const loadProjectData = useCallback(async (isSilent = false) => {
     if (!projectId) return;
     try {
-      setLoading(true);
+      if (!isSilent && !hasLoadedRef.current) {
+        setLoading(true);
+      }
       const [sprintsList, itemsList, membersList] = await Promise.all([
         sprintsService.getSprints(projectId).catch(() => []),
         workItemsService.listWorkItems({ project_id: projectId }).catch(() => []),
@@ -57,17 +64,20 @@ export default function KanbanBoard({ projectId, project = null, isKanbanProject
       setWorkItems(itemsList || []);
       setMembers(membersList || []);
 
-      // In Kanban projects, flow is continuous without mandatory sprint boundaries
-      if (isKanban) {
-        setSelectedSprint('All Sprints');
-      } else {
-        // Default selected sprint to ACTIVE sprint if exists
-        const active = (sprintsList || []).find((s) => s.status === 'ACTIVE');
-        if (active) {
-          setSelectedSprint(active.name);
-        } else {
+      if (!hasLoadedRef.current) {
+        // In Kanban projects, flow is continuous without mandatory sprint boundaries
+        if (isKanban) {
           setSelectedSprint('All Sprints');
+        } else {
+          // Default selected sprint to ACTIVE sprint if exists
+          const active = (sprintsList || []).find((s) => s.status === 'ACTIVE');
+          if (active) {
+            setSelectedSprint(active.name);
+          } else {
+            setSelectedSprint('All Sprints');
+          }
         }
+        hasLoadedRef.current = true;
       }
     } catch (err) {
       console.error('Failed to load kanban data:', err);
@@ -75,10 +85,30 @@ export default function KanbanBoard({ projectId, project = null, isKanbanProject
     } finally {
       setLoading(false);
     }
-  }, [projectId, isKanban]);
+  }, [projectId, isKanban, onToast]);
 
   useEffect(() => {
     loadProjectData();
+  }, [loadProjectData]);
+
+  useEffect(() => {
+    const handleSync = (e) => {
+      if (e?.detail?.action === 'update' && e.detail.item) {
+        setWorkItems((prev) =>
+          prev.map((t) => (t.id === e.detail.id ? { ...t, ...e.detail.item } : t))
+        );
+        setSelectedTask((prev) => (prev?.id === e.detail.id ? { ...prev, ...e.detail.item } : prev));
+        return;
+      }
+      if (e?.detail?.action === 'delete') {
+        setWorkItems((prev) => prev.filter((t) => t.id !== e.detail.id));
+        setSelectedTask((prev) => (prev?.id === e.detail.id ? null : prev));
+        return;
+      }
+      loadProjectData(true);
+    };
+    window.addEventListener('work-items-updated', handleSync);
+    return () => window.removeEventListener('work-items-updated', handleSync);
   }, [loadProjectData]);
 
   // Active sprint

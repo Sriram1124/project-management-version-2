@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import BacklogToolbar from '../../backlog/BacklogToolbar';
 import SprintSection from '../../backlog/SprintSection';
 import HierarchicalIssueTable from '../../backlog/HierarchicalIssueTable';
@@ -19,6 +19,11 @@ export default function ProjectBacklogTab({ projectId, project = null, isKanbanP
   const [sprints, setSprints] = useState([]);
   const [workItems, setWorkItems] = useState([]);
   const [members, setMembers] = useState([]);
+  const hasLoadedRef = useRef(false);
+
+  useEffect(() => {
+    hasLoadedRef.current = false;
+  }, [projectId]);
 
   useEffect(() => {
     if (project) {
@@ -57,10 +62,12 @@ export default function ProjectBacklogTab({ projectId, project = null, isKanbanP
   const [createParentItem, setCreateParentItem] = useState(null);
 
   // Fetch live data from backend
-  const loadProjectData = useCallback(async () => {
+  const loadProjectData = useCallback(async (isSilent = false) => {
     if (!projectId) return;
     try {
-      setLoading(true);
+      if (!isSilent && !hasLoadedRef.current) {
+        setLoading(true);
+      }
       const [sprintsList, itemsList, membersList] = await Promise.all([
         sprintsService.getSprints(projectId).catch(() => []),
         workItemsService.listWorkItems({ project_id: projectId }).catch(() => []),
@@ -72,31 +79,50 @@ export default function ProjectBacklogTab({ projectId, project = null, isKanbanP
       setWorkItems(items);
       setMembers(membersList || []);
 
-      // Auto-expand all Epics and Stories on initial load so user immediately sees hierarchy
-      setExpandedIds((prev) => {
-        const next = new Set(prev);
-        items.forEach((item) => {
-          if (item.type === 'EPIC' || item.type === 'STORY') {
-            next.add(item.id);
-          }
+      // Auto-expand all Epics and Stories only on initial load so user's expansions are preserved
+      if (!hasLoadedRef.current) {
+        setExpandedIds((prev) => {
+          if (prev && prev.size > 0) return prev;
+          const next = new Set(prev);
+          items.forEach((item) => {
+            if (item.type === 'EPIC' || item.type === 'STORY') {
+              next.add(item.id);
+            }
+          });
+          return next;
         });
-        return next;
-      });
+        hasLoadedRef.current = true;
+      }
     } catch (err) {
       console.error('Failed to load backlog data:', err);
       onToast?.('Failed to load project backlog data');
     } finally {
       setLoading(false);
     }
-  }, [projectId]);
+  }, [projectId, onToast]);
 
   useEffect(() => {
     loadProjectData();
   }, [loadProjectData]);
 
   useEffect(() => {
-    const handleSync = () => {
-      loadProjectData();
+    const handleSync = (e) => {
+      if (e?.detail?.action === 'update' && e.detail.item) {
+        const updatedItem = e.detail.item;
+        setWorkItems((prev) =>
+          prev.map((item) => (item.id === e.detail.id ? { ...item, ...updatedItem } : item))
+        );
+        setSelectedIssue((prev) =>
+          prev?.id === e.detail.id ? { ...prev, ...updatedItem } : prev
+        );
+        return;
+      }
+      if (e?.detail?.action === 'delete' && e.detail.id) {
+        setWorkItems((prev) => prev.filter((item) => item.id !== e.detail.id && item.parent_id !== e.detail.id));
+        setSelectedIssue((prev) => (prev?.id === e.detail.id ? null : prev));
+        return;
+      }
+      loadProjectData(true);
     };
     window.addEventListener('work-items-updated', handleSync);
     return () => window.removeEventListener('work-items-updated', handleSync);
@@ -181,91 +207,148 @@ export default function ProjectBacklogTab({ projectId, project = null, isKanbanP
 
   // Inline update handlers connected directly to backend
   const handleUpdateStatus = async (issueId, newStatus) => {
+    const originalItem = workItems.find((item) => item.id === issueId);
     try {
       setWorkItems((prev) =>
         prev.map((item) => (item.id === issueId ? { ...item, status: newStatus } : item))
       );
-      await workItemsService.updateWorkItem(issueId, { status: newStatus });
-      loadProjectData();
+      if (selectedIssue?.id === issueId) {
+        setSelectedIssue((prev) => (prev ? { ...prev, status: newStatus } : null));
+      }
+      const saved = await workItemsService.updateWorkItem(issueId, { status: newStatus });
+      if (saved) {
+        setWorkItems((prev) => prev.map((item) => (item.id === issueId ? saved : item)));
+        if (selectedIssue?.id === issueId) setSelectedIssue(saved);
+      }
       onToast?.(`Status updated to ${newStatus}`);
     } catch (err) {
       console.error('Failed to update status:', err);
+      if (originalItem) {
+        setWorkItems((prev) => prev.map((item) => (item.id === issueId ? originalItem : item)));
+        if (selectedIssue?.id === issueId) setSelectedIssue(originalItem);
+      }
       onToast?.(err.message || 'Failed to update status');
-      loadProjectData();
     }
   };
 
   const handleUpdatePriority = async (issueId, newPriority) => {
+    const originalItem = workItems.find((item) => item.id === issueId);
     try {
       setWorkItems((prev) =>
         prev.map((item) => (item.id === issueId ? { ...item, priority: newPriority } : item))
       );
-      await workItemsService.updateWorkItem(issueId, { priority: newPriority });
-      loadProjectData();
+      if (selectedIssue?.id === issueId) {
+        setSelectedIssue((prev) => (prev ? { ...prev, priority: newPriority } : null));
+      }
+      const saved = await workItemsService.updateWorkItem(issueId, { priority: newPriority });
+      if (saved) {
+        setWorkItems((prev) => prev.map((item) => (item.id === issueId ? saved : item)));
+        if (selectedIssue?.id === issueId) setSelectedIssue(saved);
+      }
       onToast?.(`Priority updated to ${newPriority}`);
     } catch (err) {
       console.error('Failed to update priority:', err);
+      if (originalItem) {
+        setWorkItems((prev) => prev.map((item) => (item.id === issueId ? originalItem : item)));
+        if (selectedIssue?.id === issueId) setSelectedIssue(originalItem);
+      }
       onToast?.(err.message || 'Failed to update priority');
-      loadProjectData();
     }
   };
 
   const handleUpdateAssignee = async (issueId, assigneeIds) => {
+    const originalItem = workItems.find((item) => item.id === issueId);
     try {
-      await workItemsService.updateWorkItem(issueId, { assignee_ids: assigneeIds });
-      loadProjectData();
+      const saved = await workItemsService.updateWorkItem(issueId, { assignee_ids: assigneeIds });
+      if (saved) {
+        setWorkItems((prev) => prev.map((item) => (item.id === issueId ? saved : item)));
+        if (selectedIssue?.id === issueId) setSelectedIssue(saved);
+      }
       onToast?.('Assignee updated');
     } catch (err) {
       console.error('Failed to update assignee:', err);
+      if (originalItem) {
+        setWorkItems((prev) => prev.map((item) => (item.id === issueId ? originalItem : item)));
+        if (selectedIssue?.id === issueId) setSelectedIssue(originalItem);
+      }
       onToast?.(err.message || 'Failed to update assignee');
-      loadProjectData();
     }
   };
 
   const handleUpdateSprint = async (issueId, sprintId) => {
+    const originalItem = workItems.find((item) => item.id === issueId);
     try {
       const targetSprintId = sprintId === 'backlog' ? null : sprintId;
       setWorkItems((prev) =>
         prev.map((item) => (item.id === issueId ? { ...item, sprint_id: targetSprintId } : item))
       );
-      await workItemsService.updateWorkItem(issueId, { sprint_id: targetSprintId });
-      loadProjectData();
+      if (selectedIssue?.id === issueId) {
+        setSelectedIssue((prev) => (prev ? { ...prev, sprint_id: targetSprintId, sprintId: targetSprintId } : null));
+      }
+      const saved = await workItemsService.updateWorkItem(issueId, { sprint_id: targetSprintId });
+      if (saved) {
+        setWorkItems((prev) => prev.map((item) => (item.id === issueId ? saved : item)));
+        if (selectedIssue?.id === issueId) setSelectedIssue(saved);
+      }
       const sprintName = targetSprintId ? sprints.find((s) => s.id === targetSprintId)?.name || 'Sprint' : 'Backlog';
       onToast?.(`Moved issue to ${sprintName}`);
     } catch (err) {
       console.error('Failed to update sprint:', err);
+      if (originalItem) {
+        setWorkItems((prev) => prev.map((item) => (item.id === issueId ? originalItem : item)));
+        if (selectedIssue?.id === issueId) setSelectedIssue(originalItem);
+      }
       onToast?.(err.message || 'Failed to update sprint');
-      loadProjectData();
     }
   };
 
   const handleUpdateStoryPoints = async (issueId, points) => {
+    const originalItem = workItems.find((item) => item.id === issueId);
     try {
       setWorkItems((prev) =>
         prev.map((item) => (item.id === issueId ? { ...item, story_points: points } : item))
       );
-      await workItemsService.updateWorkItem(issueId, { story_points: points });
-      loadProjectData();
+      if (selectedIssue?.id === issueId) {
+        setSelectedIssue((prev) => (prev ? { ...prev, story_points: points, storyPoints: points } : null));
+      }
+      const saved = await workItemsService.updateWorkItem(issueId, { story_points: points });
+      if (saved) {
+        setWorkItems((prev) => prev.map((item) => (item.id === issueId ? saved : item)));
+        if (selectedIssue?.id === issueId) setSelectedIssue(saved);
+      }
       onToast?.('Story points updated');
     } catch (err) {
       console.error('Failed to update story points:', err);
+      if (originalItem) {
+        setWorkItems((prev) => prev.map((item) => (item.id === issueId ? originalItem : item)));
+        if (selectedIssue?.id === issueId) setSelectedIssue(originalItem);
+      }
       onToast?.(err.message || 'Failed to update story points');
-      loadProjectData();
     }
   };
 
   const handleUpdateDueDate = async (issueId, dueDate) => {
+    const originalItem = workItems.find((item) => item.id === issueId);
     try {
       setWorkItems((prev) =>
         prev.map((item) => (item.id === issueId ? { ...item, due_date: dueDate } : item))
       );
-      await workItemsService.updateWorkItem(issueId, { due_date: dueDate });
-      loadProjectData();
+      if (selectedIssue?.id === issueId) {
+        setSelectedIssue((prev) => (prev ? { ...prev, due_date: dueDate, dueDate } : null));
+      }
+      const saved = await workItemsService.updateWorkItem(issueId, { due_date: dueDate });
+      if (saved) {
+        setWorkItems((prev) => prev.map((item) => (item.id === issueId ? saved : item)));
+        if (selectedIssue?.id === issueId) setSelectedIssue(saved);
+      }
       onToast?.('Due date updated');
     } catch (err) {
       console.error('Failed to update due date:', err);
+      if (originalItem) {
+        setWorkItems((prev) => prev.map((item) => (item.id === issueId ? originalItem : item)));
+        if (selectedIssue?.id === issueId) setSelectedIssue(originalItem);
+      }
       onToast?.(err.message || 'Failed to update due date');
-      loadProjectData();
     }
   };
 
@@ -273,7 +356,7 @@ export default function ProjectBacklogTab({ projectId, project = null, isKanbanP
     try {
       await workItemsService.deleteWorkItem(issueId);
       if (selectedIssue?.id === issueId) setSelectedIssue(null);
-      loadProjectData();
+      setWorkItems((prev) => prev.filter((item) => item.id !== issueId && item.parent_id !== issueId));
       onToast?.('Issue deleted successfully');
     } catch (err) {
       console.error('Failed to delete issue:', err);
@@ -352,11 +435,16 @@ export default function ProjectBacklogTab({ projectId, project = null, isKanbanP
   // Create issue modal submissions
   const handleCreateIssue = async (payload) => {
     try {
-      await workItemsService.createWorkItem({
+      const created = await workItemsService.createWorkItem({
         ...payload,
         project_id: projectId,
       });
-      loadProjectData();
+      if (created) {
+        setWorkItems((prev) => [created, ...prev]);
+        if (created.parent_id) {
+          setExpandedIds((prev) => new Set([...prev, created.parent_id]));
+        }
+      }
       onToast?.(`Created ${payload.type}: ${payload.title}`);
     } catch (err) {
       console.error('Failed to create issue:', err);
@@ -366,12 +454,15 @@ export default function ProjectBacklogTab({ projectId, project = null, isKanbanP
 
   const handleCreateEpic = async (payload) => {
     try {
-      await workItemsService.createWorkItem({
+      const created = await workItemsService.createWorkItem({
         ...payload,
         project_id: projectId,
         type: 'EPIC',
       });
-      loadProjectData();
+      if (created) {
+        setWorkItems((prev) => [created, ...prev]);
+        setExpandedIds((prev) => new Set([...prev, created.id]));
+      }
       onToast?.(`Created Epic: ${payload.title}`);
     } catch (err) {
       console.error('Failed to create epic:', err);
@@ -551,7 +642,7 @@ export default function ProjectBacklogTab({ projectId, project = null, isKanbanP
     return list;
   }, [sprints]);
 
-  if (loading) {
+  if (loading && workItems.length === 0) {
     return (
       <div className="flex items-center justify-center py-20 text-slate-400">
         <Loader2 className="w-6 h-6 text-purple-600 animate-spin mr-2.5" />
@@ -870,19 +961,21 @@ export default function ProjectBacklogTab({ projectId, project = null, isKanbanP
                 setWorkItems((prev) => prev.map((item) => (item.id === updated.id ? saved : item)));
                 setSelectedIssue(saved);
               } else {
-                setSelectedIssue((prev) => (prev ? { 
-                  ...prev, 
+                const merged = { 
                   ...updated, 
                   sprint_id: sprintIdToSave,
                   sprintId: sprintIdToSave,
                   parent_id: parentIdToSave,
-                } : null));
+                };
+                setWorkItems((prev) => prev.map((item) => (item.id === updated.id ? { ...item, ...merged } : item)));
+                setSelectedIssue(merged);
               }
-              loadProjectData();
               onToast?.('Issue updated');
+              return saved;
             } catch (err) {
               console.error('Failed to update issue:', err);
               onToast?.(err.message || 'Failed to update issue');
+              throw err;
             }
           }}
           onDeleteIssue={handleDeleteIssue}
@@ -896,7 +989,7 @@ export default function ProjectBacklogTab({ projectId, project = null, isKanbanP
             try {
               const isTaskLike = ['TASK', 'SUBTASK', 'BUG'].includes(childType);
               const spVal = isTaskLike ? (Number(storyPoints) > 0 ? Number(storyPoints) : 3) : Number(storyPoints) || 0;
-              await workItemsService.createWorkItem({
+              const created = await workItemsService.createWorkItem({
                 project_id: projectId,
                 parent_id: parentIssueId,
                 type: childType,
@@ -904,7 +997,10 @@ export default function ProjectBacklogTab({ projectId, project = null, isKanbanP
                 sprint_id: sprintId || null,
                 story_points: spVal,
               });
-              loadProjectData();
+              if (created) {
+                setWorkItems((prev) => [created, ...prev]);
+                setExpandedIds((prev) => new Set([...prev, parentIssueId]));
+              }
               onToast?.(`Added ${childType.toLowerCase()}: "${subtaskTitle.trim()}" (${spVal} SP)`);
             } catch (err) {
               console.error('Failed to add child item:', err);

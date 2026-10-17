@@ -58,10 +58,14 @@ export default function ProjectCycleWorkspaceTab({
   // Close cycle modal state
   const [closeAction, setCloseAction] = useState('KEEP_IN_CYCLE'); // 'KEEP_IN_CYCLE' | 'MOVE_TO_BACKLOG'
 
-  const loadData = useCallback(async () => {
+  const hasLoadedRef = React.useRef(false);
+
+  const loadData = useCallback(async (silent = false) => {
     if (!projectId) return;
     try {
-      setLoading(true);
+      if (!silent && !hasLoadedRef.current) {
+        setLoading(true);
+      }
       const [cyclesList, itemsList, membersList] = await Promise.all([
         sprintsService.getSprints(projectId).catch(() => []),
         workItemsService.listWorkItems({ project_id: projectId }).catch(() => []),
@@ -76,6 +80,7 @@ export default function ProjectCycleWorkspaceTab({
       setCycles(sortedCycles);
       setWorkItems(itemsList || []);
       setMembers(membersList || []);
+      hasLoadedRef.current = true;
 
       if (propSelectedCycleId && sortedCycles.some((c) => c.id === propSelectedCycleId)) {
         setSelectedCycleId(propSelectedCycleId);
@@ -100,7 +105,20 @@ export default function ProjectCycleWorkspaceTab({
   }, [loadData]);
 
   useEffect(() => {
-    const handleSync = () => loadData();
+    const handleSync = (e) => {
+      const detail = e?.detail;
+      if (detail?.action === 'update' && detail?.item?.id) {
+        setWorkItems((prev) => prev.map((item) => (item.id === detail.item.id ? { ...item, ...detail.item } : item)));
+        setSelectedTask((prev) => (prev && prev.id === detail.item.id ? { ...prev, ...detail.item } : prev));
+        return;
+      }
+      if (detail?.action === 'delete' && detail?.id) {
+        setWorkItems((prev) => prev.filter((item) => item.id !== detail.id));
+        setSelectedTask((prev) => (prev && prev.id === detail.id ? null : prev));
+        return;
+      }
+      loadData(true);
+    };
     window.addEventListener('work-items-updated', handleSync);
     return () => window.removeEventListener('work-items-updated', handleSync);
   }, [loadData]);

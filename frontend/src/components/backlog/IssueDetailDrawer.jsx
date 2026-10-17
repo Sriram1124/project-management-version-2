@@ -17,7 +17,8 @@ import {
   GitFork,
   Play,
   Square,
-  Timer
+  Timer,
+  Loader2
 } from 'lucide-react';
 import { getEpicSprintSummary } from './HierarchicalIssueTable';
 import { useAuth } from '../../context/AuthContext';
@@ -90,6 +91,7 @@ export default function IssueDetailDrawer({
   const canChangeStoryPoints = !isIntern;
   const canChangeDueDate = !isIntern;
 
+  const [updatingField, setUpdatingField] = useState(null); // 'assignee' | 'status' | 'priority' | 'sprint' | 'epic' | 'storyPoints' | 'dueDate' | 'title' | 'description'
   const [activeTab, setActiveTab] = useState('comments'); // 'comments' | 'worklog' | 'history'
   const [editedTitle, setEditedTitle] = useState(issue?.title || '');
   const [editedDesc, setEditedDesc] = useState(issue?.description || '');
@@ -309,68 +311,136 @@ export default function IssueDetailDrawer({
     return getEpicSprintSummary(issue, workItems, sprints);
   }, [isEpic, issue, workItems, sprints]);
 
-  const handleTitleBlur = () => {
+  const handleTitleBlur = async () => {
+    if (updatingField) return;
     if (editedTitle.trim() && editedTitle !== issue?.title) {
-      onUpdateIssue?.({ ...issue, title: editedTitle.trim() });
+      setUpdatingField('title');
+      try {
+        await onUpdateIssue?.({ ...issue, title: editedTitle.trim() });
+      } catch (err) {
+        console.error('Failed to update title:', err);
+        setEditedTitle(issue?.title || '');
+      } finally {
+        setUpdatingField(null);
+      }
     }
   };
 
-  const handleDescBlur = () => {
+  const handleDescBlur = async () => {
+    if (updatingField) return;
     if (editedDesc !== issue?.description) {
-      onUpdateIssue?.({ ...issue, description: editedDesc });
+      setUpdatingField('description');
+      try {
+        await onUpdateIssue?.({ ...issue, description: editedDesc });
+      } catch (err) {
+        console.error('Failed to update description:', err);
+        setEditedDesc(issue?.description || '');
+      } finally {
+        setUpdatingField(null);
+      }
     }
   };
 
-  const handleStatusChange = (newStatus) => {
-    onUpdateIssue?.({ ...issue, status: newStatus });
+  const handleStatusChange = async (newStatus) => {
+    if (updatingField) return;
+    if (newStatus === issue?.status) return;
+    setUpdatingField('status');
+    try {
+      await onUpdateIssue?.({ ...issue, status: newStatus });
+    } catch (err) {
+      console.error('Failed to update status:', err);
+    } finally {
+      setUpdatingField(null);
+    }
   };
 
-  const handlePriorityChange = (newPriority) => {
-    onUpdateIssue?.({ ...issue, priority: newPriority });
+  const handlePriorityChange = async (newPriority) => {
+    if (updatingField) return;
+    if (newPriority === issue?.priority) return;
+    setUpdatingField('priority');
+    try {
+      await onUpdateIssue?.({ ...issue, priority: newPriority });
+    } catch (err) {
+      console.error('Failed to update priority:', err);
+    } finally {
+      setUpdatingField(null);
+    }
   };
 
-  const handleAssigneeChange = (assigneeId) => {
-    const user = members.find((u) => (u.user_id || u.id) === assigneeId) || null;
-    const newAssignees = user
-      ? [
-          {
-            id: user.user_id || user.id,
-            user_id: user.user_id || user.id,
-            name: user.name || user.user?.name || user.email || 'Member',
-            email: user.email || user.user?.email || '',
-          },
-        ]
-      : [];
+  const handleAssigneeChange = async (assigneeId) => {
+    if (updatingField) return;
+    const targetUserId = assigneeId || null;
+    const previousAssigneeId = currentAssigneeId;
+    if (targetUserId === previousAssigneeId) return;
 
-    onUpdateIssue?.({
-      ...issue,
-      assignee: user,
-      assigneeId: assigneeId || null,
-      assignee_id: assigneeId || null,
-      assignees: newAssignees,
-      assignee_ids: assigneeId ? [assigneeId] : [],
-    });
+    setUpdatingField('assignee');
+    try {
+      const user = members.find((u) => (u.user_id || u.id) === assigneeId) || null;
+      const newAssignees = user
+        ? [
+            {
+              id: user.user_id || user.id,
+              user_id: user.user_id || user.id,
+              name: user.name || user.user?.name || user.email || 'Member',
+              email: user.email || user.user?.email || '',
+            },
+          ]
+        : [];
+
+      await onUpdateIssue?.({
+        ...issue,
+        assignee: user,
+        assigneeId: targetUserId,
+        assignee_id: targetUserId,
+        assignees: newAssignees,
+        assignee_ids: targetUserId ? [targetUserId] : [],
+      });
+    } catch (err) {
+      console.error('Failed to update assignee:', err);
+    } finally {
+      setUpdatingField(null);
+    }
   };
 
-  const handleSprintChange = (sprintVal) => {
+  const handleSprintChange = async (sprintVal) => {
+    if (updatingField) return;
     const targetSprint = sprintVal === 'backlog' || !sprintVal ? null : sprintVal;
-    onUpdateIssue?.({
-      ...issue,
-      sprintId: targetSprint,
-      sprint_id: targetSprint,
-    });
+    const currentSprintVal = issue?.sprint_id || issue?.sprintId || null;
+    if (targetSprint === currentSprintVal) return;
+    setUpdatingField('sprint');
+    try {
+      await onUpdateIssue?.({
+        ...issue,
+        sprintId: targetSprint,
+        sprint_id: targetSprint,
+      });
+    } catch (err) {
+      console.error('Failed to update sprint:', err);
+    } finally {
+      setUpdatingField(null);
+    }
   };
 
-  const handleEpicChange = (epicVal) => {
+  const handleEpicChange = async (epicVal) => {
+    if (updatingField) return;
     const targetEpic = epicVal === '' || !epicVal ? null : epicVal;
-    onUpdateIssue?.({
-      ...issue,
-      epicId: targetEpic,
-      parent_id: targetEpic,
-    });
+    if (targetEpic === (issue?.parent_id || issue?.epicId || null)) return;
+    setUpdatingField('epic');
+    try {
+      await onUpdateIssue?.({
+        ...issue,
+        epicId: targetEpic,
+        parent_id: targetEpic,
+      });
+    } catch (err) {
+      console.error('Failed to update epic:', err);
+    } finally {
+      setUpdatingField(null);
+    }
   };
 
-  const handleSPBlur = () => {
+  const handleSPBlur = async () => {
+    if (updatingField) return;
     const raw = editedStoryPoints;
     if (raw === '' || raw === null || raw === undefined) {
       setEditedStoryPoints(issue?.story_points ?? issue?.storyPoints ?? 0);
@@ -384,20 +454,36 @@ export default function IssueDetailDrawer({
         return;
       }
       if (val !== (issue?.story_points ?? issue?.storyPoints)) {
-        onUpdateIssue?.({
-          ...issue,
-          story_points: val,
-          storyPoints: val,
-        });
+        setUpdatingField('storyPoints');
+        try {
+          await onUpdateIssue?.({
+            ...issue,
+            story_points: val,
+            storyPoints: val,
+          });
+        } catch (err) {
+          console.error('Failed to update story points:', err);
+          setEditedStoryPoints(issue?.story_points ?? issue?.storyPoints ?? 0);
+        } finally {
+          setUpdatingField(null);
+        }
       }
     } else {
       const finalVal = isNaN(val) ? 0 : Math.max(0, val);
       if (finalVal !== (issue?.story_points ?? issue?.storyPoints)) {
-        onUpdateIssue?.({
-          ...issue,
-          story_points: finalVal,
-          storyPoints: finalVal,
-        });
+        setUpdatingField('storyPoints');
+        try {
+          await onUpdateIssue?.({
+            ...issue,
+            story_points: finalVal,
+            storyPoints: finalVal,
+          });
+        } catch (err) {
+          console.error('Failed to update story points:', err);
+          setEditedStoryPoints(issue?.story_points ?? issue?.storyPoints ?? 0);
+        } finally {
+          setUpdatingField(null);
+        }
       }
     }
   };
@@ -409,8 +495,16 @@ export default function IssueDetailDrawer({
     }
   };
 
-  const handleDueDateChange = (dueDate) => {
-    onUpdateIssue?.({ ...issue, dueDate, due_date: dueDate });
+  const handleDueDateChange = async (dueDate) => {
+    if (updatingField) return;
+    setUpdatingField('dueDate');
+    try {
+      await onUpdateIssue?.({ ...issue, dueDate, due_date: dueDate });
+    } catch (err) {
+      console.error('Failed to update due date:', err);
+    } finally {
+      setUpdatingField(null);
+    }
   };
 
   const rawDueDate = issue?.due_date || issue?.dueDate;
@@ -537,10 +631,11 @@ export default function IssueDetailDrawer({
             <textarea
               rows={2}
               value={editedTitle}
+              disabled={updatingField === 'title'}
               onChange={(e) => setEditedTitle(e.target.value)}
               onBlur={handleTitleBlur}
               placeholder="Issue summary..."
-              className="w-full text-sm font-bold text-slate-900 border border-transparent hover:border-slate-200 focus:border-purple-500 focus:bg-white p-1.5 rounded-md resize-none transition-colors outline-none"
+              className="w-full text-sm font-bold text-slate-900 border border-transparent hover:border-slate-200 focus:border-purple-500 focus:bg-white p-1.5 rounded-md resize-none transition-colors outline-none disabled:opacity-60"
             />
           ) : (
             <div className="w-full text-sm font-bold text-slate-900 p-1.5 select-text">
@@ -553,12 +648,18 @@ export default function IssueDetailDrawer({
         <div className="rounded-md border border-slate-200 p-3 bg-slate-50/40 space-y-2.5">
           {/* Status */}
           <div className="flex items-center justify-between">
-            <span className="text-slate-500 font-medium">Status</span>
+            <span className="text-slate-500 font-medium flex items-center gap-1.5">
+              <span>Status</span>
+              {updatingField === 'status' && (
+                <Loader2 className="w-3 h-3 text-purple-600 animate-spin shrink-0" />
+              )}
+            </span>
             {canChangeStatus ? (
               <select
                 value={issue.status || 'TODO'}
+                disabled={updatingField === 'status'}
                 onChange={(e) => handleStatusChange(e.target.value)}
-                className="px-2 py-1 rounded border border-slate-200 text-xs font-semibold bg-white text-slate-800 focus:outline-none focus:border-purple-600 cursor-pointer"
+                className="px-2 py-1 rounded border border-slate-200 text-xs font-semibold bg-white text-slate-800 focus:outline-none focus:border-purple-600 cursor-pointer disabled:opacity-60 disabled:cursor-not-allowed"
               >
                 <option value="TODO">To Do</option>
                 <option value="IN_PROGRESS">In Progress</option>
@@ -575,12 +676,18 @@ export default function IssueDetailDrawer({
 
           {/* Priority */}
           <div className="flex items-center justify-between">
-            <span className="text-slate-500 font-medium">Priority</span>
+            <span className="text-slate-500 font-medium flex items-center gap-1.5">
+              <span>Priority</span>
+              {updatingField === 'priority' && (
+                <Loader2 className="w-3 h-3 text-purple-600 animate-spin shrink-0" />
+              )}
+            </span>
             {canChangePriority ? (
               <select
                 value={issue.priority || 'MEDIUM'}
+                disabled={updatingField === 'priority'}
                 onChange={(e) => handlePriorityChange(e.target.value)}
-                className="px-2 py-1 rounded border border-slate-200 text-xs font-medium bg-white text-slate-800 focus:outline-none focus:border-purple-600 cursor-pointer"
+                className="px-2 py-1 rounded border border-slate-200 text-xs font-medium bg-white text-slate-800 focus:outline-none focus:border-purple-600 cursor-pointer disabled:opacity-60 disabled:cursor-not-allowed"
               >
                 <option value="URGENT">Urgent</option>
                 <option value="HIGH">High</option>
@@ -596,34 +703,58 @@ export default function IssueDetailDrawer({
 
           {/* Assignee */}
           <div className="flex items-center justify-between">
-            <span className="text-slate-500 font-medium">Assignee</span>
-            {canChangeAssignee ? (
-              <select
-                value={currentAssigneeId}
-                onChange={(e) => handleAssigneeChange(e.target.value)}
-                className="px-2 py-1 rounded border border-slate-200 text-xs font-medium bg-white text-slate-800 focus:outline-none focus:border-purple-600 max-w-[180px] cursor-pointer"
-              >
-                <option value="">Unassigned</option>
-                {members.map((u) => {
-                  const uid = u.user_id || u.id;
-                  const uName = u.name || u.user?.name || u.email || u.user?.email || 'Member';
-                  return (
-                    <option key={uid} value={uid}>
-                      {uName}
-                    </option>
-                  );
-                })}
-              </select>
-            ) : (
-              <span className="px-2 py-1 rounded border border-slate-200 text-xs font-medium bg-slate-50 text-slate-700 select-none truncate max-w-[180px]">
-                {currentAssignee?.name || currentAssignee?.user?.name || currentAssignee?.email || 'Unassigned'}
-              </span>
-            )}
+            <span className="text-slate-500 font-medium flex items-center gap-1.5">
+              <span>Assignee</span>
+              {updatingField === 'assignee' && (
+                <Loader2 className="w-3 h-3 text-purple-600 animate-spin shrink-0" />
+              )}
+            </span>
+            <div className="flex items-center gap-1.5 min-w-0">
+              {currentAssignee ? (
+                <img
+                  src={`https://ui-avatars.com/api/?name=${encodeURIComponent(currentAssignee.name || currentAssignee.user?.name || currentAssignee.email || 'User')}&background=7C3AED&color=fff`}
+                  alt={currentAssignee.name || 'User'}
+                  className="w-4 h-4 rounded-full object-cover shrink-0 border border-purple-200"
+                />
+              ) : (
+                <div className="w-4 h-4 rounded-full bg-slate-100 border border-slate-200 flex items-center justify-center text-[8px] shrink-0">
+                  <User className="w-2.5 h-2.5 text-slate-400" />
+                </div>
+              )}
+              {canChangeAssignee ? (
+                <select
+                  value={currentAssigneeId}
+                  disabled={updatingField === 'assignee'}
+                  onChange={(e) => handleAssigneeChange(e.target.value)}
+                  className="px-2 py-1 rounded border border-slate-200 text-xs font-medium bg-white text-slate-800 focus:outline-none focus:border-purple-600 max-w-[150px] truncate cursor-pointer disabled:opacity-60 disabled:cursor-not-allowed"
+                >
+                  <option value="">Unassigned</option>
+                  {members.map((u) => {
+                    const uid = u.user_id || u.id;
+                    const uName = u.name || u.user?.name || u.email || u.user?.email || 'Member';
+                    return (
+                      <option key={uid} value={uid}>
+                        {uName}
+                      </option>
+                    );
+                  })}
+                </select>
+              ) : (
+                <span className="px-2 py-1 rounded border border-slate-200 text-xs font-medium bg-slate-50 text-slate-700 select-none truncate max-w-[150px]">
+                  {currentAssignee?.name || currentAssignee?.user?.name || currentAssignee?.email || 'Unassigned'}
+                </span>
+              )}
+            </div>
           </div>
 
           {/* Cycle */}
           <div className="flex items-center justify-between">
-            <span className="text-slate-500 font-medium">Cycle</span>
+            <span className="text-slate-500 font-medium flex items-center gap-1.5">
+              <span>Cycle</span>
+              {updatingField === 'sprint' && (
+                <Loader2 className="w-3 h-3 text-purple-600 animate-spin shrink-0" />
+              )}
+            </span>
             {isEpic ? (
               <span
                 className={`px-2 py-1 rounded border text-xs font-medium max-w-[180px] truncate select-none ${
@@ -636,8 +767,9 @@ export default function IssueDetailDrawer({
             ) : canChangeSprint ? (
               <select
                 value={issue.sprint_id || issue.sprintId || 'backlog'}
+                disabled={updatingField === 'sprint'}
                 onChange={(e) => handleSprintChange(e.target.value)}
-                className="px-2 py-1 rounded border border-slate-200 text-xs font-medium bg-white text-slate-800 focus:outline-none focus:border-purple-600 max-w-[180px] cursor-pointer"
+                className="px-2 py-1 rounded border border-slate-200 text-xs font-medium bg-white text-slate-800 focus:outline-none focus:border-purple-600 max-w-[180px] cursor-pointer disabled:opacity-60 disabled:cursor-not-allowed"
               >
                 <option value="backlog">Backlog (No Cycle)</option>
                 {sprints.map((s) => (
@@ -656,7 +788,12 @@ export default function IssueDetailDrawer({
           {/* Parent Epic Hierarchy Display */}
           {!isEpic && currentEpic?.name && (
             <div className="flex items-center justify-between">
-              <span className="text-slate-500 font-medium">Epic</span>
+              <span className="text-slate-500 font-medium flex items-center gap-1.5">
+                <span>Epic</span>
+                {updatingField === 'epic' && (
+                  <Loader2 className="w-3 h-3 text-purple-600 animate-spin shrink-0" />
+                )}
+              </span>
               <span className="px-2 py-0.5 rounded text-[11px] font-semibold bg-purple-50 text-purple-700 border border-purple-200 select-none truncate max-w-[180px]">
                 {currentEpic.name}
               </span>
@@ -665,8 +802,11 @@ export default function IssueDetailDrawer({
 
           {/* Story Points */}
           <div className="flex items-center justify-between">
-            <span className="text-slate-500 font-medium">
-              Story Points {isApplicableType ? '*' : ''}
+            <span className="text-slate-500 font-medium flex items-center gap-1.5">
+              <span>Story Points {isApplicableType ? '*' : ''}</span>
+              {updatingField === 'storyPoints' && (
+                <Loader2 className="w-3 h-3 text-purple-600 animate-spin shrink-0" />
+              )}
             </span>
             {isEpic ? (
               <span className="text-[11px] text-slate-400 italic">Aggregated from stories</span>
@@ -683,11 +823,12 @@ export default function IssueDetailDrawer({
                   type="number"
                   min={0}
                   max={999}
+                  disabled={updatingField === 'storyPoints'}
                   value={editedStoryPoints}
                   onChange={(e) => setEditedStoryPoints(e.target.value)}
                   onBlur={handleSPBlur}
                   onKeyDown={handleSPKeyDown}
-                  className="w-16 px-2 py-0.5 rounded border border-slate-200 text-xs font-mono font-semibold bg-white text-slate-800 text-right focus:outline-none focus:border-purple-600 focus:ring-1 focus:ring-purple-500 shadow-2xs"
+                  className="w-16 px-2 py-0.5 rounded border border-slate-200 text-xs font-mono font-semibold bg-white text-slate-800 text-right focus:outline-none focus:border-purple-600 focus:ring-1 focus:ring-purple-500 shadow-2xs disabled:opacity-60"
                 />
                 <span className="text-xs text-slate-400 font-mono">pts</span>
               </div>
@@ -703,25 +844,30 @@ export default function IssueDetailDrawer({
             <span className="text-slate-500 font-medium flex items-center gap-1.5">
               <Calendar className="w-3.5 h-3.5 text-slate-400" />
               <span>Due Date</span>
+              {updatingField === 'dueDate' && (
+                <Loader2 className="w-3 h-3 text-purple-600 animate-spin shrink-0" />
+              )}
             </span>
             {canChangeDueDate ? (
               <div className="flex items-center gap-1.5">
                 <input
                   type="date"
+                  disabled={updatingField === 'dueDate'}
                   value={formattedDueDateForInput}
                   onChange={(e) => {
                     const val = e.target.value;
                     const isoDate = val ? new Date(val).toISOString() : null;
                     handleDueDateChange(isoDate);
                   }}
-                  className="px-2 py-0.5 rounded border border-slate-200 text-xs font-medium bg-white text-slate-800 focus:outline-none focus:border-purple-600 cursor-pointer shadow-2xs"
+                  className="px-2 py-0.5 rounded border border-slate-200 text-xs font-medium bg-white text-slate-800 focus:outline-none focus:border-purple-600 cursor-pointer shadow-2xs disabled:opacity-60"
                 />
                 {formattedDueDateForInput && (
                   <button
                     type="button"
+                    disabled={updatingField === 'dueDate'}
                     onClick={() => handleDueDateChange(null)}
                     title="Clear due date"
-                    className="p-1 rounded hover:bg-slate-200 text-slate-400 hover:text-slate-600 cursor-pointer transition-colors"
+                    className="p-1 rounded hover:bg-slate-200 text-slate-400 hover:text-slate-600 cursor-pointer transition-colors disabled:opacity-60"
                   >
                     <X className="w-3 h-3" />
                   </button>
@@ -760,7 +906,7 @@ export default function IssueDetailDrawer({
                   type="button"
                   onClick={handleStartTaskTimer}
                   disabled={timeActionLoading}
-                  className="flex items-center gap-1 px-2 py-0.5 rounded bg-purple-600 hover:bg-purple-700 text-white font-semibold text-xs transition-colors cursor-pointer shadow-2xs"
+                  className="flex items-center gap-1 px-2 py-0.5 rounded bg-purple-600 hover:bg-purple-700 text-white font-bold text-xs transition-colors cursor-pointer shadow-2xs"
                   title="Start timer for this task"
                 >
                   <Play className="w-2.5 h-2.5 fill-current" />
@@ -773,15 +919,21 @@ export default function IssueDetailDrawer({
 
         {/* Description */}
         <div className="space-y-1">
-          <label className="text-xs font-semibold text-slate-700">Description</label>
+          <label className="text-xs font-semibold text-slate-700 flex items-center gap-1.5">
+            <span>Description</span>
+            {updatingField === 'description' && (
+              <Loader2 className="w-3 h-3 text-purple-600 animate-spin shrink-0" />
+            )}
+          </label>
           {canEditTitleAndDesc ? (
             <textarea
               rows={3}
               value={editedDesc}
+              disabled={updatingField === 'description'}
               onChange={(e) => setEditedDesc(e.target.value)}
               onBlur={handleDescBlur}
               placeholder="Add a detailed description..."
-              className="w-full text-xs text-slate-800 p-2.5 rounded-md border border-slate-200 focus:border-purple-500 focus:outline-none resize-y"
+              className="w-full text-xs text-slate-800 p-2.5 rounded-md border border-slate-200 focus:border-purple-500 focus:outline-none resize-y disabled:opacity-60"
             />
           ) : (
             <div className="w-full text-xs text-slate-800 p-2.5 rounded-md border border-slate-200 bg-slate-50/50 whitespace-pre-wrap min-h-[50px] select-text">

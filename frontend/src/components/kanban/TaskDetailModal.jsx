@@ -44,7 +44,9 @@ export default function TaskDetailModal({
   isOpen,
   onClose,
   onTaskUpdated,
+  onUpdateTask,
   onTaskDeleted,
+  onDeleteTask,
   onToast,
   hideAssignees = false,
 }) {
@@ -53,9 +55,17 @@ export default function TaskDetailModal({
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [deleting, setDeleting] = useState(false);
+  const [assigneeLoading, setAssigneeLoading] = useState(false);
   const [error, setError] = useState('');
   const [taskSession, setTaskSession] = useState(null);
   const [taskSessionLoading, setTaskSessionLoading] = useState(false);
+
+  const notifyTaskUpdated = (updated) => {
+    (onTaskUpdated || onUpdateTask)?.(updated);
+  };
+  const notifyTaskDeleted = (id) => {
+    (onTaskDeleted || onDeleteTask)?.(id);
+  };
 
   // Editable fields
   const [isEditing, setIsEditing] = useState(false);
@@ -152,7 +162,7 @@ export default function TaskDetailModal({
       const updated = await workItemsService.updateWorkItem(liveTask.id, { status: newStatus });
       setLiveTask(updated);
       onToast?.(`Status updated to ${newStatus}`);
-      onTaskUpdated?.(updated);
+      notifyTaskUpdated(updated);
     } catch (err) {
       setError(err.message || 'Failed to update status');
     }
@@ -164,7 +174,7 @@ export default function TaskDetailModal({
       const updated = await workItemsService.updateWorkItem(liveTask.id, { priority: newPriority });
       setLiveTask(updated);
       onToast?.(`Priority changed to ${newPriority}`);
-      onTaskUpdated?.(updated);
+      notifyTaskUpdated(updated);
     } catch (err) {
       setError(err.message || 'Failed to update priority');
     }
@@ -177,7 +187,7 @@ export default function TaskDetailModal({
       const updated = await workItemsService.updateWorkItem(liveTask.id, { start_date: isoDate });
       setLiveTask(updated);
       onToast?.(newDate ? `Start date set to ${newDate}` : 'Start date cleared');
-      onTaskUpdated?.(updated);
+      notifyTaskUpdated(updated);
     } catch (err) {
       setError(err.message || 'Failed to update start date');
     }
@@ -190,7 +200,7 @@ export default function TaskDetailModal({
       const updated = await workItemsService.updateWorkItem(liveTask.id, { due_date: isoDate });
       setLiveTask(updated);
       onToast?.(newDate ? `Due date set to ${newDate}` : 'Due date cleared');
-      onTaskUpdated?.(updated);
+      notifyTaskUpdated(updated);
     } catch (err) {
       setError(err.message || 'Failed to update due date');
     }
@@ -203,7 +213,7 @@ export default function TaskDetailModal({
       setLiveTask(updated);
       const sName = targetId ? projectSprints.find((s) => s.id === targetId)?.name || 'Sprint' : 'Backlog';
       onToast?.(`Assigned to ${sName}`);
-      onTaskUpdated?.(updated);
+      notifyTaskUpdated(updated);
     } catch (err) {
       setError(err.message || 'Failed to update sprint assignment');
     }
@@ -255,7 +265,7 @@ export default function TaskDetailModal({
       setLiveTask(updated);
       setIsEditing(false);
       onToast?.('Task details saved successfully');
-      onTaskUpdated?.(updated);
+      notifyTaskUpdated(updated);
     } catch (err) {
       setError(err.message || 'Failed to save changes');
     } finally {
@@ -264,31 +274,40 @@ export default function TaskDetailModal({
   };
 
   const handleAddAssignee = async () => {
-    if (!selectedNewAssignee) return;
+    if (!selectedNewAssignee || assigneeLoading) return;
     try {
+      setAssigneeLoading(true);
       setError('');
       const updated = await workItemsService.addAssignee(liveTask.id, selectedNewAssignee);
       setLiveTask(updated);
       setSelectedNewAssignee('');
       onToast?.('Assignee added');
-      onTaskUpdated?.(updated);
+      notifyTaskUpdated(updated);
     } catch (err) {
       setError(err.message || 'Failed to add assignee');
+    } finally {
+      setAssigneeLoading(false);
     }
   };
 
   const handleRemoveAssignee = async (userId) => {
+    if (assigneeLoading) return;
     try {
+      setAssigneeLoading(true);
       setError('');
       await workItemsService.removeAssignee(liveTask.id, userId);
-      setLiveTask((prev) => ({
-        ...prev,
-        assignees: prev.assignees.filter((a) => a.user_id !== userId && a.id !== userId),
-      }));
+      const nextAssignees = (liveTask.assignees || []).filter((a) => a.user_id !== userId && a.id !== userId);
+      const updated = {
+        ...liveTask,
+        assignees: nextAssignees,
+      };
+      setLiveTask(updated);
       onToast?.('Assignee removed');
-      onTaskUpdated?.();
+      notifyTaskUpdated(updated);
     } catch (err) {
       setError(err.message || 'Failed to remove assignee');
+    } finally {
+      setAssigneeLoading(false);
     }
   };
 
@@ -303,7 +322,7 @@ export default function TaskDetailModal({
       setError('');
       await workItemsService.deleteWorkItem(liveTask.id);
       onToast?.('Task deleted successfully');
-      onTaskDeleted?.(liveTask.id);
+      notifyTaskDeleted(liveTask.id);
       onClose();
     } catch (err) {
       const msg = err.message || '';
@@ -948,8 +967,9 @@ export default function TaskDetailModal({
                   <div className="flex items-center gap-2">
                     <select
                       value={selectedNewAssignee}
+                      disabled={assigneeLoading}
                       onChange={(e) => setSelectedNewAssignee(e.target.value)}
-                      className="flex-1 px-3 py-1.5 rounded-lg border border-slate-200 bg-white text-slate-800 text-xs focus:outline-none focus:border-purple-600"
+                      className="flex-1 px-3 py-1.5 rounded-lg border border-slate-200 bg-white text-slate-800 text-xs focus:outline-none focus:border-purple-600 disabled:opacity-60 disabled:cursor-not-allowed"
                     >
                       <option value="">Select project member to assign...</option>
                       {projectMembers
@@ -970,10 +990,11 @@ export default function TaskDetailModal({
                     <button
                       type="button"
                       onClick={handleAddAssignee}
-                      disabled={!selectedNewAssignee}
-                      className="px-3 py-1.5 bg-slate-100 hover:bg-purple-100 text-purple-700 font-bold rounded-lg text-xs transition-colors cursor-pointer disabled:opacity-40"
+                      disabled={!selectedNewAssignee || assigneeLoading}
+                      className="px-3 py-1.5 bg-slate-100 hover:bg-purple-100 text-purple-700 font-bold rounded-lg text-xs transition-colors cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed flex items-center gap-1.5"
                     >
-                      Assign
+                      {assigneeLoading && <Loader2 className="w-3 h-3 text-purple-600 animate-spin" />}
+                      <span>Assign</span>
                     </button>
                   </div>
                 </div>
@@ -1012,7 +1033,7 @@ export default function TaskDetailModal({
           sprints={projectSprints}
           onTaskCreated={async (newChild) => {
             await fetchTaskDetails(liveTask.id);
-            onTaskUpdated?.(newChild);
+            notifyTaskUpdated(newChild);
             onToast?.(`Created child ${newChild.type.toLowerCase()}: "${newChild.title}"`);
           }}
           onToast={onToast}

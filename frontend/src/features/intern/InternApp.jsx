@@ -134,9 +134,9 @@ export default function InternApp({ onLogout, onSelectProject, onToast }) {
   const unreadCount = notifications.filter((n) => !n.is_read).length;
   const pendingFormsCount = forms.filter((f) => f.submission_status === 'PENDING').length;
 
-  const loadWorkItems = async () => {
+  const loadWorkItems = async (silent = false) => {
     try {
-      setLoadingTasks(true);
+      if (!silent) setLoadingTasks(true);
       const items = await workItemsService.listWorkItems({ assigned_to_me: true });
       setWorkItems(items || []);
     } catch (err) {
@@ -177,8 +177,32 @@ export default function InternApp({ onLogout, onSelectProject, onToast }) {
       notificationsService.loadNotifications();
     }, 20000);
 
-    const handleWorkItemsSync = () => {
-      loadWorkItems();
+    const handleWorkItemsSync = (e) => {
+      const detail = e?.detail;
+      if (detail?.action === 'update' && detail?.item?.id) {
+        const item = detail.item;
+        const currentUserId = authUser?.id || currentUser?.id;
+        const isAssigned =
+          (item.assignee_ids || []).includes(currentUserId) ||
+          (item.assignees || []).some((a) => a.id === currentUserId);
+
+        setWorkItems((prev) => {
+          const exists = prev.some((w) => w.id === item.id);
+          if (isAssigned) {
+            return exists ? prev.map((w) => (w.id === item.id ? { ...w, ...item } : w)) : [item, ...prev];
+          } else {
+            return prev.filter((w) => w.id !== item.id);
+          }
+        });
+        setSelectedTask((prev) => (prev && prev.id === item.id ? { ...prev, ...item } : prev));
+        return;
+      }
+      if (detail?.action === 'delete' && detail?.id) {
+        setWorkItems((prev) => prev.filter((w) => w.id !== detail.id));
+        setSelectedTask((prev) => (prev && prev.id === detail.id ? null : prev));
+        return;
+      }
+      loadWorkItems(true);
     };
     window.addEventListener('work-items-updated', handleWorkItemsSync);
 
@@ -496,10 +520,21 @@ export default function InternApp({ onLogout, onSelectProject, onToast }) {
         workItem={selectedTask}
         isOpen={Boolean(selectedTask)}
         onClose={() => setSelectedTask(null)}
-        onTaskUpdated={loadWorkItems}
-        onTaskDeleted={() => {
+        onTaskUpdated={(updated) => {
+          if (updated && updated.id) {
+            setWorkItems((prev) => prev.map((w) => (w.id === updated.id ? { ...w, ...updated } : w)));
+            setSelectedTask((prev) => (prev && prev.id === updated.id ? { ...prev, ...updated } : prev));
+          } else {
+            loadWorkItems(true);
+          }
+        }}
+        onTaskDeleted={(deletedId) => {
           setSelectedTask(null);
-          loadWorkItems();
+          if (deletedId) {
+            setWorkItems((prev) => prev.filter((w) => w.id !== deletedId));
+          } else {
+            loadWorkItems(true);
+          }
         }}
         onToast={onToast}
       />

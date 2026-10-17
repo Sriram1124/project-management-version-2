@@ -183,9 +183,9 @@ export default function ProjectRoadmapTab({
       setSprints(sprintsRes || []);
       setMembers(membersRes || []);
 
-      // Auto-expand all Epics by default so hierarchy is visible
+      // Auto-expand all Epics by default on initial load so hierarchy is visible
       const epicIds = (itemsRes || []).filter((i) => i.type === 'EPIC').map((e) => e.id);
-      setExpandedEpics(new Set(epicIds));
+      setExpandedEpics((prev) => (prev.size === 0 ? new Set(epicIds) : prev));
     } catch (err) {
       console.error('Failed to load roadmap data:', err);
       onToast?.('Failed to load project roadmap data');
@@ -201,7 +201,18 @@ export default function ProjectRoadmapTab({
 
   // Listen to external work item update events
   useEffect(() => {
-    const handleUpdate = () => {
+    const handleUpdate = (e) => {
+      const detail = e?.detail;
+      if (detail?.action === 'update' && detail?.item?.id) {
+        setWorkItems((prev) => prev.map((item) => (item.id === detail.item.id ? { ...item, ...detail.item } : item)));
+        setSelectedTask((prev) => (prev && prev.id === detail.item.id ? { ...prev, ...detail.item } : prev));
+        return;
+      }
+      if (detail?.action === 'delete' && detail?.id) {
+        setWorkItems((prev) => prev.filter((item) => item.id !== detail.id));
+        setSelectedTask((prev) => (prev && prev.id === detail.id ? null : prev));
+        return;
+      }
       loadData(true);
     };
     window.addEventListener('work-items-updated', handleUpdate);
@@ -1829,13 +1840,13 @@ export default function ProjectRoadmapTab({
           task={selectedTask}
           onTaskUpdated={(updated) => {
             onToast?.(`Deliverable "${updated.title}" updated successfully`);
-            setSelectedTask(null);
-            loadData(true);
+            setWorkItems((prev) => prev.map((item) => (item.id === updated.id ? updated : item)));
+            setSelectedTask(updated);
           }}
           onTaskDeleted={(deletedId) => {
             onToast?.('Deliverable deleted successfully');
+            setWorkItems((prev) => prev.filter((item) => item.id !== deletedId));
             setSelectedTask(null);
-            loadData(true);
           }}
           onToast={onToast}
           hideAssignees={false}
