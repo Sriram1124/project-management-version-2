@@ -26,7 +26,35 @@ app.use(express.json());
 app.use(cookieParser());
 
 app.use((req, res, next) => {
-  console.log(`[${new Date().toISOString()}] ${req.method} ${req.url}`);
+  const start = performance.now();
+  (req as any)._reqStartTime = start;
+
+  const originalEnd = res.end;
+  (res as any).end = function (this: any, ...args: any[]) {
+    const totalMs = performance.now() - start;
+    const authMs = (req as any)._authDuration || 0;
+    const authDbMs = (req as any)._authDbDuration || 0;
+
+    if (!res.headersSent) {
+      res.setHeader(
+        'Server-Timing',
+        `total;dur=${totalMs.toFixed(1)}, auth;dur=${authMs.toFixed(1)}, db;dur=${authDbMs.toFixed(1)}`
+      );
+    }
+    return originalEnd.apply(this, args);
+  };
+
+  res.on('finish', () => {
+    const totalMs = performance.now() - start;
+    const authMs = (req as any)._authDuration || 0;
+    const authDbMs = (req as any)._authDbDuration || 0;
+
+    // Structured timing log: never logs tokens, credentials, or sensitive data
+    console.log(
+      `[Timing] ${req.method} ${req.originalUrl || req.url} | ${res.statusCode} | total: ${totalMs.toFixed(1)}ms | auth: ${authMs.toFixed(1)}ms (db: ${authDbMs.toFixed(1)}ms)`
+    );
+  });
+
   next();
 });
 

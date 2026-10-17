@@ -2,20 +2,40 @@ import { Request, Response } from 'express';
 import { AuthService } from '../services/auth.service';
 import { UserService } from '../services/user.service';
 import { prisma } from '../lib/prisma';
+import { invalidateUserSessionCache } from '../middleware/auth.middleware';
+
+let cachedOrganizations: { id: string; name: string }[] | null = null;
+let cachedOrganizationsExpiry = 0;
+const ORG_CACHE_TTL_MS = 5 * 60 * 1000; // 5 minutes
+
+export function invalidateOrganizationsCache(): void {
+  cachedOrganizations = null;
+  cachedOrganizationsExpiry = 0;
+}
 
 export class AuthController {
   static async getOrganizations(req: Request, res: Response): Promise<void> {
     try {
-      const organizations = await prisma.organization.findMany({
-        where: {
-          is_active: true,
-        },
-        select: {
-          id: true,
-          name: true,
-        },
-        orderBy: { name: 'asc' },
-      });
+      const now = Date.now();
+      let organizations = cachedOrganizations;
+
+      if (!organizations || now > cachedOrganizationsExpiry) {
+        organizations = await prisma.organization.findMany({
+          where: {
+            is_active: true,
+          },
+          select: {
+            id: true,
+            name: true,
+          },
+          orderBy: { name: 'asc' },
+        });
+        cachedOrganizations = organizations;
+        cachedOrganizationsExpiry = now + ORG_CACHE_TTL_MS;
+      }
+
+      // Edge & Browser conditional caching: public metadata, safe for 60s browser, 300s edge
+      res.setHeader('Cache-Control', 'public, max-age=60, s-maxage=300, stale-while-revalidate=600');
       res.status(200).json(organizations);
     } catch (error: any) {
       console.error('[AuthController.getOrganizations] Error:', error?.message || error);
@@ -115,8 +135,12 @@ export class AuthController {
   static async logout(req: Request, res: Response): Promise<void> {
     try {
       const sessionId = req.cookies?.sessionId || req.body?.sessionId;
+      const userId = (req as any).user?.userId;
       if (sessionId) {
         await AuthService.logout(sessionId);
+      }
+      if (userId) {
+        invalidateUserSessionCache(userId);
       }
       res.clearCookie('sessionId');
       res.clearCookie('refreshToken');
@@ -128,50 +152,68 @@ export class AuthController {
 
   static async me(req: Request, res: Response): Promise<void> {
     try {
-      const userId = (req as any).user.userId;
-      const user = await prisma.user.findUnique({
-        where: { id: userId },
-        include: {
-          roles: {
-            include: {
-              role: {
-                include: {
-                  permissions: {
-                    include: {
-                      permission: true
+      // 1. Reuse user already fetched and validated in authenticate middleware (zero redundant queries)
+      let user = (req as any).fullUser;
+
+      if (!user) {
+        const userId = (req as any).user?.userId;
+        user = await prisma.user.findUnique({
+          where: { id: userId },
+          select: {
+            id: true,
+            name: true,
+            email: true,
+            user_code: true,
+            batch: true,
+            is_active: true,
+            must_change_password: true,
+            organization_id: true,
+            roles: {
+              select: {
+                role: {
+                  select: {
+                    name: true,
+                    permissions: {
+                      select: {
+                        permission: {
+                          select: { name: true }
+                        }
+                      }
                     }
                   }
                 }
               }
+            },
+            project_memberships: {
+              where: { project_role: 'TECH_LEAD' },
+              select: { project_id: true }
             }
           }
-        }
-      });
+        });
+      }
 
       if (!user) {
         res.status(404).json({ error: 'User not found' });
         return;
       }
 
-      const primaryRole = user.roles[0]?.role;
-      const roleName = primaryRole?.name || 'USER';
+      const primaryRole = user.roles?.[0]?.role;
+      const roleName = primaryRole?.name || (req as any).user?.role || 'USER';
       const isInternOrEmployee = roleName === 'INTERN' || roleName === 'EMPLOYEE';
 
       // Security requirement 13: Hide API permissions from intern profile endpoint
       const permissions = isInternOrEmployee
         ? []
-        : (primaryRole?.permissions.map((rp: any) => rp.permission.name) || []);
+        : (primaryRole?.permissions?.map((rp: any) => rp.permission?.name || rp.name) || []);
 
-      // Determine Tech Lead status and lead projects
-      const leadMemberships = await prisma.projectMember.findMany({
-        where: {
-          user_id: user.id,
-          project_role: 'TECH_LEAD',
-        },
-        select: { project_id: true },
-      });
-      const leadProjectIds = leadMemberships.map((m) => m.project_id);
+      // Determine Tech Lead status from memberships loaded in user object
+      const leadProjectIds = Array.isArray(user.project_memberships)
+        ? user.project_memberships.map((m: any) => m.project_id)
+        : [];
       const isTechLead = roleName === 'TECH_LEAD' || leadProjectIds.length > 0;
+
+      // Prevent 304 stale revalidation on private user profile - deliver real HTTP 200 fast
+      res.setHeader('Cache-Control', 'private, no-cache, no-store, must-revalidate');
 
       res.status(200).json({
         id: user.id,
@@ -187,6 +229,7 @@ export class AuthController {
         permissions,
       });
     } catch (error) {
+      console.error('[AuthController.me] Error:', error);
       res.status(500).json({ error: 'Internal server error' });
     }
   }
@@ -206,6 +249,7 @@ export class AuthController {
       }
 
       const result = await UserService.changePassword(userId, current_password, new_password);
+      invalidateUserSessionCache(userId);
       res.status(200).json(result);
     } catch (error: any) {
       if (

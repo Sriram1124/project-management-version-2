@@ -2,6 +2,7 @@ import * as crypto from 'crypto';
 import * as argon2 from 'argon2';
 import { prisma } from '../lib/prisma';
 import { AuditService } from './audit.service';
+import { invalidateOrganizationsCache } from '../controllers/auth.controller';
 
 export interface CreateOrganizationInput {
   name: string;
@@ -122,6 +123,8 @@ export class OrganizationService {
         is_active: true,
       },
     });
+
+    invalidateOrganizationsCache();
 
     await AuditService.record({
       actorId,
@@ -736,6 +739,8 @@ export class OrganizationService {
       data: { name: name.trim() },
     });
 
+    invalidateOrganizationsCache();
+
     await AuditService.record({
       actorId,
       organizationId,
@@ -812,6 +817,7 @@ export class OrganizationService {
       },
     });
 
+    invalidateOrganizationsCache();
     return { organization: result };
   }
 

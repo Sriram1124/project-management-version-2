@@ -4,7 +4,30 @@ import { prisma } from '../lib/prisma';
 
 const ACCESS_SECRET = process.env.JWT_ACCESS_SECRET || 'access_secret';
 
+interface CachedUserSession {
+  user: any;
+  cachedAt: number;
+}
+
+// In-memory cache for warm serverless instances (30s TTL per user session)
+const userSessionCache = new Map<string, CachedUserSession>();
+const USER_CACHE_TTL_MS = 30_000;
+
+let cachedDefaultOrgId: string | null = null;
+let cachedDefaultOrgExpiry = 0;
+
+export function invalidateUserSessionCache(userId?: string): void {
+  if (userId) {
+    userSessionCache.delete(userId);
+  } else {
+    userSessionCache.clear();
+  }
+}
+
 export const authenticate = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
+  const authStart = performance.now();
+  let dbDuration = 0;
+
   try {
     const authHeader = req.headers.authorization;
     if (!authHeader || !authHeader.startsWith('Bearer ')) {
@@ -15,25 +38,79 @@ export const authenticate = async (req: Request, res: Response, next: NextFuncti
     const token = authHeader.split(' ')[1];
     const payload = jwt.verify(token, ACCESS_SECRET) as any;
 
-    const user = await prisma.user.findUnique({
-      where: { id: payload.userId },
-      include: {
-        organization: {
-          select: { id: true, name: true, is_active: true }
-        },
-        roles: {
-          include: {
-            role: {
-              include: {
-                permissions: { include: { permission: true } }
+    const now = Date.now();
+    const cached = userSessionCache.get(payload.userId);
+    let user: any;
+
+    if (cached && (now - cached.cachedAt < USER_CACHE_TTL_MS)) {
+      user = cached.user;
+    } else {
+      const dbStart = performance.now();
+      user = await prisma.user.findUnique({
+        where: { id: payload.userId },
+        select: {
+          id: true,
+          name: true,
+          email: true,
+          user_code: true,
+          batch: true,
+          is_active: true,
+          must_change_password: true,
+          organization_id: true,
+          organization: {
+            select: { id: true, name: true, is_active: true }
+          },
+          roles: {
+            select: {
+              role: {
+                select: {
+                  id: true,
+                  name: true,
+                  permissions: {
+                    select: {
+                      permission: {
+                        select: { name: true }
+                      }
+                    }
+                  }
+                }
               }
+            }
+          },
+          project_memberships: {
+            where: { project_role: 'TECH_LEAD' },
+            select: { project_id: true }
+          }
+        }
+      });
+      dbDuration = performance.now() - dbStart;
+
+      if (user && user.is_active) {
+        // Handle fallback organization if unassigned
+        if (!user.organization_id) {
+          if (cachedDefaultOrgId && now < cachedDefaultOrgExpiry) {
+            user.organization_id = cachedDefaultOrgId;
+          } else {
+            const orgStart = performance.now();
+            const firstOrg = await prisma.organization.findFirst({
+              where: { is_active: true },
+              select: { id: true }
+            });
+            dbDuration += (performance.now() - orgStart);
+            if (firstOrg) {
+              cachedDefaultOrgId = firstOrg.id;
+              cachedDefaultOrgExpiry = now + 5 * 60 * 1000;
+              user.organization_id = firstOrg.id;
             }
           }
         }
+
+        userSessionCache.set(payload.userId, { user, cachedAt: now });
       }
-    });
+    }
 
     if (!user || !user.is_active) {
+      userSessionCache.delete(payload.userId);
       res.status(401).json({ error: 'User is inactive or not found' });
       return;
     }
@@ -65,22 +142,20 @@ export const authenticate = async (req: Request, res: Response, next: NextFuncti
 
     (req as any).user = payload;
     (req as any).fullUser = user;
-    if (user) {
-      if (payload?.role && !(user as any).role) {
-        (user as any).role = payload.role;
-      }
-      if (Array.isArray(user.roles) && user.roles.length > 0 && !(user as any).role) {
-        (user as any).role = user.roles[0]?.role?.name || (user.roles[0] as any)?.name;
-      }
-      if (!user.organization_id) {
-        const firstOrg = await prisma.organization.findFirst({ where: { is_active: true } });
-        if (firstOrg) {
-          user.organization_id = firstOrg.id;
-        }
-      }
+    if (payload?.role && !(user as any).role) {
+      (user as any).role = payload.role;
     }
+    if (Array.isArray(user.roles) && user.roles.length > 0 && !(user as any).role) {
+      (user as any).role = user.roles[0]?.role?.name || (user.roles[0] as any)?.name;
+    }
+
+    (req as any)._authDuration = performance.now() - authStart;
+    (req as any)._authDbDuration = dbDuration;
+
     next();
   } catch (error) {
+    (req as any)._authDuration = performance.now() - authStart;
+    (req as any)._authDbDuration = dbDuration;
     res.status(401).json({ error: 'Invalid access token' });
   }
 };

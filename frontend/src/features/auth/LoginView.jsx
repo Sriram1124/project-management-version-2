@@ -20,6 +20,9 @@ import { useNavigate } from 'react-router-dom';
 import { authService } from '../../services/auth.service';
 import dailoqaLogo from '../../../dailoqa-logo.jpg';
 
+// Module-level cache to ensure zero-latency renders across component remounts
+let cachedOrgsList = null;
+
 export default function LoginView() {
   // Step state: 'PORTAL_SELECT' | 'ROOT_LOGIN' | 'ORG_SELECT' | 'ORG_LOGIN' | 'FORCE_CHANGE_PASSWORD'
   const [step, setStep] = useState('PORTAL_SELECT');
@@ -37,8 +40,21 @@ export default function LoginView() {
   const [pendingUser, setPendingUser] = useState(null);
   const [isChangingPassword, setIsChangingPassword] = useState(false);
 
-  // Organizations
-  const [organizations, setOrganizations] = useState([]);
+  // Organizations - initialize from memory or sessionStorage for instant render
+  const [organizations, setOrganizations] = useState(() => {
+    if (cachedOrgsList && cachedOrgsList.length > 0) return cachedOrgsList;
+    try {
+      const stored = sessionStorage.getItem('internhub_organizations');
+      if (stored) {
+        const parsed = JSON.parse(stored);
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          cachedOrgsList = parsed;
+          return parsed;
+        }
+      }
+    } catch (e) {}
+    return [];
+  });
   const [loadingOrgs, setLoadingOrgs] = useState(false);
   const [orgLoadFailed, setOrgLoadFailed] = useState(false);
   const [orgSearch, setOrgSearch] = useState('');
@@ -51,17 +67,32 @@ export default function LoginView() {
   const { login } = useAuth();
   const navigate = useNavigate();
 
-  // Load organizations on demand
-  const fetchOrganizations = async () => {
+  // Proactive background fetch on mount: pre-warms cache before user clicks "Organization Portal"
+  useEffect(() => {
+    fetchOrganizations(true);
+  }, []);
+
+  const fetchOrganizations = async (isBackground = false) => {
+    // Only show loading spinner if we don't have any organizations in cache
+    if (!isBackground || organizations.length === 0) {
+      setLoadingOrgs(organizations.length === 0);
+    }
+    setError('');
+    setOrgLoadFailed(false);
     try {
-      setLoadingOrgs(true);
-      setError('');
-      setOrgLoadFailed(false);
       const data = await authService.getOrganizations();
-      setOrganizations(Array.isArray(data) ? data : []);
+      if (Array.isArray(data)) {
+        setOrganizations(data);
+        cachedOrgsList = data;
+        try {
+          sessionStorage.setItem('internhub_organizations', JSON.stringify(data));
+        } catch (e) {}
+      }
     } catch (err) {
-      setOrgLoadFailed(true);
-      setError(err.message || 'Unable to load organizations. Please check your connection.');
+      if (organizations.length === 0) {
+        setOrgLoadFailed(true);
+        setError(err.message || 'Unable to load organizations. Please check your connection.');
+      }
     } finally {
       setLoadingOrgs(false);
     }
