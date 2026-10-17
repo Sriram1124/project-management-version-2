@@ -17,10 +17,46 @@ import {
   CheckSquare,
   FileText,
   User,
-  Info
+  Info,
+  Search,
+  Filter,
+  RotateCcw
 } from 'lucide-react';
 import { timesheetService } from '../../services/timesheet.service';
 import { useAuth } from '../../context/AuthContext';
+import { COLUMNS_CONFIG } from '../../constants/kanban';
+
+const STATUS_OPTIONS = [
+  { id: 'ALL', label: 'All Statuses' },
+  ...COLUMNS_CONFIG.map((c) => ({
+    id: c.id,
+    label: c.title,
+    dotColor: c.dotColor,
+  })),
+];
+
+const TIME_FILTER_OPTIONS = [
+  { id: 'ALL', label: 'All Tasks' },
+  { id: 'LOGGED', label: 'Time Logged' },
+  { id: 'NO_LOGGED', label: 'No Time Logged' },
+];
+
+const getStatusBadge = (status) => {
+  const norm = (status || 'TODO').toUpperCase();
+  switch (norm) {
+    case 'IN_PROGRESS':
+      return { label: 'In Progress', bg: 'bg-purple-50 text-purple-700 border-purple-200', dot: 'bg-purple-600' };
+    case 'IN_REVIEW':
+      return { label: 'In Review', bg: 'bg-amber-50 text-amber-700 border-amber-200', dot: 'bg-amber-500' };
+    case 'BLOCKED':
+      return { label: 'Blocked', bg: 'bg-rose-50 text-rose-700 border-rose-200', dot: 'bg-rose-500' };
+    case 'COMPLETED':
+      return { label: 'Completed', bg: 'bg-emerald-50 text-emerald-700 border-emerald-200', dot: 'bg-emerald-600' };
+    case 'TODO':
+    default:
+      return { label: 'To Do', bg: 'bg-slate-100 text-slate-700 border-slate-200', dot: 'bg-slate-400' };
+  }
+};
 
 const formatMinutes = (minutes = 0) => {
   const mins = Number(minutes) || 0;
@@ -32,11 +68,34 @@ const formatMinutes = (minutes = 0) => {
   return `${hours}h ${remainder}m`;
 };
 
+export const getSessionCutoffMs = (startedAt) => {
+  if (!startedAt) return null;
+  const started = new Date(startedAt);
+  if (isNaN(started.getTime())) return null;
+  const formatter = new Intl.DateTimeFormat('en-US', {
+    timeZone: 'Asia/Kolkata',
+    year: 'numeric',
+    month: 'numeric',
+    day: 'numeric',
+  });
+  const parts = Object.fromEntries(
+    formatter.formatToParts(started).filter((p) => p.type !== 'literal').map((p) => [p.type, Number(p.value)])
+  );
+  // 18:15 IST is UTC 12:45
+  const cutoffUtc = Date.UTC(parts.year, parts.month - 1, parts.day, 12, 45, 0, 0);
+  if (started.getTime() < cutoffUtc) {
+    return cutoffUtc;
+  }
+  return started.getTime() + 4 * 60 * 60 * 1000;
+};
+
 const formatElapsed = (startedAt) => {
   if (!startedAt) return '00:00:00';
   const start = new Date(startedAt).getTime();
   const now = Date.now();
-  const diffSecs = Math.max(0, Math.floor((now - start) / 1000));
+  const cutoff = getSessionCutoffMs(startedAt);
+  const effectiveEnd = cutoff && now > cutoff ? cutoff : now;
+  const diffSecs = Math.max(0, Math.floor((effectiveEnd - start) / 1000));
   const hrs = Math.floor(diffSecs / 3600);
   const mins = Math.floor((diffSecs % 3600) / 60);
   const secs = diffSecs % 60;
@@ -66,6 +125,10 @@ export default function TimesheetView({
   const [activeSession, setActiveSession] = useState(null);
   const [elapsedText, setElapsedText] = useState('00:00:00');
 
+  // Start Timer Modal (Intern Only)
+  const [isStartTimerModalOpen, setIsStartTimerModalOpen] = useState(false);
+  const [startTimerTaskId, setStartTimerTaskId] = useState('');
+
   // Cell Details Drawer / Modal
   const [cellModalData, setCellModalData] = useState(null); // { task, date, dayObj, entries }
   const [cellFormHours, setCellFormHours] = useState('');
@@ -79,6 +142,27 @@ export default function TimesheetView({
   const [manualHours, setManualHours] = useState('');
   const [manualMinutes, setManualMinutes] = useState('30');
   const [manualNotes, setManualNotes] = useState('');
+
+  // Task Filters & Search State
+  const [statusFilter, setStatusFilter] = useState('ALL');
+  const [timeFilter, setTimeFilter] = useState('ALL'); // 'ALL' | 'LOGGED' | 'NO_LOGGED'
+  const [taskSearchQuery, setTaskSearchQuery] = useState('');
+
+  // Pagination & Compact Layout
+  const [pageSize, setPageSize] = useState(15);
+  const [currentPage, setCurrentPage] = useState(1);
+
+  // Reset pagination on filter or page size changes
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [statusFilter, timeFilter, taskSearchQuery, pageSize]);
+
+  const handleResetFilters = () => {
+    setStatusFilter('ALL');
+    setTimeFilter('ALL');
+    setTaskSearchQuery('');
+    setCurrentPage(1);
+  };
 
   // Effective intern metadata (from prop or backend response)
   const currentIntern = internInfo || timesheet?.user || null;
@@ -123,12 +207,17 @@ export default function TimesheetView({
       return;
     }
     const updateElapsed = () => {
+      const cutoff = getSessionCutoffMs(activeSession.started_at);
+      if (cutoff && Date.now() >= cutoff) {
+        loadTimesheet();
+        return;
+      }
       setElapsedText(formatElapsed(activeSession.started_at));
     };
     updateElapsed();
     const interval = setInterval(updateElapsed, 1000);
     return () => clearInterval(interval);
-  }, [activeSession]);
+  }, [activeSession, loadTimesheet]);
 
   // Navigate weeks
   const handlePrevWeek = () => {
@@ -318,6 +407,68 @@ export default function TimesheetView({
   const taskRows = timesheet?.task_rows || [];
   const availableTasks = timesheet?.available_tasks || [];
 
+  const isFiltered = statusFilter !== 'ALL' || timeFilter !== 'ALL' || Boolean(taskSearchQuery.trim());
+
+  const filteredTaskRows = useMemo(() => {
+    if (!taskRows) return [];
+    return taskRows.filter((task) => {
+      // 1. Status Filter
+      if (statusFilter !== 'ALL') {
+        const s = (task.status || 'TODO').toUpperCase();
+        if (s !== statusFilter) return false;
+      }
+
+      // 2. Time Logged Filter
+      const totalMins = Number(task.total_minutes) || 0;
+      if (timeFilter === 'LOGGED' && totalMins <= 0) return false;
+      if (timeFilter === 'NO_LOGGED' && totalMins > 0) return false;
+
+      // 3. Search Query (title, ID/key, project name)
+      if (taskSearchQuery.trim()) {
+        const q = taskSearchQuery.trim().toLowerCase();
+        const titleMatch = (task.title || '').toLowerCase().includes(q);
+        const keyMatch = (task.key || task.id || '').toLowerCase().includes(q);
+        const projMatch = (task.project?.name || '').toLowerCase().includes(q);
+        if (!titleMatch && !keyMatch && !projMatch) return false;
+      }
+
+      return true;
+    });
+  }, [taskRows, statusFilter, timeFilter, taskSearchQuery]);
+
+  // Totals for filtered task rows
+  const filteredTotals = useMemo(() => {
+    let totalMinutes = 0;
+    const dailyTotals = {};
+    (displayedDays || []).forEach((d) => {
+      dailyTotals[d.date] = 0;
+    });
+
+    filteredTaskRows.forEach((task) => {
+      totalMinutes += Number(task.total_minutes) || 0;
+      (displayedDays || []).forEach((d) => {
+        const mins = Number(task.days?.[d.date]?.minutes) || 0;
+        dailyTotals[d.date] = (dailyTotals[d.date] || 0) + mins;
+      });
+    });
+
+    return {
+      totalMinutes,
+      totalFormatted: formatMinutes(totalMinutes),
+      dailyTotals,
+      activeTasksCount: filteredTaskRows.filter((r) => (Number(r.total_minutes) || 0) > 0).length,
+    };
+  }, [filteredTaskRows, displayedDays]);
+
+  // Pagination calculation
+  const totalPages = pageSize === 'ALL' ? 1 : Math.max(1, Math.ceil(filteredTaskRows.length / Number(pageSize)));
+  const paginatedTaskRows = useMemo(() => {
+    if (pageSize === 'ALL') return filteredTaskRows;
+    const limit = Number(pageSize);
+    const startIndex = (currentPage - 1) * limit;
+    return filteredTaskRows.slice(startIndex, startIndex + limit);
+  }, [filteredTaskRows, currentPage, pageSize]);
+
   return (
     <div className="space-y-5 text-xs text-slate-800">
       {/* 1. TOP HEADER & WEEK CONTROLS */}
@@ -443,6 +594,23 @@ export default function TimesheetView({
             <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} />
           </button>
 
+          {/* Start Timer Button (Intern Only, when no timer is active) */}
+          {!readOnly && !activeSession && (
+            <button
+              type="button"
+              onClick={() => {
+                if (availableTasks.length > 0 && !startTimerTaskId) {
+                  setStartTimerTaskId(availableTasks[0].id);
+                }
+                setIsStartTimerModalOpen(true);
+              }}
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-semibold transition-colors cursor-pointer shadow-xs"
+            >
+              <Play className="w-3.5 h-3.5 fill-current" />
+              <span>Start Timer</span>
+            </button>
+          )}
+
           {/* Log Time Button (Intern Only) */}
           {!readOnly && (
             <button
@@ -536,26 +704,42 @@ export default function TimesheetView({
         </div>
 
         <div className="bg-white p-4 rounded-2xl border border-slate-200/80 shadow-2xs">
-          <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider block">
-            Total Logged
-          </span>
+          <div className="flex items-center justify-between gap-1">
+            <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider block">
+              {isFiltered ? 'Total Logged (Filtered)' : 'Total Logged'}
+            </span>
+            {isFiltered && (
+              <span className="px-1.5 py-0.2 rounded text-[9px] font-bold bg-purple-100 text-purple-700 border border-purple-200">
+                Filtered
+              </span>
+            )}
+          </div>
           <div className="text-xl sm:text-2xl font-extrabold text-purple-700 mt-1">
-            {loading ? '...' : summaryStats.totalFormatted}
+            {loading ? '...' : (isFiltered ? filteredTotals.totalFormatted : summaryStats.totalFormatted)}
           </div>
           <span className="text-[11px] text-slate-500 font-medium block mt-0.5">
-            Recorded task effort
+            {isFiltered ? `Filtered total (${summaryStats.totalFormatted} overall)` : 'Recorded task effort'}
           </span>
         </div>
 
         <div className="bg-white p-4 rounded-2xl border border-slate-200/80 shadow-2xs">
-          <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider block">
-            Active Tasks
-          </span>
+          <div className="flex items-center justify-between gap-1">
+            <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider block">
+              {isFiltered ? 'Active Tasks (Filtered)' : 'Active Tasks'}
+            </span>
+            {isFiltered && (
+              <span className="px-1.5 py-0.2 rounded text-[9px] font-bold bg-purple-100 text-purple-700 border border-purple-200">
+                Filtered
+              </span>
+            )}
+          </div>
           <div className="text-xl sm:text-2xl font-extrabold text-slate-900 mt-1">
-            {loading ? '...' : summaryStats.activeTasksCount}
+            {loading ? '...' : (isFiltered ? filteredTotals.activeTasksCount : summaryStats.activeTasksCount)}
           </div>
           <span className="text-[11px] text-slate-500 font-medium block mt-0.5">
-            Of {taskRows.length} assigned tasks
+            {isFiltered
+              ? `Of ${filteredTaskRows.length} filtered (${taskRows.length} overall)`
+              : `Of ${taskRows.length} assigned tasks`}
           </span>
         </div>
 
@@ -574,6 +758,7 @@ export default function TimesheetView({
 
       {/* 4. WEEKLY MATRIX GRID TABLE */}
       <div className="bg-white rounded-2xl border border-slate-200/80 shadow-xs overflow-hidden">
+        {/* Header Title Bar */}
         <div className="p-4 border-b border-slate-100 flex items-center justify-between flex-wrap gap-2">
           <div className="flex items-center gap-2">
             <span className="font-bold text-slate-900 text-sm">
@@ -592,6 +777,98 @@ export default function TimesheetView({
           </div>
         </div>
 
+        {/* TASK FILTER BAR */}
+        <div className="p-3.5 sm:p-4 border-b border-slate-200/80 bg-slate-50/70 flex flex-wrap items-center justify-between gap-3">
+          <div className="flex flex-wrap items-center gap-2.5 flex-1 min-w-[280px]">
+            {/* Search Input */}
+            <div className="relative min-w-[180px] sm:min-w-[220px] flex-1 max-w-sm">
+              <Search className="w-3.5 h-3.5 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+              <input
+                type="text"
+                placeholder="Search tasks, keys, projects..."
+                value={taskSearchQuery}
+                onChange={(e) => setTaskSearchQuery(e.target.value)}
+                className="w-full pl-8 pr-7 py-1.5 text-xs rounded-xl border border-slate-200 bg-white placeholder-slate-400 focus:outline-none focus:border-purple-600 focus:ring-1 focus:ring-purple-600/20"
+              />
+              {taskSearchQuery && (
+                <button
+                  type="button"
+                  onClick={() => setTaskSearchQuery('')}
+                  className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 p-0.5"
+                  title="Clear search"
+                >
+                  <X className="w-3.5 h-3.5" />
+                </button>
+              )}
+            </div>
+
+            {/* Task Status Dropdown */}
+            <div className="flex items-center gap-1.5">
+              <label htmlFor="task-status-filter" className="text-[11px] font-semibold text-slate-500 shrink-0 flex items-center gap-1">
+                <Filter className="w-3 h-3 text-purple-600" />
+                <span>Status:</span>
+              </label>
+              <select
+                id="task-status-filter"
+                value={statusFilter}
+                onChange={(e) => setStatusFilter(e.target.value)}
+                className="px-2.5 py-1.5 text-xs rounded-xl border border-slate-200 bg-white font-medium text-slate-800 focus:outline-none focus:border-purple-600 cursor-pointer shadow-2xs"
+              >
+                {STATUS_OPTIONS.map((opt) => (
+                  <option key={opt.id} value={opt.id}>
+                    {opt.label}
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            {/* Time Logged Filter Dropdown */}
+            <div className="flex items-center gap-1.5">
+              <label htmlFor="time-entry-filter" className="text-[11px] font-semibold text-slate-500 shrink-0 flex items-center gap-1">
+                <Clock className="w-3 h-3 text-purple-600" />
+                <span>Time:</span>
+              </label>
+              <select
+                id="time-entry-filter"
+                value={timeFilter}
+                onChange={(e) => setTimeFilter(e.target.value)}
+                className="px-2.5 py-1.5 text-xs rounded-xl border border-slate-200 bg-white font-medium text-slate-800 focus:outline-none focus:border-purple-600 cursor-pointer shadow-2xs"
+              >
+                {TIME_FILTER_OPTIONS.map((opt) => (
+                  <option key={opt.id} value={opt.id}>
+                    {opt.label}
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            {/* Clear Filters Button */}
+            {isFiltered && (
+              <button
+                type="button"
+                onClick={handleResetFilters}
+                className="inline-flex items-center gap-1 px-2.5 py-1.5 text-xs font-semibold text-slate-600 hover:text-purple-700 bg-white hover:bg-purple-50 rounded-xl border border-slate-200 transition-colors cursor-pointer"
+                title="Reset all filters"
+              >
+                <RotateCcw className="w-3 h-3" />
+                <span>Clear</span>
+              </button>
+            )}
+          </div>
+
+          {/* Counts & Status Summary */}
+          <div className="flex items-center gap-2 text-[11px] text-slate-500 shrink-0">
+            <span className="font-medium">
+              Showing <span className="font-bold text-slate-800">{filteredTaskRows.length}</span> of <span className="font-bold text-slate-800">{taskRows.length}</span> tasks
+            </span>
+            {isFiltered && (
+              <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-purple-100 text-purple-700 border border-purple-200">
+                Filtered: {filteredTotals.totalFormatted}
+              </span>
+            )}
+          </div>
+        </div>
+
         {/* Loading State */}
         {loading ? (
           <div className="p-12 text-center text-slate-400">
@@ -599,7 +876,7 @@ export default function TimesheetView({
             <p className="text-xs font-semibold">Loading weekly timesheet...</p>
           </div>
         ) : taskRows.length === 0 ? (
-          /* Empty State */
+          /* Empty State: No assigned tasks at all */
           <div className="p-12 text-center text-slate-500 max-w-md mx-auto space-y-3">
             <div className="w-12 h-12 rounded-2xl bg-purple-50 text-purple-600 flex items-center justify-center mx-auto">
               <Clock className="w-6 h-6" />
@@ -610,23 +887,61 @@ export default function TimesheetView({
                 You have no assigned tasks or time entries recorded for this week. Use the &quot;Log Time&quot; button to manually log work or assign tasks to yourself.
               </p>
             </div>
+            {!readOnly && (
+              <button
+                type="button"
+                onClick={() => setIsLogModalOpen(true)}
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-purple-600 hover:bg-purple-700 text-white font-semibold transition-colors cursor-pointer"
+              >
+                <Plus className="w-3.5 h-3.5" />
+                <span>Log Time Manually</span>
+              </button>
+            )}
+          </div>
+        ) : filteredTaskRows.length === 0 ? (
+          /* Empty State: Filter yielded no matches */
+          <div className="p-12 text-center text-slate-500 max-w-md mx-auto space-y-3">
+            <div className="w-12 h-12 rounded-2xl bg-slate-100 text-slate-500 flex items-center justify-center mx-auto">
+              <Filter className="w-6 h-6" />
+            </div>
+            <div>
+              <h3 className="text-sm font-bold text-slate-800">No Matching Tasks Found</h3>
+              <div className="text-xs text-slate-400 mt-1 space-y-0.5">
+                <p>No tasks match the active filters:</p>
+                {statusFilter !== 'ALL' && (
+                  <p className="font-semibold text-slate-600">
+                    • Status: {STATUS_OPTIONS.find((o) => o.id === statusFilter)?.label || statusFilter}
+                  </p>
+                )}
+                {timeFilter !== 'ALL' && (
+                  <p className="font-semibold text-slate-600">
+                    • Time Filter: {TIME_FILTER_OPTIONS.find((o) => o.id === timeFilter)?.label || timeFilter}
+                  </p>
+                )}
+                {taskSearchQuery.trim() && (
+                  <p className="font-semibold text-slate-600">
+                    • Search Query: &quot;{taskSearchQuery}&quot;
+                  </p>
+                )}
+              </div>
+            </div>
             <button
               type="button"
-              onClick={() => setIsLogModalOpen(true)}
-              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-purple-600 hover:bg-purple-700 text-white font-semibold transition-colors cursor-pointer"
+              onClick={handleResetFilters}
+              className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl bg-purple-600 hover:bg-purple-700 text-white font-semibold transition-colors cursor-pointer"
             >
-              <Plus className="w-3.5 h-3.5" />
-              <span>Log Time Manually</span>
+              <RotateCcw className="w-3.5 h-3.5" />
+              <span>Reset All Filters</span>
             </button>
           </div>
         ) : (
           /* Table Matrix */
-          <div className="overflow-x-auto">
+          <div className="overflow-x-auto max-h-[70vh] overflow-y-auto">
             <table className="w-full text-left border-collapse text-xs">
-              <thead>
-                <tr className="bg-slate-50/80 border-b border-slate-200 text-slate-600 font-bold text-[11px]">
+              <thead className="sticky top-0 z-10 bg-slate-50/95 backdrop-blur-xs border-b border-slate-200 text-slate-600 font-bold text-[11px] shadow-2xs">
+                <tr>
                   {/* Task Header */}
-                  <th className="py-3 px-4 min-w-[240px] max-w-[320px]">
+                  <th className="py-3 px-4 min-w-[260px] max-w-[340px]">
                     Task & Deliverable
                   </th>
 
@@ -635,7 +950,7 @@ export default function TimesheetView({
                     <th
                       key={d.date}
                       className={`py-3 px-3 text-center min-w-[90px] ${
-                        d.isToday ? 'bg-purple-50/70 text-purple-900 border-x border-purple-200/60' : ''
+                        d.isToday ? 'bg-purple-50/90 text-purple-900 border-x border-purple-200/60' : ''
                       }`}
                     >
                       <span className="block uppercase text-[10px] tracking-wider text-slate-400">
@@ -648,15 +963,17 @@ export default function TimesheetView({
                   ))}
 
                   {/* Task Total Header */}
-                  <th className="py-3 px-4 text-right min-w-[100px] bg-slate-100/60 font-extrabold text-slate-800">
+                  <th className="py-3 px-4 text-right min-w-[100px] bg-slate-100/80 font-extrabold text-slate-800">
                     Total
                   </th>
                 </tr>
               </thead>
 
               <tbody className="divide-y divide-slate-100">
-                {taskRows.map((task) => {
+                {paginatedTaskRows.map((task) => {
                   const isThisTaskRunning = activeSession?.task_id === task.id;
+                  const statusBadge = getStatusBadge(task.status);
+
                   return (
                     <tr
                       key={task.id}
@@ -669,6 +986,12 @@ export default function TimesheetView({
                         <div className="flex items-start justify-between gap-2">
                           <div className="min-w-0 flex-1">
                             <div className="flex items-center gap-1.5 flex-wrap">
+                              {/* Status Badge */}
+                              <span className={`text-[9px] font-bold px-1.5 py-0.2 rounded border uppercase inline-flex items-center gap-1 ${statusBadge.bg}`}>
+                                <span className={`w-1.5 h-1.5 rounded-full ${statusBadge.dot}`}></span>
+                                <span>{statusBadge.label}</span>
+                              </span>
+
                               {task.type && (
                                 <span className="text-[9px] font-bold px-1.5 py-0.2 rounded bg-purple-50 text-purple-700 border border-purple-200 uppercase">
                                   {task.type}
@@ -685,7 +1008,7 @@ export default function TimesheetView({
                                 </span>
                               )}
                             </div>
-                            <div className="font-semibold text-slate-900 mt-1 truncate group-hover:text-purple-900">
+                            <div className="font-semibold text-slate-900 mt-1 truncate group-hover:text-purple-900" title={task.title}>
                               {task.title}
                             </div>
                           </div>
@@ -773,31 +1096,155 @@ export default function TimesheetView({
 
               {/* TABLE FOOTER: DAILY TOTALS & GRAND TOTAL */}
               <tfoot>
-                <tr className="bg-slate-50/90 border-t-2 border-slate-200 text-slate-800 font-bold">
-                  <td className="py-3.5 px-4 font-bold text-slate-700">
-                    Daily Total
-                  </td>
-
-                  {displayedDays.map((d) => {
-                    const dayTotal = timesheet?.daily_totals?.[d.date] || 0;
-                    return (
-                      <td
-                        key={d.date}
-                        className={`py-3.5 px-2 text-center font-mono font-extrabold ${
-                          d.isToday ? 'bg-purple-100/60 text-purple-900' : 'text-slate-800'
-                        }`}
-                      >
-                        {dayTotal > 0 ? formatMinutes(dayTotal) : '—'}
+                {isFiltered ? (
+                  <>
+                    {/* 1. Filtered Tasks Total */}
+                    <tr className="bg-purple-50/70 border-t-2 border-purple-200 text-slate-800 font-bold">
+                      <td className="py-3 px-4 font-bold text-purple-900">
+                        <div className="flex items-center gap-1.5 flex-wrap">
+                          <span>Filtered Tasks Total</span>
+                          <span className="text-[10px] font-normal text-purple-600 font-mono">
+                            ({filteredTaskRows.length} {filteredTaskRows.length === 1 ? 'task' : 'tasks'})
+                          </span>
+                        </div>
                       </td>
-                    );
-                  })}
 
-                  <td className="py-3.5 px-4 text-right font-mono font-extrabold text-sm text-purple-700 bg-purple-100/50">
-                    {timesheet?.total_formatted || '0h 0m'}
-                  </td>
-                </tr>
+                      {displayedDays.map((d) => {
+                        const dayTotal = filteredTotals.dailyTotals[d.date] || 0;
+                        return (
+                          <td
+                            key={d.date}
+                            className={`py-3 px-2 text-center font-mono font-extrabold ${
+                              d.isToday ? 'bg-purple-200/60 text-purple-950' : 'text-purple-900'
+                            }`}
+                          >
+                            {dayTotal > 0 ? formatMinutes(dayTotal) : '—'}
+                          </td>
+                        );
+                      })}
+
+                      <td className="py-3 px-4 text-right font-mono font-extrabold text-sm text-purple-800 bg-purple-200/60">
+                        {filteredTotals.totalFormatted}
+                      </td>
+                    </tr>
+
+                    {/* 2. Overall Intern Weekly Total */}
+                    <tr className="bg-slate-100/90 border-t border-slate-200 text-slate-700 font-semibold text-[11px]">
+                      <td className="py-2.5 px-4 font-semibold text-slate-600">
+                        <div className="flex items-center gap-1.5 flex-wrap">
+                          <span>Overall Intern Weekly Total</span>
+                          <span className="text-[10px] text-slate-400 font-mono">
+                            (All {taskRows.length} tasks)
+                          </span>
+                        </div>
+                      </td>
+
+                      {displayedDays.map((d) => {
+                        const dayTotal = timesheet?.daily_totals?.[d.date] || 0;
+                        return (
+                          <td
+                            key={d.date}
+                            className="py-2.5 px-2 text-center font-mono font-bold text-slate-700"
+                          >
+                            {dayTotal > 0 ? formatMinutes(dayTotal) : '—'}
+                          </td>
+                        );
+                      })}
+
+                      <td className="py-2.5 px-4 text-right font-mono font-bold text-slate-900 bg-slate-200/60">
+                        {timesheet?.total_formatted || '0h 0m'}
+                      </td>
+                    </tr>
+                  </>
+                ) : (
+                  <tr className="bg-slate-50/90 border-t-2 border-slate-200 text-slate-800 font-bold">
+                    <td className="py-3.5 px-4 font-bold text-slate-700">
+                      Daily Total
+                    </td>
+
+                    {displayedDays.map((d) => {
+                      const dayTotal = timesheet?.daily_totals?.[d.date] || 0;
+                      return (
+                        <td
+                          key={d.date}
+                          className={`py-3.5 px-2 text-center font-mono font-extrabold ${
+                            d.isToday ? 'bg-purple-100/60 text-purple-900' : 'text-slate-800'
+                          }`}
+                        >
+                          {dayTotal > 0 ? formatMinutes(dayTotal) : '—'}
+                        </td>
+                      );
+                    })}
+
+                    <td className="py-3.5 px-4 text-right font-mono font-extrabold text-sm text-purple-700 bg-purple-100/50">
+                      {timesheet?.total_formatted || '0h 0m'}
+                    </td>
+                  </tr>
+                )}
               </tfoot>
             </table>
+          </div>
+        )}
+
+        {/* PAGINATION / EXPANDABLE TASK LIST CONTROLS */}
+        {!loading && taskRows.length > 0 && filteredTaskRows.length > 0 && (
+          <div className="p-3 sm:px-4 border-t border-slate-200/80 bg-slate-50/60 flex flex-wrap items-center justify-between gap-3 text-[11px] text-slate-600">
+            <div className="flex items-center gap-2">
+              <span>Rows per page:</span>
+              <select
+                value={pageSize}
+                onChange={(e) => {
+                  const val = e.target.value === 'ALL' ? 'ALL' : Number(e.target.value);
+                  setPageSize(val);
+                  setCurrentPage(1);
+                }}
+                className="px-2 py-1 rounded-lg border border-slate-200 bg-white font-medium text-slate-800 focus:outline-none focus:border-purple-600 cursor-pointer"
+              >
+                <option value={15}>15</option>
+                <option value={30}>30</option>
+                <option value={50}>50</option>
+                <option value="ALL">All ({filteredTaskRows.length})</option>
+              </select>
+              <span className="text-slate-400">|</span>
+              <span>
+                Showing{' '}
+                <span className="font-bold text-slate-800">
+                  {filteredTaskRows.length === 0
+                    ? 0
+                    : pageSize === 'ALL'
+                    ? `1 - ${filteredTaskRows.length}`
+                    : `${(currentPage - 1) * Number(pageSize) + 1} - ${Math.min(currentPage * Number(pageSize), filteredTaskRows.length)}`}
+                </span>{' '}
+                of <span className="font-bold text-slate-800">{filteredTaskRows.length}</span>
+              </span>
+            </div>
+
+            {pageSize !== 'ALL' && totalPages > 1 && (
+              <div className="flex items-center gap-1.5">
+                <button
+                  type="button"
+                  onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
+                  disabled={currentPage <= 1}
+                  className="p-1.5 rounded-lg border border-slate-200 bg-white hover:bg-slate-100 text-slate-700 disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer"
+                  title="Previous Page"
+                >
+                  <ChevronLeft className="w-3.5 h-3.5" />
+                </button>
+                <span className="px-2 font-medium">
+                  Page <span className="font-bold text-slate-800">{currentPage}</span> of{' '}
+                  <span className="font-bold text-slate-800">{totalPages}</span>
+                </span>
+                <button
+                  type="button"
+                  onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
+                  disabled={currentPage >= totalPages}
+                  className="p-1.5 rounded-lg border border-slate-200 bg-white hover:bg-slate-100 text-slate-700 disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer"
+                  title="Next Page"
+                >
+                  <ChevronRight className="w-3.5 h-3.5" />
+                </button>
+              </div>
+            )}
           </div>
         )}
       </div>
@@ -1099,6 +1546,95 @@ export default function TimesheetView({
                   className="px-4 py-1.5 rounded-xl bg-purple-600 hover:bg-purple-700 text-white font-semibold transition-colors disabled:opacity-50"
                 >
                   {actionLoading ? 'Logging...' : 'Save Time Entry'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* 7. START TASK TIMER MODAL (Intern Only) */}
+      {!readOnly && isStartTimerModalOpen && (
+        <div className="fixed inset-0 z-50 bg-black/40 backdrop-blur-2xs flex items-center justify-center p-4 animate-in fade-in duration-150">
+          <div className="bg-white rounded-2xl shadow-2xl border border-slate-200 max-w-md w-full overflow-hidden text-xs">
+            <div className="flex items-center justify-between p-4 border-b border-slate-100 bg-slate-50/70">
+              <div className="flex items-center gap-2">
+                <span className="p-1 rounded bg-emerald-100 text-emerald-700">
+                  <Play className="w-3.5 h-3.5 fill-current" />
+                </span>
+                <h3 className="text-sm font-bold text-slate-900">
+                  Start Task Timer
+                </h3>
+              </div>
+              <button
+                type="button"
+                onClick={() => setIsStartTimerModalOpen(false)}
+                className="p-1 rounded-lg text-slate-400 hover:text-slate-700 hover:bg-slate-100"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <form
+              onSubmit={async (e) => {
+                e.preventDefault();
+                if (!startTimerTaskId) {
+                  alert('Please select a task.');
+                  return;
+                }
+                setIsStartTimerModalOpen(false);
+                await handleStartTimer(startTimerTaskId);
+              }}
+              className="p-5 space-y-4"
+            >
+              <div>
+                <label className="block text-[11px] font-semibold text-slate-700 mb-1">
+                  Select Task to Track *
+                </label>
+                {availableTasks.length > 0 ? (
+                  <select
+                    value={startTimerTaskId}
+                    onChange={(e) => setStartTimerTaskId(e.target.value)}
+                    required
+                    className="w-full px-3 py-2 rounded-xl border border-slate-200 bg-white font-medium text-slate-900 focus:outline-none focus:border-purple-600"
+                  >
+                    <option value="">-- Choose an assigned task --</option>
+                    {availableTasks.map((t) => (
+                      <option key={t.id} value={t.id}>
+                        {t.title} {t.project?.name ? `(${t.project.name})` : ''}
+                      </option>
+                    ))}
+                  </select>
+                ) : (
+                  <input
+                    type="text"
+                    value={startTimerTaskId}
+                    onChange={(e) => setStartTimerTaskId(e.target.value)}
+                    placeholder="Task ID"
+                    required
+                    className="w-full px-3 py-2 rounded-xl border border-slate-200 text-slate-900 focus:outline-none focus:border-purple-600 font-mono"
+                  />
+                )}
+                <p className="text-[10px] text-slate-400 mt-1.5">
+                  You can manually start a timer anytime. Daytime sessions will automatically clock at 18:15 if left unattended so unworked time isn't recorded.
+                </p>
+              </div>
+
+              <div className="flex items-center justify-end gap-2 pt-2 border-t border-slate-100">
+                <button
+                  type="button"
+                  onClick={() => setIsStartTimerModalOpen(false)}
+                  className="px-3 py-1.5 rounded-xl border border-slate-200 hover:bg-slate-50 font-semibold text-slate-600"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={actionLoading || !startTimerTaskId}
+                  className="flex items-center gap-1.5 px-4 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-semibold transition-colors disabled:opacity-50"
+                >
+                  <Play className="w-3.5 h-3.5 fill-current" />
+                  <span>Start Working</span>
                 </button>
               </div>
             </form>

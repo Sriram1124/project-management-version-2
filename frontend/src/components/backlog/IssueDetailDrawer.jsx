@@ -23,6 +23,7 @@ import { getEpicSprintSummary } from './HierarchicalIssueTable';
 import { useAuth } from '../../context/AuthContext';
 import { timesheetService } from '../../services/timesheet.service';
 import WorkItemComments from '../common/WorkItemComments';
+import { getSessionCutoffMs } from '../views/TimesheetView';
 
 export default function IssueDetailDrawer({
   issue,
@@ -174,16 +175,21 @@ export default function IssueDetailDrawer({
     }
     const updateElapsed = () => {
       const start = new Date(activeSession.started_at).getTime();
-      const diffSecs = Math.max(0, Math.floor((Date.now() - start) / 1000));
+      const cutoff = getSessionCutoffMs(activeSession.started_at);
+      const effectiveEnd = cutoff && Date.now() > cutoff ? cutoff : Date.now();
+      const diffSecs = Math.max(0, Math.floor((effectiveEnd - start) / 1000));
       const hrs = Math.floor(diffSecs / 3600);
       const mins = Math.floor((diffSecs % 3600) / 60);
       const secs = diffSecs % 60;
       setElapsedText(`${String(hrs).padStart(2, '0')}:${String(mins).padStart(2, '0')}:${String(secs).padStart(2, '0')}`);
+      if (cutoff && Date.now() >= cutoff) {
+        loadTaskTimeData();
+      }
     };
     updateElapsed();
     const interval = setInterval(updateElapsed, 1000);
     return () => clearInterval(interval);
-  }, [activeSession]);
+  }, [activeSession, loadTaskTimeData]);
 
   const handleStartTaskTimer = async () => {
     try {

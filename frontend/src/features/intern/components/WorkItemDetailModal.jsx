@@ -18,6 +18,7 @@ import { workItemsService } from '../services/workItemsService';
 import { timesheetService } from '../../../services/timesheet.service';
 import { useAuth } from '../../../context/AuthContext';
 import WorkItemComments from '../../../components/common/WorkItemComments';
+import { getSessionCutoffMs } from '../../../components/views/TimesheetView';
 
 export default function WorkItemDetailModal({
   workItem,
@@ -109,16 +110,24 @@ export default function WorkItemDetailModal({
     }
     const update = () => {
       const start = new Date(taskSession.started_at).getTime();
-      const diff = Math.max(0, Math.floor((Date.now() - start) / 1000));
+      const cutoff = getSessionCutoffMs(taskSession.started_at);
+      const effectiveEnd = cutoff && Date.now() > cutoff ? cutoff : Date.now();
+      const diff = Math.max(0, Math.floor((effectiveEnd - start) / 1000));
       const h = Math.floor(diff / 3600);
       const m = Math.floor((diff % 3600) / 60);
       const s = diff % 60;
       setElapsedText(`${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`);
+      if (cutoff && Date.now() >= cutoff) {
+        timesheetService.getActiveTaskSession(item?.id).then((res) => {
+          setTaskSession(res?.session || null);
+          loadTaskEntries();
+        }).catch(() => {});
+      }
     };
     update();
     const interval = setInterval(update, 1000);
     return () => clearInterval(interval);
-  }, [taskSession]);
+  }, [taskSession, item?.id, loadTaskEntries]);
 
   const item = liveItem || workItem;
   const isOverdue = workItemsService.isOverdue(item);

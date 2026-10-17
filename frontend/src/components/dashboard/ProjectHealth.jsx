@@ -74,9 +74,11 @@ export default function ProjectHealth({
   healthOverview, 
   loading = false, 
   onViewAll, 
-  onSelectProject 
+  onSelectProject,
+  limit = 4
 }) {
-  const projects = healthOverview?.projects || [];
+  const allProjects = healthOverview?.projects || [];
+  const projects = limit ? allProjects.slice(0, limit) : allProjects;
 
   if (loading) {
     return (
@@ -89,7 +91,7 @@ export default function ProjectHealth({
           <div className="h-4 w-28 bg-slate-200 rounded-md" />
         </div>
         <div className="space-y-3 pt-2">
-          {[1, 2, 3].map((i) => (
+          {[1, 2, 3, 4].map((i) => (
             <div key={i} className="h-24 bg-slate-50 border border-slate-100 rounded-xl" />
           ))}
         </div>

@@ -207,8 +207,100 @@ export class TimesheetService {
     return this.ensureOrganizationPolicyForOrg(orgId, input);
   }
 
+  static getSessionCutoffTime(startedAt: Date, timezone = 'Asia/Kolkata'): Date {
+    // Evening cutoff is 18:15 (6:15 PM) on the day the session started
+    const dayCutoff = buildLocalDateForTime(startedAt, '18:15', timezone);
+
+    // If session started before 18:15, clock it at 18:15
+    if (startedAt.getTime() < dayCutoff.getTime()) {
+      return dayCutoff;
+    }
+
+    // If session started after 18:15 (e.g. night shift), cap at 4 hours max duration or midnight
+    const fourHoursLater = new Date(startedAt.getTime() + 4 * 60 * 60 * 1000);
+    const midnight = new Date(startedAt);
+    midnight.setUTCHours(23, 59, 59, 999);
+    return fourHoursLater.getTime() < midnight.getTime() ? fourHoursLater : midnight;
+  }
+
+  static async autoClockExpiredSessions(orgId?: string, userId?: string): Promise<number> {
+    try {
+      const now = Date.now();
+      const openSessions = await prisma.workSession.findMany({
+        where: {
+          ...(orgId ? { organization_id: orgId } : {}),
+          ...(userId ? { user_id: userId } : {}),
+          ended_at: null,
+        },
+        include: {
+          task: { select: { id: true, project_id: true } },
+        },
+      });
+
+      if (openSessions.length === 0) return 0;
+
+      const orgIds = Array.from(new Set(openSessions.map((s) => s.organization_id)));
+      const policies = await prisma.organizationWorkPolicy.findMany({
+        where: { organization_id: { in: orgIds } },
+      });
+      const policyMap = new Map(policies.map((p) => [p.organization_id, p]));
+
+      let clockedCount = 0;
+
+      for (const session of openSessions) {
+        const policy = policyMap.get(session.organization_id);
+        const timezone = policy?.timezone || 'Asia/Kolkata';
+        const cutoffTime = this.getSessionCutoffTime(session.started_at, timezone);
+
+        if (now > cutoffTime.getTime()) {
+          const durationMinutes = Math.max(1, diffMinutes(session.started_at, cutoffTime));
+          const autoNotes = session.notes
+            ? `${session.notes} · Auto-clocked at 18:15 (daily safety cutoff)`
+            : 'Auto-clocked at 18:15 (daily safety cutoff)';
+
+          await prisma.$transaction(async (tx) => {
+            await tx.workSession.update({
+              where: { id: session.id },
+              data: {
+                ended_at: cutoffTime,
+                notes: autoNotes,
+              },
+            });
+
+            if (session.task_id) {
+              await tx.timeEntry.create({
+                data: {
+                  organization_id: session.organization_id,
+                  user_id: session.user_id,
+                  task_id: session.task_id,
+                  project_id: session.task?.project_id || null,
+                  work_session_id: session.id,
+                  date: session.started_at,
+                  start_time: session.started_at,
+                  end_time: cutoffTime,
+                  duration_minutes: durationMinutes,
+                  notes: autoNotes,
+                },
+              });
+            }
+          });
+
+          clockedCount++;
+        }
+      }
+
+      return clockedCount;
+    } catch (err) {
+      console.error('Failed to auto-clock expired sessions:', err);
+      return 0;
+    }
+  }
+
   static async startSession(user: any, input: SessionInput = {}) {
     const orgId = this.resolveOrganizationId(user, user.organization_id) || await this.getDefaultOrganizationId();
+    // Auto-clock any expired/stale sessions before starting a new one
+    await this.autoClockExpiredSessions(orgId, user.id);
+
     const taskId = input.task_id || null;
 
     if (taskId) {
@@ -304,18 +396,35 @@ export class TimesheetService {
       throw new Error('Session end time cannot be before start time');
     }
 
+    const policy = await prisma.organizationWorkPolicy.findUnique({
+      where: { organization_id: orgId },
+    });
+    const timezone = policy?.timezone || 'Asia/Kolkata';
+    const cutoffTime = this.getSessionCutoffTime(activeSession.started_at, timezone);
+
+    let effectiveEndedAt = endedAt;
+    let effectiveNotes = input.notes ?? activeSession.notes;
+
+    if (effectiveEndedAt.getTime() > cutoffTime.getTime()) {
+      effectiveEndedAt = cutoffTime;
+      const noteSuffix = 'Auto-clocked at 18:15 (daily safety cutoff)';
+      effectiveNotes = effectiveNotes
+        ? `${effectiveNotes} · ${noteSuffix}`
+        : noteSuffix;
+    }
+
     return await prisma.$transaction(async (tx) => {
       const session = await tx.workSession.update({
         where: { id: activeSession.id },
         data: {
-          ended_at: endedAt,
+          ended_at: effectiveEndedAt,
           break_minutes: breakMinutes,
-          notes: input.notes ?? activeSession.notes,
+          notes: effectiveNotes,
         },
       });
 
       if (activeSession.task_id) {
-        const rawDiff = diffMinutes(activeSession.started_at, endedAt);
+        const rawDiff = diffMinutes(activeSession.started_at, effectiveEndedAt);
         const durationMinutes = Math.max(1, rawDiff);
 
         const task = await tx.workItem.findUnique({
@@ -332,9 +441,9 @@ export class TimesheetService {
             work_session_id: activeSession.id,
             date: activeSession.started_at,
             start_time: activeSession.started_at,
-            end_time: endedAt,
+            end_time: effectiveEndedAt,
             duration_minutes: durationMinutes,
-            notes: input.notes || activeSession.notes || null,
+            notes: effectiveNotes || null,
           },
           include: {
             task: true,
@@ -350,6 +459,7 @@ export class TimesheetService {
 
   static async getActiveTaskSession(user: any, taskId?: string | null) {
     const orgId = this.resolveOrganizationId(user, user.organization_id) || await this.getDefaultOrganizationId();
+    await this.autoClockExpiredSessions(orgId, user.id);
     return prisma.workSession.findFirst({
       where: {
         organization_id: orgId,
@@ -688,6 +798,8 @@ export class TimesheetService {
       throw new Error('Forbidden: you cannot view another user\'s timesheet');
     }
 
+    await this.autoClockExpiredSessions(orgId, targetId);
+
     const date = dateValue ? new Date(dateValue) : new Date();
     const startOfDay = new Date(date);
     startOfDay.setUTCHours(0, 0, 0, 0);
@@ -734,7 +846,16 @@ export class TimesheetService {
     };
   }
 
-  static async getWeeklyTimesheet(user: any, targetUserId?: string | null, dateValue?: Date | string) {
+  static async getWeeklyTimesheet(
+    user: any,
+    targetUserId?: string | null,
+    dateValue?: Date | string,
+    filters: {
+      status?: string;
+      time_filter?: string;
+      search?: string;
+    } = {}
+  ) {
     const targetId = targetUserId || user.id;
     const orgId = this.resolveOrganizationId(user, user.organization_id) || await this.getDefaultOrganizationId();
 
@@ -743,6 +864,8 @@ export class TimesheetService {
     if (!isOwner && !canViewTeam) {
       throw new Error('Forbidden: you cannot view another user\'s timesheet');
     }
+
+    await this.autoClockExpiredSessions(orgId, targetId);
 
     let targetUserInfo: any = null;
     if (!isOwner) {
@@ -950,7 +1073,27 @@ export class TimesheetService {
       orderBy: { started_at: 'desc' },
     });
 
-    const task_rows = Array.from(taskMap.values());
+    let task_rows = Array.from(taskMap.values());
+    const all_task_rows_count = task_rows.length;
+
+    if (filters.status && filters.status !== 'ALL') {
+      const s = filters.status.toUpperCase();
+      task_rows = task_rows.filter((r) => (r.status || 'TODO').toUpperCase() === s);
+    }
+    if (filters.time_filter === 'LOGGED') {
+      task_rows = task_rows.filter((r) => (r.total_minutes || 0) > 0);
+    } else if (filters.time_filter === 'NO_LOGGED') {
+      task_rows = task_rows.filter((r) => (r.total_minutes || 0) === 0);
+    }
+    if (filters.search && filters.search.trim()) {
+      const q = filters.search.trim().toLowerCase();
+      task_rows = task_rows.filter((r) => {
+        const titleMatch = (r.title || '').toLowerCase().includes(q);
+        const keyMatch = (r.key || r.id || '').toLowerCase().includes(q);
+        const projMatch = (r.project?.name || '').toLowerCase().includes(q);
+        return titleMatch || keyMatch || projMatch;
+      });
+    }
 
     return {
       user: targetUserInfo || { id: user.id, name: user.name, email: user.email },
@@ -961,6 +1104,15 @@ export class TimesheetService {
       days,
       daily_totals: dailyTotals,
       task_rows,
+      all_task_rows_count,
+      available_statuses: [
+        { id: 'ALL', label: 'All Statuses' },
+        { id: 'TODO', label: 'To Do' },
+        { id: 'IN_PROGRESS', label: 'In Progress' },
+        { id: 'IN_REVIEW', label: 'In Review' },
+        { id: 'BLOCKED', label: 'Blocked' },
+        { id: 'COMPLETED', label: 'Completed' },
+      ],
       active_session: activeSession,
       available_tasks: assignedTasks.map((t) => ({
         id: t.id,
@@ -1352,6 +1504,7 @@ export class TimesheetService {
     }
 
     const orgId = this.resolveOrganizationId(user, user.organization_id) || await this.getDefaultOrganizationId();
+    await this.autoClockExpiredSessions(orgId);
 
     const today = options.date ? new Date(options.date) : new Date();
     if (isNaN(today.getTime())) {

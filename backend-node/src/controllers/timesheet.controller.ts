@@ -136,10 +136,19 @@ export class TimesheetController {
       const user = (req as any).fullUser;
       const targetUserId = req.query.user_id as string | undefined;
       const dateParam = req.query.date as string | undefined;
+      const statusParam = req.query.status as string | undefined;
+      const timeFilterParam = req.query.time_filter as string | undefined;
+      const searchParam = req.query.search as string | undefined;
+
       const summary = await TimesheetService.getWeeklyTimesheet(
         user,
         targetUserId || user.id,
-        dateParam ? new Date(dateParam) : new Date()
+        dateParam ? new Date(dateParam) : new Date(),
+        {
+          status: statusParam,
+          time_filter: timeFilterParam,
+          search: searchParam,
+        }
       );
       res.status(200).json({ timesheet: summary });
     } catch (error) {

@@ -30,10 +30,13 @@ export const timesheetService = {
     return api.get('/timesheet/today');
   },
 
-  getWeekly(userId = null, date = null) {
+  getWeekly(userId = null, date = null, filters = {}) {
     const params = new URLSearchParams();
     if (userId) params.set('user_id', userId);
     if (date) params.set('date', date);
+    if (filters.status && filters.status !== 'ALL') params.set('status', filters.status);
+    if (filters.time_filter && filters.time_filter !== 'ALL') params.set('time_filter', filters.time_filter);
+    if (filters.search && filters.search.trim()) params.set('search', filters.search.trim());
     const qs = params.toString();
     return api.get(`/timesheet/weekly${qs ? `?${qs}` : ''}`);
   },

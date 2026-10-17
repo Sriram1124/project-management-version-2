@@ -174,6 +174,7 @@ export default function ManagerDashboardView({
           loading={healthLoading}
           onViewAll={() => onNavigate('projects')}
           onSelectProject={onSelectProject}
+          limit={4}
         />
       </div>
     </div>
