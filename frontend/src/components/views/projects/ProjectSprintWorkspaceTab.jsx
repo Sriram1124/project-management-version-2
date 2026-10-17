@@ -318,14 +318,15 @@ export default function ProjectSprintWorkspaceTab({
     }
   };
 
-  // Complete Sprint Handler
-  const handleConfirmCompleteSprint = async (targetSprintId) => {
+  // Complete Cycle Handler
+  const handleConfirmCompleteSprint = async (optionsOrTarget) => {
     if (!currentSprint) return;
     try {
-      await sprintsService.completeSprint(projectId, currentSprint.id, {
-        target_sprint_id: targetSprintId,
-      });
-      onToast?.(`Sprint "${currentSprint.name}" completed successfully`);
+      const payload = typeof optionsOrTarget === 'object' && optionsOrTarget !== null
+        ? optionsOrTarget
+        : { target_sprint_id: optionsOrTarget };
+      await sprintsService.completeSprint(projectId, currentSprint.id, payload);
+      onToast?.(payload.unfinished_action === 'CONTINUE' ? `Cycle "${currentSprint.name}" continued` : `Cycle "${currentSprint.name}" completed successfully`);
       loadData();
     } catch (err) {
       console.error('Failed to complete sprint:', err);
@@ -1167,6 +1168,7 @@ export default function ProjectSprintWorkspaceTab({
         upcomingSprints={upcomingSprints}
         completedCount={completedCount}
         incompleteCount={incompleteCount}
+        tasks={workItems.filter((w) => w.sprint_id === currentSprint?.id)}
         onConfirmComplete={handleConfirmCompleteSprint}
       />
 

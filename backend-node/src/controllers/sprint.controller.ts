@@ -117,11 +117,11 @@ export class SprintController {
     try {
       const user = (req as any).fullUser;
       const { id: projectId, sprintId } = req.params;
-      const { unfinished_action, target_sprint_id } = req.body;
+      const { unfinished_action, target_sprint_id, new_sprint_name, new_end_date, selected_task_ids } = req.body;
       const sprint = await SprintService.completeSprint(
         projectId,
         sprintId,
-        { unfinished_action, target_sprint_id },
+        { unfinished_action, target_sprint_id, new_sprint_name, new_end_date, selected_task_ids },
         user
       );
       res.status(200).json({

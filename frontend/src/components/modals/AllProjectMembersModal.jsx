@@ -12,11 +12,14 @@ import {
   Trash2,
   Loader2,
   AlertTriangle,
-  UserPlus
+  UserPlus,
+  MoreVertical,
+  UserCog
 } from 'lucide-react';
 import { PROJECT_ROLE_LABELS } from './AssignProjectRolesModal';
 import AddProjectMembersModal from './AddProjectMembersModal';
 import AddCustomRoleModal from './AddCustomRoleModal';
+import EditMemberPermissionsModal from './EditMemberPermissionsModal';
 import { projectsService } from '../../services/projects.service';
 
 export default function AllProjectMembersModal({
@@ -35,6 +38,7 @@ export default function AllProjectMembersModal({
 }) {
   if (!isOpen) return null;
 
+  const [localMembers, setLocalMembers] = useState(members);
   const [search, setSearch] = useState('');
   const [selectedRoles, setSelectedRoles] = useState(() => new Set());
   const [isFilterOpen, setIsFilterOpen] = useState(false);
@@ -46,9 +50,24 @@ export default function AllProjectMembersModal({
   const [removeError, setRemoveError] = useState('');
   const [isAddMembersOpen, setIsAddMembersOpen] = useState(false);
   const [isAddCustomRoleOpen, setIsAddCustomRoleOpen] = useState(false);
+  const [activeMenuMemberId, setActiveMenuMemberId] = useState(null);
+  const [editingPermissionsMember, setEditingPermissionsMember] = useState(null);
   const filterRef = useRef(null);
 
   const allowAddMembers = canAddMembers || canAssignRoles;
+
+  useEffect(() => {
+    setLocalMembers(members);
+  }, [members]);
+
+  // Close menu on click outside
+  useEffect(() => {
+    const handleMenuClickOutside = () => setActiveMenuMemberId(null);
+    if (activeMenuMemberId) {
+      document.addEventListener('click', handleMenuClickOutside);
+    }
+    return () => document.removeEventListener('click', handleMenuClickOutside);
+  }, [activeMenuMemberId]);
 
   // Close filter popover on click outside
   useEffect(() => {
@@ -68,12 +87,12 @@ export default function AllProjectMembersModal({
   // Distinct roles present among members
   const availableRoles = useMemo(() => {
     const rolesSet = new Set();
-    members.forEach((m) => {
+    (localMembers || []).forEach((m) => {
       if (m.project_role) rolesSet.add(m.project_role);
       else rolesSet.add('UNASSIGNED');
     });
     return Array.from(rolesSet);
-  }, [members]);
+  }, [localMembers]);
 
   const handleToggleRole = (roleKey) => {
     // If user interacts with role checkboxes, disable custom mode
@@ -172,7 +191,7 @@ export default function AllProjectMembersModal({
     }
   };
   const filteredMembers = useMemo(() => {
-    const list = members.filter((m) => {
+    const list = (localMembers || []).filter((m) => {
       const name = m.name || m.email || '';
       const email = m.email || '';
       const role = m.project_role || 'UNASSIGNED';
@@ -202,7 +221,7 @@ export default function AllProjectMembersModal({
       const nameB = b.name || b.email || '';
       return nameA.localeCompare(nameB, undefined, { sensitivity: 'base' });
     });
-  }, [members, search, selectedRoles, isCustomMode, customSelectedIds]);
+  }, [localMembers, search, selectedRoles, isCustomMode, customSelectedIds]);
 
   const modalContent = (
     <div 
@@ -555,24 +574,70 @@ export default function AllProjectMembersModal({
                         {roleLabel}
                       </span>
 
-                      {/* Remove Member Button */}
-                      {canRemoveMembers && (
-                        <button
-                          type="button"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            setMemberToRemove(member);
-                          }}
-                          disabled={removingUserId === member.user_id}
-                          className="p-1 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-colors cursor-pointer"
-                          title={`Remove ${mName} from project`}
-                        >
-                          {removingUserId === member.user_id ? (
-                            <Loader2 className="w-3.5 h-3.5 text-rose-500 animate-spin" />
-                          ) : (
-                            <Trash2 className="w-3.5 h-3.5" />
+                      {/* Member Actions Three-Dot Menu */}
+                      {(canAssignRoles || canRemoveMembers) && (
+                        <div className="relative">
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setActiveMenuMemberId(activeMenuMemberId === member.user_id ? null : member.user_id);
+                            }}
+                            className="p-1.5 text-slate-400 hover:text-slate-700 hover:bg-slate-200/60 rounded-lg transition-colors cursor-pointer"
+                            title={`Options for ${mName}`}
+                          >
+                            <MoreVertical className="w-3.5 h-3.5" />
+                          </button>
+
+                          {activeMenuMemberId === member.user_id && (
+                            <div
+                              className="absolute right-0 top-full mt-1 w-48 rounded-xl bg-white border border-slate-200 shadow-xl p-1.5 z-50 animate-in fade-in zoom-in-95 duration-100"
+                              onClick={(e) => e.stopPropagation()}
+                            >
+                              {canAssignRoles && (
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    setActiveMenuMemberId(null);
+                                    setEditingPermissionsMember(member);
+                                  }}
+                                  className="w-full flex items-center gap-2 px-2.5 py-1.5 rounded-lg text-xs font-semibold text-slate-700 hover:text-purple-700 hover:bg-purple-50 transition-colors text-left cursor-pointer"
+                                >
+                                  <ShieldCheck className="w-3.5 h-3.5 text-purple-600" />
+                                  <span>Edit Permissions</span>
+                                </button>
+                              )}
+
+                              {canAssignRoles && (
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    setActiveMenuMemberId(null);
+                                    onOpenAssignRoles?.();
+                                  }}
+                                  className="w-full flex items-center gap-2 px-2.5 py-1.5 rounded-lg text-xs font-semibold text-slate-700 hover:text-purple-700 hover:bg-purple-50 transition-colors text-left cursor-pointer"
+                                >
+                                  <UserCog className="w-3.5 h-3.5 text-slate-500" />
+                                  <span>Change Project Role</span>
+                                </button>
+                              )}
+
+                              {canRemoveMembers && (
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    setActiveMenuMemberId(null);
+                                    setMemberToRemove(member);
+                                  }}
+                                  className="w-full flex items-center gap-2 px-2.5 py-1.5 rounded-lg text-xs font-semibold text-rose-600 hover:bg-rose-50 transition-colors text-left cursor-pointer"
+                                >
+                                  <Trash2 className="w-3.5 h-3.5 text-rose-500" />
+                                  <span>Remove from Project</span>
+                                </button>
+                              )}
+                            </div>
                           )}
-                        </button>
+                        </div>
                       )}
                     </div>
                   </div>
@@ -690,6 +755,20 @@ export default function AllProjectMembersModal({
             title: 'Custom Role Created',
             message: `Role "${newRole.name}" created successfully.`,
           });
+        }}
+        onToast={onToast}
+      />
+
+      {/* Edit Member Permissions Modal */}
+      <EditMemberPermissionsModal
+        isOpen={Boolean(editingPermissionsMember)}
+        onClose={() => setEditingPermissionsMember(null)}
+        projectId={projectId}
+        member={editingPermissionsMember}
+        onSuccess={(updatedMembers) => {
+          if (Array.isArray(updatedMembers)) {
+            setLocalMembers(updatedMembers);
+          }
         }}
         onToast={onToast}
       />

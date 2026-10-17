@@ -494,31 +494,28 @@ export class WorkItemService {
     }
 
     // Story points validation:
-    // For TASK, SUBTASK, BUG: story_points is mandatory and must be a positive integer greater than 0.
+    // For TASK, STORY, SUBTASK, BUG: story_points is mandatory and must be a non-negative integer (>= 0).
     const isTaskLike =
       data.type === WorkItemType.TASK ||
+      data.type === WorkItemType.STORY ||
       data.type === WorkItemType.SUBTASK ||
       data.type === WorkItemType.BUG;
 
     if (isTaskLike) {
-      const sp = Number(data.story_points);
+      const rawSp: any = (data as any).story_points;
+      const sp = rawSp !== undefined && rawSp !== null && rawSp !== '' ? Number(rawSp) : NaN;
       if (
-        data.story_points === undefined ||
-        data.story_points === null ||
+        rawSp === undefined ||
+        rawSp === null ||
+        (typeof rawSp === 'string' && rawSp.trim() === '') ||
         isNaN(sp) ||
         !Number.isInteger(sp) ||
-        sp <= 0
+        sp < 0
       ) {
+        const noun = data.type === WorkItemType.STORY ? 'stories' : `${data.type.toLowerCase()}s`;
         throw new Error(
-          'Story points are mandatory for tasks, subtasks, and bugs and must be a positive integer greater than 0.'
+          `Story points are mandatory for ${noun} and must be a non-negative integer (0 or greater).`
         );
-      }
-    } else if (data.type === WorkItemType.STORY) {
-      if (data.story_points !== undefined && data.story_points !== null) {
-        const sp = Number(data.story_points);
-        if (isNaN(sp) || !Number.isInteger(sp) || sp < 0) {
-          throw new Error('Story points for stories must be a non-negative integer.');
-        }
       }
     }
 
@@ -533,11 +530,10 @@ export class WorkItemService {
       if (!project) {
         throw new Error('Project not found in your organization');
       }
-      if (project.status === ProjectStatus.ARCHIVED) {
+      const isMgr = this.isManagerOrAdmin(user);
+      if (project.status === ProjectStatus.ARCHIVED && !isMgr) {
         throw new Error('Cannot create work items in an archived project');
       }
-
-      const isMgr = this.isManagerOrAdmin(user);
       const permInfo = await this.getMemberProjectPermissions(user.id, projectId);
 
       if (!isMgr && !permInfo.isMember && !permInfo.isOwner) {
@@ -654,16 +650,25 @@ export class WorkItemService {
 
     let storyPointsVal = 0;
     if (isApplicableType) {
-      const sp = data.story_points !== undefined && data.story_points !== null ? Number(data.story_points) : NaN;
-      if (isNaN(sp) || !Number.isInteger(sp) || sp <= 0) {
+      const rawSp: any = (data as any).story_points;
+      const sp = rawSp !== undefined && rawSp !== null && rawSp !== '' ? Number(rawSp) : NaN;
+      if (
+        rawSp === undefined ||
+        rawSp === null ||
+        (typeof rawSp === 'string' && rawSp.trim() === '') ||
+        isNaN(sp) ||
+        !Number.isInteger(sp) ||
+        sp < 0
+      ) {
         const noun = data.type === WorkItemType.STORY ? 'stories' : `${data.type.toLowerCase()}s`;
         throw new Error(
-          `Story points are mandatory for ${noun} and must be a positive integer greater than 0.`
+          `Story points are mandatory for ${noun} and must be a non-negative integer (0 or greater).`
         );
       }
       storyPointsVal = sp;
     } else {
-      const sp = data.story_points !== undefined && data.story_points !== null ? Number(data.story_points) : 0;
+      const rawSp: any = (data as any).story_points;
+      const sp = rawSp !== undefined && rawSp !== null && rawSp !== '' ? Number(rawSp) : 0;
       storyPointsVal = !isNaN(sp) && Number.isInteger(sp) && sp >= 0 ? sp : 0;
     }
 
@@ -977,7 +982,7 @@ export class WorkItemService {
         where: { id: currentItem.project_id },
         select: { owner_id: true, status: true },
       });
-      if (project?.status === ProjectStatus.ARCHIVED) {
+      if (project?.status === ProjectStatus.ARCHIVED && !isMgr) {
         throw new Error('Cannot modify work items in an archived project');
       }
 
@@ -1129,20 +1134,24 @@ export class WorkItemService {
         effectiveType === WorkItemType.BUG;
 
       if (isApplicableType) {
-        const sp = Number(input.story_points);
+        const rawSp: any = (input as any).story_points;
+        const sp = rawSp !== null && rawSp !== undefined && rawSp !== '' ? Number(rawSp) : NaN;
         if (
-          input.story_points === null ||
+          rawSp === null ||
+          rawSp === undefined ||
+          (typeof rawSp === 'string' && rawSp.trim() === '') ||
           isNaN(sp) ||
           !Number.isInteger(sp) ||
-          sp <= 0
+          sp < 0
         ) {
           throw new Error(
-            'Story points are mandatory for tasks, stories, subtasks, and bugs and must be a positive integer greater than 0.'
+            'Story points are mandatory for tasks, stories, subtasks, and bugs and must be a non-negative integer (0 or greater).'
           );
         }
         dataToUpdate.story_points = sp;
       } else {
-        const sp = input.story_points !== null ? Number(input.story_points) : null;
+        const rawSp: any = (input as any).story_points;
+        const sp = rawSp !== null && rawSp !== undefined && rawSp !== '' ? Number(rawSp) : null;
         if (sp !== null && (isNaN(sp) || !Number.isInteger(sp) || sp < 0)) {
           throw new Error('Story points must be a non-negative integer.');
         }
@@ -1370,7 +1379,7 @@ export class WorkItemService {
         where: { id: item.project_id },
         select: { status: true, owner_id: true },
       });
-      if (project?.status === ProjectStatus.ARCHIVED) {
+      if (project?.status === ProjectStatus.ARCHIVED && !isMgr) {
         throw new Error('Cannot delete work items in an archived project');
       }
 

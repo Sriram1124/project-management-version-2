@@ -66,19 +66,43 @@ async function runTests() {
   }
   if (!threwOnMissingSp) throw new Error('Expected task creation without story points to fail!');
 
-  let threwOnZeroSp = false;
+  let threwOnNegativeSp = false;
   try {
     await WorkItemService.createWorkItem(user, {
       project_id: project.id,
-      type: WorkItemType.STORY,
-      title: 'Story with 0 story points',
-      story_points: 0,
+      type: WorkItemType.TASK,
+      title: 'Task with -1 story points',
+      story_points: -1,
     });
   } catch (err: any) {
-    threwOnZeroSp = true;
-    console.log('[PASS] Rejected story creation with 0 story points:', err.message);
+    threwOnNegativeSp = true;
+    console.log('[PASS] Rejected task creation with negative story points:', err.message);
   }
-  if (!threwOnZeroSp) throw new Error('Expected story creation with 0 story points to fail!');
+  if (!threwOnNegativeSp) throw new Error('Expected task creation with negative story points to fail!');
+
+  let threwOnDecimalSp = false;
+  try {
+    await WorkItemService.createWorkItem(user, {
+      project_id: project.id,
+      type: WorkItemType.TASK,
+      title: 'Task with decimal story points',
+      story_points: 3.5,
+    });
+  } catch (err: any) {
+    threwOnDecimalSp = true;
+    console.log('[PASS] Rejected task creation with decimal story points:', err.message);
+  }
+  if (!threwOnDecimalSp) throw new Error('Expected task creation with decimal story points to fail!');
+
+  // Non-negative integer (including 0) must be accepted (using STORY which can exist at project root)
+  const zeroSpTask = await WorkItemService.createWorkItem(user, {
+    project_id: project.id,
+    type: WorkItemType.STORY,
+    title: 'Story with 0 story points (Valid non-negative integer)',
+    story_points: 0,
+  });
+  console.log(`[PASS] Accepted 0 story points: created story ${zeroSpTask.id} with story_points: ${zeroSpTask.story_points}`);
+  await WorkItemService.deleteWorkItem(zeroSpTask.id, user);
 
   // Test 2: Valid story creation with story points
   console.log('\n--- TEST 2: Story Creation with Valid Story Points ---');
@@ -175,6 +199,45 @@ async function runTests() {
     user
   );
   console.log(`[PASS] Successfully created project-scoped custom role: "${validRole.name}" (${validRole.id})`);
+
+  // Test 6: Project Member Individual Permissions (9 Capabilities & Reset)
+  console.log('\n--- TEST 6: Project Member Individual Permissions (9 Capabilities & Reset) ---');
+  // Find a project member or add current user as member
+  let targetMember = await prisma.projectMember.findFirst({
+    where: { project_id: project.id },
+  });
+  if (!targetMember) {
+    targetMember = await prisma.projectMember.create({
+      data: {
+        project_id: project.id,
+        user_id: user.id,
+        project_role: 'MEMBER',
+      },
+    });
+  }
+
+  // Assign 4 specific capabilities
+  const updatedMembersWithPerms = await ProjectService.updateMemberPermissions(
+    project.id,
+    targetMember.user_id,
+    ['DOCUMENT_UPLOAD', 'TASK_UPDATE', 'CYCLE_ACTIVATE', 'ACTION_ITEM_CREATE'],
+    user
+  );
+  const updatedMember = updatedMembersWithPerms.find((m: any) => m.user_id === targetMember!.user_id);
+  console.log(`[PASS] Assigned capabilities to member. Assigned permissions count:`, updatedMember?.role_details?.permissions?.length);
+  if (!updatedMember?.role_details?.permissions?.includes('DOCUMENT_UPLOAD')) {
+    throw new Error('Expected DOCUMENT_UPLOAD to be in member permissions!');
+  }
+
+  // Reset capabilities to None
+  const resetMembers = await ProjectService.updateMemberPermissions(
+    project.id,
+    targetMember.user_id,
+    [],
+    user
+  );
+  const resetMember = resetMembers.find((m: any) => m.user_id === targetMember!.user_id);
+  console.log(`[PASS] Reset member capabilities. Role details is null or empty:`, resetMember?.role_id === null || !resetMember?.role_details);
 
   // Clean up test data
   console.log('\n--- CLEANUP ---');

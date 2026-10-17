@@ -238,14 +238,14 @@ export default function IssueDetailDrawer({
   const handleSPBlur = () => {
     const raw = editedStoryPoints;
     if (raw === '' || raw === null || raw === undefined) {
-      setEditedStoryPoints(issue?.story_points ?? issue?.storyPoints ?? (isApplicableType ? 1 : 0));
+      setEditedStoryPoints(issue?.story_points ?? issue?.storyPoints ?? 0);
       return;
     }
     const val = parseInt(raw, 10);
     if (isApplicableType) {
-      if (isNaN(val) || val <= 0) {
-        alert('Story points are mandatory for tasks, stories, subtasks, and bugs and must be a positive integer greater than 0.');
-        setEditedStoryPoints(issue?.story_points ?? issue?.storyPoints ?? 1);
+      if (isNaN(val) || val < 0) {
+        alert('Story points are mandatory for tasks, stories, subtasks, and bugs and must be a non-negative integer (0 or greater).');
+        setEditedStoryPoints(issue?.story_points ?? issue?.storyPoints ?? 0);
         return;
       }
       if (val !== (issue?.story_points ?? issue?.storyPoints)) {
@@ -546,7 +546,7 @@ export default function IssueDetailDrawer({
               <div className="flex items-center gap-1.5">
                 <input
                   type="number"
-                  min={isApplicableType ? 1 : 0}
+                  min={0}
                   max={999}
                   value={editedStoryPoints}
                   onChange={(e) => setEditedStoryPoints(e.target.value)}

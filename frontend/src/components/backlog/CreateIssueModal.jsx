@@ -273,8 +273,15 @@ export default function CreateIssueModal({
         const isApplicableType = ['Task', 'Subtask', 'Bug', 'Story'].includes(issueType);
         const sp = Number(storyPoints);
         if (isApplicableType) {
-          if (!storyPoints || isNaN(sp) || !Number.isInteger(sp) || sp <= 0) {
-            setError('Story points are mandatory for tasks, stories, subtasks, and bugs and must be a positive integer greater than 0.');
+          if (
+            storyPoints === '' ||
+            storyPoints === null ||
+            storyPoints === undefined ||
+            isNaN(sp) ||
+            !Number.isInteger(sp) ||
+            sp < 0
+          ) {
+            setError('Story points are mandatory for tasks, stories, subtasks, and bugs and must be a non-negative integer (0 or greater).');
             setSubmitting(false);
             return;
           }
@@ -289,7 +296,7 @@ export default function CreateIssueModal({
           sprint_id: sprintId === 'backlog' ? null : sprintId,
           assignee_ids: assigneeId ? [assigneeId] : [],
           priority: priority.toUpperCase(),
-          story_points: sp > 0 ? sp : 0,
+          story_points: isApplicableType ? sp : (sp >= 0 ? sp : 0),
           start_date: startDate ? new Date(startDate).toISOString() : null,
           due_date: dueDate ? new Date(dueDate).toISOString() : null,
         });
@@ -571,7 +578,7 @@ export default function CreateIssueModal({
               </label>
               <input
                 type="number"
-                min={1}
+                min={0}
                 max={100}
                 required
                 value={storyPoints}

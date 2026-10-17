@@ -224,8 +224,15 @@ export default function TaskDetailModal({
     const requiresStoryPoints = ['TASK', 'SUBTASK', 'BUG', 'STORY'].includes(liveTask.type);
     const sp = Number(storyPoints);
     if (requiresStoryPoints && !isIntern) {
-      if (storyPoints === '' || isNaN(sp) || !Number.isInteger(sp) || sp <= 0) {
-        setError('Story points are mandatory for tasks, stories, subtasks, and bugs and must be a positive integer greater than 0.');
+      if (
+        storyPoints === '' ||
+        storyPoints === null ||
+        storyPoints === undefined ||
+        isNaN(sp) ||
+        !Number.isInteger(sp) ||
+        sp < 0
+      ) {
+        setError('Story points are mandatory for tasks, stories, subtasks, and bugs and must be a non-negative integer (0 or greater).');
         return;
       }
     }
@@ -240,7 +247,7 @@ export default function TaskDetailModal({
         priority,
         start_date: startDate ? new Date(startDate).toISOString() : null,
         due_date: dueDate ? new Date(dueDate).toISOString() : null,
-        ...(!isIntern && storyPoints !== '' && !isNaN(sp) && sp > 0 ? { story_points: sp } : {}),
+        ...(!isIntern && storyPoints !== '' && !isNaN(sp) && sp >= 0 ? { story_points: sp } : {}),
       };
 
       const updated = await workItemsService.updateWorkItem(liveTask.id, payload);
@@ -594,7 +601,7 @@ export default function TaskDetailModal({
                 {canEditFields && isEditing ? (
                   <input
                     type="number"
-                    min="1"
+                    min="0"
                     max="99"
                     step="1"
                     value={storyPoints}
@@ -603,7 +610,7 @@ export default function TaskDetailModal({
                   />
                 ) : (
                   <div className="px-2.5 py-1.5 rounded-lg border border-purple-100 bg-purple-50 text-purple-700 font-mono font-bold text-xs flex items-center justify-between">
-                    <span>{liveTask.story_points ? `${liveTask.story_points} SP` : '—'}</span>
+                    <span>{liveTask.story_points !== null && liveTask.story_points !== undefined ? `${liveTask.story_points} SP` : '—'}</span>
                     {canEditFields && !isEditing && (
                       <button
                         type="button"

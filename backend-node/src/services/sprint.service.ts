@@ -86,7 +86,7 @@ export class SprintService {
     if (!project) {
       throw new Error('Project not found');
     }
-    if (project.status === 'ARCHIVED') {
+    if (project.status === 'ARCHIVED' && !this.isManagerOrAdmin(user)) {
       throw new Error('Cannot create sprints or cycles in an archived project');
     }
 
@@ -210,6 +210,8 @@ export class SprintService {
         completion_percentage: completionPercentage,
         total_points: totalPoints,
         completed_points: completedPoints,
+        remaining_points: Math.max(0, totalPoints - completedPoints),
+        incomplete_items: Math.max(0, totalItems - completedItems),
       };
     });
   }
@@ -302,6 +304,8 @@ export class SprintService {
       completion_percentage: completionPercentage,
       total_points: totalPoints,
       completed_points: completedPoints,
+      remaining_points: Math.max(0, totalPoints - completedPoints),
+      incomplete_items: Math.max(0, totalItems - completedItems),
     };
   }
 
@@ -333,7 +337,7 @@ export class SprintService {
     if (!project) {
       throw new Error('Project not found');
     }
-    if (project.status === 'ARCHIVED') {
+    if (project.status === 'ARCHIVED' && !this.isManagerOrAdmin(user)) {
       throw new Error('Cannot update sprints or cycles in an archived project');
     }
 
@@ -452,7 +456,7 @@ export class SprintService {
     if (!project) {
       throw new Error('Project not found');
     }
-    if (project.status === 'ARCHIVED') {
+    if (project.status === 'ARCHIVED' && !this.isManagerOrAdmin(user)) {
       throw new Error('Cannot start sprints or cycles in an archived project');
     }
 
@@ -517,8 +521,11 @@ export class SprintService {
     projectId: string,
     sprintId: string,
     options: {
-      unfinished_action?: 'MOVE_TO_BACKLOG' | 'MOVE_TO_SPRINT' | 'KEEP_IN_CYCLE';
+      unfinished_action?: 'MOVE_TO_BACKLOG' | 'MOVE_TO_SPRINT' | 'CREATE_NEW_SPRINT' | 'KEEP_IN_CYCLE' | 'REOPEN' | 'CONTINUE';
       target_sprint_id?: string | null;
+      new_sprint_name?: string | null;
+      new_end_date?: string | Date | null;
+      selected_task_ids?: string[] | null;
     },
     user: any
   ) {
@@ -546,7 +553,7 @@ export class SprintService {
     if (!project) {
       throw new Error('Project not found');
     }
-    if (project.status === 'ARCHIVED') {
+    if (project.status === 'ARCHIVED' && !this.isManagerOrAdmin(user)) {
       throw new Error('Cannot complete sprints or cycles in an archived project');
     }
 
@@ -565,6 +572,21 @@ export class SprintService {
         throw new Error('Sprint not found in this project');
       }
 
+      // Option A: Reopen or Continue Cycle with date adjustment
+      if (options.unfinished_action === 'REOPEN' || options.unfinished_action === 'CONTINUE') {
+        const updateData: any = { status: SprintStatus.ACTIVE };
+        if (options.new_end_date) {
+          const parsedEnd = new Date(options.new_end_date);
+          if (!isNaN(parsedEnd.getTime())) {
+            updateData.end_date = parsedEnd;
+          }
+        }
+        return await tx.sprint.update({
+          where: { id: sprintId },
+          data: updateData,
+        });
+      }
+
       if (sprint.status === SprintStatus.COMPLETED) {
         return sprint;
       }
@@ -572,39 +594,79 @@ export class SprintService {
       // Handle incomplete work items
       if (options.unfinished_action !== 'KEEP_IN_CYCLE') {
         let destinationSprintId: string | null = null;
-        const shouldMoveToSprint =
-          (options.unfinished_action === 'MOVE_TO_SPRINT' || (!options.unfinished_action && !isKanban)) &&
-          Boolean(options.target_sprint_id);
 
-        if (shouldMoveToSprint && options.target_sprint_id) {
-          if (options.target_sprint_id === sprintId) {
-            throw new Error('Target sprint cannot be the sprint being completed');
-          }
-          const targetSprint = await tx.sprint.findFirst({
-            where: {
-              id: options.target_sprint_id,
+        // If user chose to create a new cycle to receive carried forward items
+        if (
+          (options.unfinished_action === 'CREATE_NEW_SPRINT' || Boolean(options.new_sprint_name)) &&
+          options.new_sprint_name?.trim()
+        ) {
+          const newSprint = await tx.sprint.create({
+            data: {
+              organization_id: project.organization_id,
               project_id: projectId,
-              ...(project.organization_id ? { organization_id: project.organization_id } : {}),
+              name: options.new_sprint_name.trim(),
+              status: SprintStatus.PLANNED,
             },
           });
-          if (!targetSprint) {
-            throw new Error('Target sprint for incomplete items not found in this project');
+          destinationSprintId = newSprint.id;
+        } else {
+          const shouldMoveToSprint =
+            (options.unfinished_action === 'MOVE_TO_SPRINT' || (!options.unfinished_action && !isKanban)) &&
+            Boolean(options.target_sprint_id);
+
+          if (shouldMoveToSprint && options.target_sprint_id) {
+            if (options.target_sprint_id === sprintId) {
+              throw new Error('Target sprint cannot be the sprint being completed');
+            }
+            const targetSprint = await tx.sprint.findFirst({
+              where: {
+                id: options.target_sprint_id,
+                project_id: projectId,
+                ...(project.organization_id ? { organization_id: project.organization_id } : {}),
+              },
+            });
+            if (!targetSprint) {
+              throw new Error('Target sprint for incomplete items not found in this project');
+            }
+            destinationSprintId = targetSprint.id;
           }
-          destinationSprintId = targetSprint.id;
         }
 
         // Move unfinished items (status != COMPLETED)
-        // In Scrum: uncompleted items move to backlog (null) or target sprint
-        // In Kanban: uncompleted items can return to unassigned continuous flow (null), or stay if explicitly kept
-        await tx.workItem.updateMany({
-          where: {
-            sprint_id: sprintId,
-            status: { not: WorkItemStatus.COMPLETED },
-          },
-          data: {
-            sprint_id: destinationSprintId,
-          },
-        });
+        // If specific task IDs are selected, carry forward only those and leave others in backlog
+        if (Array.isArray(options.selected_task_ids) && options.selected_task_ids.length > 0) {
+          await tx.workItem.updateMany({
+            where: {
+              id: { in: options.selected_task_ids },
+              sprint_id: sprintId,
+              status: { not: WorkItemStatus.COMPLETED },
+            },
+            data: {
+              sprint_id: destinationSprintId,
+            },
+          });
+          // Unselected unfinished tasks move to backlog
+          await tx.workItem.updateMany({
+            where: {
+              id: { notIn: options.selected_task_ids },
+              sprint_id: sprintId,
+              status: { not: WorkItemStatus.COMPLETED },
+            },
+            data: {
+              sprint_id: null,
+            },
+          });
+        } else {
+          await tx.workItem.updateMany({
+            where: {
+              sprint_id: sprintId,
+              status: { not: WorkItemStatus.COMPLETED },
+            },
+            data: {
+              sprint_id: destinationSprintId,
+            },
+          });
+        }
       }
 
       return await tx.sprint.update({
@@ -645,7 +707,7 @@ export class SprintService {
     if (!project) {
       throw new Error('Project not found');
     }
-    if (project.status === 'ARCHIVED') {
+    if (project.status === 'ARCHIVED' && !this.isManagerOrAdmin(user)) {
       throw new Error('Cannot delete sprints or cycles in an archived project');
     }
 

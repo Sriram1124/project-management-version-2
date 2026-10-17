@@ -696,6 +696,18 @@ export class ProjectService {
     ORGANIZATION_CREATE: { label: 'Create Organization', group: 'Organization', description: 'Provision new tenant organizations', adminOnly: true },
     ORGANIZATION_UPDATE: { label: 'Edit Organization', group: 'Organization', description: 'Update organization settings and work policies', adminOnly: true },
     ORGANIZATION_DELETE: { label: 'Delete Organization', group: 'Organization', description: 'Delete organization and purge tenant data', adminOnly: true },
+
+    // 9 Independently Selectable Capabilities
+    ROLE_ASSIGN: { label: 'Assign project roles', group: 'Team & Roles', description: 'Assign and change project roles for project members' },
+    PROJECT_ROLE_ASSIGN: { label: 'Assign project roles', group: 'Team & Roles', description: 'Assign and change project roles for project members' },
+    CYCLE_ACTIVATE: { label: 'Activate a cycle', group: 'Cycles', description: 'Start and activate planned project cycles' },
+    SPRINT_ACTIVATE: { label: 'Activate a cycle', group: 'Cycles', description: 'Start and activate planned project cycles' },
+    CYCLE_UPDATE: { label: 'Edit cycle details', group: 'Cycles', description: 'Update cycle dates, goals, names, or carry forward items' },
+    SPRINT_UPDATE: { label: 'Edit cycle details', group: 'Cycles', description: 'Update cycle dates, goals, names, or carry forward items' },
+    CYCLE_CREATE: { label: 'Create a cycle', group: 'Cycles', description: 'Create new project cycles or sprint iterations' },
+    SPRINT_CREATE: { label: 'Create a cycle', group: 'Cycles', description: 'Create new project cycles or sprint iterations' },
+    ACTION_ITEM_CREATE: { label: 'Add Action Items', group: 'Action Items', description: 'Create and assign action items extracted from project documents' },
+    ACTION_ITEM_DELETE: { label: 'Delete Action Items', group: 'Action Items', description: 'Remove action items from the project' },
   };
 
   /**
@@ -710,6 +722,16 @@ export class ProjectService {
     'TASK_DELETE',
     'TASK_ASSIGN',
     'DOCUMENT_UPLOAD',
+    'ROLE_ASSIGN',
+    'PROJECT_ROLE_ASSIGN',
+    'CYCLE_ACTIVATE',
+    'SPRINT_ACTIVATE',
+    'CYCLE_UPDATE',
+    'SPRINT_UPDATE',
+    'CYCLE_CREATE',
+    'SPRINT_CREATE',
+    'ACTION_ITEM_CREATE',
+    'ACTION_ITEM_DELETE',
   ]);
 
   /**
@@ -825,6 +847,33 @@ export class ProjectService {
           // Ignore concurrent seed collision
         }
       }
+    }
+
+    // Ensure all 9 project capabilities exist in permissions table
+    const PROJECT_PERMISSIONS_TO_ENSURE = [
+      'DOCUMENT_UPLOAD',
+      'ROLE_ASSIGN',
+      'PROJECT_ROLE_ASSIGN',
+      'CYCLE_ACTIVATE',
+      'SPRINT_ACTIVATE',
+      'CYCLE_UPDATE',
+      'SPRINT_UPDATE',
+      'CYCLE_CREATE',
+      'SPRINT_CREATE',
+      'TASK_UPDATE',
+      'TASK_CREATE',
+      'ACTION_ITEM_CREATE',
+      'ACTION_ITEM_DELETE',
+    ];
+    for (const permName of PROJECT_PERMISSIONS_TO_ENSURE) {
+      await prisma.permission.upsert({
+        where: { name: permName },
+        update: {},
+        create: {
+          name: permName,
+          description: this.PERMISSION_METADATA[permName]?.description || permName,
+        },
+      }).catch(() => {});
     }
   }
 
@@ -1025,6 +1074,7 @@ export class ProjectService {
 
     // 5. Transactional Creation
     const trimmedDesc = typeof data.description === 'string' && data.description.trim() ? data.description.trim() : null;
+    const isTemplate = Boolean((data as any).is_template || (data as any).is_reusable_template);
 
     const createdRole = await prisma.$transaction(async (tx) => {
       const role = await tx.role.create({
@@ -1032,7 +1082,7 @@ export class ProjectService {
           name: trimmedName,
           description: trimmedDesc,
           organization_id: project.organization_id,
-          project_id: projectId,
+          project_id: isTemplate ? null : projectId,
           is_custom: true,
         },
       });
@@ -1053,6 +1103,7 @@ export class ProjectService {
       label: createdRole.name,
       description: createdRole.description,
       is_custom: true,
+      is_template: !createdRole.project_id,
       organization_id: createdRole.organization_id,
       project_id: createdRole.project_id,
       permissions: dbPermissions.map((p) => p.name),
@@ -1202,6 +1253,151 @@ export class ProjectService {
         });
       }
     }
+
+    return await this.getProjectMembers(projectId, user);
+  }
+
+  /**
+   * Update individual member permissions without forcing a new named role for everyone
+   */
+  static async updateMemberPermissions(
+    projectId: string,
+    targetUserId: string,
+    permissions: string[],
+    user: any
+  ) {
+    if (!projectId || projectId === 'undefined') {
+      throw new Error('Project not found');
+    }
+    if (!targetUserId) {
+      throw new Error('Target user ID is required');
+    }
+
+    let orgId = user.organization_id;
+    if (!orgId && this.isManagerOrAdmin(user)) {
+      const firstOrg = await prisma.organization.findFirst({ where: { is_active: true } });
+      orgId = firstOrg?.id;
+    }
+
+    const where: any = { id: projectId };
+    if (orgId) {
+      where.organization_id = orgId;
+    }
+
+    const project = await prisma.project.findFirst({
+      where,
+    });
+    if (!project) {
+      throw new Error('Project not found');
+    }
+
+    const member = await prisma.projectMember.findUnique({
+      where: {
+        project_id_user_id: {
+          project_id: projectId,
+          user_id: targetUserId,
+        },
+      },
+      include: {
+        user: { select: { id: true, name: true, email: true } },
+        role: { select: { id: true, name: true, is_custom: true } },
+      },
+    });
+
+    if (!member) {
+      throw new Error('Member not found in this project');
+    }
+
+    await this.ensureBuiltInProjectRoles();
+
+    // If permissions array is empty or has 'NONE' or all permissions cleared, reset to base role (role_id = null)
+    const cleanedPerms = (Array.isArray(permissions) ? permissions : [])
+      .filter((p): p is string => typeof p === 'string' && Boolean(p.trim()) && p.trim().toUpperCase() !== 'NONE')
+      .map((p) => p.trim());
+
+    if (cleanedPerms.length === 0) {
+      // Clear custom member-specific permissions
+      await prisma.projectMember.update({
+        where: {
+          project_id_user_id: {
+            project_id: projectId,
+            user_id: targetUserId,
+          },
+        },
+        data: {
+          role_id: null,
+        },
+      });
+
+      // If the member's previous role was a member-specific custom role, clean it up if not used elsewhere
+      if (member.role?.is_custom && member.role.name.startsWith(`Member_${targetUserId.slice(0, 8)}`)) {
+        await prisma.role.delete({ where: { id: member.role.id } }).catch(() => {});
+      }
+
+      return await this.getProjectMembers(projectId, user);
+    }
+
+    // Validate requested permissions are within project capabilities
+    const unauthorized = cleanedPerms.filter((p) => !ProjectService.PROJECT_SCOPED_PERMISSIONS.has(p));
+    if (unauthorized.length > 0) {
+      throw new Error(`Invalid permissions: ${unauthorized.join(', ')}. Must be valid project capabilities.`);
+    }
+
+    // Upsert or fetch db permissions
+    const dbPermissions = await prisma.permission.findMany({
+      where: { name: { in: cleanedPerms } },
+    });
+
+    // Create or reuse member-specific custom role
+    const memberRoleName = `Member_${targetUserId.slice(0, 8)}_${projectId.slice(0, 8)}`;
+    const roleDesc = `Custom permissions for ${member.user.name || member.user.email}`;
+
+    await prisma.$transaction(async (tx) => {
+      let role = await tx.role.findFirst({
+        where: {
+          name: memberRoleName,
+          project_id: projectId,
+        },
+      });
+
+      if (!role) {
+        role = await tx.role.create({
+          data: {
+            name: memberRoleName,
+            description: roleDesc,
+            organization_id: project.organization_id,
+            project_id: projectId,
+            is_custom: true,
+          },
+        });
+      } else {
+        // Clear previous permissions
+        await tx.rolePermission.deleteMany({
+          where: { role_id: role.id },
+        });
+      }
+
+      // Assign new permissions
+      await tx.rolePermission.createMany({
+        data: dbPermissions.map((p) => ({
+          role_id: role.id,
+          permission_id: p.id,
+        })),
+      });
+
+      // Assign role to project member
+      await tx.projectMember.update({
+        where: {
+          project_id_user_id: {
+            project_id: projectId,
+            user_id: targetUserId,
+          },
+        },
+        data: {
+          role_id: role.id,
+        },
+      });
+    });
 
     return await this.getProjectMembers(projectId, user);
   }

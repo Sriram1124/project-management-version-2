@@ -218,18 +218,19 @@ export default function KanbanBoard({ projectId, project = null, isKanbanProject
     }
   };
 
-  // Complete Sprint
-  const handleConfirmCompleteSprint = async (targetSprintId) => {
+  // Complete Cycle
+  const handleConfirmCompleteSprint = async (optionsOrTarget) => {
     if (!activeSprint) return;
     try {
-      await sprintsService.completeSprint(projectId, activeSprint.id, {
-        target_sprint_id: targetSprintId,
-      });
-      onToast?.(`Sprint "${activeSprint.name}" completed successfully`);
+      const payload = typeof optionsOrTarget === 'object' && optionsOrTarget !== null
+        ? optionsOrTarget
+        : { target_sprint_id: optionsOrTarget };
+      await sprintsService.completeSprint(projectId, activeSprint.id, payload);
+      onToast?.(payload.unfinished_action === 'CONTINUE' ? `Cycle "${activeSprint.name}" continued` : `Cycle "${activeSprint.name}" completed successfully`);
       loadProjectData();
     } catch (err) {
       console.error('Failed to complete sprint:', err);
-      onToast?.(`Failed to complete sprint: ${err.message || 'Error'}`);
+      onToast?.(`Failed to complete cycle: ${err.message || 'Error'}`);
     }
   };
 
@@ -605,6 +606,7 @@ export default function KanbanBoard({ projectId, project = null, isKanbanProject
         upcomingSprints={upcomingSprints}
         completedCount={completedCount}
         incompleteCount={incompleteCount}
+        tasks={workItems.filter((w) => w.sprint_id === activeSprint?.id)}
         onConfirmComplete={handleConfirmCompleteSprint}
       />
     </div>

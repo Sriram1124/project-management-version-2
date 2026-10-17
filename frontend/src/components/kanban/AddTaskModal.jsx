@@ -324,8 +324,15 @@ export default function AddTaskModal({
     const isApplicableType = type === 'TASK' || type === 'SUBTASK' || type === 'BUG' || type === 'STORY';
     const sp = Number(storyPoints);
     if (isApplicableType) {
-      if (!storyPoints || isNaN(sp) || !Number.isInteger(sp) || sp <= 0) {
-        setError('Story points are mandatory for tasks, stories, subtasks, and bugs and must be a positive integer greater than 0.');
+      if (
+        storyPoints === '' ||
+        storyPoints === null ||
+        storyPoints === undefined ||
+        isNaN(sp) ||
+        !Number.isInteger(sp) ||
+        sp < 0
+      ) {
+        setError('Story points are mandatory for tasks, stories, subtasks, and bugs and must be a non-negative integer (0 or greater).');
         return;
       }
     }
@@ -341,7 +348,7 @@ export default function AddTaskModal({
         type,
         status,
         priority,
-        story_points: type === 'EPIC' ? 0 : sp > 0 ? sp : 0,
+        story_points: type === 'EPIC' ? 0 : (sp >= 0 ? sp : 0),
         project_id: targetProjId,
         parent_id: effectiveParentId || null,
         sprint_id: sprintId || null,
@@ -469,7 +476,7 @@ export default function AddTaskModal({
                 </label>
                 <input
                   type="number"
-                  min="1"
+                  min="0"
                   max="99"
                   step="1"
                   required

@@ -85,6 +85,20 @@ export const projectsService = {
     });
   },
 
+  async updateMemberPermissions(id, userId, permissions) {
+    const res = await api.patch(`/projects/${id}/members/${userId}/permissions`, { permissions });
+    const members = res.members || [];
+    return members.slice().sort((a, b) => {
+      const aIsLead = a.project_role === 'TECH_LEAD' || a.role === 'TECH_LEAD';
+      const bIsLead = b.project_role === 'TECH_LEAD' || b.role === 'TECH_LEAD';
+      if (aIsLead && !bIsLead) return -1;
+      if (!aIsLead && bIsLead) return 1;
+      const nameA = a.name || a.email || '';
+      const nameB = b.name || b.email || '';
+      return nameA.localeCompare(nameB, undefined, { sensitivity: 'base' });
+    });
+  },
+
   async getDocuments(id) {
     const res = await api.get(`/projects/${id}/documents`);
     return res.documents || [];

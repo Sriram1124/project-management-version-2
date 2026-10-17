@@ -29,18 +29,19 @@ router.post('/:id/archive', requirePermission('PROJECT_UPDATE'), ProjectControll
 // ── Project Members & Roles ────────────────────────────────────────────────────
 router.get('/:id/members', requirePermission('PROJECT_READ'), ProjectController.getMembers);
 router.post('/:id/members', requirePermission('PROJECT_UPDATE'), ProjectController.addMember);
-router.patch('/:id/members/roles', requirePermission('PROJECT_UPDATE'), ProjectController.updateMemberRoles);
+router.patch('/:id/members/roles', requireAnyPermission('ROLE_ASSIGN', 'PROJECT_ROLE_ASSIGN', 'PROJECT_UPDATE'), ProjectController.updateMemberRoles);
+router.patch('/:id/members/:userId/permissions', requireAnyPermission('ROLE_ASSIGN', 'PROJECT_ROLE_ASSIGN', 'PROJECT_UPDATE'), ProjectController.updateMemberPermissions);
 router.delete('/:id/members/:userId', requirePermission('PROJECT_UPDATE'), ProjectController.removeMember);
 router.get('/:id/roles', requirePermission('PROJECT_READ'), ProjectController.getProjectRoles);
 router.post('/:id/roles', requirePermission('PROJECT_UPDATE'), ProjectController.createCustomRole);
 
 // ── Project Sprints ──────────────────────────────────────────────────────────
 router.get('/:id/sprints', requirePermission('PROJECT_READ'), SprintController.list);
-router.post('/:id/sprints', requirePermission('PROJECT_UPDATE'), SprintController.create);
+router.post('/:id/sprints', requireAnyPermission('CYCLE_CREATE', 'SPRINT_CREATE', 'PROJECT_UPDATE'), SprintController.create);
 router.get('/:id/sprints/:sprintId', requirePermission('PROJECT_READ'), SprintController.getById);
-router.patch('/:id/sprints/:sprintId', requirePermission('PROJECT_UPDATE'), SprintController.update);
-router.post('/:id/sprints/:sprintId/start', requirePermission('PROJECT_UPDATE'), SprintController.start);
-router.post('/:id/sprints/:sprintId/complete', requirePermission('PROJECT_UPDATE'), SprintController.complete);
+router.patch('/:id/sprints/:sprintId', requireAnyPermission('CYCLE_UPDATE', 'SPRINT_UPDATE', 'PROJECT_UPDATE'), SprintController.update);
+router.post('/:id/sprints/:sprintId/start', requireAnyPermission('CYCLE_ACTIVATE', 'SPRINT_ACTIVATE', 'PROJECT_UPDATE'), SprintController.start);
+router.post('/:id/sprints/:sprintId/complete', requireAnyPermission('CYCLE_UPDATE', 'SPRINT_UPDATE', 'PROJECT_UPDATE'), SprintController.complete);
 router.delete('/:id/sprints/:sprintId', requirePermission('PROJECT_UPDATE'), SprintController.delete);
 
 // ── Project Documents ────────────────────────────────────────────────────────

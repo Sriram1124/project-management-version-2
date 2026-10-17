@@ -278,6 +278,22 @@ export class ProjectController {
     }
   }
 
+  static async updateMemberPermissions(req: Request, res: Response): Promise<void> {
+    try {
+      const user = (req as any).fullUser;
+      const { id, userId } = req.params;
+      const permissions = req.body?.permissions || req.body;
+      const members = await ProjectService.updateMemberPermissions(id, userId, permissions, user);
+      res.status(200).json({
+        members,
+        data: members,
+        success: true,
+      });
+    } catch (error) {
+      ProjectController.handleError(res, error);
+    }
+  }
+
   static async getAvailablePermissions(req: Request, res: Response): Promise<void> {
     try {
       const user = (req as any).fullUser;
