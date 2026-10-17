@@ -451,6 +451,7 @@ export default function ManagerApp() {
                   selectedCohortId={selectedCohortId}
                 />
               )}
+              {currentView === 'timesheet' && <TimesheetView onToast={triggerToast} />}
               {currentView === 'channels' && (
                 <TeamsChannelView
                   forms={channelForms}

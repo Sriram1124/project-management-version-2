@@ -196,8 +196,6 @@ export default function BacklogToolbar({
                   ? 'Stories & Tasks (Flat)'
                   : groupBy === 'sprint' || groupBy === 'all_cycles'
                   ? 'All Cycles'
-                  : groupBy === 'no_cycle'
-                  ? 'Backlog (No Cycle)'
                   : groupBy?.startsWith('cycle:')
                   ? sprints.find((s) => s.id === groupBy.replace('cycle:', ''))?.name || 'Cycle'
                   : 'Backlog'}
@@ -273,20 +271,6 @@ export default function BacklogToolbar({
                     );
                   })
                 )}
-
-                <button
-                  type="button"
-                  onClick={() => {
-                    onSelectGroupBy?.('no_cycle');
-                    setOpenDropdown(null);
-                  }}
-                  className={`w-full text-left px-3 py-1.5 text-xs hover:bg-slate-50 transition-colors flex items-center justify-between ${
-                    groupBy === 'no_cycle' ? 'text-purple-700 font-semibold bg-purple-50/50' : 'text-slate-700'
-                  }`}
-                >
-                  <span>Backlog (No Cycle)</span>
-                  {groupBy === 'no_cycle' && <Check className="w-3.5 h-3.5 text-purple-600" />}
-                </button>
               </div>
             )}
           </div>

@@ -14,10 +14,14 @@ import {
   History,
   Activity,
   Calendar,
-  GitFork
+  GitFork,
+  Play,
+  Square,
+  Timer
 } from 'lucide-react';
 import { getEpicSprintSummary } from './HierarchicalIssueTable';
 import { useAuth } from '../../context/AuthContext';
+import { timesheetService } from '../../services/timesheet.service';
 import WorkItemComments from '../common/WorkItemComments';
 
 export default function IssueDetailDrawer({
@@ -125,6 +129,131 @@ export default function IssueDetailDrawer({
       setEditedStoryPoints(issue.story_points ?? issue.storyPoints ?? '');
     }
   }, [issue]);
+
+  // Time tracking states
+  const [activeSession, setActiveSession] = useState(null);
+  const [elapsedText, setElapsedText] = useState('00:00:00');
+  const [timeEntries, setTimeEntries] = useState([]);
+  const [totalLoggedMinutes, setTotalLoggedMinutes] = useState(0);
+  const [loadingTime, setLoadingTime] = useState(false);
+  const [isLogModalOpen, setIsLogModalOpen] = useState(false);
+  const [logHours, setLogHours] = useState('');
+  const [logMinutes, setLogMinutes] = useState('30');
+  const [logDate, setLogDate] = useState(() => new Date().toISOString().slice(0, 10));
+  const [logNotes, setLogNotes] = useState('');
+  const [timeActionLoading, setTimeActionLoading] = useState(false);
+
+  const loadTaskTimeData = useCallback(async () => {
+    if (!issue?.id) return;
+    try {
+      setLoadingTime(true);
+      const [sessionRes, entriesRes] = await Promise.all([
+        timesheetService.getActiveTaskSession(issue.id).catch(() => null),
+        timesheetService.getTaskEntries(issue.id).catch(() => null),
+      ]);
+      setActiveSession(sessionRes?.session || null);
+      setTimeEntries(entriesRes?.entries || []);
+      setTotalLoggedMinutes(entriesRes?.total_minutes || 0);
+    } catch (err) {
+      console.error('Failed to load task time data:', err);
+    } finally {
+      setLoadingTime(false);
+    }
+  }, [issue?.id]);
+
+  useEffect(() => {
+    if (isOpen && issue?.id) {
+      loadTaskTimeData();
+    }
+  }, [isOpen, issue?.id, loadTaskTimeData]);
+
+  useEffect(() => {
+    if (!activeSession?.started_at) {
+      setElapsedText('00:00:00');
+      return;
+    }
+    const updateElapsed = () => {
+      const start = new Date(activeSession.started_at).getTime();
+      const diffSecs = Math.max(0, Math.floor((Date.now() - start) / 1000));
+      const hrs = Math.floor(diffSecs / 3600);
+      const mins = Math.floor((diffSecs % 3600) / 60);
+      const secs = diffSecs % 60;
+      setElapsedText(`${String(hrs).padStart(2, '0')}:${String(mins).padStart(2, '0')}:${String(secs).padStart(2, '0')}`);
+    };
+    updateElapsed();
+    const interval = setInterval(updateElapsed, 1000);
+    return () => clearInterval(interval);
+  }, [activeSession]);
+
+  const handleStartTaskTimer = async () => {
+    try {
+      setTimeActionLoading(true);
+      const res = await timesheetService.startSession({ task_id: issue.id });
+      setActiveSession(res?.session || null);
+      await loadTaskTimeData();
+    } catch (err) {
+      alert(err.message || 'Unable to start timer');
+    } finally {
+      setTimeActionLoading(false);
+    }
+  };
+
+  const handleStopTaskTimer = async () => {
+    try {
+      setTimeActionLoading(true);
+      await timesheetService.endSession({ task_id: issue.id });
+      setActiveSession(null);
+      await loadTaskTimeData();
+    } catch (err) {
+      alert(err.message || 'Unable to stop timer');
+    } finally {
+      setTimeActionLoading(false);
+    }
+  };
+
+  const handleSaveWorklog = async (e) => {
+    e.preventDefault();
+    const hours = parseInt(logHours, 10) || 0;
+    const minutes = parseInt(logMinutes, 10) || 0;
+    const totalMins = hours * 60 + minutes;
+
+    if (totalMins <= 0) {
+      alert('Please enter a duration greater than 0 minutes.');
+      return;
+    }
+
+    try {
+      setTimeActionLoading(true);
+      await timesheetService.createEntry({
+        task_id: issue.id,
+        date: logDate,
+        duration_minutes: totalMins,
+        notes: logNotes.trim() || null,
+      });
+      setIsLogModalOpen(false);
+      setLogHours('');
+      setLogMinutes('30');
+      setLogNotes('');
+      await loadTaskTimeData();
+    } catch (err) {
+      alert(err.message || 'Failed to save worklog entry');
+    } finally {
+      setTimeActionLoading(false);
+    }
+  };
+
+  const handleDeleteWorklog = async (entryId) => {
+    if (!window.confirm('Are you sure you want to delete this time entry?')) return;
+    try {
+      setTimeActionLoading(true);
+      await timesheetService.deleteEntry(entryId);
+      await loadTaskTimeData();
+    } catch (err) {
+      alert(err.message || 'Failed to delete time entry');
+    } finally {
+      setTimeActionLoading(false);
+    }
+  };
 
   // Recursively or directly resolve ancestor Epic for this issue
   const currentEpic = React.useMemo(() => {
@@ -598,6 +727,42 @@ export default function IssueDetailDrawer({
               </span>
             )}
           </div>
+
+          {/* Time Tracking & Logged Hours */}
+          <div className="flex items-center justify-between pt-2 border-t border-slate-200/60">
+            <span className="text-slate-500 font-medium flex items-center gap-1.5">
+              <Clock className="w-3.5 h-3.5 text-slate-400" />
+              <span>Time Logged</span>
+            </span>
+            <div className="flex items-center gap-1.5">
+              <span className="px-2 py-0.5 rounded bg-purple-50 text-purple-700 font-mono font-bold text-xs border border-purple-200">
+                {Math.floor(totalLoggedMinutes / 60)}h {totalLoggedMinutes % 60}m
+              </span>
+              {activeSession ? (
+                <button
+                  type="button"
+                  onClick={handleStopTaskTimer}
+                  disabled={timeActionLoading}
+                  className="flex items-center gap-1 px-2 py-0.5 rounded bg-rose-600 hover:bg-rose-700 text-white font-mono font-bold text-xs transition-colors cursor-pointer shadow-2xs"
+                  title="Stop active timer"
+                >
+                  <Square className="w-2.5 h-2.5 fill-current" />
+                  <span>{elapsedText}</span>
+                </button>
+              ) : (
+                <button
+                  type="button"
+                  onClick={handleStartTaskTimer}
+                  disabled={timeActionLoading}
+                  className="flex items-center gap-1 px-2 py-0.5 rounded bg-purple-600 hover:bg-purple-700 text-white font-semibold text-xs transition-colors cursor-pointer shadow-2xs"
+                  title="Start timer for this task"
+                >
+                  <Play className="w-2.5 h-2.5 fill-current" />
+                  <span>Timer</span>
+                </button>
+              )}
+            </div>
+          </div>
         </div>
 
         {/* Description */}
@@ -779,6 +944,17 @@ export default function IssueDetailDrawer({
               </button>
               <button
                 type="button"
+                onClick={() => setActiveTab('worklog')}
+                className={`pb-1.5 font-semibold text-xs border-b-2 transition-colors cursor-pointer ${
+                  activeTab === 'worklog'
+                    ? 'border-purple-600 text-purple-700'
+                    : 'border-transparent text-slate-500 hover:text-slate-800'
+                }`}
+              >
+                Worklog ({timeEntries.length})
+              </button>
+              <button
+                type="button"
                 onClick={() => setActiveTab('history')}
                 className={`pb-1.5 font-semibold text-xs border-b-2 transition-colors cursor-pointer ${
                   activeTab === 'history'
@@ -794,6 +970,180 @@ export default function IssueDetailDrawer({
           {activeTab === 'comments' ? (
             <div className="pt-1">
               <WorkItemComments workItemId={issue.id} />
+            </div>
+          ) : activeTab === 'worklog' ? (
+            <div className="pt-2 space-y-3">
+              {/* Worklog Header */}
+              <div className="flex items-center justify-between bg-slate-50 p-2.5 rounded-xl border border-slate-200/80">
+                <div>
+                  <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 block">
+                    Actual Time Spent
+                  </span>
+                  <div className="text-sm font-bold text-slate-900 mt-0.5">
+                    {Math.floor(totalLoggedMinutes / 60)}h {totalLoggedMinutes % 60}m
+                  </div>
+                </div>
+
+                <button
+                  type="button"
+                  onClick={() => setIsLogModalOpen(!isLogModalOpen)}
+                  className="flex items-center gap-1 px-2.5 py-1 rounded-lg bg-purple-600 hover:bg-purple-700 text-white font-semibold text-xs transition-colors cursor-pointer shadow-2xs"
+                >
+                  <Plus className="w-3 h-3" />
+                  <span>Log Time</span>
+                </button>
+              </div>
+
+              {/* Inline Add Worklog Form */}
+              {isLogModalOpen && (
+                <form
+                  onSubmit={handleSaveWorklog}
+                  className="p-3 bg-purple-50/50 border border-purple-200 rounded-xl space-y-2.5 animate-in fade-in duration-150"
+                >
+                  <div className="flex items-center justify-between">
+                    <span className="font-bold text-slate-800 text-[11px]">
+                      Manual Time Entry
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => setIsLogModalOpen(false)}
+                      className="text-slate-400 hover:text-slate-600 p-0.5"
+                    >
+                      <X className="w-3.5 h-3.5" />
+                    </button>
+                  </div>
+
+                  <div className="grid grid-cols-3 gap-2">
+                    <div>
+                      <label className="block text-[10px] font-semibold text-slate-600 mb-0.5">Date</label>
+                      <input
+                        type="date"
+                        value={logDate}
+                        onChange={(e) => setLogDate(e.target.value)}
+                        required
+                        className="w-full px-2 py-1 rounded-lg border border-slate-200 text-xs bg-white text-slate-800 focus:outline-none focus:border-purple-600"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-[10px] font-semibold text-slate-600 mb-0.5">Hours</label>
+                      <input
+                        type="number"
+                        min="0"
+                        max="24"
+                        placeholder="0"
+                        value={logHours}
+                        onChange={(e) => setLogHours(e.target.value)}
+                        className="w-full px-2 py-1 rounded-lg border border-slate-200 text-xs bg-white text-slate-800 font-mono focus:outline-none focus:border-purple-600"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-[10px] font-semibold text-slate-600 mb-0.5">Minutes</label>
+                      <input
+                        type="number"
+                        min="0"
+                        max="59"
+                        step="5"
+                        placeholder="30"
+                        value={logMinutes}
+                        onChange={(e) => setLogMinutes(e.target.value)}
+                        className="w-full px-2 py-1 rounded-lg border border-slate-200 text-xs bg-white text-slate-800 font-mono focus:outline-none focus:border-purple-600"
+                      />
+                    </div>
+                  </div>
+
+                  <div>
+                    <label className="block text-[10px] font-semibold text-slate-600 mb-0.5">Work Notes</label>
+                    <textarea
+                      rows={2}
+                      value={logNotes}
+                      onChange={(e) => setLogNotes(e.target.value)}
+                      placeholder="What was completed?"
+                      className="w-full px-2 py-1 rounded-lg border border-slate-200 text-xs bg-white text-slate-800 resize-none focus:outline-none focus:border-purple-600"
+                    />
+                  </div>
+
+                  <div className="flex items-center justify-end gap-2 pt-1">
+                    <button
+                      type="button"
+                      onClick={() => setIsLogModalOpen(false)}
+                      className="px-2.5 py-1 rounded-lg border border-slate-200 hover:bg-white text-slate-600 text-xs font-semibold"
+                    >
+                      Cancel
+                    </button>
+                    <button
+                      type="submit"
+                      disabled={timeActionLoading}
+                      className="px-3 py-1 rounded-lg bg-purple-600 hover:bg-purple-700 text-white text-xs font-semibold disabled:opacity-50"
+                    >
+                      {timeActionLoading ? 'Saving...' : 'Save Log'}
+                    </button>
+                  </div>
+                </form>
+              )}
+
+              {/* Time Entries List */}
+              {loadingTime ? (
+                <div className="p-4 text-center text-slate-400">Loading worklogs...</div>
+              ) : timeEntries.length === 0 ? (
+                <div className="p-5 text-center text-slate-400 bg-slate-50/50 rounded-xl border border-slate-100">
+                  <p>No worklog entries recorded yet.</p>
+                  <p className="text-[11px] mt-1 text-slate-400">
+                    Use the Timer or click &quot;Log Time&quot; above to record effort.
+                  </p>
+                </div>
+              ) : (
+                <div className="space-y-2">
+                  {timeEntries.map((entry) => {
+                    const isOwner = entry.user_id === currentUserId;
+                    const canDeleteEntry = isOwner || !isIntern;
+                    return (
+                      <div
+                        key={entry.id}
+                        className="p-2.5 rounded-xl border border-slate-200/80 bg-white hover:bg-slate-50/50 transition-colors flex items-start justify-between gap-2 shadow-2xs"
+                      >
+                        <div className="min-w-0 flex-1">
+                          <div className="flex items-center gap-2">
+                            <span className="font-mono font-bold text-slate-900">
+                              {entry.duration_formatted}
+                            </span>
+                            <span
+                              className={`text-[9px] font-bold px-1.5 py-0.2 rounded border uppercase ${
+                                entry.source === 'TIMER'
+                                  ? 'bg-purple-100 text-purple-800 border-purple-200'
+                                  : 'bg-slate-100 text-slate-700 border-slate-200'
+                              }`}
+                            >
+                              {entry.source || 'MANUAL'}
+                            </span>
+                            <span className="text-slate-400 text-[10px]">
+                              {entry.date ? new Date(entry.date).toLocaleDateString([], { month: 'short', day: 'numeric' }) : ''}
+                            </span>
+                          </div>
+
+                          <div className="flex items-center gap-1.5 mt-1 text-[11px] text-slate-600">
+                            <span className="font-semibold text-slate-800">{entry.user_name}</span>
+                            {entry.notes && (
+                              <span>— &quot;{entry.notes}&quot;</span>
+                            )}
+                          </div>
+                        </div>
+
+                        {canDeleteEntry && (
+                          <button
+                            type="button"
+                            onClick={() => handleDeleteWorklog(entry.id)}
+                            disabled={timeActionLoading}
+                            title="Delete entry"
+                            className="p-1 rounded text-slate-400 hover:text-rose-600 hover:bg-rose-50 transition-colors cursor-pointer"
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </button>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
             </div>
           ) : (
             <div className="p-3 text-center text-xs text-slate-400">

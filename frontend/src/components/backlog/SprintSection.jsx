@@ -45,6 +45,9 @@ export default function SprintSection({
   const completedCount = eligibleLeaves.filter(
     (i) => String(i.status).toUpperCase() === 'COMPLETED' || String(i.status).toUpperCase() === 'DONE'
   ).length;
+  const sprintLoggedMinutes = issues.reduce((acc, curr) => {
+    return acc + (Number(curr.logged_minutes) || (Number(curr.logged_hours) * 60) || 0);
+  }, 0);
 
   const handleDragOver = (e) => {
     e.preventDefault();
@@ -124,10 +127,11 @@ export default function SprintSection({
             </div>
           )}
 
-          {/* Issue Count & Story Points */}
+          {/* Issue Count & Story Points & Logged Hours */}
           <span className="text-[11px] text-slate-400">
             · {issues.length} {issues.length === 1 ? 'task' : 'tasks'}
             {totalSP > 0 && ` · ${totalSP} SP`}
+            {sprintLoggedMinutes > 0 && ` · ${(sprintLoggedMinutes / 60).toFixed(1)}h logged`}
             {isActive && completedCount > 0 && ` (${completedCount} done)`}
           </span>
         </div>

@@ -6,7 +6,8 @@ import {
   ShieldCheck, 
   BarChart3, 
   LogOut, 
-  Hash 
+  Hash,
+  Clock
 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 
@@ -37,6 +38,7 @@ export default function Sidebar({
   ];
 
   const analyticsItems = [
+    { id: 'timesheet', label: 'Timesheet', icon: Clock },
     { id: 'reports', label: 'Reports', icon: BarChart3 },
   ];
 

@@ -16,7 +16,8 @@ import {
   ShieldAlert,
   ArrowRightLeft,
   Menu,
-  BarChart3
+  BarChart3,
+  Clock
 } from 'lucide-react';
 
 import InternDashboardTab from './components/InternDashboardTab';
@@ -29,6 +30,7 @@ import MyTasksTab from './components/MyTasksTab';
 import AssignedFormsTab from './components/AssignedFormsTab';
 import InternAttendanceTab from './components/InternAttendanceTab';
 import InternProfileTab from './components/InternProfileTab';
+import TimesheetView from '../../components/views/TimesheetView';
 import DynamicFormModal from './components/DynamicFormModal';
 import WorkItemDetailModal from './components/WorkItemDetailModal';
 import CreatePersonalTaskModal from './components/CreatePersonalTaskModal';
@@ -51,7 +53,7 @@ export default function InternApp({ onLogout, onSelectProject, onToast }) {
     const clean = pathname.replace(/^\/intern\/?/, '');
     if (!clean || clean === 'dashboard') return 'dashboard';
     if (clean === 'tasks' || clean === 'my-tasks') return 'tasks';
-    if (['alerts', 'projects', 'tasks', 'analytics', 'forms', 'attendance', 'profile'].includes(clean)) {
+    if (['alerts', 'projects', 'tasks', 'timesheet', 'analytics', 'forms', 'attendance', 'profile'].includes(clean)) {
       return clean;
     }
     return 'dashboard';
@@ -220,6 +222,7 @@ export default function InternApp({ onLogout, onSelectProject, onToast }) {
     { id: 'alerts', label: 'Alerts & Notices', icon: Bell, badge: unreadCount, badgeColor: 'bg-rose-500' },
     { id: 'projects', label: 'My Projects', icon: FolderKanban },
     { id: 'tasks', label: 'My Tasks', icon: CheckSquare, badge: workItems.filter(w => w.status !== 'COMPLETED').length },
+    { id: 'timesheet', label: 'Timesheet', icon: Clock },
     ...(isTechLead ? [{ id: 'analytics', label: 'Task Analytics', icon: BarChart3 }] : []),
     { id: 'forms', label: 'Forms', icon: FileText, badge: pendingFormsCount, badgeColor: 'bg-amber-500' },
     { id: 'attendance', label: 'Attendance', icon: CalendarCheck },
@@ -240,6 +243,8 @@ export default function InternApp({ onLogout, onSelectProject, onToast }) {
         return 'My Assigned Projects';
       case 'tasks':
         return 'Task & Subtask Board';
+      case 'timesheet':
+        return 'Weekly Timesheet & Worklogs';
       case 'analytics':
         return 'Task Analytics & Work Distribution';
       case 'forms':
@@ -458,6 +463,10 @@ export default function InternApp({ onLogout, onSelectProject, onToast }) {
                 onToast={onToast}
                 showViewSwitcher={false}
               />
+            )}
+
+            {currentTab === 'timesheet' && (
+              <TimesheetView onToast={onToast} />
             )}
 
             {currentTab === 'analytics' && (

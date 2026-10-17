@@ -17,16 +17,25 @@ export const timesheetService = {
     return api.post('/timesheet/work-sessions/end', payload);
   },
 
-  getActiveTaskSession(taskId) {
-    return api.get(`/timesheet/work-sessions/active?task_id=${encodeURIComponent(taskId)}`);
+  getActiveTaskSession(taskId = null) {
+    const qs = taskId ? `?task_id=${encodeURIComponent(taskId)}` : '';
+    return api.get(`/timesheet/work-sessions/active${qs}`);
+  },
+
+  getTaskEntries(taskId) {
+    return api.get(`/timesheet/tasks/${encodeURIComponent(taskId)}/entries`);
   },
 
   getToday() {
     return api.get('/timesheet/today');
   },
 
-  getWeekly(userId = null) {
-    return api.get(`/timesheet/weekly${userId ? `?user_id=${encodeURIComponent(userId)}` : ''}`);
+  getWeekly(userId = null, date = null) {
+    const params = new URLSearchParams();
+    if (userId) params.set('user_id', userId);
+    if (date) params.set('date', date);
+    const qs = params.toString();
+    return api.get(`/timesheet/weekly${qs ? `?${qs}` : ''}`);
   },
 
   getMonthly(userId = null) {

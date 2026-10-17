@@ -11,7 +11,8 @@ import {
   Check,
   User,
   Loader2,
-  Trash2
+  Trash2,
+  Plus
 } from 'lucide-react';
 import { workItemsService } from '../services/workItemsService';
 import { timesheetService } from '../../../services/timesheet.service';
@@ -35,7 +36,28 @@ export default function WorkItemDetailModal({
   const [priority, setPriority] = useState(workItem?.priority || 'MEDIUM');
   const [taskSession, setTaskSession] = useState(null);
   const [taskSessionLoading, setTaskSessionLoading] = useState(false);
+  const [elapsedText, setElapsedText] = useState('00:00:00');
+  const [timeEntries, setTimeEntries] = useState([]);
+  const [totalLoggedMinutes, setTotalLoggedMinutes] = useState(0);
+  const [isLogModalOpen, setIsLogModalOpen] = useState(false);
+  const [logHours, setLogHours] = useState('');
+  const [logMinutes, setLogMinutes] = useState('30');
+  const [logDate, setLogDate] = useState(() => new Date().toISOString().slice(0, 10));
+  const [logNotes, setLogNotes] = useState('');
   const { user: authUser } = useAuth();
+
+  const loadTaskEntries = React.useCallback(async () => {
+    const currentItemId = liveItem?.id || workItem?.id;
+    if (!currentItemId) return;
+    try {
+      const res = await timesheetService.getTaskEntries(currentItemId);
+      setTimeEntries(res?.entries || []);
+      setTotalLoggedMinutes(res?.total_minutes || 0);
+    } catch {
+      setTimeEntries([]);
+      setTotalLoggedMinutes(0);
+    }
+  }, [liveItem?.id, workItem?.id]);
 
   useEffect(() => {
     if (workItem?.id && isOpen) {
@@ -74,10 +96,29 @@ export default function WorkItemDetailModal({
       .finally(() => {
         if (!cancelled) setTaskSessionLoading(false);
       });
+    loadTaskEntries();
     return () => {
       cancelled = true;
     };
-  }, [isOpen, liveItem?.id, workItem?.id]);
+  }, [isOpen, liveItem?.id, workItem?.id, loadTaskEntries]);
+
+  useEffect(() => {
+    if (!taskSession?.started_at) {
+      setElapsedText('00:00:00');
+      return;
+    }
+    const update = () => {
+      const start = new Date(taskSession.started_at).getTime();
+      const diff = Math.max(0, Math.floor((Date.now() - start) / 1000));
+      const h = Math.floor(diff / 3600);
+      const m = Math.floor((diff % 3600) / 60);
+      const s = diff % 60;
+      setElapsedText(`${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`);
+    };
+    update();
+    const interval = setInterval(update, 1000);
+    return () => clearInterval(interval);
+  }, [taskSession]);
 
   const item = liveItem || workItem;
   const isOverdue = workItemsService.isOverdue(item);
@@ -127,9 +168,59 @@ export default function WorkItemDetailModal({
       setError('');
       const response = await timesheetService.endSession({ task_id: item.id });
       setTaskSession(null);
-      onToast?.(`Work stopped: ${response.session?.time_entry?.duration_minutes || 0} minutes recorded`);
+      const mins = response.session?.time_entry?.duration_minutes || 0;
+      onToast?.(`Work stopped: ${mins} minutes recorded`);
+      await loadTaskEntries();
     } catch (err) {
       setError(err.message || 'Unable to stop work');
+    } finally {
+      setTaskSessionLoading(false);
+    }
+  };
+
+  const handleSaveWorklog = async (e) => {
+    e.preventDefault();
+    const hours = parseInt(logHours, 10) || 0;
+    const minutes = parseInt(logMinutes, 10) || 0;
+    const totalMins = hours * 60 + minutes;
+
+    if (totalMins <= 0) {
+      setError('Please enter a duration greater than 0 minutes.');
+      return;
+    }
+
+    try {
+      setTaskSessionLoading(true);
+      setError('');
+      await timesheetService.createEntry({
+        task_id: item.id,
+        date: logDate,
+        duration_minutes: totalMins,
+        notes: logNotes.trim() || null,
+      });
+      setIsLogModalOpen(false);
+      setLogHours('');
+      setLogMinutes('30');
+      setLogNotes('');
+      onToast?.(`Logged ${totalMins} minutes!`);
+      await loadTaskEntries();
+    } catch (err) {
+      setError(err.message || 'Failed to save worklog entry');
+    } finally {
+      setTaskSessionLoading(false);
+    }
+  };
+
+  const handleDeleteWorklog = async (entryId) => {
+    if (!window.confirm('Are you sure you want to delete this time entry?')) return;
+    try {
+      setTaskSessionLoading(true);
+      setError('');
+      await timesheetService.deleteEntry(entryId);
+      onToast?.('Time entry deleted');
+      await loadTaskEntries();
+    } catch (err) {
+      setError(err.message || 'Failed to delete time entry');
     } finally {
       setTaskSessionLoading(false);
     }
@@ -313,6 +404,7 @@ export default function WorkItemDetailModal({
         <div className="flex items-center gap-1 px-6 border-b border-slate-200 bg-white text-xs">
           {[
             { id: 'details', label: 'Details & Scope' },
+            { id: 'worklog', label: `Worklog (${timeEntries.length})` },
             { id: 'attachments', label: 'Attachments' },
             { id: 'comments', label: 'Comments' },
             { id: 'activity', label: 'Activity Log' }
@@ -393,15 +485,32 @@ export default function WorkItemDetailModal({
                 </div>
               </div>
 
-              {isAssignedIntern && (
+              {(isAssignedIntern || isManagerOrAdmin) && (
                 <div className="flex items-center justify-between gap-3 rounded-xl border border-purple-100 bg-purple-50/40 p-4">
                   <div>
-                    <div className="text-[11px] font-bold uppercase tracking-wider text-purple-700">Task work timer</div>
-                    <div className="mt-1 text-xs text-slate-600">{taskSession ? `Started ${new Date(taskSession.started_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}` : 'Record actual work time for this task.'}</div>
+                    <div className="text-[11px] font-bold uppercase tracking-wider text-purple-700">
+                      Task work timer · {Math.floor(totalLoggedMinutes / 60)}h {totalLoggedMinutes % 60}m logged
+                    </div>
+                    <div className="mt-1 text-xs text-slate-600">
+                      {taskSession ? (
+                        <span className="font-semibold text-purple-900">
+                          Timer running: <span className="font-mono text-purple-700 font-bold">{elapsedText}</span>
+                        </span>
+                      ) : (
+                        'Record real-time or manual work effort for this task.'
+                      )}
+                    </div>
                   </div>
-                  <button type="button" onClick={taskSession ? handleStopWork : handleStartWork} disabled={taskSessionLoading} className={`inline-flex shrink-0 items-center gap-2 rounded-lg px-3 py-2 text-xs font-bold text-white disabled:opacity-50 ${taskSession ? 'bg-rose-600 hover:bg-rose-700' : 'bg-purple-600 hover:bg-purple-700'}`}>
+                  <button
+                    type="button"
+                    onClick={taskSession ? handleStopWork : handleStartWork}
+                    disabled={taskSessionLoading}
+                    className={`inline-flex shrink-0 items-center gap-2 rounded-lg px-3 py-2 text-xs font-bold text-white disabled:opacity-50 transition-colors ${
+                      taskSession ? 'bg-rose-600 hover:bg-rose-700' : 'bg-purple-600 hover:bg-purple-700'
+                    }`}
+                  >
                     {taskSessionLoading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Clock className="h-3.5 w-3.5" />}
-                    {taskSession ? 'Stop Work' : 'Start Work'}
+                    {taskSession ? `Stop (${elapsedText})` : 'Start Timer'}
                   </button>
                 </div>
               )}
@@ -554,6 +663,169 @@ export default function WorkItemDetailModal({
                       </div>
                     ))}
                   </div>
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* Worklog Tab */}
+          {activeTab === 'worklog' && (
+            <div className="space-y-4">
+              <div className="flex items-center justify-between p-3 bg-purple-50/50 rounded-xl border border-purple-100">
+                <div>
+                  <span className="text-[10px] font-bold uppercase tracking-wider text-purple-700 block">
+                    Recorded Work Effort
+                  </span>
+                  <div className="text-base font-extrabold text-slate-900 mt-0.5">
+                    {Math.floor(totalLoggedMinutes / 60)}h {totalLoggedMinutes % 60}m
+                  </div>
+                </div>
+
+                <button
+                  type="button"
+                  onClick={() => setIsLogModalOpen(!isLogModalOpen)}
+                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-purple-600 hover:bg-purple-700 text-white font-semibold text-xs transition-colors cursor-pointer shadow-2xs"
+                >
+                  <Plus className="w-3.5 h-3.5" />
+                  <span>Log Time</span>
+                </button>
+              </div>
+
+              {/* Inline Manual Entry Form */}
+              {isLogModalOpen && (
+                <form onSubmit={handleSaveWorklog} className="p-4 bg-slate-50 border border-slate-200 rounded-xl space-y-3 animate-in fade-in duration-150">
+                  <div className="flex items-center justify-between">
+                    <span className="font-bold text-slate-800 text-xs">Record Manual Time</span>
+                    <button type="button" onClick={() => setIsLogModalOpen(false)} className="text-slate-400 hover:text-slate-600">
+                      <X className="w-4 h-4" />
+                    </button>
+                  </div>
+
+                  <div className="grid grid-cols-3 gap-2">
+                    <div>
+                      <label className="block text-[10px] font-semibold text-slate-600 mb-0.5">Date</label>
+                      <input
+                        type="date"
+                        value={logDate}
+                        onChange={(e) => setLogDate(e.target.value)}
+                        required
+                        className="w-full px-2 py-1 rounded-lg border border-slate-200 text-xs bg-white text-slate-800 focus:outline-none focus:border-purple-600"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-[10px] font-semibold text-slate-600 mb-0.5">Hours</label>
+                      <input
+                        type="number"
+                        min="0"
+                        max="24"
+                        placeholder="0"
+                        value={logHours}
+                        onChange={(e) => setLogHours(e.target.value)}
+                        className="w-full px-2 py-1 rounded-lg border border-slate-200 text-xs bg-white text-slate-800 font-mono focus:outline-none focus:border-purple-600"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-[10px] font-semibold text-slate-600 mb-0.5">Minutes</label>
+                      <input
+                        type="number"
+                        min="0"
+                        max="59"
+                        step="5"
+                        placeholder="30"
+                        value={logMinutes}
+                        onChange={(e) => setLogMinutes(e.target.value)}
+                        className="w-full px-2 py-1 rounded-lg border border-slate-200 text-xs bg-white text-slate-800 font-mono focus:outline-none focus:border-purple-600"
+                      />
+                    </div>
+                  </div>
+
+                  <div>
+                    <label className="block text-[10px] font-semibold text-slate-600 mb-0.5">Notes (Optional)</label>
+                    <textarea
+                      rows={2}
+                      value={logNotes}
+                      onChange={(e) => setLogNotes(e.target.value)}
+                      placeholder="What was completed?"
+                      className="w-full px-2 py-1 rounded-lg border border-slate-200 text-xs bg-white text-slate-800 resize-none focus:outline-none focus:border-purple-600"
+                    />
+                  </div>
+
+                  <div className="flex items-center justify-end gap-2 pt-1">
+                    <button
+                      type="button"
+                      onClick={() => setIsLogModalOpen(false)}
+                      className="px-2.5 py-1 rounded-lg border border-slate-200 hover:bg-white text-slate-600 text-xs font-semibold"
+                    >
+                      Cancel
+                    </button>
+                    <button
+                      type="submit"
+                      disabled={taskSessionLoading}
+                      className="px-3.5 py-1 rounded-lg bg-purple-600 hover:bg-purple-700 text-white text-xs font-semibold disabled:opacity-50"
+                    >
+                      Save Log
+                    </button>
+                  </div>
+                </form>
+              )}
+
+              {/* Entries list */}
+              {timeEntries.length === 0 ? (
+                <div className="p-6 text-center text-slate-400 bg-slate-50/50 rounded-xl border border-slate-100">
+                  <p>No worklog entries recorded yet.</p>
+                  <p className="text-[11px] mt-1 text-slate-400">
+                    Use the Timer or click &quot;Log Time&quot; above to record effort.
+                  </p>
+                </div>
+              ) : (
+                <div className="space-y-2">
+                  {timeEntries.map((entry) => {
+                    const isOwner = entry.user_id === authUserId;
+                    const canDeleteEntry = isOwner || isManagerOrAdmin;
+                    return (
+                      <div
+                        key={entry.id}
+                        className="p-3 rounded-xl border border-slate-200/80 bg-white hover:bg-slate-50/50 transition-colors flex items-start justify-between gap-2 shadow-2xs"
+                      >
+                        <div className="min-w-0 flex-1">
+                          <div className="flex items-center gap-2">
+                            <span className="font-mono font-bold text-slate-900 text-xs">
+                              {entry.duration_formatted}
+                            </span>
+                            <span
+                              className={`text-[9px] font-bold px-1.5 py-0.2 rounded border uppercase ${
+                                entry.source === 'TIMER'
+                                  ? 'bg-purple-100 text-purple-800 border-purple-200'
+                                  : 'bg-slate-100 text-slate-700 border-slate-200'
+                              }`}
+                            >
+                              {entry.source || 'MANUAL'}
+                            </span>
+                            <span className="text-slate-400 text-[10px]">
+                              {entry.date ? new Date(entry.date).toLocaleDateString([], { month: 'short', day: 'numeric' }) : ''}
+                            </span>
+                          </div>
+
+                          <div className="flex items-center gap-1.5 mt-1 text-[11px] text-slate-600">
+                            <span className="font-semibold text-slate-800">{entry.user_name}</span>
+                            {entry.notes && <span>— &quot;{entry.notes}&quot;</span>}
+                          </div>
+                        </div>
+
+                        {canDeleteEntry && (
+                          <button
+                            type="button"
+                            onClick={() => handleDeleteWorklog(entry.id)}
+                            disabled={taskSessionLoading}
+                            title="Delete entry"
+                            className="p-1 rounded text-slate-400 hover:text-rose-600 hover:bg-rose-50 transition-colors cursor-pointer"
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </button>
+                        )}
+                      </div>
+                    );
+                  })}
                 </div>
               )}
             </div>
