@@ -208,4 +208,50 @@ export class WorkItemController {
       WorkItemController.handleError(res, error);
     }
   }
+
+  static async getComments(req: Request, res: Response): Promise<void> {
+    try {
+      const user = (req as any).fullUser;
+      const { id } = req.params;
+      const comments = await WorkItemService.listComments(id, user);
+      res.status(200).json({ comments });
+    } catch (error) {
+      WorkItemController.handleError(res, error);
+    }
+  }
+
+  static async addComment(req: Request, res: Response): Promise<void> {
+    try {
+      const user = (req as any).fullUser;
+      const { id } = req.params;
+      const { content } = req.body || {};
+      const comment = await WorkItemService.createComment(id, content, user);
+      res.status(201).json({ comment });
+    } catch (error) {
+      WorkItemController.handleError(res, error);
+    }
+  }
+
+  static async updateComment(req: Request, res: Response): Promise<void> {
+    try {
+      const user = (req as any).fullUser;
+      const { id, commentId } = req.params;
+      const { content } = req.body || {};
+      const comment = await WorkItemService.updateComment(id, commentId, content, user);
+      res.status(200).json({ comment });
+    } catch (error) {
+      WorkItemController.handleError(res, error);
+    }
+  }
+
+  static async deleteComment(req: Request, res: Response): Promise<void> {
+    try {
+      const user = (req as any).fullUser;
+      const { id, commentId } = req.params;
+      const result = await WorkItemService.deleteComment(id, commentId, user);
+      res.status(200).json(result);
+    } catch (error) {
+      WorkItemController.handleError(res, error);
+    }
+  }
 }

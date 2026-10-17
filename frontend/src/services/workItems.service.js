@@ -185,6 +185,41 @@ export const workItemsService = {
   async getWorkItemById(id) {
     return await this.getWorkItem(id);
   },
+
+  /**
+   * Fetch comments for a work item, ordered oldest-to-newest
+   */
+  async getComments(workItemId) {
+    if (!workItemId) throw new Error('Work item ID is required');
+    const data = await api.get(`/work-items/${workItemId}/comments`);
+    return data.comments || [];
+  },
+
+  /**
+   * Add a comment to a work item
+   */
+  async addComment(workItemId, content) {
+    if (!workItemId) throw new Error('Work item ID is required');
+    const data = await api.post(`/work-items/${workItemId}/comments`, { content });
+    return data.comment;
+  },
+
+  /**
+   * Update a comment
+   */
+  async updateComment(workItemId, commentId, content) {
+    if (!workItemId || !commentId) throw new Error('Work item ID and comment ID are required');
+    const data = await api.put(`/work-items/${workItemId}/comments/${commentId}`, { content });
+    return data.comment;
+  },
+
+  /**
+   * Delete a comment
+   */
+  async deleteComment(workItemId, commentId) {
+    if (!workItemId || !commentId) throw new Error('Work item ID and comment ID are required');
+    return await api.delete(`/work-items/${workItemId}/comments/${commentId}`);
+  },
 };
 
 export default workItemsService;

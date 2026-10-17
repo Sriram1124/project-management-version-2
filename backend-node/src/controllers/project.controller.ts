@@ -281,7 +281,8 @@ export class ProjectController {
   static async getAvailablePermissions(req: Request, res: Response): Promise<void> {
     try {
       const user = (req as any).fullUser;
-      const permissions = await ProjectService.getAvailablePermissions(user);
+      const scope = typeof req.query.scope === 'string' ? req.query.scope : undefined;
+      const permissions = await ProjectService.getAvailablePermissions(user, scope);
       res.status(200).json({ permissions, data: permissions });
     } catch (error) {
       ProjectController.handleError(res, error);

@@ -645,6 +645,28 @@ export class WorkItemService {
     const priority = data.priority || WorkItemPriority.MEDIUM;
     const completedAt = status === WorkItemStatus.COMPLETED ? new Date() : null;
 
+    // Enforce mandatory story points for applicable work item types (TASK, STORY, SUBTASK, BUG)
+    const isApplicableType =
+      data.type === WorkItemType.TASK ||
+      data.type === WorkItemType.STORY ||
+      data.type === WorkItemType.SUBTASK ||
+      data.type === WorkItemType.BUG;
+
+    let storyPointsVal = 0;
+    if (isApplicableType) {
+      const sp = data.story_points !== undefined && data.story_points !== null ? Number(data.story_points) : NaN;
+      if (isNaN(sp) || !Number.isInteger(sp) || sp <= 0) {
+        const noun = data.type === WorkItemType.STORY ? 'stories' : `${data.type.toLowerCase()}s`;
+        throw new Error(
+          `Story points are mandatory for ${noun} and must be a positive integer greater than 0.`
+        );
+      }
+      storyPointsVal = sp;
+    } else {
+      const sp = data.story_points !== undefined && data.story_points !== null ? Number(data.story_points) : 0;
+      storyPointsVal = !isNaN(sp) && Number.isInteger(sp) && sp >= 0 ? sp : 0;
+    }
+
     const workItem = await prisma.workItem.create({
       data: {
         organization_id: orgId,
@@ -659,7 +681,7 @@ export class WorkItemService {
         priority,
         start_date: data.start_date ? new Date(data.start_date) : null,
         due_date: data.due_date ? new Date(data.due_date) : null,
-        story_points: data.story_points !== undefined && data.story_points !== null ? Number(data.story_points) : 0,
+        story_points: storyPointsVal,
         completed_at: completedAt,
         assignees: {
           create: assigneeIds.map((uid) => ({
@@ -1100,12 +1122,13 @@ export class WorkItemService {
     const effectiveType = input.type !== undefined ? input.type : currentItem.type;
 
     if (input.story_points !== undefined) {
-      const isTaskLike =
+      const isApplicableType =
         effectiveType === WorkItemType.TASK ||
+        effectiveType === WorkItemType.STORY ||
         effectiveType === WorkItemType.SUBTASK ||
         effectiveType === WorkItemType.BUG;
 
-      if (isTaskLike) {
+      if (isApplicableType) {
         const sp = Number(input.story_points);
         if (
           input.story_points === null ||
@@ -1114,7 +1137,7 @@ export class WorkItemService {
           sp <= 0
         ) {
           throw new Error(
-            'Story points are mandatory for tasks, subtasks, and bugs and must be a positive integer greater than 0.'
+            'Story points are mandatory for tasks, stories, subtasks, and bugs and must be a positive integer greater than 0.'
           );
         }
         dataToUpdate.story_points = sp;
@@ -2223,5 +2246,252 @@ export class WorkItemService {
         sprints: accessibleSprints,
       },
     };
+  }
+
+  /**
+   * Helper to verify user has read access to a work item
+   */
+  static async verifyWorkItemAccess(workItemId: string, user: any) {
+    const orgId = this.getUserOrgId(user);
+    const isMgr = this.isManagerOrAdmin(user);
+
+    const item = await prisma.workItem.findFirst({
+      where: { id: workItemId, organization_id: orgId },
+      include: {
+        project: { select: { id: true, name: true, status: true, owner_id: true } },
+        assignees: { select: { user_id: true } },
+      },
+    });
+
+    if (!item) {
+      const err: any = new Error('Work item not found');
+      err.statusCode = 404;
+      throw err;
+    }
+
+    if (item.project_id) {
+      if (!isMgr && item.project?.owner_id !== user.id) {
+        const isMember = await this.verifyProjectMembership(item.project_id, user.id, orgId);
+        if (!isMember) {
+          const err: any = new Error('Forbidden: you are not authorized to access this work item');
+          err.statusCode = 403;
+          throw err;
+        }
+      }
+    } else {
+      // Personal task
+      const isAssigned = item.assignees.some((a) => a.user_id === user.id);
+      if (!isMgr && item.created_by !== user.id && !isAssigned) {
+        const err: any = new Error('Forbidden: you are not authorized to access this work item');
+        err.statusCode = 403;
+        throw err;
+      }
+    }
+
+    return item;
+  }
+
+  /**
+   * List comments for a work item, ordered oldest-to-newest
+   */
+  static async listComments(workItemId: string, user: any) {
+    await this.verifyWorkItemAccess(workItemId, user);
+
+    const comments = await prisma.workItemComment.findMany({
+      where: { work_item_id: workItemId },
+      include: {
+        author: {
+          select: {
+            id: true,
+            name: true,
+            email: true,
+            roles: {
+              select: {
+                role: { select: { name: true } },
+              },
+            },
+          },
+        },
+      },
+      orderBy: { created_at: 'asc' },
+    });
+
+    return comments.map((c) => ({
+      id: c.id,
+      work_item_id: c.work_item_id,
+      author_id: c.author_id,
+      content: c.content,
+      created_at: c.created_at,
+      updated_at: c.updated_at,
+      author: {
+        id: c.author.id,
+        name: c.author.name,
+        email: c.author.email,
+        role: c.author.roles?.[0]?.role?.name || 'MEMBER',
+      },
+    }));
+  }
+
+  /**
+   * Add a comment to a work item
+   */
+  static async createComment(workItemId: string, content: string, user: any) {
+    if (!content || typeof content !== 'string' || !content.trim()) {
+      const err: any = new Error('Comment content cannot be empty');
+      err.statusCode = 400;
+      throw err;
+    }
+
+    if (content.trim().length > 5000) {
+      const err: any = new Error('Comment content cannot exceed 5000 characters');
+      err.statusCode = 400;
+      throw err;
+    }
+
+    const item = await this.verifyWorkItemAccess(workItemId, user);
+    if (item.project?.status === ProjectStatus.ARCHIVED) {
+      const err: any = new Error('Cannot add comments to work items in an archived project');
+      err.statusCode = 400;
+      throw err;
+    }
+
+    const comment = await prisma.workItemComment.create({
+      data: {
+        work_item_id: workItemId,
+        author_id: user.id,
+        content: content.trim(),
+      },
+      include: {
+        author: {
+          select: {
+            id: true,
+            name: true,
+            email: true,
+            roles: {
+              select: {
+                role: { select: { name: true } },
+              },
+            },
+          },
+        },
+      },
+    });
+
+    return {
+      id: comment.id,
+      work_item_id: comment.work_item_id,
+      author_id: comment.author_id,
+      content: comment.content,
+      created_at: comment.created_at,
+      updated_at: comment.updated_at,
+      author: {
+        id: comment.author.id,
+        name: comment.author.name,
+        email: comment.author.email,
+        role: comment.author.roles?.[0]?.role?.name || 'MEMBER',
+      },
+    };
+  }
+
+  /**
+   * Update an existing comment
+   */
+  static async updateComment(workItemId: string, commentId: string, content: string, user: any) {
+    if (!content || typeof content !== 'string' || !content.trim()) {
+      const err: any = new Error('Comment content cannot be empty');
+      err.statusCode = 400;
+      throw err;
+    }
+
+    if (content.trim().length > 5000) {
+      const err: any = new Error('Comment content cannot exceed 5000 characters');
+      err.statusCode = 400;
+      throw err;
+    }
+
+    await this.verifyWorkItemAccess(workItemId, user);
+
+    const comment = await prisma.workItemComment.findFirst({
+      where: { id: commentId, work_item_id: workItemId },
+    });
+
+    if (!comment) {
+      const err: any = new Error('Comment not found');
+      err.statusCode = 404;
+      throw err;
+    }
+
+    const isAuthor = comment.author_id === user.id;
+    const isMgr = this.isManagerOrAdmin(user);
+    if (!isAuthor && !isMgr) {
+      const err: any = new Error('Forbidden: you can only edit your own comments');
+      err.statusCode = 403;
+      throw err;
+    }
+
+    const updated = await prisma.workItemComment.update({
+      where: { id: commentId },
+      data: { content: content.trim() },
+      include: {
+        author: {
+          select: {
+            id: true,
+            name: true,
+            email: true,
+            roles: {
+              select: {
+                role: { select: { name: true } },
+              },
+            },
+          },
+        },
+      },
+    });
+
+    return {
+      id: updated.id,
+      work_item_id: updated.work_item_id,
+      author_id: updated.author_id,
+      content: updated.content,
+      created_at: updated.created_at,
+      updated_at: updated.updated_at,
+      author: {
+        id: updated.author.id,
+        name: updated.author.name,
+        email: updated.author.email,
+        role: updated.author.roles?.[0]?.role?.name || 'MEMBER',
+      },
+    };
+  }
+
+  /**
+   * Delete an existing comment
+   */
+  static async deleteComment(workItemId: string, commentId: string, user: any) {
+    await this.verifyWorkItemAccess(workItemId, user);
+
+    const comment = await prisma.workItemComment.findFirst({
+      where: { id: commentId, work_item_id: workItemId },
+    });
+
+    if (!comment) {
+      const err: any = new Error('Comment not found');
+      err.statusCode = 404;
+      throw err;
+    }
+
+    const isAuthor = comment.author_id === user.id;
+    const isMgr = this.isManagerOrAdmin(user);
+    if (!isAuthor && !isMgr) {
+      const err: any = new Error('Forbidden: you can only delete your own comments');
+      err.statusCode = 403;
+      throw err;
+    }
+
+    await prisma.workItemComment.delete({
+      where: { id: commentId },
+    });
+
+    return { success: true, message: 'Comment deleted successfully' };
   }
 }

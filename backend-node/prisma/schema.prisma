@@ -398,6 +398,7 @@ model WorkItemComment {
 
   @@index([work_item_id])
   @@index([author_id])
+  @@index([work_item_id, created_at])
   @@map("work_item_comments")
 }
 

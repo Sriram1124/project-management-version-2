@@ -321,11 +321,11 @@ export default function AddTaskModal({
       }
     }
 
-    const isTaskLike = type === 'TASK' || type === 'SUBTASK' || type === 'BUG';
+    const isApplicableType = type === 'TASK' || type === 'SUBTASK' || type === 'BUG' || type === 'STORY';
     const sp = Number(storyPoints);
-    if (isTaskLike) {
+    if (isApplicableType) {
       if (!storyPoints || isNaN(sp) || !Number.isInteger(sp) || sp <= 0) {
-        setError('Story points are mandatory for tasks, subtasks, and bugs and must be a positive integer greater than 0.');
+        setError('Story points are mandatory for tasks, stories, subtasks, and bugs and must be a positive integer greater than 0.');
         return;
       }
     }
@@ -593,14 +593,14 @@ export default function AddTaskModal({
             {!isKanban && (
               <div>
                 <label className="block text-[11px] font-bold text-slate-700 uppercase tracking-wider mb-1">
-                  Sprint
+                  Cycle
                 </label>
                 <select
                   value={sprintId}
                   onChange={(e) => setSprintId(e.target.value)}
                   className="w-full px-3 py-2 rounded-xl border border-slate-200 bg-white text-slate-800 focus:outline-none focus:border-purple-600"
                 >
-                  <option value="">Project Backlog (No Sprint)</option>
+                  <option value="">Project Backlog (No Cycle)</option>
                   {availableSprints.map((s) => (
                     <option key={s.id} value={s.id}>
                       {s.name} {s.status === 'ACTIVE' ? '• Active' : ''}

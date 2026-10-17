@@ -32,6 +32,17 @@ const GROUP_ICONS = {
   Organization: Building,
 };
 
+const PROJECT_SCOPED_PERMISSION_NAMES = new Set([
+  'PROJECT_READ',
+  'PROJECT_UPDATE',
+  'TASK_READ',
+  'TASK_CREATE',
+  'TASK_UPDATE',
+  'TASK_DELETE',
+  'TASK_ASSIGN',
+  'DOCUMENT_UPLOAD',
+]);
+
 export default function AddCustomRoleModal({
   isOpen,
   onClose,
@@ -60,14 +71,18 @@ export default function AddCustomRoleModal({
       setLoadingPerms(true);
 
       projectsService
-        .getAvailablePermissions()
+        .getAvailablePermissions({ scope: 'project' })
         .then((res) => {
           const list = Array.isArray(res)
             ? res
             : res?.permissions || res?.data || [];
-          setPermissionsData(list);
+          // Enforce project-scoped filter on client side as well
+          const filtered = list.filter((p) =>
+            PROJECT_SCOPED_PERMISSION_NAMES.has(p.name)
+          );
+          setPermissionsData(filtered);
           // By default, select standard read permissions
-          const defaults = list
+          const defaults = filtered
             .filter((p) => p.name === 'PROJECT_READ' || p.name === 'TASK_READ')
             .map((p) => p.name);
           setSelectedPermissions(new Set(defaults));
@@ -231,15 +246,7 @@ export default function AddCustomRoleModal({
                 </span>
               </div>
               <p className="text-xs text-slate-500 mt-0.5">
-                Define a tailored role and permission set for{' '}
-                {projectName ? (
-                  <span className="font-semibold text-slate-700">
-                    "{projectName}"
-                  </span>
-                ) : (
-                  'this project'
-                )}
-                .
+                Define a tailored role and permissions for project-level activities in this project.
               </p>
             </div>
           </div>

@@ -16,6 +16,7 @@ import {
 import { workItemsService } from '../services/workItemsService';
 import { timesheetService } from '../../../services/timesheet.service';
 import { useAuth } from '../../../context/AuthContext';
+import WorkItemComments from '../../../components/common/WorkItemComments';
 
 export default function WorkItemDetailModal({
   workItem,
@@ -568,13 +569,10 @@ export default function WorkItemDetailModal({
             </div>
           )}
 
-          {/* Comments Tab - Honest V2 State */}
+          {/* Comments Tab */}
           {activeTab === 'comments' && (
-            <div className="p-8 text-center border-2 border-dashed border-slate-200 rounded-2xl text-slate-400">
-              <p className="font-semibold text-slate-700">Comments Planned for V2</p>
-              <p className="text-[11px] mt-1 text-slate-500">
-                Work Item discussion threads are part of the upcoming V2 collaboration suite.
-              </p>
+            <div className="pt-2">
+              <WorkItemComments workItemId={item.id} onToast={onToast} />
             </div>
           )}
 

@@ -699,11 +699,33 @@ export class ProjectService {
   };
 
   /**
-   * Get all registered system permissions grouped logically
+   * Permissions strictly permitted for project-level custom roles
    */
-  static async getAvailablePermissions(user: any) {
+  static readonly PROJECT_SCOPED_PERMISSIONS = new Set([
+    'PROJECT_READ',
+    'PROJECT_UPDATE',
+    'TASK_READ',
+    'TASK_CREATE',
+    'TASK_UPDATE',
+    'TASK_DELETE',
+    'TASK_ASSIGN',
+    'DOCUMENT_UPLOAD',
+  ]);
+
+  /**
+   * Get all registered system permissions grouped logically, optionally filtered by scope
+   */
+  static async getAvailablePermissions(user: any, scope?: string) {
     const isSuper = this.isSuperAdmin(user);
+    const isProjectScope = scope === 'project';
+
+    const where: any = {};
+    if (isProjectScope) {
+      where.name = { in: Array.from(this.PROJECT_SCOPED_PERMISSIONS) };
+    }
+
     const dbPermissions = await prisma.permission.findMany({
+      where,
       orderBy: { name: 'asc' },
     });
 
@@ -722,6 +744,7 @@ export class ProjectService {
         description: meta.description,
         admin_only: Boolean(meta.adminOnly),
         assignable: isSuper || !meta.adminOnly,
+        is_project_scoped: this.PROJECT_SCOPED_PERMISSIONS.has(p.name),
       };
     });
 
@@ -958,6 +981,17 @@ export class ProjectService {
 
     if (cleanedPerms.length === 0) {
       const err: any = new Error('At least one valid permission must be selected');
+      err.statusCode = 400;
+      throw err;
+    }
+
+    // Enforce Project module scope: Custom roles created from the project-level interface
+    // must contain only permissions corresponding to actions within the Project module.
+    const unauthorizedProjectPerms = cleanedPerms.filter((p) => !ProjectService.PROJECT_SCOPED_PERMISSIONS.has(p));
+    if (unauthorizedProjectPerms.length > 0) {
+      const err: any = new Error(
+        `Invalid project-scoped permissions: ${unauthorizedProjectPerms.join(', ')}. Project custom roles are strictly restricted to Project and Task management permissions.`
+      );
       err.statusCode = 400;
       throw err;
     }

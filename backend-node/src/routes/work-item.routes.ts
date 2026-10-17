@@ -20,4 +20,10 @@ router.delete('/:id', WorkItemController.delete);
 router.post('/:id/assignees', WorkItemController.addAssignees);
 router.delete('/:id/assignees/:userId', WorkItemController.removeAssignee);
 
+// ── WorkItem Comments ────────────────────────────────────────────────────────
+router.get('/:id/comments', WorkItemController.getComments);
+router.post('/:id/comments', WorkItemController.addComment);
+router.put('/:id/comments/:commentId', WorkItemController.updateComment);
+router.delete('/:id/comments/:commentId', WorkItemController.deleteComment);
+
 export { router as workItemRouter };

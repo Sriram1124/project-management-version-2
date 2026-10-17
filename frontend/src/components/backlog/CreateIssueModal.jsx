@@ -270,11 +270,11 @@ export default function CreateIssueModal({
           }
         }
 
-        const isTaskLike = issueType === 'Task' || issueType === 'Subtask' || issueType === 'Bug';
+        const isApplicableType = ['Task', 'Subtask', 'Bug', 'Story'].includes(issueType);
         const sp = Number(storyPoints);
-        if (isTaskLike) {
+        if (isApplicableType) {
           if (!storyPoints || isNaN(sp) || !Number.isInteger(sp) || sp <= 0) {
-            setError('Story points are mandatory for tasks, subtasks, and bugs and must be a positive integer greater than 0.');
+            setError('Story points are mandatory for tasks, stories, subtasks, and bugs and must be a positive integer greater than 0.');
             setSubmitting(false);
             return;
           }
@@ -458,16 +458,16 @@ export default function CreateIssueModal({
                 )}
               </div>
 
-              {/* Sprint Selector (hidden in Kanban) */}
+              {/* Cycle Selector (hidden in Kanban) */}
               {!isKanban && (
                 <div>
-                  <label className="block text-slate-700 font-semibold mb-1">Sprint</label>
+                  <label className="block text-slate-700 font-semibold mb-1">Cycle</label>
                   <select
                     value={sprintId}
                     onChange={(e) => setSprintId(e.target.value)}
                     className="w-full px-2.5 py-1.5 rounded border border-slate-200 bg-white text-slate-800 focus:outline-none focus:border-purple-600"
                   >
-                    <option value="backlog">Backlog</option>
+                    <option value="backlog">Backlog (No Cycle)</option>
                     {sprints.map((s) => (
                       <option key={s.id} value={s.id}>{s.name}</option>
                     ))}
@@ -567,13 +567,13 @@ export default function CreateIssueModal({
           {issueType !== 'Epic' && (
             <div>
               <label className="block text-slate-700 font-semibold mb-1">
-                Story Points {issueType !== 'Story' ? '*' : ''}
+                Story Points *
               </label>
               <input
                 type="number"
                 min={1}
                 max={100}
-                required={issueType !== 'Story'}
+                required
                 value={storyPoints}
                 onChange={(e) => setStoryPoints(e.target.value)}
                 className="w-full px-2.5 py-1.5 rounded border border-slate-200 bg-white text-slate-800 focus:outline-none focus:border-purple-600 font-mono"

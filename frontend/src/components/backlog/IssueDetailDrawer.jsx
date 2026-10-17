@@ -18,6 +18,7 @@ import {
 } from 'lucide-react';
 import { getEpicSprintSummary } from './HierarchicalIssueTable';
 import { useAuth } from '../../context/AuthContext';
+import WorkItemComments from '../common/WorkItemComments';
 
 export default function IssueDetailDrawer({
   issue,
@@ -167,6 +168,7 @@ export default function IssueDetailDrawer({
   const isEpic = String(issue?.type || '').toUpperCase() === 'EPIC';
   const isStory = String(issue?.type || '').toUpperCase() === 'STORY';
   const isTaskLike = ['TASK', 'SUBTASK', 'BUG'].includes(String(issue?.type || '').toUpperCase());
+  const isApplicableType = ['TASK', 'SUBTASK', 'BUG', 'STORY'].includes(String(issue?.type || '').toUpperCase());
   const epicSprintSummary = useMemo(() => {
     if (!isEpic || !issue) return null;
     return getEpicSprintSummary(issue, workItems, sprints);
@@ -236,13 +238,13 @@ export default function IssueDetailDrawer({
   const handleSPBlur = () => {
     const raw = editedStoryPoints;
     if (raw === '' || raw === null || raw === undefined) {
-      setEditedStoryPoints(issue?.story_points ?? issue?.storyPoints ?? (isTaskLike ? 1 : 0));
+      setEditedStoryPoints(issue?.story_points ?? issue?.storyPoints ?? (isApplicableType ? 1 : 0));
       return;
     }
     const val = parseInt(raw, 10);
-    if (isTaskLike) {
+    if (isApplicableType) {
       if (isNaN(val) || val <= 0) {
-        alert('Story points are mandatory for tasks, subtasks, and bugs and must be a positive integer greater than 0.');
+        alert('Story points are mandatory for tasks, stories, subtasks, and bugs and must be a positive integer greater than 0.');
         setEditedStoryPoints(issue?.story_points ?? issue?.storyPoints ?? 1);
         return;
       }
@@ -335,10 +337,10 @@ export default function IssueDetailDrawer({
   const handleAddChildSubmit = (e) => {
     e.preventDefault();
     if (newSubtaskTitle.trim() && allowedChildTypes.length > 0) {
-      const isChildTaskLike = ['TASK', 'SUBTASK', 'BUG'].includes(childType);
+      const isChildApplicable = ['TASK', 'SUBTASK', 'BUG', 'STORY'].includes(childType);
       const pointsVal = parseInt(childPoints, 10);
-      if (isChildTaskLike && (isNaN(pointsVal) || pointsVal <= 0)) {
-        alert('Story points are mandatory for tasks, subtasks, and bugs and must be a positive integer greater than 0.');
+      if (isChildApplicable && (isNaN(pointsVal) || pointsVal <= 0)) {
+        alert('Story points are mandatory for tasks, stories, subtasks, and bugs and must be a positive integer greater than 0.');
         return;
       }
       onAddSubtask?.(
@@ -346,7 +348,7 @@ export default function IssueDetailDrawer({
         newSubtaskTitle.trim(),
         childType,
         childSprintId || null,
-        isChildTaskLike ? pointsVal : Math.max(0, pointsVal || 0)
+        isChildApplicable ? pointsVal : Math.max(0, pointsVal || 0)
       );
       setNewSubtaskTitle('');
       setChildPoints(3);
@@ -484,9 +486,9 @@ export default function IssueDetailDrawer({
             )}
           </div>
 
-          {/* Sprint */}
+          {/* Cycle */}
           <div className="flex items-center justify-between">
-            <span className="text-slate-500 font-medium">Sprint</span>
+            <span className="text-slate-500 font-medium">Cycle</span>
             {isEpic ? (
               <span
                 className={`px-2 py-1 rounded border text-xs font-medium max-w-[180px] truncate select-none ${
@@ -494,7 +496,7 @@ export default function IssueDetailDrawer({
                 }`}
                 title={epicSprintSummary?.title || 'Derived from child items'}
               >
-                {epicSprintSummary?.label || 'Backlog'}
+                {epicSprintSummary?.label ? epicSprintSummary.label.replace(/Sprint/g, 'Cycle') : 'Backlog (No Cycle)'}
               </span>
             ) : canChangeSprint ? (
               <select
@@ -502,7 +504,7 @@ export default function IssueDetailDrawer({
                 onChange={(e) => handleSprintChange(e.target.value)}
                 className="px-2 py-1 rounded border border-slate-200 text-xs font-medium bg-white text-slate-800 focus:outline-none focus:border-purple-600 max-w-[180px] cursor-pointer"
               >
-                <option value="backlog">Backlog (No Sprint)</option>
+                <option value="backlog">Backlog (No Cycle)</option>
                 {sprints.map((s) => (
                   <option key={s.id} value={s.id}>
                     {s.name} ({s.status})
@@ -511,41 +513,26 @@ export default function IssueDetailDrawer({
               </select>
             ) : (
               <span className="px-2 py-1 rounded border text-xs font-medium bg-slate-50 text-slate-600 border-slate-200 select-none truncate max-w-[180px]">
-                {currentSprint ? currentSprint.name : 'Backlog'}
+                {currentSprint ? currentSprint.name : 'Backlog (No Cycle)'}
               </span>
             )}
           </div>
 
-          {/* Epic */}
-          <div className="flex items-center justify-between">
-            <span className="text-slate-500 font-medium">Epic</span>
-            {isEpic ? (
-              <span className="px-2 py-0.5 rounded text-[11px] font-semibold bg-purple-50 text-purple-700 border border-purple-200 select-none">
-                None (Top-level Epic)
+          {/* Parent Epic Hierarchy Display */}
+          {!isEpic && currentEpic?.name && (
+            <div className="flex items-center justify-between">
+              <span className="text-slate-500 font-medium">Epic</span>
+              <span className="px-2 py-0.5 rounded text-[11px] font-semibold bg-purple-50 text-purple-700 border border-purple-200 select-none truncate max-w-[180px]">
+                {currentEpic.name}
               </span>
-            ) : canChangeEpic ? (
-              <select
-                value={currentEpic?.id || ''}
-                onChange={(e) => handleEpicChange(e.target.value)}
-                className="px-2 py-1 rounded border border-slate-200 text-xs font-medium bg-white text-slate-800 focus:outline-none focus:border-purple-600 max-w-[180px] cursor-pointer"
-              >
-                <option value="">None (No Epic)</option>
-                {epics
-                  .filter((e) => e.id !== issue.id)
-                  .map((e) => (
-                    <option key={e.id} value={e.id}>{e.name || e.title}</option>
-                  ))}
-              </select>
-            ) : (
-              <span className="px-2 py-1 rounded border border-slate-200 text-xs font-medium bg-slate-50 text-slate-700 select-none truncate max-w-[180px]">
-                {currentEpic?.name || 'None (No Epic)'}
-              </span>
-            )}
-          </div>
+            </div>
+          )}
 
           {/* Story Points */}
           <div className="flex items-center justify-between">
-            <span className="text-slate-500 font-medium">Story Points</span>
+            <span className="text-slate-500 font-medium">
+              Story Points {isApplicableType ? '*' : ''}
+            </span>
             {isEpic ? (
               <span className="text-[11px] text-slate-400 italic">Aggregated from stories</span>
             ) : hasChildTasks ? (
@@ -559,7 +546,7 @@ export default function IssueDetailDrawer({
               <div className="flex items-center gap-1.5">
                 <input
                   type="number"
-                  min={isTaskLike ? 1 : 0}
+                  min={isApplicableType ? 1 : 0}
                   max={999}
                   value={editedStoryPoints}
                   onChange={(e) => setEditedStoryPoints(e.target.value)}
@@ -726,8 +713,8 @@ export default function IssueDetailDrawer({
                     placeholder={`+ Add new ${childType.toLowerCase()}...`}
                     className="flex-1 px-2 py-1 text-xs rounded border border-slate-200 focus:outline-none focus:border-purple-600"
                   />
-                  {['TASK', 'SUBTASK', 'BUG'].includes(childType) && (
-                    <div className="flex items-center gap-1 shrink-0" title="Story Points (mandatory for tasks)">
+                  {['TASK', 'SUBTASK', 'BUG', 'STORY'].includes(childType) && (
+                    <div className="flex items-center gap-1 shrink-0" title="Story Points (mandatory for work items)">
                       <input
                         type="number"
                         min={1}
@@ -780,18 +767,20 @@ export default function IssueDetailDrawer({
           <div className="flex items-center justify-between border-b border-slate-200">
             <div className="flex items-center gap-3">
               <button
+                type="button"
                 onClick={() => setActiveTab('comments')}
-                className={`pb-1.5 font-semibold text-xs border-b-2 transition-colors ${
+                className={`pb-1.5 font-semibold text-xs border-b-2 transition-colors cursor-pointer ${
                   activeTab === 'comments'
                     ? 'border-purple-600 text-purple-700'
                     : 'border-transparent text-slate-500 hover:text-slate-800'
                 }`}
               >
-                Comments ({comments.length})
+                Comments
               </button>
               <button
+                type="button"
                 onClick={() => setActiveTab('history')}
-                className={`pb-1.5 font-semibold text-xs border-b-2 transition-colors ${
+                className={`pb-1.5 font-semibold text-xs border-b-2 transition-colors cursor-pointer ${
                   activeTab === 'history'
                     ? 'border-purple-600 text-purple-700'
                     : 'border-transparent text-slate-500 hover:text-slate-800'
@@ -803,42 +792,12 @@ export default function IssueDetailDrawer({
           </div>
 
           {activeTab === 'comments' ? (
-            <div className="space-y-2 pt-1">
-              {/* Add Comment */}
-              <form onSubmit={handleAddComment} className="space-y-1.5">
-                <input
-                  type="text"
-                  value={newComment}
-                  onChange={(e) => setNewComment(e.target.value)}
-                  placeholder="Add a comment..."
-                  className="w-full px-2.5 py-1.5 text-xs rounded-md border border-slate-200 focus:outline-none focus:border-purple-600"
-                />
-                {newComment.trim() && (
-                  <button
-                    type="submit"
-                    className="px-2.5 py-1 rounded bg-purple-600 text-white text-xs font-semibold hover:bg-purple-700 transition-colors"
-                  >
-                    Save
-                  </button>
-                )}
-              </form>
-
-              {/* Comments List */}
-              <div className="space-y-2 pt-2">
-                {comments.map((c) => (
-                  <div key={c.id} className="p-2 rounded bg-slate-50 border border-slate-100 space-y-1">
-                    <div className="flex items-center justify-between text-[10px]">
-                      <span className="font-bold text-slate-800">{c.author}</span>
-                      <span className="text-slate-400">{c.time}</span>
-                    </div>
-                    <p className="text-xs text-slate-700 leading-relaxed">{c.text}</p>
-                  </div>
-                ))}
-              </div>
+            <div className="pt-1">
+              <WorkItemComments workItemId={issue.id} />
             </div>
           ) : (
             <div className="p-3 text-center text-xs text-slate-400">
-              Activity log: Task moved to Sprint 04 on Dec 1 by Priya Sharma.
+              Activity log is available in project audit views.
             </div>
           )}
         </div>

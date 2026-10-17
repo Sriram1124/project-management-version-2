@@ -447,13 +447,14 @@ export default function ProjectsDirectoryView({ onSelectProject, isIntern = fals
               <table className="w-full text-left text-xs">
                 <thead className="bg-slate-50/70 border-b border-slate-200/80 text-slate-400 font-semibold uppercase tracking-wider text-[10px]">
                   <tr>
-                    <th className="py-3.5 px-6">Project Details</th>
-                    <th className="py-3.5 px-6">Project Owner</th>
-                    <th className="py-3.5 px-6">Members</th>
-                    <th className="py-3.5 px-6">Timeline</th>
-                    <th className="py-3.5 px-6">Progress</th>
-                    <th className="py-3.5 px-6">Status</th>
-                    <th className="py-3.5 px-6 text-right">Actions</th>
+                    <th className="py-3.5 px-6 min-w-[220px]">Project Details</th>
+                    <th className="py-3.5 px-6 w-[130px] min-w-[130px]">Methodology</th>
+                    <th className="py-3.5 px-6 min-w-[180px]">Project Owner</th>
+                    <th className="py-3.5 px-6 min-w-[150px]">Members</th>
+                    <th className="py-3.5 px-6 min-w-[180px]">Timeline</th>
+                    <th className="py-3.5 px-6 min-w-[130px]">Progress</th>
+                    <th className="py-3.5 px-6 min-w-[110px]">Status</th>
+                    <th className="py-3.5 px-6 text-right min-w-[90px]">Actions</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100">
@@ -475,23 +476,28 @@ export default function ProjectsDirectoryView({ onSelectProject, isIntern = fals
                         className="hover:bg-purple-50/40 transition-colors cursor-pointer group"
                       >
                         {/* Project Details */}
-                        <td className="py-4 px-6">
-                          <div className="flex items-center gap-3">
+                        <td className="py-4 px-6 min-w-[220px] max-w-[280px]">
+                          <div className="flex items-center gap-3 min-w-0">
                             <div className="w-9 h-9 rounded-xl bg-purple-50 text-purple-600 flex items-center justify-center border border-purple-100/80 shrink-0 group-hover:scale-105 transition-transform">
                               <FolderKanban className="w-4 h-4" />
                             </div>
-                            <div>
-                              <div className="flex items-center gap-2">
-                                <span className="font-bold text-slate-900 group-hover:text-purple-700 transition-colors text-xs leading-snug">
-                                  {proj.name}
-                                </span>
-                                <ProjectMethodologyBadge methodology={proj.methodology} />
-                              </div>
+                            <div className="min-w-0 flex-1">
+                              <span 
+                                className="font-bold text-slate-900 group-hover:text-purple-700 transition-colors text-xs leading-snug block truncate"
+                                title={proj.name}
+                              >
+                                {proj.name}
+                              </span>
                               <div className="text-[10px] text-slate-400 font-mono mt-0.5">
                                 ID: {proj.id.slice(0, 8)}...
                               </div>
                             </div>
                           </div>
+                        </td>
+
+                        {/* Methodology */}
+                        <td className="py-4 px-6 w-[130px] min-w-[130px] whitespace-nowrap">
+                          <ProjectMethodologyBadge methodology={proj.methodology} />
                         </td>
 
                         {/* Project Owner */}

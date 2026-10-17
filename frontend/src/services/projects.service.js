@@ -130,8 +130,11 @@ export const projectsService = {
     return res.users || [];
   },
 
-  async getAvailablePermissions() {
-    const res = await api.get('/projects/permissions/registry');
+  async getAvailablePermissions(params = {}) {
+    const query = new URLSearchParams();
+    if (params.scope) query.append('scope', params.scope);
+    const qs = query.toString() ? `?${query.toString()}` : '';
+    const res = await api.get(`/projects/permissions/registry${qs}`);
     return res.data || res.permissions || res;
   },
 
