@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import { X, ShieldCheck, Check, Loader2, AlertCircle, RotateCcw } from 'lucide-react';
 import { projectsService } from '../../services/projects.service';
@@ -71,6 +71,7 @@ export default function EditMemberPermissionsModal({
   const [selectedPerms, setSelectedPerms] = useState(() => new Set());
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
+  const modalRef = useRef(null);
 
   const memberName = member?.name || member?.user?.name || member?.email || 'Member';
   const memberEmail = member?.email || member?.user?.email || '';
@@ -93,6 +94,55 @@ export default function EditMemberPermissionsModal({
       setSelectedPerms(perms);
     }
   }, [isOpen, member]);
+
+  // Focus trap, Escape key handling, and background scroll prevention
+  useEffect(() => {
+    if (!isOpen) return;
+
+    const originalOverflow = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+
+    const handleKeyDown = (e) => {
+      if (e.key === 'Escape') {
+        e.preventDefault();
+        e.stopPropagation();
+        onClose();
+        return;
+      }
+
+      if (e.key === 'Tab' && modalRef.current) {
+        const focusables = modalRef.current.querySelectorAll(
+          'button:not([disabled]), input:not([disabled]), [tabindex]:not([tabindex="-1"])'
+        );
+        if (focusables.length === 0) return;
+        const first = focusables[0];
+        const last = focusables[focusables.length - 1];
+
+        if (e.shiftKey && document.activeElement === first) {
+          e.preventDefault();
+          last.focus();
+        } else if (!e.shiftKey && document.activeElement === last) {
+          e.preventDefault();
+          first.focus();
+        }
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown, true);
+
+    const timer = setTimeout(() => {
+      if (modalRef.current) {
+        const firstBtn = modalRef.current.querySelector('button');
+        firstBtn?.focus();
+      }
+    }, 50);
+
+    return () => {
+      clearTimeout(timer);
+      window.removeEventListener('keydown', handleKeyDown, true);
+      document.body.style.overflow = originalOverflow;
+    };
+  }, [isOpen, onClose]);
 
   if (!isOpen || !member) return null;
 
@@ -144,12 +194,16 @@ export default function EditMemberPermissionsModal({
     }
   };
 
-  return createPortal(
+  const modalContent = (
     <div
       className="fixed inset-0 z-60 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4 animate-in fade-in duration-150"
       onClick={onClose}
     >
       <div
+        ref={modalRef}
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="edit-permissions-modal-title"
         className="bg-white w-full max-w-xl rounded-2xl shadow-2xl border border-slate-200 overflow-hidden flex flex-col max-h-[90vh]"
         onClick={(e) => e.stopPropagation()}
       >
@@ -160,7 +214,7 @@ export default function EditMemberPermissionsModal({
               <ShieldCheck className="w-5 h-5" />
             </div>
             <div>
-              <h3 className="text-sm font-bold text-slate-900">
+              <h3 id="edit-permissions-modal-title" className="text-sm font-bold text-slate-900">
                 Edit Member Permissions — {memberName}
               </h3>
               <p className="text-[11px] text-slate-500">
@@ -172,6 +226,7 @@ export default function EditMemberPermissionsModal({
             onClick={onClose}
             disabled={saving}
             className="p-1.5 text-slate-400 hover:text-slate-600 hover:bg-slate-100 rounded-lg transition-colors cursor-pointer disabled:opacity-50"
+            aria-label="Close"
           >
             <X className="w-4 h-4" />
           </button>
@@ -287,8 +342,8 @@ export default function EditMemberPermissionsModal({
           </div>
         </div>
       </div>
-    </div>,
-    document.body
+    </div>
   );
-}
 
+  return typeof document !== 'undefined' ? createPortal(modalContent, document.body) : modalContent;
+}

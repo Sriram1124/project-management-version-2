@@ -53,12 +53,47 @@ export default function AllProjectMembersModal({
   const [activeMenuMemberId, setActiveMenuMemberId] = useState(null);
   const [editingPermissionsMember, setEditingPermissionsMember] = useState(null);
   const filterRef = useRef(null);
+  const triggerBtnRef = useRef(null);
 
   const allowAddMembers = canAddMembers || canAssignRoles;
 
   useEffect(() => {
     setLocalMembers(members);
   }, [members]);
+
+  // Handle Escape key
+  useEffect(() => {
+    if (!isOpen) return;
+    const handleKeyDown = (e) => {
+      if (e.key === 'Escape') {
+        if (editingPermissionsMember || isAddMembersOpen || isAddCustomRoleOpen) return;
+        if (memberToRemove) {
+          setMemberToRemove(null);
+          return;
+        }
+        if (activeMenuMemberId) {
+          setActiveMenuMemberId(null);
+          return;
+        }
+        if (isFilterOpen) {
+          setIsFilterOpen(false);
+          return;
+        }
+        onClose?.();
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [
+    isOpen,
+    editingPermissionsMember,
+    isAddMembersOpen,
+    isAddCustomRoleOpen,
+    memberToRemove,
+    activeMenuMemberId,
+    isFilterOpen,
+    onClose,
+  ]);
 
   // Close menu on click outside
   useEffect(() => {
@@ -576,7 +611,7 @@ export default function AllProjectMembersModal({
 
                       {/* Member Actions Three-Dot Menu */}
                       {(canAssignRoles || canRemoveMembers) && (
-                        <div className="relative">
+                        <div className={`relative ${activeMenuMemberId === member.user_id ? 'z-30' : 'z-10'}`}>
                           <button
                             type="button"
                             onClick={(e) => {
@@ -597,7 +632,8 @@ export default function AllProjectMembersModal({
                               {canAssignRoles && (
                                 <button
                                   type="button"
-                                  onClick={() => {
+                                  onClick={(e) => {
+                                    triggerBtnRef.current = e.currentTarget;
                                     setActiveMenuMemberId(null);
                                     setEditingPermissionsMember(member);
                                   }}
@@ -730,6 +766,13 @@ export default function AllProjectMembersModal({
         </div>
       )}
 
+    </div>
+  );
+
+  return (
+    <>
+      {typeof document !== 'undefined' ? createPortal(modalContent, document.body) : modalContent}
+
       {/* Add Project Members Modal */}
       <AddProjectMembersModal
         isOpen={isAddMembersOpen}
@@ -762,7 +805,10 @@ export default function AllProjectMembersModal({
       {/* Edit Member Permissions Modal */}
       <EditMemberPermissionsModal
         isOpen={Boolean(editingPermissionsMember)}
-        onClose={() => setEditingPermissionsMember(null)}
+        onClose={() => {
+          setEditingPermissionsMember(null);
+          triggerBtnRef.current?.focus();
+        }}
         projectId={projectId}
         member={editingPermissionsMember}
         onSuccess={(updatedMembers) => {
@@ -772,8 +818,6 @@ export default function AllProjectMembersModal({
         }}
         onToast={onToast}
       />
-    </div>
+    </>
   );
-
-  return typeof document !== 'undefined' ? createPortal(modalContent, document.body) : modalContent;
 }
