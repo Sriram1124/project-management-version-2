@@ -73,4 +73,16 @@ export const timesheetService = {
     if (endDate) params.set('end_date', endDate);
     return api.get(`/users/${encodeURIComponent(userId)}/timesheet/report?${params.toString()}`);
   },
+
+  getManagerReview(filters = {}) {
+    const params = new URLSearchParams();
+    if (filters.date) params.set('date', filters.date);
+    if (filters.search) params.set('search', filters.search);
+    if (filters.cohort_id && filters.cohort_id !== 'ALL') params.set('cohort_id', filters.cohort_id);
+    if (filters.project_id && filters.project_id !== 'ALL') params.set('project_id', filters.project_id);
+    if (filters.page) params.set('page', String(filters.page));
+    if (filters.limit) params.set('limit', String(filters.limit));
+    const qs = params.toString();
+    return api.get(`/timesheet/review${qs ? `?${qs}` : ''}`);
+  },
 };

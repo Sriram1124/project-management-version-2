@@ -10,7 +10,7 @@ import TechLeadsView from './components/views/TechLeadsView';
 import TasksView from './components/views/TasksView';
 import ManagerMyTasksView from './components/views/ManagerMyTasksView';
 import ReportsView from './components/views/ReportsView';
-import TimesheetView from './components/views/TimesheetView';
+import ManagerTimesheetsView from './components/views/ManagerTimesheetsView';
 import InternPortalView from './components/views/InternPortalView';
 import AlertModal from './components/modals/AlertModal';
 import QuickSearchModal from './components/modals/QuickSearchModal';
@@ -32,7 +32,8 @@ export default function ManagerApp() {
   const getViewFromPath = (pathname) => {
     const clean = pathname.replace(/^\/manager\/?/, '');
     if (!clean || clean === 'dashboard') return 'dashboard';
-    if (['projects', 'my-tasks', 'tasks', 'interns', 'tech-leads', 'reports', 'timesheet', 'channels'].includes(clean)) {
+    if (clean === 'timesheet') return 'timesheets';
+    if (['projects', 'my-tasks', 'tasks', 'interns', 'tech-leads', 'reports', 'timesheets', 'channels'].includes(clean)) {
       return clean;
     }
     return 'dashboard';
@@ -451,7 +452,13 @@ export default function ManagerApp() {
                   selectedCohortId={selectedCohortId}
                 />
               )}
-              {currentView === 'timesheet' && <TimesheetView onToast={triggerToast} />}
+              {(currentView === 'timesheets' || currentView === 'timesheet') && (
+                <ManagerTimesheetsView
+                  onToast={triggerToast}
+                  cohorts={cohorts}
+                  selectedCohortId={selectedCohortId}
+                />
+              )}
               {currentView === 'channels' && (
                 <TeamsChannelView
                   forms={channelForms}

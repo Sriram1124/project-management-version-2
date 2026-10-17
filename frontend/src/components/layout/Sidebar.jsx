@@ -38,7 +38,7 @@ export default function Sidebar({
   ];
 
   const analyticsItems = [
-    { id: 'timesheet', label: 'Timesheet', icon: Clock },
+    { id: 'timesheets', label: 'Timesheets', icon: Clock },
     { id: 'reports', label: 'Reports', icon: BarChart3 },
   ];
 

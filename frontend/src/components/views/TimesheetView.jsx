@@ -43,7 +43,13 @@ const formatElapsed = (startedAt) => {
   return `${String(hrs).padStart(2, '0')}:${String(mins).padStart(2, '0')}:${String(secs).padStart(2, '0')}`;
 };
 
-export default function TimesheetView({ onToast }) {
+export default function TimesheetView({
+  onToast,
+  targetUserId = null,
+  readOnly = false,
+  onBack = null,
+  internInfo = null,
+}) {
   const { user: authUser } = useAuth();
 
   // Week navigation state
@@ -74,15 +80,20 @@ export default function TimesheetView({ onToast }) {
   const [manualMinutes, setManualMinutes] = useState('30');
   const [manualNotes, setManualNotes] = useState('');
 
+  // Effective intern metadata (from prop or backend response)
+  const currentIntern = internInfo || timesheet?.user || null;
+
   // Load timesheet for the selected week
   const loadTimesheet = useCallback(async () => {
     try {
       setLoading(true);
       setError('');
-      const response = await timesheetService.getWeekly(null, selectedDate.toISOString());
+      const response = await timesheetService.getWeekly(targetUserId, selectedDate.toISOString());
       const data = response?.timesheet || null;
       setTimesheet(data);
-      if (data?.active_session) {
+      if (readOnly) {
+        setActiveSession(null);
+      } else if (data?.active_session) {
         setActiveSession(data.active_session);
       } else {
         // Also check directly for any active session
@@ -99,7 +110,7 @@ export default function TimesheetView({ onToast }) {
     } finally {
       setLoading(false);
     }
-  }, [selectedDate]);
+  }, [selectedDate, targetUserId, readOnly]);
 
   useEffect(() => {
     loadTimesheet();
@@ -312,6 +323,17 @@ export default function TimesheetView({ onToast }) {
       {/* 1. TOP HEADER & WEEK CONTROLS */}
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 bg-white p-4 sm:p-5 rounded-2xl border border-slate-200/80 shadow-xs">
         <div>
+          {onBack && (
+            <button
+              type="button"
+              onClick={onBack}
+              className="inline-flex items-center gap-1.5 text-xs font-semibold text-purple-700 hover:text-purple-900 mb-2.5 transition-colors cursor-pointer group"
+            >
+              <ChevronLeft className="w-4 h-4 transition-transform group-hover:-translate-x-0.5" />
+              <span>Back to Intern Timesheets Directory</span>
+            </button>
+          )}
+
           <div className="flex items-center gap-2">
             <span className="p-1.5 rounded-lg bg-purple-100 text-purple-700">
               <Calendar className="w-4 h-4" />
@@ -319,13 +341,40 @@ export default function TimesheetView({ onToast }) {
             <span className="text-[11px] font-bold uppercase tracking-wider text-purple-700">
               Time Tracking & Attendance
             </span>
+            {readOnly && (
+              <span className="px-2 py-0.5 text-[10px] font-bold bg-amber-50 text-amber-700 border border-amber-200 rounded-full uppercase tracking-wider">
+                Review Mode (Read-Only)
+              </span>
+            )}
           </div>
+
           <h1 className="text-xl sm:text-2xl font-bold text-slate-900 tracking-tight mt-1">
-            Weekly Timesheet
+            {currentIntern ? `${currentIntern.name}'s Timesheet` : 'Weekly Timesheet'}
           </h1>
-          <p className="text-xs text-slate-500 mt-0.5">
-            Log, track, and review real task effort across work days
-          </p>
+
+          <div className="flex flex-wrap items-center gap-x-2.5 gap-y-1 text-xs text-slate-500 mt-0.5">
+            {currentIntern ? (
+              <>
+                <span className="text-slate-700 font-medium">{currentIntern.email}</span>
+                {currentIntern.cohort?.name && (
+                  <>
+                    <span>•</span>
+                    <span className="font-semibold text-purple-700 bg-purple-50 px-2 py-0.2 rounded border border-purple-200/60">
+                      {currentIntern.cohort.name}
+                    </span>
+                  </>
+                )}
+                {currentIntern.batch && (
+                  <>
+                    <span>•</span>
+                    <span>{currentIntern.batch} {currentIntern.subbatch || ''}</span>
+                  </>
+                )}
+              </>
+            ) : (
+              <span>Log, track, and review real task effort across work days</span>
+            )}
+          </div>
         </div>
 
         {/* Action Buttons & Nav */}
@@ -394,25 +443,27 @@ export default function TimesheetView({ onToast }) {
             <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} />
           </button>
 
-          {/* Log Time Button */}
-          <button
-            type="button"
-            onClick={() => {
-              if (availableTasks.length > 0 && !manualTaskId) {
-                setManualTaskId(availableTasks[0].id);
-              }
-              setIsLogModalOpen(true);
-            }}
-            className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-purple-600 hover:bg-purple-700 text-white font-semibold transition-colors cursor-pointer shadow-xs"
-          >
-            <Plus className="w-3.5 h-3.5" />
-            <span>Log Time</span>
-          </button>
+          {/* Log Time Button (Intern Only) */}
+          {!readOnly && (
+            <button
+              type="button"
+              onClick={() => {
+                if (availableTasks.length > 0 && !manualTaskId) {
+                  setManualTaskId(availableTasks[0].id);
+                }
+                setIsLogModalOpen(true);
+              }}
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-purple-600 hover:bg-purple-700 text-white font-semibold transition-colors cursor-pointer shadow-xs"
+            >
+              <Plus className="w-3.5 h-3.5" />
+              <span>Log Time</span>
+            </button>
+          )}
         </div>
       </div>
 
-      {/* 2. ACTIVE RUNNING TIMER BANNER */}
-      {activeSession && (
+      {/* 2. ACTIVE RUNNING TIMER BANNER (Intern Only) */}
+      {!readOnly && activeSession && (
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 p-3.5 sm:px-5 bg-gradient-to-r from-purple-900 via-indigo-900 to-purple-950 text-white rounded-2xl shadow-md border border-purple-700/50 animate-in fade-in duration-200">
           <div className="flex items-center gap-3 min-w-0">
             <span className="relative flex h-3.5 w-3.5">
@@ -815,97 +866,111 @@ export default function TimesheetView({ onToast }) {
                           )}
                         </div>
 
-                        <button
-                          type="button"
-                          onClick={() => handleDeleteEntry(entry.id)}
-                          disabled={actionLoading}
-                          title="Delete entry"
-                          className="p-1 rounded-lg text-slate-400 hover:text-rose-600 hover:bg-rose-50 transition-colors"
-                        >
-                          <Trash2 className="w-3.5 h-3.5" />
-                        </button>
+                        {!readOnly && (
+                          <button
+                            type="button"
+                            onClick={() => handleDeleteEntry(entry.id)}
+                            disabled={actionLoading}
+                            title="Delete entry"
+                            className="p-1 rounded-lg text-slate-400 hover:text-rose-600 hover:bg-rose-50 transition-colors"
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </button>
+                        )}
                       </div>
                     ))}
                   </div>
                 )}
               </div>
 
-              {/* Add New Entry Form */}
-              <form onSubmit={handleAddCellEntry} className="pt-3 border-t border-slate-100 space-y-3">
-                <h4 className="text-[11px] font-bold uppercase tracking-wider text-slate-700">
-                  + Add Time Entry
-                </h4>
+              {/* Add New Entry Form (Intern Only) */}
+              {!readOnly ? (
+                <form onSubmit={handleAddCellEntry} className="pt-3 border-t border-slate-100 space-y-3">
+                  <h4 className="text-[11px] font-bold uppercase tracking-wider text-slate-700">
+                    + Add Time Entry
+                  </h4>
 
-                <div className="grid grid-cols-2 gap-3">
-                  <div>
-                    <label className="block text-[11px] font-semibold text-slate-600 mb-1">
-                      Hours
-                    </label>
-                    <input
-                      type="number"
-                      min="0"
-                      max="24"
-                      placeholder="0"
-                      value={cellFormHours}
-                      onChange={(e) => setCellFormHours(e.target.value)}
-                      className="w-full px-3 py-1.5 rounded-xl border border-slate-200 focus:outline-none focus:border-purple-600 text-slate-900 font-mono"
-                    />
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <label className="block text-[11px] font-semibold text-slate-600 mb-1">
+                        Hours
+                      </label>
+                      <input
+                        type="number"
+                        min="0"
+                        max="24"
+                        placeholder="0"
+                        value={cellFormHours}
+                        onChange={(e) => setCellFormHours(e.target.value)}
+                        className="w-full px-3 py-1.5 rounded-xl border border-slate-200 focus:outline-none focus:border-purple-600 text-slate-900 font-mono"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="block text-[11px] font-semibold text-slate-600 mb-1">
+                        Minutes
+                      </label>
+                      <input
+                        type="number"
+                        min="0"
+                        max="59"
+                        step="5"
+                        placeholder="30"
+                        value={cellFormMinutes}
+                        onChange={(e) => setCellFormMinutes(e.target.value)}
+                        className="w-full px-3 py-1.5 rounded-xl border border-slate-200 focus:outline-none focus:border-purple-600 text-slate-900 font-mono"
+                      />
+                    </div>
                   </div>
 
                   <div>
                     <label className="block text-[11px] font-semibold text-slate-600 mb-1">
-                      Minutes
+                      Notes (Optional)
                     </label>
-                    <input
-                      type="number"
-                      min="0"
-                      max="59"
-                      step="5"
-                      placeholder="30"
-                      value={cellFormMinutes}
-                      onChange={(e) => setCellFormMinutes(e.target.value)}
-                      className="w-full px-3 py-1.5 rounded-xl border border-slate-200 focus:outline-none focus:border-purple-600 text-slate-900 font-mono"
+                    <textarea
+                      rows={2}
+                      value={cellFormNotes}
+                      onChange={(e) => setCellFormNotes(e.target.value)}
+                      placeholder="What did you work on?"
+                      className="w-full px-3 py-1.5 rounded-xl border border-slate-200 focus:outline-none focus:border-purple-600 text-slate-900 resize-none"
                     />
                   </div>
-                </div>
 
-                <div>
-                  <label className="block text-[11px] font-semibold text-slate-600 mb-1">
-                    Notes (Optional)
-                  </label>
-                  <textarea
-                    rows={2}
-                    value={cellFormNotes}
-                    onChange={(e) => setCellFormNotes(e.target.value)}
-                    placeholder="What did you work on?"
-                    className="w-full px-3 py-1.5 rounded-xl border border-slate-200 focus:outline-none focus:border-purple-600 text-slate-900 resize-none"
-                  />
-                </div>
-
-                <div className="flex items-center justify-end gap-2 pt-2">
+                  <div className="flex items-center justify-end gap-2 pt-2">
+                    <button
+                      type="button"
+                      onClick={() => setCellModalData(null)}
+                      className="px-3 py-1.5 rounded-xl border border-slate-200 hover:bg-slate-50 font-semibold text-slate-600"
+                    >
+                      Cancel
+                    </button>
+                    <button
+                      type="submit"
+                      disabled={actionLoading}
+                      className="px-4 py-1.5 rounded-xl bg-purple-600 hover:bg-purple-700 text-white font-semibold transition-colors disabled:opacity-50"
+                    >
+                      {actionLoading ? 'Saving...' : 'Save Log'}
+                    </button>
+                  </div>
+                </form>
+              ) : (
+                <div className="pt-3 border-t border-slate-100 flex justify-end">
                   <button
                     type="button"
                     onClick={() => setCellModalData(null)}
-                    className="px-3 py-1.5 rounded-xl border border-slate-200 hover:bg-slate-50 font-semibold text-slate-600"
+                    className="px-4 py-1.5 rounded-xl bg-slate-100 hover:bg-slate-200 font-semibold text-slate-700 cursor-pointer"
                   >
-                    Cancel
-                  </button>
-                  <button
-                    type="submit"
-                    disabled={actionLoading}
-                    className="px-4 py-1.5 rounded-xl bg-purple-600 hover:bg-purple-700 text-white font-semibold transition-colors disabled:opacity-50"
-                  >
-                    {actionLoading ? 'Saving...' : 'Save Log'}
+                    Close
                   </button>
                 </div>
-              </form>
+              )}
             </div>
           </div>
         </div>
       )}
 
-      {/* 6. GENERAL MANUAL TIME LOG MODAL */}
-      {isLogModalOpen && (
+      {/* 6. GENERAL MANUAL TIME LOG MODAL (Intern Only) */}
+      {!readOnly && isLogModalOpen && (
         <div className="fixed inset-0 z-50 bg-black/40 backdrop-blur-2xs flex items-center justify-center p-4 animate-in fade-in duration-150">
           <div className="bg-white rounded-2xl shadow-2xl border border-slate-200 max-w-md w-full overflow-hidden text-xs">
             <div className="flex items-center justify-between p-4 border-b border-slate-100 bg-slate-50/70">
