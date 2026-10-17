@@ -108,7 +108,7 @@ export default function SprintSection({
           {/* Status Badge */}
           {isActive ? (
             <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-purple-100 text-purple-700 border border-purple-200/80 uppercase tracking-wider">
-              Active Sprint
+              Active Cycle
             </span>
           ) : !isBacklog ? (
             <span className="px-2 py-0.5 rounded text-[10px] font-semibold bg-slate-200/70 text-slate-700 uppercase tracking-wider">
@@ -126,7 +126,7 @@ export default function SprintSection({
 
           {/* Issue Count & Story Points */}
           <span className="text-[11px] text-slate-400">
-            · {issues.length} {issues.length === 1 ? 'issue' : 'issues'}
+            · {issues.length} {issues.length === 1 ? 'task' : 'tasks'}
             {totalSP > 0 && ` · ${totalSP} SP`}
             {isActive && completedCount > 0 && ` (${completedCount} done)`}
           </span>
@@ -138,10 +138,10 @@ export default function SprintSection({
             <button
               type="button"
               onClick={() => onCompleteSprint?.(sprint.id)}
-              className="px-2.5 py-1 rounded-md border border-slate-200 bg-white hover:bg-slate-50 text-slate-700 text-xs font-medium transition-colors flex items-center gap-1"
+              className="px-2.5 py-1 rounded-md border border-slate-200 bg-white hover:bg-slate-50 text-slate-700 text-xs font-medium transition-colors flex items-center gap-1 cursor-pointer"
             >
               <Check className="w-3 h-3 text-emerald-600" />
-              <span>Complete sprint</span>
+              <span>Complete cycle</span>
             </button>
           ) : !isBacklog ? (
             <button
@@ -149,13 +149,13 @@ export default function SprintSection({
               onClick={() => onStartSprint?.(sprint.id)}
               title={
                 sprints?.find((s) => s.id !== sprint.id && s.status === 'ACTIVE')
-                  ? `Cannot start sprint: Sprint "${sprints.find((s) => s.id !== sprint.id && s.status === 'ACTIVE').name}" is currently active`
+                  ? `Cannot start cycle: Cycle "${sprints.find((s) => s.id !== sprint.id && s.status === 'ACTIVE').name}" is currently active`
                   : `Start ${sprint.name}`
               }
               className="px-2.5 py-1 rounded-md border border-purple-200 bg-purple-50 hover:bg-purple-100 text-purple-700 text-xs font-semibold transition-colors flex items-center gap-1 cursor-pointer"
             >
               <Play className="w-3 h-3 fill-purple-600 text-purple-600" />
-              <span>Start sprint</span>
+              <span>Start cycle</span>
             </button>
           ) : null}
 
@@ -194,7 +194,7 @@ export default function SprintSection({
           hasActiveFilters={hasActiveFilters}
           onDragStart={onDragStart}
           onDragEnd={onDragEnd}
-          emptyMessage={`No issues in ${sprint.name}. Drag issues here or click Create to add one.`}
+          emptyMessage={isBacklog ? 'No unassigned backlog tasks.' : `No tasks in ${sprint.name}. Drag tasks here or click Create to add one.`}
         />
       )}
     </div>

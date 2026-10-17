@@ -217,7 +217,7 @@ export function getEpicSprintSummary(epic, allWorkItems = [], sprints = []) {
       unassignedCount++;
     } else {
       assignedCount++;
-      const sName = sprintNameMap.get(sid) || d.sprint?.name || 'Sprint';
+      const sName = sprintNameMap.get(sid) || d.sprint?.name || 'Cycle';
       if (!sprintCounts.has(sid)) {
         sprintCounts.set(sid, { id: sid, name: sName, count: 0 });
       }
@@ -227,24 +227,24 @@ export function getEpicSprintSummary(epic, allWorkItems = [], sprints = []) {
 
   const distinctSprints = Array.from(sprintCounts.values());
 
-  // 1. No descendants assigned to any sprint
+  // 1. No descendants assigned to any cycle
   if (assignedCount === 0) {
     return {
       type: 'BACKLOG',
-      label: 'Backlog',
+      label: 'Backlog (No Cycle)',
       badgeClass: 'bg-slate-50 text-slate-500 border-slate-200',
       title: `All ${totalDescendants} child items are in Backlog (unscheduled)`,
-      details: [{ name: 'Backlog (Unassigned)', count: unassignedCount, isBacklog: true }],
+      details: [{ name: 'Backlog (No Cycle)', count: unassignedCount, isBacklog: true }],
     };
   }
 
-  // 2. All assigned descendants belong to ONE sprint
+  // 2. All assigned descendants belong to ONE cycle
   if (distinctSprints.length === 1) {
     const s = distinctSprints[0];
     const itemWord = s.count === 1 ? 'item' : 'items';
 
     if (unassignedCount === 0) {
-      // 100% of descendants in one sprint
+      // 100% of descendants in one cycle
       return {
         type: 'SINGLE_SPRINT',
         label: `${s.name} · ${s.count} ${itemWord}`,
@@ -253,7 +253,7 @@ export function getEpicSprintSummary(epic, allWorkItems = [], sprints = []) {
         details: [{ name: s.name, count: s.count, isBacklog: false }],
       };
     } else {
-      // Some assigned to one sprint, others unassigned
+      // Some assigned to one cycle, others unassigned
       const unassignedWord = unassignedCount === 1 ? 'item' : 'items';
       return {
         type: 'PARTIAL_SPRINT',
@@ -262,13 +262,13 @@ export function getEpicSprintSummary(epic, allWorkItems = [], sprints = []) {
         title: `${s.name}: ${s.count} ${itemWord} · Backlog: ${unassignedCount} ${unassignedWord}`,
         details: [
           { name: s.name, count: s.count, isBacklog: false },
-          { name: 'Backlog (Unassigned)', count: unassignedCount, isBacklog: true },
+          { name: 'Backlog (No Cycle)', count: unassignedCount, isBacklog: true },
         ],
       };
     }
   }
 
-  // 3. Descendants span MULTIPLE sprints
+  // 3. Descendants span MULTIPLE cycles
   const parts = distinctSprints.map((s) => `${s.name}: ${s.count} ${s.count === 1 ? 'item' : 'items'}`);
   if (unassignedCount > 0) {
     parts.push(`Backlog: ${unassignedCount} ${unassignedCount === 1 ? 'item' : 'items'}`);
@@ -277,14 +277,14 @@ export function getEpicSprintSummary(epic, allWorkItems = [], sprints = []) {
   const multiSuffix = unassignedCount > 0 ? ` · ${unassignedCount} in Backlog` : '';
   return {
     type: 'MULTIPLE_SPRINTS',
-    label: `Multiple sprints (${distinctSprints.length})${multiSuffix}`,
+    label: `Multiple cycles (${distinctSprints.length})${multiSuffix}`,
     badgeClass: unassignedCount > 0
       ? 'bg-amber-50 text-amber-800 border-amber-300 font-medium'
       : 'bg-indigo-50 text-indigo-700 border-indigo-200 font-medium',
-    title: `Descendants span multiple sprints:\n${parts.join('\n')}`,
+    title: `Descendants span multiple cycles:\n${parts.join('\n')}`,
     details: [
       ...distinctSprints.map((s) => ({ name: s.name, count: s.count, isBacklog: false })),
-      ...(unassignedCount > 0 ? [{ name: 'Backlog (Unassigned)', count: unassignedCount, isBacklog: true }] : []),
+      ...(unassignedCount > 0 ? [{ name: 'Backlog (No Cycle)', count: unassignedCount, isBacklog: true }] : []),
     ],
   };
 }
@@ -721,16 +721,16 @@ function HierarchicalRow({
                 className={`px-1.5 py-0.5 rounded text-[11px] border truncate max-w-[200px] block select-none ${
                   epicSprintSummary?.details?.length > 1 ? 'cursor-pointer hover:ring-1 hover:ring-purple-300' : 'cursor-default'
                 } ${epicSprintSummary?.badgeClass || 'bg-slate-50 text-slate-500 border-slate-200'}`}
-                title={epicSprintSummary?.title || 'Sprint summary'}
+                title={epicSprintSummary?.title || 'Cycle summary'}
               >
-                {epicSprintSummary?.label || 'Backlog'}
+                {epicSprintSummary?.label || 'Backlog (No Cycle)'}
               </button>
 
-              {/* Expandable breakdown popover for multiple sprints / partial assignments */}
+              {/* Expandable breakdown popover for multiple cycles / partial assignments */}
               {menuOpen === 'epicSprint' && epicSprintSummary?.details?.length > 1 && (
                 <div className="absolute left-0 mt-1 w-56 bg-white rounded-xl shadow-xl border border-slate-200 p-2.5 z-40 text-slate-800 animate-in fade-in duration-100">
                   <div className="text-[10px] font-bold text-slate-400 uppercase tracking-wider pb-1.5 mb-1.5 border-b border-slate-100 flex items-center justify-between">
-                    <span>Sprint Breakdown</span>
+                    <span>Cycle Breakdown</span>
                     <span className="text-purple-700 font-bold">{totalDescendantsCount} items</span>
                   </div>
                   <div className="space-y-1">
@@ -749,7 +749,7 @@ function HierarchicalRow({
               )}
             </div>
           ) : (
-            /* Standard interactive sprint dropdown for stories, tasks, bugs */
+            /* Standard interactive cycle dropdown for stories, tasks, bugs */
             <>
               <button
                 type="button"
@@ -763,7 +763,7 @@ function HierarchicalRow({
                     ? 'bg-purple-50 text-purple-700 border-purple-200'
                     : 'bg-slate-50 text-slate-500 border-slate-200'
                 } ${canChangeSprint ? 'hover:bg-purple-100 cursor-pointer' : 'cursor-default'}`}
-                title={`Sprint: ${sprintLabel}`}
+                title={`Cycle: ${sprintLabel}`}
               >
                 {sprintLabel}
               </button>
@@ -780,7 +780,7 @@ function HierarchicalRow({
                       !item.sprint_id ? 'bg-purple-50 text-purple-700 font-semibold' : 'text-slate-700'
                     }`}
                   >
-                    <span>Backlog</span>
+                    <span>Backlog (No Cycle)</span>
                     {!item.sprint_id && <Check className="w-3 h-3 text-purple-600" />}
                   </button>
 
@@ -1213,7 +1213,7 @@ export default function HierarchicalIssueTable({
         <div>Priority</div>
         <div>Assignee</div>
         <div>Status</div>
-        <div>Sprint</div>
+        <div>Cycle</div>
         <div className="text-center">Points</div>
         <div>Due Date</div>
         <div>Progress</div>

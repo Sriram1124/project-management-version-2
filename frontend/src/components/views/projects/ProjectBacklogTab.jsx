@@ -37,13 +37,8 @@ export default function ProjectBacklogTab({ projectId, project = null, isKanbanP
   const [selectedPriority, setSelectedPriority] = useState(null);
   const [selectedSprintId, setSelectedSprintId] = useState(null);
   const [selectedStatus, setSelectedStatus] = useState(null);
-  const [groupBy, setGroupBy] = useState(isKanbanProject || project?.methodology === 'KANBAN' ? 'epic' : 'none'); // 'none' (Flat Stories & Tasks) | 'sprint' (Sprint Groups) | 'epic' (Hierarchy Tree)
+  const [groupBy, setGroupBy] = useState(isKanbanProject || project?.methodology === 'KANBAN' ? 'epic' : 'none'); // 'none' (Flat) | 'epic' (Backlog) | 'all_cycles' (All Cycles) | 'cycle:<id>' | 'no_cycle'
 
-  useEffect(() => {
-    if (isKanban && groupBy === 'sprint') {
-      setGroupBy('epic');
-    }
-  }, [isKanban, groupBy]);
 
   // Quick Filters
   const [quickFilterMyIssues, setQuickFilterMyIssues] = useState(false);
@@ -506,9 +501,16 @@ export default function ProjectBacklogTab({ projectId, project = null, isKanbanP
     quickFilterOverdue,
   ]);
 
-  // When filters are active or viewing sprint groups, automatically ensure all required ancestors are expanded so matching items are visible
+  // When filters are active or viewing sprint/cycle groups, automatically ensure all required ancestors are expanded so matching items are visible
   useEffect(() => {
-    if ((hasActiveFilters || groupBy === 'sprint') && filteredWorkItems.length > 0) {
+    if (
+      (hasActiveFilters ||
+        groupBy === 'sprint' ||
+        groupBy === 'all_cycles' ||
+        groupBy === 'no_cycle' ||
+        groupBy?.startsWith('cycle:')) &&
+      filteredWorkItems.length > 0
+    ) {
       const itemMap = new Map(workItems.map((w) => [w.id, w]));
       const ancestorIds = new Set();
       filteredWorkItems.forEach((item) => {
@@ -528,7 +530,7 @@ export default function ProjectBacklogTab({ projectId, project = null, isKanbanP
     }
   }, [hasActiveFilters, groupBy, filteredWorkItems, workItems]);
 
-  // Combined sprint sections list including the "Backlog" section
+  // Combined sprint sections list including the "Backlog (No Cycle)" section
   const sprintSections = useMemo(() => {
     const list = sprints.map((s) => ({
       id: s.id,
@@ -542,7 +544,7 @@ export default function ProjectBacklogTab({ projectId, project = null, isKanbanP
     // Append dedicated Backlog section
     list.push({
       id: 'backlog',
-      name: 'Backlog',
+      name: 'Backlog (No Cycle)',
       status: 'PLANNED',
       isBacklog: true,
     });
@@ -595,7 +597,7 @@ export default function ProjectBacklogTab({ projectId, project = null, isKanbanP
           setCreateParentItem(null);
           setIsCreateModalOpen(true);
         }}
-        onCreateSprintClick={isKanban || readOnly ? undefined : () => setIsCreateSprintOpen(true)}
+        onCreateSprintClick={readOnly ? undefined : () => setIsCreateSprintOpen(true)}
         onExpandAll={handleExpandAll}
         onCollapseAll={handleCollapseAll}
         allExpanded={expandedIds.size > 0}
@@ -629,8 +631,8 @@ export default function ProjectBacklogTab({ projectId, project = null, isKanbanP
         />
       )}
 
-      {/* VIEW MODE B: SPRINT SECTIONS (ACTIVE SPRINT, PLANNED SPRINTS, BACKLOG) */}
-      {groupBy === 'sprint' && (
+      {/* VIEW MODE B: ALL CYCLES GROUPED */}
+      {(groupBy === 'sprint' || groupBy === 'all_cycles') && (
         <div className="space-y-3">
           {sprintSections.map((sprint) => {
             const sprintItems = sprint.isBacklog
@@ -684,6 +686,108 @@ export default function ProjectBacklogTab({ projectId, project = null, isKanbanP
           })}
         </div>
       )}
+
+      {/* VIEW MODE C: INDIVIDUAL CYCLE */}
+      {groupBy?.startsWith('cycle:') && (() => {
+        const targetCycleId = groupBy.replace('cycle:', '');
+        const targetSprint = sprintSections.find((s) => s.id === targetCycleId) || sprints.find((s) => s.id === targetCycleId);
+        if (!targetSprint) {
+          return (
+            <div className="rounded-md border border-slate-200 bg-white p-8 text-center text-slate-500 text-xs">
+              Cycle not found or has been removed. Please select another view.
+            </div>
+          );
+        }
+        const cycleItems = filteredWorkItems.filter((i) => i.sprint_id === targetSprint.id);
+        return (
+          <SprintSection
+            key={targetSprint.id}
+            sprint={targetSprint}
+            issues={cycleItems}
+            allWorkItems={workItems}
+            sprints={sprints}
+            members={members}
+            selectedIssueId={selectedIssue?.id}
+            onSelectIssue={(issue) => setSelectedIssue(issue)}
+            onUpdateStatus={handleUpdateStatus}
+            onUpdatePriority={handleUpdatePriority}
+            onUpdateAssignee={handleUpdateAssignee}
+            onUpdateSprint={handleUpdateSprint}
+            onUpdateStoryPoints={handleUpdateStoryPoints}
+            onUpdateDueDate={handleUpdateDueDate}
+            onDeleteIssue={handleDeleteIssue}
+            onAddChild={handleAddChild}
+            expandedIds={expandedIds}
+            onToggleExpand={handleToggleExpand}
+            hasActiveFilters={hasActiveFilters}
+            onDragStart={handleDragStart}
+            onDragEnd={handleDragEnd}
+            onDropIssue={handleDropIssue}
+            onCreateIssueInSprint={(sprintId) => {
+              setCreateInitialSprintId(sprintId);
+              setCreateInitialType('Story');
+              setCreateAllowedTypes(null);
+              setCreateParentItem(null);
+              setIsCreateModalOpen(true);
+            }}
+            onStartSprint={handleStartSprint}
+            onCompleteSprint={handleCompleteSprint}
+          />
+        );
+      })()}
+
+      {/* VIEW MODE D: BACKLOG (NO CYCLE) */}
+      {groupBy === 'no_cycle' && (() => {
+        const backlogSprint = sprintSections.find((s) => s.isBacklog) || {
+          id: 'backlog',
+          name: 'Backlog (No Cycle)',
+          status: 'PLANNED',
+          isBacklog: true,
+        };
+        const unassignedItems = filteredWorkItems.filter((i) => {
+          if (i.sprint_id) return false;
+          if (i.type === 'EPIC') {
+            const hasChildren = workItems.some((w) => w.parent_id === i.id);
+            if (hasChildren) return false;
+          }
+          return true;
+        });
+        return (
+          <SprintSection
+            key="backlog-no-cycle"
+            sprint={backlogSprint}
+            issues={unassignedItems}
+            allWorkItems={workItems}
+            sprints={sprints}
+            members={members}
+            selectedIssueId={selectedIssue?.id}
+            onSelectIssue={(issue) => setSelectedIssue(issue)}
+            onUpdateStatus={handleUpdateStatus}
+            onUpdatePriority={handleUpdatePriority}
+            onUpdateAssignee={handleUpdateAssignee}
+            onUpdateSprint={handleUpdateSprint}
+            onUpdateStoryPoints={handleUpdateStoryPoints}
+            onUpdateDueDate={handleUpdateDueDate}
+            onDeleteIssue={handleDeleteIssue}
+            onAddChild={handleAddChild}
+            expandedIds={expandedIds}
+            onToggleExpand={handleToggleExpand}
+            hasActiveFilters={hasActiveFilters}
+            onDragStart={handleDragStart}
+            onDragEnd={handleDragEnd}
+            onDropIssue={handleDropIssue}
+            onCreateIssueInSprint={(sprintId) => {
+              setCreateInitialSprintId('backlog');
+              setCreateInitialType('Story');
+              setCreateAllowedTypes(null);
+              setCreateParentItem(null);
+              setIsCreateModalOpen(true);
+            }}
+            onStartSprint={handleStartSprint}
+            onCompleteSprint={handleCompleteSprint}
+          />
+        );
+      })()}
 
       {/* VIEW MODE C: FLAT LIST (DEFAULT STORIES & TASKS) */}
       {groupBy === 'none' && (

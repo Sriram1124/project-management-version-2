@@ -193,42 +193,100 @@ export default function BacklogToolbar({
               <span className="text-slate-400 font-normal">View:</span>
               <span className="font-semibold text-purple-700">
                 {groupBy === 'none'
-                  ? 'Stories & Tasks'
-                  : groupBy === 'sprint'
-                  ? 'Sprint Groups'
+                  ? 'Stories & Tasks (Flat)'
+                  : groupBy === 'sprint' || groupBy === 'all_cycles'
+                  ? 'All Cycles'
+                  : groupBy === 'no_cycle'
+                  ? 'Backlog (No Cycle)'
+                  : groupBy?.startsWith('cycle:')
+                  ? sprints.find((s) => s.id === groupBy.replace('cycle:', ''))?.name || 'Cycle'
                   : 'Backlog'}
               </span>
               <ChevronDown className="w-3.5 h-3.5 text-slate-400" />
             </button>
 
             {openDropdown === 'groupby' && (
-              <div className="absolute right-0 mt-1 w-44 bg-white rounded-md shadow-lg border border-slate-200 py-1 z-30">
-                {(isKanban
-                  ? [
-                      { id: 'none', label: 'Stories & Tasks (Flat)' },
-                      { id: 'epic', label: 'Backlog' },
-                    ]
-                  : [
-                      { id: 'none', label: 'Stories & Tasks (Flat)' },
-                      { id: 'sprint', label: 'Sprint Groups' },
-                      { id: 'epic', label: 'Backlog' },
-                    ]
-                ).map((mode) => (
-                  <button
-                    key={mode.id}
-                    type="button"
-                    onClick={() => {
-                      onSelectGroupBy?.(mode.id);
-                      setOpenDropdown(null);
-                    }}
-                    className={`w-full text-left px-3 py-1.5 text-xs hover:bg-slate-50 transition-colors flex items-center justify-between ${
-                      groupBy === mode.id ? 'text-purple-700 font-semibold bg-purple-50/50' : 'text-slate-700'
-                    }`}
-                  >
-                    <span>{mode.label}</span>
-                    {groupBy === mode.id && <Check className="w-3.5 h-3.5 text-purple-600" />}
-                  </button>
-                ))}
+              <div className="absolute right-0 mt-1 w-56 bg-white rounded-md shadow-lg border border-slate-200 py-1 z-30 max-h-80 overflow-y-auto">
+                <button
+                  type="button"
+                  onClick={() => {
+                    onSelectGroupBy?.('none');
+                    setOpenDropdown(null);
+                  }}
+                  className={`w-full text-left px-3 py-1.5 text-xs hover:bg-slate-50 transition-colors flex items-center justify-between ${
+                    groupBy === 'none' ? 'text-purple-700 font-semibold bg-purple-50/50' : 'text-slate-700'
+                  }`}
+                >
+                  <span>Stories &amp; Tasks (Flat)</span>
+                  {groupBy === 'none' && <Check className="w-3.5 h-3.5 text-purple-600" />}
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => {
+                    onSelectGroupBy?.('epic');
+                    setOpenDropdown(null);
+                  }}
+                  className={`w-full text-left px-3 py-1.5 text-xs hover:bg-slate-50 transition-colors flex items-center justify-between ${
+                    groupBy === 'epic' ? 'text-purple-700 font-semibold bg-purple-50/50' : 'text-slate-700'
+                  }`}
+                >
+                  <span>Backlog</span>
+                  {groupBy === 'epic' && <Check className="w-3.5 h-3.5 text-purple-600" />}
+                </button>
+
+                <div className="my-1 border-t border-slate-100" />
+
+                <button
+                  type="button"
+                  onClick={() => {
+                    onSelectGroupBy?.('all_cycles');
+                    setOpenDropdown(null);
+                  }}
+                  className={`w-full text-left px-3 py-1.5 text-xs hover:bg-slate-50 transition-colors flex items-center justify-between ${
+                    groupBy === 'all_cycles' || groupBy === 'sprint' ? 'text-purple-700 font-semibold bg-purple-50/50' : 'text-slate-700'
+                  }`}
+                >
+                  <span>All Cycles</span>
+                  {(groupBy === 'all_cycles' || groupBy === 'sprint') && <Check className="w-3.5 h-3.5 text-purple-600" />}
+                </button>
+
+                {sprints && sprints.length > 0 && (
+                  sprints.map((s) => {
+                    const cycleViewId = `cycle:${s.id}`;
+                    const isSelected = groupBy === cycleViewId;
+                    return (
+                      <button
+                        key={s.id}
+                        type="button"
+                        onClick={() => {
+                          onSelectGroupBy?.(cycleViewId);
+                          setOpenDropdown(null);
+                        }}
+                        className={`w-full text-left px-3 py-1.5 text-xs hover:bg-slate-50 transition-colors flex items-center justify-between pl-5 ${
+                          isSelected ? 'text-purple-700 font-semibold bg-purple-50/50' : 'text-slate-700'
+                        }`}
+                      >
+                        <span className="truncate pr-2">{s.name}</span>
+                        {isSelected && <Check className="w-3.5 h-3.5 text-purple-600 shrink-0" />}
+                      </button>
+                    );
+                  })
+                )}
+
+                <button
+                  type="button"
+                  onClick={() => {
+                    onSelectGroupBy?.('no_cycle');
+                    setOpenDropdown(null);
+                  }}
+                  className={`w-full text-left px-3 py-1.5 text-xs hover:bg-slate-50 transition-colors flex items-center justify-between ${
+                    groupBy === 'no_cycle' ? 'text-purple-700 font-semibold bg-purple-50/50' : 'text-slate-700'
+                  }`}
+                >
+                  <span>Backlog (No Cycle)</span>
+                  {groupBy === 'no_cycle' && <Check className="w-3.5 h-3.5 text-purple-600" />}
+                </button>
               </div>
             )}
           </div>
@@ -450,9 +508,9 @@ export default function BacklogToolbar({
               <span>
                 {selectedSprintId
                   ? selectedSprintId === 'backlog'
-                    ? isKanban ? 'Flow (Unassigned)' : 'Backlog (Unassigned)'
-                    : sprints.find((s) => s.id === selectedSprintId)?.name || (isKanban ? 'Cycle' : 'Sprint')
-                  : isKanban ? 'Cycle / Flow' : 'Sprint'}
+                    ? 'Backlog (No Cycle)'
+                    : sprints.find((s) => s.id === selectedSprintId)?.name || 'Cycle'
+                  : 'Cycle'}
               </span>
               <ChevronDown className="w-3 h-3 text-slate-400" />
             </button>
@@ -469,7 +527,7 @@ export default function BacklogToolbar({
                     !selectedSprintId ? 'text-purple-700 font-semibold bg-purple-50/40' : 'text-slate-700'
                   }`}
                 >
-                  <span>{isKanban ? 'All Cycles & Flow' : 'All Sprints'}</span>
+                  <span>All Cycles</span>
                   {!selectedSprintId && <Check className="w-3 h-3 text-purple-600" />}
                 </button>
 
@@ -483,7 +541,7 @@ export default function BacklogToolbar({
                     selectedSprintId === 'backlog' ? 'text-purple-700 font-semibold bg-purple-50/40' : 'text-slate-700'
                   }`}
                 >
-                  <span>{isKanban ? 'Continuous Flow (Unassigned)' : 'Backlog (Unassigned)'}</span>
+                  <span>Backlog (No Cycle)</span>
                   {selectedSprintId === 'backlog' && <Check className="w-3 h-3 text-purple-600" />}
                 </button>
 
