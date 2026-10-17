@@ -60,7 +60,8 @@ export class TimesheetController {
   static async getActiveTaskSession(req: Request, res: Response) {
     try {
       const user = (req as any).fullUser;
-      const session = await TimesheetService.getActiveTaskSession(user, req.query.task_id as string);
+      const taskId = (req.query.task_id as string) || null;
+      const session = await TimesheetService.getActiveTaskSession(user, taskId);
       res.status(200).json({ session: session || null });
     } catch (error) {
       TimesheetController.handleError(res, error);
@@ -109,6 +110,17 @@ export class TimesheetController {
     }
   }
 
+  static async getTaskTimeEntries(req: Request, res: Response) {
+    try {
+      const user = (req as any).fullUser;
+      const { taskId } = req.params;
+      const result = await TimesheetService.getTaskTimeEntries(user, taskId);
+      res.status(200).json(result);
+    } catch (error) {
+      TimesheetController.handleError(res, error);
+    }
+  }
+
   static async getTodayTimesheet(req: Request, res: Response) {
     try {
       const user = (req as any).fullUser;
@@ -123,7 +135,12 @@ export class TimesheetController {
     try {
       const user = (req as any).fullUser;
       const targetUserId = req.query.user_id as string | undefined;
-      const summary = await TimesheetService.getWeeklyTimesheet(user, targetUserId || user.id, new Date());
+      const dateParam = req.query.date as string | undefined;
+      const summary = await TimesheetService.getWeeklyTimesheet(
+        user,
+        targetUserId || user.id,
+        dateParam ? new Date(dateParam) : new Date()
+      );
       res.status(200).json({ timesheet: summary });
     } catch (error) {
       TimesheetController.handleError(res, error);
@@ -190,6 +207,24 @@ export class TimesheetController {
         req.query.end_date as string | undefined
       );
       res.status(200).json({ report });
+    } catch (error) {
+      TimesheetController.handleError(res, error);
+    }
+  }
+
+  static async getManagerTimesheetsReview(req: Request, res: Response) {
+    try {
+      const user = (req as any).fullUser;
+      const { date, search, cohort_id, project_id, page, limit } = req.query as Record<string, string | undefined>;
+      const review = await TimesheetService.getManagerTimesheetsReview(user, {
+        date,
+        search,
+        cohort_id,
+        project_id,
+        page: page ? Number(page) : undefined,
+        limit: limit ? Number(limit) : undefined,
+      });
+      res.status(200).json(review);
     } catch (error) {
       TimesheetController.handleError(res, error);
     }

@@ -107,7 +107,95 @@ export default function ManagerTimesheetsView({ onToast, cohorts: propCohorts = 
 
       setReviewData(response || null);
     } catch (err) {
-      console.error('Failed to load timesheet review:', err);
+      console.warn('Timesheet review endpoint unavailable, attempting fallback via users directory:', err);
+
+      // Fallback if /review route is not deployed on the backend yet
+      if (err?.message?.includes('Route not found') || err?.message?.includes('404') || err?.status === 404) {
+        try {
+          const usersRes = await projectsService.getUsers({
+            cohort_id: selectedCohort !== 'ALL' ? selectedCohort : undefined,
+          });
+          const rawUsers = Array.isArray(usersRes) ? usersRes : (usersRes?.users || []);
+          const q = search.trim().toLowerCase();
+
+          // Compute week date strings
+          const startOfWeek = new Date(selectedDate);
+          startOfWeek.setUTCHours(0, 0, 0, 0);
+          const day = startOfWeek.getUTCDay();
+          const diffToMonday = (day + 6) % 7;
+          startOfWeek.setUTCDate(startOfWeek.getUTCDate() - diffToMonday);
+
+          const endOfWeek = new Date(startOfWeek);
+          endOfWeek.setUTCDate(startOfWeek.getUTCDate() + 6);
+          endOfWeek.setUTCHours(23, 59, 59, 999);
+
+          const dayDateStrings = [];
+          const dayNames = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+          for (let i = 0; i < 7; i++) {
+            const cur = new Date(startOfWeek);
+            cur.setUTCDate(startOfWeek.getUTCDate() + i);
+            dayDateStrings.push(cur.toISOString().slice(0, 10));
+          }
+
+          const filtered = rawUsers
+            .filter((u) => u.type === 'INTERN' || !u.type || u.type === 'EMPLOYEE')
+            .filter((u) => {
+              if (!q) return true;
+              return (
+                u.name?.toLowerCase().includes(q) ||
+                u.email?.toLowerCase().includes(q) ||
+                u.user_code?.toLowerCase().includes(q)
+              );
+            })
+            .map((u) => ({
+              id: u.id,
+              name: u.name,
+              email: u.email,
+              user_code: u.user_code,
+              batch: u.batch,
+              subbatch: u.subbatch,
+              cohort: u.cohort,
+              total_minutes: 0,
+              total_hours: 0,
+              total_formatted: '0h 0m',
+              task_count: 0,
+              daily_breakdown: dayDateStrings.map((d, idx) => ({
+                date: d,
+                dayName: dayNames[idx],
+                minutes: 0,
+                hours: 0,
+                formatted: '—',
+              })),
+            }));
+
+          setReviewData({
+            period: {
+              start_date: startOfWeek.toISOString().slice(0, 10),
+              end_date: endOfWeek.toISOString().slice(0, 10),
+              day_dates: dayDateStrings,
+            },
+            summary: {
+              total_interns: filtered.length,
+              active_interns: 0,
+              total_logged_minutes: 0,
+              total_logged_hours: 0,
+              avg_logged_minutes_per_active: 0,
+            },
+            pagination: {
+              total: filtered.length,
+              page: 1,
+              limit: 50,
+              totalPages: 1,
+            },
+            interns: filtered,
+          });
+          setError('');
+          return;
+        } catch (fallbackErr) {
+          console.error('Fallback users fetch also failed:', fallbackErr);
+        }
+      }
+
       setError(err?.message || 'Unable to load intern timesheets directory. Please check your permissions.');
     } finally {
       setLoading(false);

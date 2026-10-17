@@ -212,40 +212,43 @@ export class TimesheetService {
     const taskId = input.task_id || null;
 
     if (taskId) {
-      if (!this.hasRole(user, ['INTERN', 'EMPLOYEE'])) {
-        throw new Error('Forbidden: only assigned interns can start task work');
-      }
-
       const task = await prisma.workItem.findFirst({
         where: { id: taskId, organization_id: orgId },
         include: { assignees: true },
       });
       if (!task) throw new Error('Task not found in your organization');
-      if (!task.assignees.some((assignee) => assignee.user_id === user.id)) {
+
+      const userIsAssignee = task.assignees.some((assignee) => assignee.user_id === user.id);
+      const canManageTask = this.hasRole(user, ['MANAGER', 'ADMIN', 'SUPER_ADMIN', 'TECH_LEAD']) || this.hasPermission(user, 'TASK_UPDATE');
+      if (!userIsAssignee && !canManageTask && task.created_by !== user.id) {
         throw new Error('Forbidden: you are not assigned to this task');
       }
 
       const activeTaskSession = await prisma.workSession.findFirst({
-        where: { organization_id: orgId, user_id: user.id, task_id: { not: null }, ended_at: null },
+        where: { organization_id: orgId, user_id: user.id, ended_at: null },
+        include: {
+          task: {
+            select: { id: true, title: true }
+          }
+        },
         orderBy: { started_at: 'desc' },
       });
+
       if (activeTaskSession) {
         if (activeTaskSession.task_id === taskId) return activeTaskSession;
-        throw new Error('You already have an active task session');
+        const runningTitle = activeTaskSession.task?.title || activeTaskSession.task_id || 'another task';
+        throw new Error(`You already have an active timer running on "${runningTitle}". Please stop it before starting a new one.`);
       }
-    }
-
-    const existingActive = await prisma.workSession.findFirst({
-      where: {
-        organization_id: orgId,
-        user_id: user.id,
-        ended_at: null,
-      },
-      orderBy: { started_at: 'desc' },
-    });
-
-    if (existingActive) {
-      return existingActive;
+    } else {
+      const existingActive = await prisma.workSession.findFirst({
+        where: {
+          organization_id: orgId,
+          user_id: user.id,
+          ended_at: null,
+        },
+        orderBy: { started_at: 'desc' },
+      });
+      if (existingActive) return existingActive;
     }
 
     const startedAt = toDate(input.started_at) || new Date();
@@ -258,6 +261,11 @@ export class TimesheetService {
         notes: input.notes || null,
         break_minutes: input.break_minutes ?? 0,
       },
+      include: {
+        task: {
+          select: { id: true, title: true, status: true, priority: true }
+        }
+      }
     });
   }
 
@@ -274,6 +282,18 @@ export class TimesheetService {
     });
 
     if (!activeSession) {
+      // Idempotent: if already ended, return most recent ended session gracefully
+      const lastSession = await prisma.workSession.findFirst({
+        where: {
+          organization_id: orgId,
+          user_id: user.id,
+          ...(input.task_id ? { task_id: input.task_id } : {}),
+        },
+        orderBy: { updated_at: 'desc' },
+      });
+      if (lastSession) {
+        return lastSession;
+      }
       throw new Error('No active work session found');
     }
 
@@ -284,37 +304,116 @@ export class TimesheetService {
       throw new Error('Session end time cannot be before start time');
     }
 
-    const session = await prisma.workSession.update({
-      where: { id: activeSession.id },
-      data: {
-        ended_at: endedAt,
-        break_minutes: breakMinutes,
-        notes: input.notes ?? activeSession.notes,
-      },
-    });
-
-    if (activeSession.task_id) {
-      const entry = await this.createTimeEntry(user, {
-        task_id: activeSession.task_id,
-        work_session_id: activeSession.id,
-        date: activeSession.started_at,
-        start_time: activeSession.started_at,
-        end_time: endedAt,
-        duration_minutes: diffMinutes(activeSession.started_at, endedAt),
-        notes: input.notes || null,
+    return await prisma.$transaction(async (tx) => {
+      const session = await tx.workSession.update({
+        where: { id: activeSession.id },
+        data: {
+          ended_at: endedAt,
+          break_minutes: breakMinutes,
+          notes: input.notes ?? activeSession.notes,
+        },
       });
-      return { ...session, time_entry: entry };
-    }
 
-    return session;
+      if (activeSession.task_id) {
+        const rawDiff = diffMinutes(activeSession.started_at, endedAt);
+        const durationMinutes = Math.max(1, rawDiff);
+
+        const task = await tx.workItem.findUnique({
+          where: { id: activeSession.task_id },
+          select: { project_id: true },
+        });
+
+        const entry = await tx.timeEntry.create({
+          data: {
+            organization_id: orgId,
+            user_id: user.id,
+            task_id: activeSession.task_id,
+            project_id: task?.project_id || null,
+            work_session_id: activeSession.id,
+            date: activeSession.started_at,
+            start_time: activeSession.started_at,
+            end_time: endedAt,
+            duration_minutes: durationMinutes,
+            notes: input.notes || activeSession.notes || null,
+          },
+          include: {
+            task: true,
+            project: true,
+          },
+        });
+        return { ...session, time_entry: entry };
+      }
+
+      return session;
+    });
   }
 
-  static async getActiveTaskSession(user: any, taskId: string) {
+  static async getActiveTaskSession(user: any, taskId?: string | null) {
     const orgId = this.resolveOrganizationId(user, user.organization_id) || await this.getDefaultOrganizationId();
     return prisma.workSession.findFirst({
-      where: { organization_id: orgId, user_id: user.id, task_id: taskId, ended_at: null },
+      where: {
+        organization_id: orgId,
+        user_id: user.id,
+        ...(taskId ? { task_id: taskId } : {}),
+        ended_at: null,
+      },
+      include: {
+        task: {
+          select: {
+            id: true,
+            title: true,
+            status: true,
+            priority: true,
+            project_id: true,
+            project: { select: { id: true, name: true } },
+          },
+        },
+      },
       orderBy: { started_at: 'desc' },
     });
+  }
+
+  static async getTaskTimeEntries(user: any, taskId: string) {
+    const orgId = this.resolveOrganizationId(user, user.organization_id) || await this.getDefaultOrganizationId();
+    const task = await prisma.workItem.findUnique({
+      where: { id: taskId },
+      select: { id: true, organization_id: true, project_id: true },
+    });
+    if (!task || task.organization_id !== orgId) {
+      throw new Error('Task not found in your organization');
+    }
+
+    const entries = await prisma.timeEntry.findMany({
+      where: { task_id: taskId, organization_id: orgId },
+      include: {
+        user: {
+          select: { id: true, name: true, email: true },
+        },
+      },
+      orderBy: { start_time: 'desc' },
+    });
+
+    const totalMinutes = entries.reduce((sum, e) => sum + (Number(e.duration_minutes) || 0), 0);
+    return {
+      task_id: taskId,
+      total_minutes: totalMinutes,
+      total_hours: +(totalMinutes / 60).toFixed(1),
+      entries: entries.map((e) => ({
+        id: e.id,
+        user_id: e.user_id,
+        user_name: e.user?.name || 'Unknown',
+        user_email: e.user?.email,
+        date: e.date,
+        start_time: e.start_time,
+        end_time: e.end_time,
+        duration_minutes: e.duration_minutes,
+        duration_formatted: `${Math.floor(e.duration_minutes / 60)}h ${e.duration_minutes % 60}m`,
+        notes: e.notes,
+        source: e.work_session_id ? 'TIMER' : 'MANUAL',
+        work_session_id: e.work_session_id,
+        created_at: e.created_at,
+      })),
+    };
   }
 
   static async createTimeEntry(user: any, input: TimeEntryInput) {
@@ -636,28 +735,240 @@ export class TimesheetService {
   }
 
   static async getWeeklyTimesheet(user: any, targetUserId?: string | null, dateValue?: Date | string) {
+    const targetId = targetUserId || user.id;
+    const orgId = this.resolveOrganizationId(user, user.organization_id) || await this.getDefaultOrganizationId();
+
+    const isOwner = targetId === user.id;
+    const canViewTeam = this.hasRole(user, ['MANAGER', 'ADMIN', 'SUPER_ADMIN', 'TECH_LEAD']);
+    if (!isOwner && !canViewTeam) {
+      throw new Error('Forbidden: you cannot view another user\'s timesheet');
+    }
+
+    let targetUserInfo: any = null;
+    if (!isOwner) {
+      targetUserInfo = await prisma.user.findUnique({
+        where: { id: targetId },
+        select: {
+          id: true,
+          name: true,
+          email: true,
+          user_code: true,
+          batch: true,
+          subbatch: true,
+          organization_id: true,
+          cohort: { select: { id: true, name: true, code: true } },
+        },
+      });
+      if (!targetUserInfo) {
+        throw new Error('User not found');
+      }
+      const isSuperAdmin = this.hasRole(user, ['SUPER_ADMIN']);
+      if (!isSuperAdmin && targetUserInfo.organization_id !== orgId) {
+        throw new Error('Forbidden: target user is outside your organization scope');
+      }
+    }
+
     const today = dateValue ? new Date(dateValue) : new Date();
+    if (isNaN(today.getTime())) {
+      throw new Error('Invalid date provided');
+    }
+
     const startOfWeek = new Date(today);
     startOfWeek.setUTCHours(0, 0, 0, 0);
     const day = startOfWeek.getUTCDay();
     const diffToMonday = (day + 6) % 7;
     startOfWeek.setUTCDate(startOfWeek.getUTCDate() - diffToMonday);
 
-    const weekEntries = [] as any[];
-    let totalMinutes = 0;
+    const endOfWeek = new Date(startOfWeek);
+    endOfWeek.setUTCDate(startOfWeek.getUTCDate() + 6);
+    endOfWeek.setUTCHours(23, 59, 59, 999);
+
+    const todayIso = new Date().toISOString().slice(0, 10);
+    const dayDateStrings: string[] = [];
+    const days: Array<{
+      date: string;
+      dayName: string;
+      dayNumber: number;
+      isWeekend: boolean;
+      isToday: boolean;
+      total_minutes: number;
+      summary?: any;
+    }> = [];
+
+    const dayNames = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+
     for (let index = 0; index < 7; index += 1) {
       const currentDay = new Date(startOfWeek);
       currentDay.setUTCDate(startOfWeek.getUTCDate() + index);
-      const summary = await this.getDailyTimesheet(user, targetUserId || user.id, currentDay);
-      weekEntries.push(summary);
-      totalMinutes += summary.net_working_minutes;
+      const dateStr = currentDay.toISOString().slice(0, 10);
+      const dayOfWeek = currentDay.getUTCDay();
+      dayDateStrings.push(dateStr);
+
+      const dailySummary = await this.getDailyTimesheet(user, targetId, currentDay);
+
+      days.push({
+        date: dateStr,
+        dayName: dayNames[dayOfWeek],
+        dayNumber: currentDay.getUTCDate(),
+        isWeekend: dayOfWeek === 0 || dayOfWeek === 6,
+        isToday: dateStr === todayIso,
+        total_minutes: 0,
+        summary: dailySummary,
+      });
     }
 
+    const entries = await prisma.timeEntry.findMany({
+      where: {
+        user_id: targetId,
+        organization_id: orgId,
+        date: {
+          gte: startOfWeek,
+          lte: endOfWeek,
+        },
+      },
+      include: {
+        task: {
+          select: {
+            id: true,
+            title: true,
+            status: true,
+            priority: true,
+            type: true,
+            story_points: true,
+            project_id: true,
+            project: { select: { id: true, name: true } },
+            sprint: { select: { id: true, name: true } },
+          },
+        },
+        project: { select: { id: true, name: true } },
+      },
+      orderBy: { start_time: 'asc' },
+    });
+
+    const assignedTasks = await prisma.workItem.findMany({
+      where: {
+        assignees: { some: { user_id: targetId } },
+        organization_id: orgId,
+      },
+      include: {
+        project: { select: { id: true, name: true } },
+        sprint: { select: { id: true, name: true } },
+      },
+      orderBy: [{ updated_at: 'desc' }],
+      take: 100,
+    });
+
+    const taskMap = new Map<string, any>();
+
+    for (const t of assignedTasks) {
+      taskMap.set(t.id, {
+        id: t.id,
+        key: t.id,
+        title: t.title,
+        status: t.status,
+        priority: t.priority,
+        type: t.type,
+        story_points: t.story_points,
+        project: t.project,
+        cycle: t.sprint,
+        days: Object.fromEntries(dayDateStrings.map((d) => [d, { minutes: 0, formatted: '0h 0m', entries: [] as any[] }])),
+        total_minutes: 0,
+        total_formatted: '0h 0m',
+      });
+    }
+
+    const dailyTotals: Record<string, number> = Object.fromEntries(dayDateStrings.map((d) => [d, 0]));
+    let grandTotalMinutes = 0;
+
+    for (const entry of entries) {
+      const entryDateStr = entry.date ? new Date(entry.date).toISOString().slice(0, 10) : '';
+      const duration = Number(entry.duration_minutes) || 0;
+      if (!dayDateStrings.includes(entryDateStr)) continue;
+
+      dailyTotals[entryDateStr] = (dailyTotals[entryDateStr] || 0) + duration;
+      grandTotalMinutes += duration;
+
+      const taskId = entry.task_id;
+      if (taskId) {
+        if (!taskMap.has(taskId)) {
+          taskMap.set(taskId, {
+            id: taskId,
+            key: taskId,
+            title: entry.task?.title || 'Untitled Task',
+            status: entry.task?.status || 'TODO',
+            priority: entry.task?.priority || 'MEDIUM',
+            type: entry.task?.type || 'TASK',
+            story_points: entry.task?.story_points || 0,
+            project: entry.task?.project || entry.project || null,
+            cycle: entry.task?.sprint || null,
+            days: Object.fromEntries(dayDateStrings.map((d) => [d, { minutes: 0, formatted: '0h 0m', entries: [] as any[] }])),
+            total_minutes: 0,
+            total_formatted: '0h 0m',
+          });
+        }
+
+        const taskRow = taskMap.get(taskId);
+        taskRow.days[entryDateStr].minutes += duration;
+        const dMins = taskRow.days[entryDateStr].minutes;
+        taskRow.days[entryDateStr].formatted = `${Math.floor(dMins / 60)}h ${dMins % 60}m`;
+        taskRow.days[entryDateStr].entries.push({
+          id: entry.id,
+          duration_minutes: duration,
+          start_time: entry.start_time,
+          end_time: entry.end_time,
+          notes: entry.notes,
+          source: entry.work_session_id ? 'TIMER' : 'MANUAL',
+        });
+
+        taskRow.total_minutes += duration;
+        const tMins = taskRow.total_minutes;
+        taskRow.total_formatted = `${Math.floor(tMins / 60)}h ${tMins % 60}m`;
+      }
+    }
+
+    for (const dayObj of days) {
+      dayObj.total_minutes = dailyTotals[dayObj.date] || 0;
+    }
+
+    const activeSession = await prisma.workSession.findFirst({
+      where: {
+        user_id: targetId,
+        organization_id: orgId,
+        ended_at: null,
+      },
+      include: {
+        task: {
+          select: {
+            id: true,
+            title: true,
+            status: true,
+            priority: true,
+            project: { select: { id: true, name: true } },
+          },
+        },
+      },
+      orderBy: { started_at: 'desc' },
+    });
+
+    const task_rows = Array.from(taskMap.values());
+
     return {
+      user: targetUserInfo || { id: user.id, name: user.name, email: user.email },
       start_date: startOfWeek.toISOString().slice(0, 10),
-      end_date: new Date(startOfWeek.getTime() + 6 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10),
-      total_minutes: totalMinutes,
-      days: weekEntries,
+      end_date: endOfWeek.toISOString().slice(0, 10),
+      total_minutes: grandTotalMinutes,
+      total_formatted: `${Math.floor(grandTotalMinutes / 60)}h ${grandTotalMinutes % 60}m`,
+      days,
+      daily_totals: dailyTotals,
+      task_rows,
+      active_session: activeSession,
+      available_tasks: assignedTasks.map((t) => ({
+        id: t.id,
+        title: t.title,
+        key: t.id,
+        status: t.status,
+        project: t.project,
+      })),
     };
   }
 
@@ -1023,5 +1334,228 @@ export class TimesheetService {
     }
 
     return { organization_id: orgId, members: report };
+  }
+
+  static async getManagerTimesheetsReview(
+    user: any,
+    options: {
+      date?: Date | string;
+      search?: string;
+      cohort_id?: string;
+      project_id?: string;
+      page?: number;
+      limit?: number;
+    } = {}
+  ) {
+    if (!this.hasRole(user, ['MANAGER', 'ADMIN', 'SUPER_ADMIN', 'TECH_LEAD'])) {
+      throw new Error('Forbidden: only managers and administrators can review timesheets');
+    }
+
+    const orgId = this.resolveOrganizationId(user, user.organization_id) || await this.getDefaultOrganizationId();
+
+    const today = options.date ? new Date(options.date) : new Date();
+    if (isNaN(today.getTime())) {
+      throw new Error('Invalid date provided');
+    }
+
+    const startOfWeek = new Date(today);
+    startOfWeek.setUTCHours(0, 0, 0, 0);
+    const day = startOfWeek.getUTCDay();
+    const diffToMonday = (day + 6) % 7;
+    startOfWeek.setUTCDate(startOfWeek.getUTCDate() - diffToMonday);
+
+    const endOfWeek = new Date(startOfWeek);
+    endOfWeek.setUTCDate(startOfWeek.getUTCDate() + 6);
+    endOfWeek.setUTCHours(23, 59, 59, 999);
+
+    const dayDateStrings: string[] = [];
+    const dayNames = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+    for (let i = 0; i < 7; i++) {
+      const cur = new Date(startOfWeek);
+      cur.setUTCDate(startOfWeek.getUTCDate() + i);
+      dayDateStrings.push(cur.toISOString().slice(0, 10));
+    }
+
+    const whereClause: any = {
+      organization_id: orgId,
+      is_active: true,
+      roles: {
+        some: {
+          role: {
+            name: { in: ['INTERN', 'EMPLOYEE'] }
+          }
+        }
+      }
+    };
+
+    if (options.cohort_id && options.cohort_id !== 'ALL') {
+      whereClause.cohort_id = options.cohort_id.trim();
+    }
+
+    if (options.search && options.search.trim()) {
+      const q = options.search.trim();
+      whereClause.OR = [
+        { name: { contains: q, mode: 'insensitive' } },
+        { email: { contains: q, mode: 'insensitive' } },
+        { user_code: { contains: q, mode: 'insensitive' } },
+      ];
+    }
+
+    if (options.project_id && options.project_id !== 'ALL') {
+      const pId = options.project_id.trim();
+      whereClause.AND = [
+        ...(whereClause.AND || []),
+        {
+          OR: [
+            { project_memberships: { some: { project_id: pId } } },
+            { work_item_assignments: { some: { work_item: { project_id: pId } } } },
+            { time_entries: { some: { project_id: pId } } },
+          ],
+        },
+      ];
+    }
+
+    const page = Math.max(1, Number(options.page) || 1);
+    const limit = Math.min(100, Math.max(1, Number(options.limit) || 50));
+    const skip = (page - 1) * limit;
+
+    const totalCount = await prisma.user.count({ where: whereClause });
+
+    const interns = await prisma.user.findMany({
+      where: whereClause,
+      select: {
+        id: true,
+        name: true,
+        email: true,
+        user_code: true,
+        batch: true,
+        subbatch: true,
+        cohort: {
+          select: {
+            id: true,
+            name: true,
+            code: true,
+          },
+        },
+      },
+      orderBy: [{ name: 'asc' }],
+      skip,
+      take: limit,
+    });
+
+    const internIds = interns.map((u) => u.id);
+
+    const timeEntries = internIds.length > 0
+      ? await prisma.timeEntry.findMany({
+          where: {
+            user_id: { in: internIds },
+            organization_id: orgId,
+            date: {
+              gte: startOfWeek,
+              lte: endOfWeek,
+            },
+            ...(options.project_id && options.project_id !== 'ALL' ? { project_id: options.project_id.trim() } : {}),
+          },
+          select: {
+            id: true,
+            user_id: true,
+            task_id: true,
+            duration_minutes: true,
+            date: true,
+          },
+        })
+      : [];
+
+    const internMetricsMap = new Map<
+      string,
+      { total_minutes: number; taskIds: Set<string>; daily: Record<string, number> }
+    >();
+
+    for (const id of internIds) {
+      internMetricsMap.set(id, {
+        total_minutes: 0,
+        taskIds: new Set<string>(),
+        daily: Object.fromEntries(dayDateStrings.map((d) => [d, 0])),
+      });
+    }
+
+    for (const entry of timeEntries) {
+      const metrics = internMetricsMap.get(entry.user_id);
+      if (!metrics) continue;
+
+      const dur = Number(entry.duration_minutes) || 0;
+      metrics.total_minutes += dur;
+      if (entry.task_id) {
+        metrics.taskIds.add(entry.task_id);
+      }
+      const entryDateStr = entry.date ? new Date(entry.date).toISOString().slice(0, 10) : '';
+      if (entryDateStr && metrics.daily[entryDateStr] !== undefined) {
+        metrics.daily[entryDateStr] += dur;
+      }
+    }
+
+    let overallLoggedMinutes = 0;
+    let activeInternsCount = 0;
+
+    const internItems = interns.map((intern) => {
+      const metrics = internMetricsMap.get(intern.id) || {
+        total_minutes: 0,
+        taskIds: new Set(),
+        daily: {},
+      };
+
+      const totalMins = metrics.total_minutes;
+      overallLoggedMinutes += totalMins;
+      if (totalMins > 0) activeInternsCount += 1;
+
+      const hours = Math.floor(totalMins / 60);
+      const mins = totalMins % 60;
+
+      return {
+        id: intern.id,
+        name: intern.name,
+        email: intern.email,
+        user_code: intern.user_code,
+        batch: intern.batch,
+        subbatch: intern.subbatch,
+        cohort: intern.cohort,
+        total_minutes: totalMins,
+        total_hours: Number((totalMins / 60).toFixed(1)),
+        total_formatted: `${hours}h ${mins}m`,
+        task_count: metrics.taskIds.size,
+        daily_breakdown: dayDateStrings.map((d, idx) => {
+          const dMins = metrics.daily[d] || 0;
+          return {
+            date: d,
+            dayName: dayNames[idx],
+            minutes: dMins,
+            hours: Number((dMins / 60).toFixed(1)),
+            formatted: `${Math.floor(dMins / 60)}h ${dMins % 60}m`,
+          };
+        }),
+      };
+    });
+
+    return {
+      period: {
+        start_date: startOfWeek.toISOString().slice(0, 10),
+        end_date: endOfWeek.toISOString().slice(0, 10),
+        day_dates: dayDateStrings,
+      },
+      summary: {
+        total_interns: totalCount,
+        active_interns: activeInternsCount,
+        total_logged_minutes: overallLoggedMinutes,
+        total_logged_hours: Number((overallLoggedMinutes / 60).toFixed(1)),
+        avg_logged_minutes_per_active: activeInternsCount > 0 ? Math.round(overallLoggedMinutes / activeInternsCount) : 0,
+      },
+      pagination: {
+        total: totalCount,
+        page,
+        limit,
+        totalPages: Math.ceil(totalCount / limit) || 1,
+      },
+      interns: internItems,
+    };
   }
 }

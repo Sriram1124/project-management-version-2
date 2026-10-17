@@ -1,6 +1,6 @@
 import { Router } from 'express';
 import { TimesheetController } from '../controllers/timesheet.controller';
-import { authenticate } from '../middleware/auth.middleware';
+import { authenticate, requireRole } from '../middleware/auth.middleware';
 
 const router = Router();
 router.use(authenticate);
@@ -13,11 +13,13 @@ router.get('/work-sessions/active', TimesheetController.getActiveTaskSession);
 router.post('/time-entries', TimesheetController.createTimeEntry);
 router.patch('/time-entries/:id', TimesheetController.updateTimeEntry);
 router.delete('/time-entries/:id', TimesheetController.deleteTimeEntry);
+router.get('/tasks/:taskId/entries', TimesheetController.getTaskTimeEntries);
 router.get('/today', TimesheetController.getTodayTimesheet);
 router.get('/weekly', TimesheetController.getWeeklyTimesheet);
 router.get('/monthly', TimesheetController.getMonthlyTimesheet);
 router.get('/task-time', TimesheetController.getTaskTime);
 router.get('/intern-report', TimesheetController.getInternReport);
 router.get('/manager-report', TimesheetController.getManagerReport);
+router.get('/review', requireRole(['MANAGER', 'ADMIN', 'SUPER_ADMIN', 'TECH_LEAD']), TimesheetController.getManagerTimesheetsReview);
 
 export { router as timesheetRouter };
