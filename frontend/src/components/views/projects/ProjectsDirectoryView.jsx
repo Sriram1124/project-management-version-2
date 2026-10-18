@@ -14,7 +14,8 @@ import {
   X,
   Check,
   Calendar,
-  Users
+  Users,
+  RotateCcw
 } from 'lucide-react';
 import { projectsService } from '../../../services/projects.service';
 import { useAuth } from '../../../context/AuthContext';
@@ -304,6 +305,17 @@ export default function ProjectsDirectoryView({ onSelectProject, isIntern = fals
     }
   };
 
+  const handleReactivate = async (proj, e) => {
+    e?.stopPropagation();
+    try {
+      const updated = await projectsService.updateProject(proj.id, { status: 'ACTIVE' });
+      setProjects((prev) => prev.map((p) => (p.id === updated.id ? { ...p, status: 'ACTIVE' } : p)));
+      showToast(`Project "${proj.name}" reactivated successfully`);
+    } catch (err) {
+      alert(err?.message || 'Failed to reactivate project');
+    }
+  };
+
   // Helper for Status Badges
   const getStatusBadgeStyle = (status) => {
     switch (status) {
@@ -587,7 +599,15 @@ export default function ProjectsDirectoryView({ onSelectProject, isIntern = fals
                                 >
                                   <Edit3 className="w-4 h-4" />
                                 </button>
-                                {proj.status !== 'ARCHIVED' && (
+                                {proj.status === 'ARCHIVED' ? (
+                                  <button 
+                                    title="Reactivate Project"
+                                    onClick={(e) => handleReactivate(proj, e)}
+                                    className="p-1.5 text-slate-400 hover:text-emerald-600 hover:bg-emerald-50 rounded-lg transition-colors cursor-pointer"
+                                  >
+                                    <RotateCcw className="w-4 h-4" />
+                                  </button>
+                                ) : (
                                   <button 
                                     title="Archive Project"
                                     onClick={(e) => handleOpenArchive(proj, e)}

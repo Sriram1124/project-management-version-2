@@ -153,6 +153,7 @@ export default function WorkItemDetailModal({
   }, [taskSession, item?.id, loadTaskEntries]);
 
   const isOverdue = workItemsService.isOverdue(item);
+  const isProjectArchived = String(item?.project?.status || item?.project_status || '').toUpperCase() === 'ARCHIVED';
   const pendingExtension = extensionRequests.find((r) => r.status === 'PENDING') || item.pending_extension || null;
   const latestReviewedExtension = extensionRequests.find((r) => r.status !== 'PENDING') || null;
   const childItems = item.children || [];
@@ -657,6 +658,10 @@ export default function WorkItemDetailModal({
                           <p className="mt-1 text-[11px] text-amber-950/80 italic line-clamp-2" title={pendingExtension.reason}>
                             "{pendingExtension.reason}"
                           </p>
+                        </div>
+                      ) : isProjectArchived ? (
+                        <div className="text-[11px] text-slate-400 italic text-center py-1.5 bg-slate-100/60 rounded-lg border border-slate-200">
+                          Project is archived (Read-Only)
                         </div>
                       ) : (
                         <button

@@ -1071,6 +1071,10 @@ export default function IssueDetailDrawer({
                     <span className="px-1.5 py-0.5 rounded bg-amber-100 text-amber-800 text-[10px] font-bold">
                       Ext Pending
                     </span>
+                  ) : String(issue?.project?.status || issue?.project_status || '').toUpperCase() === 'ARCHIVED' ? (
+                    <span className="px-1.5 py-0.5 rounded bg-slate-100 text-slate-400 text-[10px] font-medium border border-slate-200 cursor-not-allowed" title="Project is archived">
+                      Archived
+                    </span>
                   ) : (
                     <button
                       type="button"
