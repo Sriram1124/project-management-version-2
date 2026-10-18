@@ -6,17 +6,16 @@ import {
   Calendar, 
   AlertCircle, 
   Search, 
-  Filter, 
   Check, 
   X, 
   Loader2, 
   User, 
   ExternalLink, 
   RefreshCw,
-  MessageSquare,
   ShieldCheck,
   ChevronRight,
-  ArrowRight
+  ArrowRight,
+  Info
 } from 'lucide-react';
 import { projectsService } from '../../../services/projects.service';
 import { workItemsService } from '../../../services/workItems.service';
@@ -38,7 +37,7 @@ export default function ProjectApprovalsTab({
   const [searchQuery, setSearchQuery] = useState('');
 
   // Confirmation Modal state
-  const [confirmTarget, setConfirmTarget] = useState(null); // request object
+  const [confirmTarget, setConfirmTarget] = useState(null);
   const [decisionType, setDecisionType] = useState('APPROVE'); // 'APPROVE' | 'REJECT'
   const [decisionNote, setDecisionNote] = useState('');
   const [decisionSubmitting, setDecisionSubmitting] = useState(false);
@@ -47,6 +46,30 @@ export default function ProjectApprovalsTab({
   // Selected Issue for Drawer inspection
   const [selectedIssue, setSelectedIssue] = useState(null);
   const [loadingIssue, setLoadingIssue] = useState(false);
+
+  // Authorization check
+  const authRole = String(
+    authUser?.role?.name || authUser?.role || authUser?.type || authUser?.user_type || ''
+  ).toUpperCase();
+  const currentUserId = authUser?.id || authUser?.user_id;
+
+  const isTechLead =
+    authRole === 'TECH_LEAD' ||
+    Boolean(authUser?.is_tech_lead && (authUser?.lead_project_ids?.includes(projectId) || !authUser?.lead_project_ids?.length)) ||
+    (project?.members || []).some(
+      (m) =>
+        (m.user_id === currentUserId || m.id === currentUserId) &&
+        (m.project_role === 'TECH_LEAD' || m.role === 'TECH_LEAD')
+    );
+
+  const isManagerOrLead =
+    authRole === 'MANAGER' ||
+    authRole === 'ADMIN' ||
+    authRole === 'SUPER_ADMIN' ||
+    project?.owner_id === currentUserId ||
+    isTechLead;
+
+  const canReview = isManagerOrLead && !readOnly;
 
   // Fetch all extension requests for the project
   const loadRequests = useCallback(async () => {
@@ -182,7 +205,7 @@ export default function ProjectApprovalsTab({
 
   return (
     <div className="space-y-4">
-      {/* 1. HEADER & CONTROLS */}
+      {/* 1. UNIFORM HEADER & CONTROLS */}
       <div className="bg-white rounded-2xl p-4 sm:p-5 border border-slate-200/80 shadow-xs">
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
           <div className="flex items-center gap-3">
@@ -219,10 +242,10 @@ export default function ProjectApprovalsTab({
           </div>
         </div>
 
-        {/* ROW 2: Filter Tabs & Search */}
+        {/* Toolbar: Filter Tabs & Search Bar */}
         <div className="mt-4 pt-3 border-t border-slate-100 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-          {/* Status Tabs */}
-          <div className="flex items-center gap-1.5 p-1 bg-slate-100/80 rounded-xl">
+          {/* Segmented Filter Control */}
+          <div className="inline-flex items-center p-1 bg-slate-100 rounded-xl gap-1">
             <button
               type="button"
               onClick={() => setActiveFilter('PENDING')}
@@ -291,20 +314,20 @@ export default function ProjectApprovalsTab({
           </div>
 
           {/* Search Box */}
-          <div className="relative min-w-[220px] sm:w-64">
+          <div className="relative w-full sm:w-72">
             <Search className="w-3.5 h-3.5 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
             <input
               type="text"
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              placeholder="Search by task, person, reason..."
-              className="w-full pl-8 pr-3 py-1.5 text-xs rounded-xl border border-slate-200 bg-white placeholder-slate-400 focus:outline-none focus:border-purple-600 focus:ring-1 focus:ring-purple-600"
+              placeholder="Search deliverable, requester, reason..."
+              className="w-full pl-8 pr-8 py-1.5 text-xs rounded-xl border border-slate-200 bg-white placeholder-slate-400 focus:outline-none focus:border-purple-600 focus:ring-1 focus:ring-purple-600"
             />
             {searchQuery && (
               <button
                 type="button"
                 onClick={() => setSearchQuery('')}
-                className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"
+                className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 cursor-pointer"
               >
                 <X className="w-3.5 h-3.5" />
               </button>
@@ -313,12 +336,12 @@ export default function ProjectApprovalsTab({
         </div>
       </div>
 
-      {/* 2. TABLE CONTENT */}
+      {/* 2. UNIFORM TABLE CONTENT */}
       <div className="bg-white rounded-2xl border border-slate-200/80 shadow-xs overflow-hidden">
         {loading && requests.length === 0 ? (
           <div className="py-20 flex flex-col items-center justify-center text-slate-400 gap-3">
             <Loader2 className="w-8 h-8 animate-spin text-purple-600" />
-            <p className="text-xs font-medium">Loading project extension requests...</p>
+            <p className="text-xs font-medium">Loading project approval requests...</p>
           </div>
         ) : error ? (
           <div className="p-8 text-center">
@@ -344,7 +367,7 @@ export default function ProjectApprovalsTab({
                 </div>
                 <h3 className="text-sm font-bold text-slate-900 mb-1">All Caught Up!</h3>
                 <p className="text-xs text-slate-500 leading-relaxed">
-                  There are no pending due-date extension requests waiting for your review. When an intern requests an extension, it will appear here.
+                  There are no pending due-date extension requests waiting for review. When a project member requests an extension, it will appear here.
                 </p>
               </div>
             ) : activeFilter === 'APPROVED' ? (
@@ -370,19 +393,19 @@ export default function ProjectApprovalsTab({
             )}
           </div>
         ) : (
-          <div className="overflow-x-auto">
-            <table className="w-full text-left border-collapse text-xs">
+          <div className="overflow-x-auto w-full">
+            <table className="w-full text-left border-collapse text-xs table-auto">
               <thead>
-                <tr className="border-b border-slate-200/80 bg-slate-50/75 text-[11px] font-bold text-slate-500 uppercase tracking-wider">
-                  <th className="py-3 px-4">Task / Deliverable</th>
+                <tr className="border-b border-slate-200 bg-slate-50/80 text-[10px] font-bold text-slate-500 uppercase tracking-wider select-none">
+                  <th className="py-3 px-3.5">Deliverable</th>
                   <th className="py-3 px-3">Type</th>
                   <th className="py-3 px-3">Requested By</th>
-                  <th className="py-3 px-3">Current Deadline</th>
-                  <th className="py-3 px-3">Requested Deadline</th>
-                  <th className="py-3 px-4 min-w-[200px]">Reason</th>
+                  <th className="py-3 px-3">Current Due</th>
+                  <th className="py-3 px-3">Requested Due</th>
+                  <th className="py-3 px-3 max-w-[220px]">Reason</th>
                   <th className="py-3 px-3">Submitted</th>
-                  <th className="py-3 px-3">Status</th>
-                  <th className="py-3 px-4 text-right">Actions</th>
+                  <th className="py-3 px-3 text-center">Status</th>
+                  <th className="py-3 px-3.5 text-right">Actions</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
@@ -402,29 +425,26 @@ export default function ProjectApprovalsTab({
                   return (
                     <tr
                       key={req.id}
-                      className="hover:bg-slate-50/60 transition-colors group"
+                      className="hover:bg-purple-50/20 transition-colors group"
                     >
-                      {/* 1. Task / Deliverable */}
-                      <td className="py-3 px-4">
-                        <div className="flex items-start gap-2">
-                          <IssueTypeIcon type={req.task?.type || 'STORY'} className="w-3.5 h-3.5 mt-0.5" />
-                          <div>
+                      {/* 1. Deliverable */}
+                      <td className="py-3.5 px-3.5 align-middle">
+                        <div className="flex items-center gap-2.5">
+                          <IssueTypeIcon type={req.task?.type || 'STORY'} className="w-3.5 h-3.5 shrink-0" />
+                          <div className="min-w-0 max-w-[200px]">
                             <button
                               type="button"
                               onClick={() => handleInspectTask(req.task_id)}
-                              className="font-semibold text-slate-900 hover:text-purple-600 text-left transition-colors cursor-pointer group-hover:underline flex items-center gap-1"
-                              title="Click to view task details"
+                              className="font-semibold text-slate-900 hover:text-purple-600 truncate block text-xs cursor-pointer group-hover:underline text-left"
+                              title={req.task?.title || 'Deliverable'}
                             >
-                              <span>{req.task?.title || 'Untitled Deliverable'}</span>
-                              <ExternalLink className="w-3 h-3 text-slate-400 opacity-0 group-hover:opacity-100 transition-opacity" />
+                              {req.task?.title || 'Untitled Deliverable'}
                             </button>
-                            <div className="flex items-center gap-1.5 mt-1 text-[10px] text-slate-500 font-mono">
-                              <span className="bg-slate-100 px-1.5 py-0.5 rounded text-slate-600">
-                                #{req.task_id?.slice(0, 8)}
-                              </span>
+                            <div className="flex items-center gap-1.5 mt-0.5 text-[10px] text-slate-400 font-mono">
+                              <span>#{req.task_id?.slice(0, 8)}</span>
                               {req.task?.status && (
-                                <span className="text-slate-400 font-sans">
-                                  · {req.task.status}
+                                <span className="px-1.5 py-0.2 rounded font-sans font-medium text-[9px] bg-slate-100 text-slate-600">
+                                  {req.task.status}
                                 </span>
                               )}
                             </div>
@@ -433,7 +453,7 @@ export default function ProjectApprovalsTab({
                       </td>
 
                       {/* 2. Type */}
-                      <td className="py-3 px-3 whitespace-nowrap">
+                      <td className="py-3.5 px-3 align-middle whitespace-nowrap">
                         <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[11px] font-semibold bg-purple-50 text-purple-700 border border-purple-200">
                           <Calendar className="w-3 h-3 text-purple-500" />
                           Due Date Ext
@@ -441,24 +461,24 @@ export default function ProjectApprovalsTab({
                       </td>
 
                       {/* 3. Requested By */}
-                      <td className="py-3 px-3 whitespace-nowrap">
+                      <td className="py-3.5 px-3 align-middle whitespace-nowrap">
                         <div className="flex items-center gap-2">
-                          <div className="w-6 h-6 rounded-full bg-gradient-to-tr from-purple-500 to-indigo-600 text-white font-bold text-[10px] flex items-center justify-center shrink-0">
+                          <div className="w-6 h-6 rounded-full bg-gradient-to-tr from-purple-500 to-indigo-600 text-white font-bold text-[10px] flex items-center justify-center shrink-0 shadow-2xs">
                             {requesterInitials}
                           </div>
-                          <div>
-                            <div className="font-semibold text-slate-800 text-xs">
+                          <div className="min-w-0">
+                            <div className="font-semibold text-slate-800 text-xs truncate max-w-[120px]">
                               {req.requester?.name || 'Intern'}
                             </div>
-                            <div className="text-[10px] text-slate-400">
+                            <div className="text-[10px] text-slate-400 truncate max-w-[120px]">
                               {req.requester?.email || '—'}
                             </div>
                           </div>
                         </div>
                       </td>
 
-                      {/* 4. Current Deadline */}
-                      <td className="py-3 px-3 whitespace-nowrap">
+                      {/* 4. Current Due */}
+                      <td className="py-3.5 px-3 align-middle whitespace-nowrap">
                         <div className="text-xs font-medium text-slate-700">
                           {req.original_due_date
                             ? new Date(req.original_due_date).toLocaleDateString([], {
@@ -470,8 +490,8 @@ export default function ProjectApprovalsTab({
                         </div>
                       </td>
 
-                      {/* 5. Requested Deadline */}
-                      <td className="py-3 px-3 whitespace-nowrap">
+                      {/* 5. Requested Due */}
+                      <td className="py-3.5 px-3 align-middle whitespace-nowrap">
                         <div className="flex items-center gap-1.5">
                           <span className="font-bold text-purple-900 text-xs">
                             {req.requested_due_date
@@ -491,18 +511,18 @@ export default function ProjectApprovalsTab({
                       </td>
 
                       {/* 6. Reason */}
-                      <td className="py-3 px-4">
+                      <td className="py-3.5 px-3 align-middle">
                         <div
-                          className="text-xs text-slate-600 italic bg-slate-50/80 p-2 rounded-lg border border-slate-200/60 max-w-sm line-clamp-2"
+                          className="text-xs text-slate-700 italic bg-slate-50 border border-slate-200/70 rounded-lg px-2.5 py-1.5 max-w-[200px] line-clamp-2"
                           title={req.reason}
                         >
                           "{req.reason}"
                         </div>
                       </td>
 
-                      {/* 7. Submitted Date */}
-                      <td className="py-3 px-3 whitespace-nowrap text-slate-500 text-[11px]">
-                        <div>
+                      {/* 7. Submitted */}
+                      <td className="py-3.5 px-3 align-middle whitespace-nowrap text-slate-500 text-[11px]">
+                        <div className="font-medium text-slate-700">
                           {req.created_at
                             ? new Date(req.created_at).toLocaleDateString([], {
                                 month: 'short',
@@ -521,21 +541,21 @@ export default function ProjectApprovalsTab({
                       </td>
 
                       {/* 8. Status */}
-                      <td className="py-3 px-3 whitespace-nowrap">
+                      <td className="py-3.5 px-3 align-middle text-center whitespace-nowrap">
                         {isPending && (
-                          <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[11px] font-bold bg-amber-50 text-amber-800 border border-amber-300">
+                          <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-amber-50 text-amber-800 border border-amber-300">
                             <Clock className="w-3 h-3 text-amber-600" />
                             Pending Review
                           </span>
                         )}
                         {isApproved && (
-                          <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[11px] font-bold bg-emerald-50 text-emerald-800 border border-emerald-300">
+                          <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-emerald-50 text-emerald-800 border border-emerald-300">
                             <CheckCircle2 className="w-3 h-3 text-emerald-600" />
                             Approved
                           </span>
                         )}
                         {isRejected && (
-                          <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[11px] font-bold bg-rose-50 text-rose-800 border border-rose-300">
+                          <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-rose-50 text-rose-800 border border-rose-300">
                             <XCircle className="w-3 h-3 text-rose-600" />
                             Rejected
                           </span>
@@ -543,12 +563,10 @@ export default function ProjectApprovalsTab({
                       </td>
 
                       {/* 9. Actions */}
-                      <td className="py-3 px-4 text-right whitespace-nowrap">
+                      <td className="py-3.5 px-3.5 align-middle text-right whitespace-nowrap">
                         {isPending ? (
-                          readOnly ? (
-                            <span className="text-[11px] text-slate-400 italic">Read-only</span>
-                          ) : (
-                            <div className="flex items-center justify-end gap-1.5">
+                          canReview ? (
+                            <div className="inline-flex items-center gap-1.5 justify-end">
                               <button
                                 type="button"
                                 onClick={() => handleOpenDecisionModal(req, 'APPROVE')}
@@ -561,17 +579,21 @@ export default function ProjectApprovalsTab({
                               <button
                                 type="button"
                                 onClick={() => handleOpenDecisionModal(req, 'REJECT')}
-                                className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-semibold bg-white hover:bg-rose-50 text-rose-600 border border-rose-200 hover:border-rose-300 shadow-2xs transition-colors cursor-pointer"
+                                className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-semibold bg-white hover:bg-rose-50 text-rose-700 border border-rose-200 hover:border-rose-300 shadow-2xs transition-colors cursor-pointer"
                                 title="Reject extension"
                               >
                                 <X className="w-3.5 h-3.5" />
                                 <span>Reject</span>
                               </button>
                             </div>
+                          ) : (
+                            <span className="text-[11px] text-slate-400 font-medium italic">
+                              Awaiting Review
+                            </span>
                           )
                         ) : (
                           <div className="text-right">
-                            <div className="text-[11px] font-medium text-slate-700">
+                            <div className="text-[11px] font-semibold text-slate-700">
                               {req.reviewer?.name ? `By ${req.reviewer.name}` : 'Decided'}
                             </div>
                             {req.reviewed_at && (
@@ -584,7 +606,7 @@ export default function ProjectApprovalsTab({
                             )}
                             {req.decision_note && (
                               <div
-                                className="text-[10px] text-slate-500 italic truncate max-w-[150px] ml-auto"
+                                className="text-[10px] text-slate-500 italic truncate max-w-[140px] ml-auto"
                                 title={req.decision_note}
                               >
                                 Note: "{req.decision_note}"
@@ -602,20 +624,20 @@ export default function ProjectApprovalsTab({
         )}
 
         {/* Table Footer */}
-        <div className="p-3.5 border-t border-slate-100 bg-slate-50/50 flex items-center justify-between text-xs text-slate-500">
+        <div className="p-3.5 border-t border-slate-100 bg-slate-50/50 flex flex-col sm:flex-row sm:items-center justify-between gap-2 text-xs text-slate-500">
           <span>
             Showing {filteredRequests.length} of {requests.filter((r) => r.status === activeFilter).length} {activeFilter.toLowerCase()} requests
           </span>
           <div className="flex items-center gap-3 text-[11px]">
-            <span className="flex items-center gap-1">
+            <span className="flex items-center gap-1.5">
               <span className="w-2 h-2 rounded-full bg-amber-400"></span>
               Pending: <strong>{counts.pending}</strong>
             </span>
-            <span className="flex items-center gap-1">
+            <span className="flex items-center gap-1.5">
               <span className="w-2 h-2 rounded-full bg-emerald-500"></span>
               Approved: <strong>{counts.approved}</strong>
             </span>
-            <span className="flex items-center gap-1">
+            <span className="flex items-center gap-1.5">
               <span className="w-2 h-2 rounded-full bg-rose-500"></span>
               Rejected: <strong>{counts.rejected}</strong>
             </span>
@@ -732,7 +754,7 @@ export default function ProjectApprovalsTab({
                   onChange={(e) => setDecisionNote(e.target.value)}
                   placeholder={
                     decisionType === 'APPROVE'
-                      ? 'e.g. Approved. Please ensure all test cases and documentation are delivered by the new date.'
+                      ? 'e.g. Approved. Please ensure all deliverables are completed by the new date.'
                       : 'e.g. Due date cannot be pushed back further because sprint closes this Friday.'
                   }
                   className="w-full p-2.5 rounded-xl border border-slate-200 text-xs text-slate-800 placeholder-slate-400 focus:outline-none focus:border-purple-600 focus:ring-1 focus:ring-purple-600 resize-none"
@@ -792,4 +814,3 @@ export default function ProjectApprovalsTab({
     </div>
   );
 }
-
