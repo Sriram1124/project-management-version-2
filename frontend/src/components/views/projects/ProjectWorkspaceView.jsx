@@ -7,6 +7,7 @@ import ProjectCycleWorkspaceTab from './ProjectCycleWorkspaceTab';
 import ProjectBacklogTab from './ProjectBacklogTab';
 import KanbanBoard from '../../kanban/KanbanBoard';
 import ProjectMomTab from './ProjectMomTab';
+import ProjectApprovalsTab from './ProjectApprovalsTab';
 import { projectsService } from '../../../services/projects.service';
 import { useAuth } from '../../../context/AuthContext';
 import { getProjectMethodology, getProjectTabs, isKanbanProject } from '../../../utils/methodology';
@@ -207,6 +208,13 @@ export default function ProjectWorkspaceView({
           <ProjectMomTab
             projectId={projectId}
             projectName={liveProject?.name}
+            onToast={onToast}
+            readOnly={effectiveReadOnly}
+          />
+        ) : currentTab === 'approvals' ? (
+          <ProjectApprovalsTab
+            projectId={projectId}
+            project={liveProject}
             onToast={onToast}
             readOnly={effectiveReadOnly}
           />

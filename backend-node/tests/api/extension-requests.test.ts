@@ -376,6 +376,63 @@ describe('Work Item Extension Requests API', () => {
       expect(res.body).toHaveProperty('extension_requests');
       expect(res.body.extension_requests).toHaveLength(1);
     });
+
+    it('should return all project extension requests when no status filter is provided', async () => {
+      const { authHeader } = setupAuthUser({
+        id: 'user-manager',
+        role: 'MANAGER',
+        organization_id: 'org-test-1',
+      });
+
+      mockPrisma.project.findFirst.mockResolvedValueOnce(mockProject);
+      mockPrisma.workItemExtensionRequest.findMany.mockResolvedValueOnce([mockPendingExtension]);
+
+      const res = await request(app)
+        .get('/api/projects/proj-1/extension-requests')
+        .set('Authorization', authHeader);
+
+      expect(res.status).toBe(200);
+      expect(res.body).toHaveProperty('extension_requests');
+      expect(res.body.extension_requests).toHaveLength(1);
+    });
+
+    it('should enforce tenant isolation and return 404 if project is in a different organization', async () => {
+      const { authHeader } = setupAuthUser({
+        id: 'user-manager-other-org',
+        role: 'MANAGER',
+        organization_id: 'org-other-99',
+      });
+
+      mockPrisma.project.findFirst.mockResolvedValueOnce(null);
+
+      const res = await request(app)
+        .get('/api/projects/proj-1/extension-requests')
+        .set('Authorization', authHeader);
+
+      expect(res.status).toBe(404);
+      expect(res.body.error).toContain('Project not found');
+    });
+
+    it('should reject unauthorized non-member from viewing project extension requests (403)', async () => {
+      const { authHeader } = setupAuthUser({
+        id: 'user-intern-unauth',
+        role: 'INTERN',
+        organization_id: 'org-test-1',
+      });
+
+      mockPrisma.project.findFirst.mockResolvedValueOnce({
+        ...mockProject,
+        owner_id: 'user-manager',
+      });
+      mockPrisma.projectMember.findFirst.mockResolvedValueOnce(null);
+
+      const res = await request(app)
+        .get('/api/projects/proj-1/extension-requests')
+        .set('Authorization', authHeader);
+
+      expect(res.status).toBe(403);
+      expect(res.body.error).toMatch(/Forbidden|insufficient permissions|not authorized/);
+    });
   });
 
   describe('Analytics Extension Metrics & Task Breakdown Flags', () => {

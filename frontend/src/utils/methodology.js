@@ -60,6 +60,7 @@ export function getProjectTabs(projectOrMethodology) {
       { id: 'backlog', label: 'Backlog' },
       { id: 'kanban', label: 'Kanban Board' },
       { id: 'action-items', label: 'Action Items' },
+      { id: 'approvals', label: 'Approvals' },
     ];
   }
 
@@ -70,6 +71,7 @@ export function getProjectTabs(projectOrMethodology) {
     { id: 'backlog', label: 'Backlog' },
     { id: 'scrum', label: 'Scrum Board' },
     { id: 'action-items', label: 'Action Items' },
+    { id: 'approvals', label: 'Approvals' },
   ];
 }
 
