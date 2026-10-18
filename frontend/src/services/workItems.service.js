@@ -1,5 +1,20 @@
 import api from './api';
 
+// In-memory client cache and in-flight request deduplication for analytics
+const clientAnalyticsCache = new Map();
+const inFlightAnalyticsRequests = new Map();
+const CLIENT_CACHE_TTL_MS = 15_000; // 15 seconds
+
+export function clearClientAnalyticsCache(projectId) {
+  if (projectId) {
+    for (const key of clientAnalyticsCache.keys()) {
+      if (key.includes(projectId)) clientAnalyticsCache.delete(key);
+    }
+  } else {
+    clientAnalyticsCache.clear();
+  }
+}
+
 export const workItemsService = {
   /**
    * List work items with optional filters:
@@ -57,6 +72,7 @@ export const workItemsService = {
     }
 
     const data = await api.post('/work-items', cleanPayload);
+    clearClientAnalyticsCache(cleanPayload.project_id);
     if (typeof window !== 'undefined') {
       window.dispatchEvent(new CustomEvent('work-items-updated', { detail: { action: 'create', item: data.work_item } }));
     }
@@ -76,6 +92,7 @@ export const workItemsService = {
     if (cleanPayload.parent_id === '') cleanPayload.parent_id = null;
 
     const data = await api.patch(`/work-items/${id}`, cleanPayload);
+    clearClientAnalyticsCache();
     if (typeof window !== 'undefined') {
       window.dispatchEvent(new CustomEvent('work-items-updated', { detail: { action: 'update', id, item: data.work_item } }));
     }
@@ -88,6 +105,7 @@ export const workItemsService = {
   async deleteWorkItem(id) {
     if (!id) throw new Error('Work item ID is required');
     const res = await api.delete(`/work-items/${id}`);
+    clearClientAnalyticsCache();
     if (typeof window !== 'undefined') {
       window.dispatchEvent(new CustomEvent('work-items-updated', { detail: { action: 'delete', id } }));
     }
@@ -176,17 +194,44 @@ export const workItemsService = {
    * Get server-calculated analytics scoped to user / filters
    */
   async getAnalytics(filters = {}, options = {}) {
+    const isFresh = Boolean(filters.fresh || options.fresh);
     const params = new URLSearchParams();
     if (filters.project_id) params.append('project_id', filters.project_id);
     if (filters.sprint_id && filters.sprint_id !== 'ALL') params.append('sprint_id', filters.sprint_id);
     if (filters.user_id) params.append('user_id', filters.user_id);
     if (filters.start_date) params.append('start_date', filters.start_date);
     if (filters.end_date) params.append('end_date', filters.end_date);
+    if (isFresh) params.append('fresh', 'true');
 
     const qs = params.toString();
     const endpoint = `/work-items/analytics${qs ? `?${qs}` : ''}`;
-    const data = await api.get(endpoint, options);
-    return data.analytics || null;
+    const cacheKey = qs || 'all';
+
+    if (!isFresh) {
+      const cached = clientAnalyticsCache.get(cacheKey);
+      if (cached && Date.now() - cached.timestamp < CLIENT_CACHE_TTL_MS) {
+        return cached.data;
+      }
+      if (inFlightAnalyticsRequests.has(cacheKey)) {
+        return inFlightAnalyticsRequests.get(cacheKey);
+      }
+    }
+
+    const requestPromise = (async () => {
+      try {
+        const data = await api.get(endpoint, options);
+        const result = data.analytics || null;
+        if (result) {
+          clientAnalyticsCache.set(cacheKey, { data: result, timestamp: Date.now() });
+        }
+        return result;
+      } finally {
+        inFlightAnalyticsRequests.delete(cacheKey);
+      }
+    })();
+
+    inFlightAnalyticsRequests.set(cacheKey, requestPromise);
+    return requestPromise;
   },
 
   // Backward compatibility alias
@@ -238,6 +283,7 @@ export const workItemsService = {
       requested_due_date,
       reason,
     });
+    clearClientAnalyticsCache();
     if (typeof window !== 'undefined') {
       window.dispatchEvent(new CustomEvent('work-items-updated', { detail: { action: 'extension-requested', id } }));
     }
@@ -262,6 +308,7 @@ export const workItemsService = {
       decision,
       decision_note,
     });
+    clearClientAnalyticsCache();
     if (typeof window !== 'undefined') {
       window.dispatchEvent(new CustomEvent('work-items-updated', { detail: { action: 'extension-decided', id, decision } }));
     }

@@ -16,10 +16,14 @@ export default function SprintDetailsModal({
   onClose,
   sprint,
   allSprints = [],
+  isKanban = false,
   onEdit,
   onOpenSprintBoard,
 }) {
   if (!isOpen || !sprint) return null;
+
+  const Term = isKanban ? 'Cycle' : 'Sprint';
+  const term = isKanban ? 'cycle' : 'sprint';
 
   const isActive = sprint.status === 'ACTIVE';
   const isCompleted = sprint.status === 'COMPLETED';
@@ -51,7 +55,7 @@ export default function SprintDetailsModal({
   }
 
   const statusLabel = isActive
-    ? 'Active Sprint'
+    ? `Active ${Term}`
     : isCompleted
     ? 'Completed'
     : sprint.status === 'CANCELLED'
@@ -128,13 +132,13 @@ export default function SprintDetailsModal({
           <div className="space-y-1.5">
             <div className="flex items-center gap-1.5 text-xs font-bold uppercase tracking-wider text-slate-700">
               <Target className="w-3.5 h-3.5 text-purple-600" />
-              <span>Sprint Goal</span>
+              <span>{Term} Goal</span>
             </div>
             <div className="bg-slate-50 border border-slate-200/80 rounded-xl p-3 text-xs text-slate-700 leading-relaxed min-h-[50px]">
               {sprint.goal ? (
                 <span>{sprint.goal}</span>
               ) : (
-                <span className="text-slate-400 italic">No specific goal configured for this sprint.</span>
+                <span className="text-slate-400 italic">No specific goal configured for this {term}.</span>
               )}
             </div>
           </div>
@@ -172,7 +176,7 @@ export default function SprintDetailsModal({
           {/* Active sprint notice for planned sprints */}
           {!isActive && activeSprint && (
             <div className="p-3 bg-slate-50 border border-slate-200 text-slate-700 rounded-xl text-xs flex items-center justify-between">
-              <span className="text-slate-500 font-medium">Active Sprint in this Project:</span>
+              <span className="text-slate-500 font-medium">Active {Term} in this Project:</span>
               <span className="font-bold text-purple-700 bg-purple-50 border border-purple-200/80 px-2.5 py-0.5 rounded-md text-[11px]">
                 {activeSprint.name}
               </span>
@@ -191,7 +195,7 @@ export default function SprintDetailsModal({
             className="px-3.5 py-2 text-xs font-bold text-purple-700 bg-purple-50 hover:bg-purple-100 border border-purple-200 rounded-xl transition-all flex items-center gap-1.5 cursor-pointer shadow-2xs"
           >
             <Edit3 className="w-3.5 h-3.5" />
-            <span>Edit Sprint</span>
+            <span>Edit {Term}</span>
           </button>
 
           <div className="flex items-center gap-2">
@@ -210,7 +214,7 @@ export default function SprintDetailsModal({
               }}
               className="px-4 py-2 text-xs font-bold text-white bg-purple-600 hover:bg-purple-700 active:bg-purple-800 rounded-xl shadow-xs transition-all flex items-center gap-1.5 cursor-pointer"
             >
-              <span>Open Sprint Board</span>
+              <span>Open {Term} Board</span>
               <ArrowRight className="w-3.5 h-3.5" />
             </button>
           </div>

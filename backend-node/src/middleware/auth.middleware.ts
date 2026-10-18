@@ -76,6 +76,7 @@ export const authenticate = async (req: Request, res: Response, next: NextFuncti
               is_active: true,
               must_change_password: true,
               organization_id: true,
+              created_at: true,
               organization: {
                 select: { id: true, name: true, is_active: true }
               },

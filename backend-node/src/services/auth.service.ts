@@ -25,6 +25,9 @@ export class AuthService {
         ]
       },
       include: {
+        organization: {
+          select: { id: true, name: true },
+        },
         roles: {
           include: {
             role: {
@@ -133,6 +136,9 @@ export class AuthService {
         user_code: user.user_code,
         must_change_password: user.must_change_password,
         organization_id: user.organization_id,
+        organization: user.organization ? { id: user.organization.id, name: user.organization.name } : null,
+        organization_name: user.organization?.name || null,
+        created_at: user.created_at,
         role: primaryRole?.name || 'USER',
         is_tech_lead: isTechLead,
         lead_project_ids: leadProjectIds,

@@ -21,9 +21,12 @@ export default function CompleteSprintModal({
   completedCount = 0,
   incompleteCount = 0,
   tasks = [],
+  isKanban = false,
   onConfirmComplete,
 }) {
-  const sprintName = sprint?.name || 'Cycle';
+  const Term = isKanban ? 'Cycle' : 'Sprint';
+  const term = isKanban ? 'cycle' : 'sprint';
+  const sprintName = sprint?.name || Term;
 
   // Incomplete tasks list from passed tasks or synthesized
   const incompleteTasks = useMemo(() => {
@@ -195,10 +198,10 @@ export default function CompleteSprintModal({
             </div>
             <div>
               <h3 className="text-base font-bold text-slate-900">
-                Complete Cycle — {sprintName}
+                Complete {Term} — {sprintName}
               </h3>
               <p className="text-xs text-slate-500">
-                Review cycle metrics and choose how to handle open deliverables
+                Review {term} metrics and choose how to handle open deliverables
               </p>
             </div>
           </div>
@@ -212,7 +215,7 @@ export default function CompleteSprintModal({
 
         {/* Content Body */}
         <div className="p-6 space-y-5 overflow-y-auto">
-          {/* Cycle Metrics Card: Planned SP, Completed SP, Remaining SP, Incomplete Count */}
+          {/* Metrics Card: Planned SP, Completed SP, Remaining SP, Incomplete Count */}
           <div className="grid grid-cols-4 gap-2.5">
             <div className="p-3 rounded-xl bg-slate-50 border border-slate-200/80 text-center">
               <div className="text-xl font-black text-slate-800 font-mono">{plannedSp}</div>
@@ -260,7 +263,7 @@ export default function CompleteSprintModal({
               <div>
                 <p className="font-bold">All planned work items are completed!</p>
                 <p className="text-emerald-700 mt-0.5">
-                  100% of planned story points were successfully delivered in this cycle. Closing the cycle will archive its velocity record.
+                  100% of planned story points were successfully delivered in this {term}. Closing the {term} will archive its velocity record.
                 </p>
               </div>
             </div>
@@ -292,7 +295,7 @@ export default function CompleteSprintModal({
                     </span>
                   </div>
                   <p className="text-[11px] text-slate-500 leading-relaxed">
-                    Close this cycle and roll over unfinished tasks to another cycle or backlog.
+                    Close this {term} and roll over unfinished tasks to another {term} or backlog.
                   </p>
                 </button>
 
@@ -309,11 +312,11 @@ export default function CompleteSprintModal({
                   <div className="flex items-center gap-2 mb-1">
                     <RotateCcw className="w-4 h-4 text-purple-600" />
                     <span className="text-xs font-bold text-slate-900">
-                      Option A: Continue Cycle
+                      Option A: Continue {Term}
                     </span>
                   </div>
                   <p className="text-[11px] text-slate-500 leading-relaxed">
-                    Extend cycle duration with a new end date and keep working on open items.
+                    Extend {term} duration with a new end date and keep working on open items.
                   </p>
                 </button>
               </div>
@@ -323,10 +326,10 @@ export default function CompleteSprintModal({
                 <div className="p-4 rounded-xl bg-purple-50/40 border border-purple-200/80 space-y-3">
                   <div className="flex items-center gap-2 text-xs font-bold text-purple-900">
                     <Calendar className="w-4 h-4 text-purple-600" />
-                    <span>Adjust Cycle End Date:</span>
+                    <span>Adjust {Term} End Date:</span>
                   </div>
                   <p className="text-xs text-slate-600">
-                    The cycle remains in ACTIVE status without closing. All {effectiveIncompleteCount} incomplete items and {remainingSp} remaining story points stay assigned to this cycle.
+                    The {term} remains in ACTIVE status without closing. All {effectiveIncompleteCount} incomplete items and {remainingSp} remaining story points stay assigned to this {term}.
                   </p>
                   <div>
                     <label className="block text-[11px] font-semibold text-slate-700 mb-1">
@@ -428,7 +431,7 @@ export default function CompleteSprintModal({
                             />
                             <div className="font-bold text-xs text-slate-800 flex items-center gap-1.5">
                               <Layers className="w-3.5 h-3.5 text-purple-600" />
-                              <span>Carry forward into a planned cycle</span>
+                              <span>Carry forward into a planned {term}</span>
                             </div>
                           </label>
 
@@ -469,7 +472,7 @@ export default function CompleteSprintModal({
                           />
                           <div className="font-bold text-xs text-slate-800 flex items-center gap-1.5">
                             <PlusCircle className="w-3.5 h-3.5 text-purple-600" />
-                            <span>Create new planned cycle for carryover</span>
+                            <span>Create new planned {term} for carryover</span>
                           </div>
                         </label>
 
@@ -479,7 +482,7 @@ export default function CompleteSprintModal({
                               type="text"
                               value={newSprintName}
                               onChange={(e) => setNewSprintName(e.target.value)}
-                              placeholder="e.g. Cycle 2 (Carryover)"
+                              placeholder={`e.g. ${Term} 2 (Carryover)`}
                               className="w-full px-3 py-1.5 rounded-lg border border-purple-200 bg-white text-xs text-slate-800 focus:outline-none focus:border-purple-600"
                             />
                           </div>
@@ -508,7 +511,7 @@ export default function CompleteSprintModal({
                               Move to Project Backlog
                             </div>
                             <div className="text-[11px] text-slate-400">
-                              Unassign from cycles and return to continuous backlog pool
+                              Unassign from {isKanban ? 'cycles' : 'sprints'} and return to {isKanban ? 'continuous backlog pool' : 'backlog'}
                             </div>
                           </div>
                         </label>
@@ -551,12 +554,12 @@ export default function CompleteSprintModal({
             {activeMode === 'CONTINUE' && effectiveIncompleteCount > 0 ? (
               <>
                 <RotateCcw className="w-3.5 h-3.5" />
-                <span>Adjust Dates & Continue Cycle</span>
+                <span>Adjust Dates & Continue {Term}</span>
               </>
             ) : (
               <>
                 <CheckCircle2 className="w-3.5 h-3.5" />
-                <span>Confirm & Complete Cycle</span>
+                <span>Confirm & Complete {Term}</span>
               </>
             )}
           </button>

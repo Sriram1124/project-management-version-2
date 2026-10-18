@@ -26,10 +26,13 @@ export default function WorkItemDetailModal({
   onClose,
   onTaskUpdated,
   onTaskDeleted,
-  onToast
+  onToast,
+  isKanban = false,
 }) {
   const [activeTab, setActiveTab] = useState('details'); // 'details' | 'attachments' | 'activity' | 'comments'
   const [liveItem, setLiveItem] = useState(workItem || {});
+  const isKanbanProject = isKanban || liveItem?.project?.methodology === 'KANBAN' || workItem?.project?.methodology === 'KANBAN';
+  const Term = isKanbanProject ? 'Cycle' : 'Sprint';
   const [loading, setLoading] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [error, setError] = useState('');
@@ -694,11 +697,11 @@ export default function WorkItemDetailModal({
                 </div>
               </div>
 
-              {/* Cycle Assignment & Story Points */}
+              {/* Sprint / Cycle Assignment & Story Points */}
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div className="p-3 bg-slate-50 border border-slate-200 rounded-xl">
                   <span className="text-[10px] font-bold uppercase text-slate-400 block mb-1">
-                    Cycle Assignment
+                    {Term} Assignment
                   </span>
                   <div className="flex items-center gap-2 text-slate-800 font-semibold text-xs">
                     <Layers className="w-3.5 h-3.5 text-purple-600" />

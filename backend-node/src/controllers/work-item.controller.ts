@@ -127,7 +127,7 @@ export class WorkItemController {
   static async getAnalytics(req: Request, res: Response): Promise<void> {
     try {
       const user = (req as any).fullUser;
-      const { user_id, project_id, sprint_id, start_date, end_date } = req.query;
+      const { user_id, project_id, sprint_id, start_date, end_date, fresh } = req.query;
 
       const analytics = await WorkItemService.getAnalytics(user, {
         user_id: user_id as string | undefined,
@@ -135,6 +135,7 @@ export class WorkItemController {
         sprint_id: sprint_id as string | undefined,
         start_date: start_date as string | undefined,
         end_date: end_date as string | undefined,
+        fresh: fresh as string | boolean | undefined,
       });
 
       res.status(200).json({ analytics, ...(analytics || {}) });

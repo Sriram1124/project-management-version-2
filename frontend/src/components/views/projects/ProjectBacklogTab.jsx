@@ -621,7 +621,7 @@ export default function ProjectBacklogTab({ projectId, project = null, isKanbanP
     }
   }, [hasActiveFilters, groupBy, filteredWorkItems, workItems]);
 
-  // Combined sprint sections list including the "Backlog (No Cycle)" section
+  // Combined sprint sections list including the "Backlog (No Cycle)" or "Backlog (No Sprint)" section
   const sprintSections = useMemo(() => {
     const list = sprints.map((s) => ({
       id: s.id,
@@ -635,12 +635,12 @@ export default function ProjectBacklogTab({ projectId, project = null, isKanbanP
     // Append dedicated Backlog section
     list.push({
       id: 'backlog',
-      name: 'Backlog (No Cycle)',
+      name: isKanban ? 'Backlog (No Cycle)' : 'Backlog (No Sprint)',
       status: 'PLANNED',
       isBacklog: true,
     });
     return list;
-  }, [sprints]);
+  }, [sprints, isKanban]);
 
   if (loading && workItems.length === 0) {
     return (
@@ -718,6 +718,7 @@ export default function ProjectBacklogTab({ projectId, project = null, isKanbanP
           hasActiveFilters={hasActiveFilters}
           onDragStart={handleDragStart}
           onDragEnd={handleDragEnd}
+          isKanban={isKanban}
           emptyMessage="No issues match the selected filters. Click + Create Issue to add a Story or Task."
         />
       )}
@@ -748,6 +749,7 @@ export default function ProjectBacklogTab({ projectId, project = null, isKanbanP
                 sprints={sprints}
                 members={members}
                 selectedIssueId={selectedIssue?.id}
+                isKanban={isKanban}
                 onSelectIssue={(issue) => setSelectedIssue(issue)}
                 onUpdateStatus={handleUpdateStatus}
                 onUpdatePriority={handleUpdatePriority}
@@ -785,7 +787,7 @@ export default function ProjectBacklogTab({ projectId, project = null, isKanbanP
         if (!targetSprint) {
           return (
             <div className="rounded-md border border-slate-200 bg-white p-8 text-center text-slate-500 text-xs">
-              Cycle not found or has been removed. Please select another view.
+              {isKanban ? 'Cycle' : 'Sprint'} not found or has been removed. Please select another view.
             </div>
           );
         }
@@ -799,6 +801,7 @@ export default function ProjectBacklogTab({ projectId, project = null, isKanbanP
             sprints={sprints}
             members={members}
             selectedIssueId={selectedIssue?.id}
+            isKanban={isKanban}
             onSelectIssue={(issue) => setSelectedIssue(issue)}
             onUpdateStatus={handleUpdateStatus}
             onUpdatePriority={handleUpdatePriority}
@@ -831,7 +834,7 @@ export default function ProjectBacklogTab({ projectId, project = null, isKanbanP
       {groupBy === 'no_cycle' && (() => {
         const backlogSprint = sprintSections.find((s) => s.isBacklog) || {
           id: 'backlog',
-          name: 'Backlog (No Cycle)',
+          name: isKanban ? 'Backlog (No Cycle)' : 'Backlog (No Sprint)',
           status: 'PLANNED',
           isBacklog: true,
         };
@@ -852,6 +855,7 @@ export default function ProjectBacklogTab({ projectId, project = null, isKanbanP
             sprints={sprints}
             members={members}
             selectedIssueId={selectedIssue?.id}
+            isKanban={isKanban}
             onSelectIssue={(issue) => setSelectedIssue(issue)}
             onUpdateStatus={handleUpdateStatus}
             onUpdatePriority={handleUpdatePriority}
@@ -903,6 +907,7 @@ export default function ProjectBacklogTab({ projectId, project = null, isKanbanP
           hasActiveFilters={hasActiveFilters}
           onDragStart={handleDragStart}
           onDragEnd={handleDragEnd}
+          isKanban={isKanban}
           emptyMessage="No stories or tasks found matching the criteria. Click + Create Issue to get started."
         />
       )}
@@ -915,6 +920,7 @@ export default function ProjectBacklogTab({ projectId, project = null, isKanbanP
           sprints={sprints}
           members={members}
           workItems={workItems}
+          isKanban={isKanban}
           isOpen={Boolean(selectedIssue)}
           onClose={() => setSelectedIssue(null)}
           onUpdateIssue={async (updated) => {
@@ -1038,9 +1044,10 @@ export default function ProjectBacklogTab({ projectId, project = null, isKanbanP
         projectId={projectId}
         projectName={currentProject?.name}
         existingSprints={sprints}
+        isKanban={isKanban}
         onSuccess={() => {
           loadProjectData();
-          onToast?.('Sprint created successfully');
+          onToast?.(isKanban ? 'Cycle created successfully' : 'Sprint created successfully');
         }}
       />
     </div>

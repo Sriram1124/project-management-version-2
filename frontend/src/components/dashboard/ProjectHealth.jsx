@@ -20,6 +20,16 @@ const HEALTH_CONFIG = {
     percentColor: 'text-emerald-700',
     dotColor: 'bg-emerald-500',
   },
+  NEEDS_ATTENTION: {
+    label: 'NEEDS ATTENTION',
+    icon: AlertTriangle,
+    badgeBg: 'bg-amber-50 text-amber-700 border-amber-200/90 shadow-2xs',
+    iconBg: 'bg-amber-100 text-amber-600 border-amber-200/80',
+    borderAccent: 'border-l-amber-500',
+    barColor: 'bg-amber-500',
+    percentColor: 'text-amber-700',
+    dotColor: 'bg-amber-500',
+  },
   AT_RISK: {
     label: 'AT RISK',
     icon: AlertTriangle,
@@ -77,8 +87,27 @@ export default function ProjectHealth({
   onSelectProject,
   limit = 4
 }) {
+  const [healthFilter, setHealthFilter] = React.useState('ALL');
   const allProjects = healthOverview?.projects || [];
-  const projects = limit ? allProjects.slice(0, limit) : allProjects;
+
+  const healthyCount = allProjects.filter((p) => p.health === 'HEALTHY').length;
+  const needsAttentionCount = allProjects.filter((p) => p.health === 'NEEDS_ATTENTION').length;
+  const atRiskCount = allProjects.filter((p) => p.health === 'AT_RISK' || p.health === 'CRITICAL').length;
+
+  const filteredProjects = React.useMemo(() => {
+    if (healthFilter === 'HEALTHY') {
+      return allProjects.filter((p) => p.health === 'HEALTHY');
+    }
+    if (healthFilter === 'NEEDS_ATTENTION') {
+      return allProjects.filter((p) => p.health === 'NEEDS_ATTENTION');
+    }
+    if (healthFilter === 'AT_RISK') {
+      return allProjects.filter((p) => p.health === 'AT_RISK' || p.health === 'CRITICAL');
+    }
+    return allProjects;
+  }, [allProjects, healthFilter]);
+
+  const projects = limit ? filteredProjects.slice(0, limit) : filteredProjects;
 
   if (loading) {
     return (
@@ -123,11 +152,38 @@ export default function ProjectHealth({
         </button>
       </div>
 
+      {/* Filter Tabs */}
+      {allProjects.length > 0 && (
+        <div className="flex items-center gap-1.5 overflow-x-auto pb-1">
+          {[
+            { id: 'ALL', label: `All (${allProjects.length})` },
+            { id: 'HEALTHY', label: `Healthy (${healthyCount})` },
+            { id: 'NEEDS_ATTENTION', label: `Needs Attention (${needsAttentionCount})` },
+            { id: 'AT_RISK', label: `At Risk / Critical (${atRiskCount})` },
+          ].map((tab) => (
+            <button
+              key={tab.id}
+              type="button"
+              onClick={() => setHealthFilter(tab.id)}
+              className={`px-3 py-1 rounded-lg text-xs font-semibold whitespace-nowrap transition-colors cursor-pointer ${
+                healthFilter === tab.id
+                  ? 'bg-purple-100 text-purple-800 border border-purple-200 shadow-2xs'
+                  : 'bg-slate-50 text-slate-600 hover:bg-slate-100 border border-slate-200/60'
+              }`}
+            >
+              {tab.label}
+            </button>
+          ))}
+        </div>
+      )}
+
       {/* 2. Project-by-Project Health Overview */}
       <div className="space-y-3">
         {projects.length === 0 ? (
           <div className="p-8 text-center bg-slate-50/50 rounded-xl border border-dashed border-slate-200 text-slate-400 text-xs">
-            No projects found in this organization. Projects will appear here as they are created.
+            {allProjects.length === 0
+              ? 'No projects found in this organization. Projects will appear here as they are created.'
+              : 'No projects match the selected health filter.'}
           </div>
         ) : (
           <div className="space-y-3">
@@ -162,7 +218,7 @@ export default function ProjectHealth({
                         </span>
                         <span className={`inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[11px] font-bold tracking-wide border ${config.badgeBg}`}>
                           <span className={`w-1.5 h-1.5 rounded-full ${config.dotColor}`} />
-                          <span>{config.label}</span>
+                          <span>{proj.health_score !== null && proj.health_score !== undefined ? `${proj.health_score}/100 · ` : ''}{config.label}</span>
                         </span>
                       </div>
 
@@ -176,51 +232,30 @@ export default function ProjectHealth({
                         {proj.has_estimated_work ? (
                           <>
                             <span className="font-semibold text-slate-700">
-                              {proj.completed_sp} / {proj.total_sp} SP
+                              {proj.completed_sp} / {proj.total_sp} SP ({proj.delivery_progress_percentage ?? proj.progress_percentage ?? 0}%)
                             </span>
                             <span className="text-slate-300">•</span>
                             <span>{proj.remaining_sp} SP remaining</span>
-                            <span className="text-slate-300">•</span>
-                            <span>
-                              {proj.story_count} {proj.story_count === 1 ? 'story' : 'stories'}
-                            </span>
-                            {proj.blocked_sp > 0 ? (
-                              <>
-                                <span className="text-slate-300">•</span>
-                                <span className="text-amber-600 font-semibold">
-                                  {proj.blocked_sp} SP blocked ({proj.blocked_work_percentage}%)
-                                </span>
-                              </>
-                            ) : proj.blocked_stories_count > 0 ? (
-                              <>
-                                <span className="text-slate-300">•</span>
-                                <span className="text-amber-600 font-semibold">
-                                  {proj.blocked_stories_count} blocked {proj.blocked_stories_count === 1 ? 'story' : 'stories'}
-                                </span>
-                              </>
-                            ) : proj.blocked_tasks > 0 ? (
-                              <>
-                                <span className="text-slate-300">•</span>
-                                <span className="text-amber-600 font-semibold">
-                                  {proj.blocked_tasks} blocked
-                                </span>
-                              </>
-                            ) : null}
-                            {proj.overdue_stories_count > 0 ? (
+                            {(proj.overdue_sp > 0 || proj.overdue_tasks > 0) && (
                               <>
                                 <span className="text-slate-300">•</span>
                                 <span className="text-rose-600 font-semibold">
-                                  {proj.overdue_stories_count} overdue {proj.overdue_stories_count === 1 ? 'story' : 'stories'}
+                                  {proj.total_sp > 0
+                                    ? `${proj.overdue_sp || 0}/${proj.total_sp} SP overdue (${proj.overdue_sp_percentage ?? 0}%)`
+                                    : `${proj.overdue_tasks} overdue`}
                                 </span>
                               </>
-                            ) : proj.overdue_tasks > 0 ? (
+                            )}
+                            {(proj.blocked_sp > 0 || proj.blocked_tasks > 0) && (
                               <>
                                 <span className="text-slate-300">•</span>
-                                <span className="text-rose-600 font-semibold">
-                                  {proj.overdue_tasks} overdue
+                                <span className="text-amber-600 font-semibold">
+                                  {proj.total_sp > 0
+                                    ? `${proj.blocked_sp || 0}/${proj.total_sp} SP blocked (${proj.blocked_sp_percentage ?? 0}%)`
+                                    : `${proj.blocked_tasks} blocked`}
                                 </span>
                               </>
-                            ) : null}
+                            )}
                             {proj.project_overdue_days > 0 && (
                               <>
                                 <span className="text-slate-300">•</span>

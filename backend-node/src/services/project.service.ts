@@ -3,6 +3,7 @@ import path from 'path';
 import { ProjectStatus, ProjectMethodology } from '@prisma/client';
 import { prisma } from '../lib/prisma';
 import { StorageService } from './storage.service';
+import { ProjectHealthService } from './project-health.service';
 
 export interface CreateProjectInput {
   name: string;
@@ -12,6 +13,7 @@ export interface CreateProjectInput {
   end_date?: string | null;
   status?: ProjectStatus;
   owner_id?: string;
+  owner_ids?: string[];
   member_ids?: string[];
   organization_id?: string;
 }
@@ -24,6 +26,7 @@ export interface UpdateProjectInput {
   end_date?: string | null;
   status?: ProjectStatus;
   owner_id?: string;
+  owner_ids?: string[];
 }
 
 export interface DocumentInput {
@@ -78,6 +81,39 @@ export class ProjectService {
   }
 
   /**
+   * Format project with full owners list (primary owner + manager members)
+   */
+  static formatProjectWithOwners(project: any) {
+    if (!project) return project;
+    const ownersMap = new Map<string, { id: string; name: string; email: string }>();
+    if (project.owner) {
+      ownersMap.set(project.owner.id, {
+        id: project.owner.id,
+        name: project.owner.name,
+        email: project.owner.email,
+      });
+    }
+    if (Array.isArray(project.members)) {
+      for (const m of project.members) {
+        const u = m.user;
+        if (m.project_role === 'MANAGER' && u) {
+          ownersMap.set(u.id, {
+            id: u.id,
+            name: u.name,
+            email: u.email,
+          });
+        }
+      }
+    }
+    const owners = Array.from(ownersMap.values());
+    return {
+      ...project,
+      owners,
+      owner_ids: owners.map((o) => o.id),
+    };
+  }
+
+  /**
    * List all projects scoped to the user's organization
    */
   static async listProjects(user: any, filters?: { status?: string; my?: boolean }) {
@@ -98,7 +134,7 @@ export class ProjectService {
       ];
     }
 
-    return await prisma.project.findMany({
+    const projects = await prisma.project.findMany({
       where,
       include: {
         owner: {
@@ -138,6 +174,8 @@ export class ProjectService {
       },
       orderBy: { created_at: 'desc' },
     });
+
+    return projects.map((p) => this.formatProjectWithOwners(p));
   }
 
   /**
@@ -204,7 +242,7 @@ export class ProjectService {
       }
     }
 
-    return project;
+    return this.formatProjectWithOwners(project);
   }
 
   /**
@@ -234,15 +272,58 @@ export class ProjectService {
     const methodology = methUpper as ProjectMethodology;
 
     let ownerId = user.id;
-    if (data.owner_id) {
-      // Validate owner belongs to the same organization
-      const ownerUser = await prisma.user.findFirst({
-        where: { id: data.owner_id, organization_id: orgId },
-      });
-      if (!ownerUser) {
-        throw new Error('Project owner does not exist in your organization');
+    let targetOwnerIds: string[] = [];
+
+    if (data.owner_ids && Array.isArray(data.owner_ids) && data.owner_ids.length > 0) {
+      targetOwnerIds = Array.from(new Set(data.owner_ids.filter((id): id is string => typeof id === 'string' && !!id.trim())));
+      if (targetOwnerIds.length === 0) {
+        throw new Error('At least one project owner is required');
       }
-      ownerId = data.owner_id;
+
+      const ownerUsers = await prisma.user.findMany({
+        where: {
+          id: { in: targetOwnerIds },
+          organization_id: orgId,
+          is_active: true,
+        },
+        include: {
+          roles: {
+            include: {
+              role: true,
+            },
+          },
+        },
+      });
+
+      if (ownerUsers.length !== targetOwnerIds.length) {
+        throw new Error('One or more selected project owners do not exist in your organization or are inactive');
+      }
+
+      for (const candidate of ownerUsers) {
+        const roleNames = (candidate.roles || []).map((ur: any) => ur.role?.name || ur.name);
+        const isInternOnly =
+          roleNames.includes('INTERN') &&
+          !roleNames.some((r: string) => ['MANAGER', 'ADMIN', 'SUPER_ADMIN', 'TECH_LEAD', 'EMPLOYEE'].includes(r));
+        if (isInternOnly) {
+          throw new Error(`User "${candidate.name}" is an intern and cannot be assigned as a project owner. Only authorized managers or staff can be project owners.`);
+        }
+      }
+
+      ownerId = targetOwnerIds[0];
+      if (data.owner_id && targetOwnerIds.includes(data.owner_id)) {
+        ownerId = data.owner_id;
+      }
+    } else {
+      if (data.owner_id) {
+        const ownerUser = await prisma.user.findFirst({
+          where: { id: data.owner_id, organization_id: orgId },
+        });
+        if (!ownerUser) {
+          throw new Error('Project owner does not exist in your organization');
+        }
+        ownerId = data.owner_id;
+      }
+      targetOwnerIds = [ownerId];
     }
 
     // Validate dates
@@ -304,7 +385,16 @@ export class ProjectService {
       }
     }
 
-    return await prisma.project.create({
+    // Combine intern members and manager co-owners
+    const finalMemberIds = Array.from(
+      new Set([...memberIds, ...(targetOwnerIds.length > 1 ? targetOwnerIds : [])])
+    );
+    const memberCreates = finalMemberIds.map((userId) => ({
+      user_id: userId,
+      project_role: targetOwnerIds.includes(userId) ? 'MANAGER' : undefined,
+    }));
+
+    const created = await prisma.project.create({
       data: {
         name: data.name.trim(),
         description: data.description?.trim() || null,
@@ -314,8 +404,8 @@ export class ProjectService {
         status,
         owner_id: ownerId,
         organization_id: orgId,
-        members: memberIds.length > 0 ? {
-          create: memberIds.map((userId) => ({ user_id: userId })),
+        members: memberCreates.length > 0 ? {
+          create: memberCreates as any,
         } : undefined,
       },
       include: {
@@ -346,6 +436,8 @@ export class ProjectService {
         },
       },
     });
+
+    return this.formatProjectWithOwners(created);
   }
 
   /**
@@ -450,7 +542,59 @@ export class ProjectService {
       updateData.status = statusCandidate;
     }
 
-    if (data.owner_id !== undefined) {
+    let targetOwnerIds: string[] | undefined = undefined;
+
+    if (data.owner_ids !== undefined) {
+      if (!Array.isArray(data.owner_ids)) {
+        throw new Error('owner_ids must be an array of user IDs');
+      }
+      const rawIds = data.owner_ids
+        .filter((id): id is string => typeof id === 'string' && !!id.trim());
+      targetOwnerIds = Array.from(new Set(rawIds));
+      if (targetOwnerIds.length === 0) {
+        throw new Error('At least one project owner is required');
+      }
+
+      const ownerWhere: any = {
+        id: { in: targetOwnerIds },
+        is_active: true,
+      };
+      if (existing.organization_id) {
+        ownerWhere.organization_id = existing.organization_id;
+      }
+      const candidateOwners = await prisma.user.findMany({
+        where: ownerWhere,
+        include: {
+          roles: {
+            include: {
+              role: true,
+            },
+          },
+        },
+      });
+
+      if (candidateOwners.length !== targetOwnerIds.length) {
+        throw new Error('One or more selected project owners do not exist in your organization or are inactive');
+      }
+
+      for (const candidate of candidateOwners) {
+        const roleNames = (candidate.roles || []).map((ur: any) => ur.role?.name || ur.name);
+        const isInternOnly =
+          roleNames.includes('INTERN') &&
+          !roleNames.some((r: string) => ['MANAGER', 'ADMIN', 'SUPER_ADMIN', 'TECH_LEAD', 'EMPLOYEE'].includes(r));
+        if (isInternOnly) {
+          throw new Error(`User "${candidate.name}" is an intern and cannot be assigned as a project owner. Only authorized managers or staff can be project owners.`);
+        }
+      }
+
+      let primaryOwnerId = targetOwnerIds[0];
+      if (existing.owner_id && targetOwnerIds.includes(existing.owner_id)) {
+        primaryOwnerId = existing.owner_id;
+      } else if (data.owner_id && targetOwnerIds.includes(data.owner_id)) {
+        primaryOwnerId = data.owner_id;
+      }
+      updateData.owner_id = primaryOwnerId;
+    } else if (data.owner_id !== undefined) {
       const ownerWhere: any = { id: data.owner_id };
       if (existing.organization_id) {
         ownerWhere.organization_id = existing.organization_id;
@@ -464,7 +608,7 @@ export class ProjectService {
       updateData.owner_id = data.owner_id;
     }
 
-    return await prisma.project.update({
+    const updated = await prisma.project.update({
       where: { id: projectId },
       data: updateData,
       include: {
@@ -495,6 +639,52 @@ export class ProjectService {
         },
       },
     });
+
+    if (data.owner_ids !== undefined && targetOwnerIds) {
+      for (const oId of targetOwnerIds) {
+        const existingMember = await prisma.projectMember.findFirst({
+          where: { project_id: projectId, user_id: oId },
+        });
+        if (existingMember) {
+          if (existingMember.project_role !== 'MANAGER') {
+            await prisma.projectMember.update({
+              where: {
+                project_id_user_id: { project_id: projectId, user_id: oId },
+              },
+              data: { project_role: 'MANAGER' },
+            });
+          }
+        } else {
+          await prisma.projectMember.create({
+            data: {
+              project_id: projectId,
+              user_id: oId,
+              project_role: 'MANAGER',
+            },
+          });
+        }
+      }
+
+      // Remove previous manager memberships no longer in targetOwnerIds
+      const previousManagers = await prisma.projectMember.findMany({
+        where: {
+          project_id: projectId,
+          project_role: 'MANAGER',
+        },
+      });
+      for (const prevMgr of previousManagers) {
+        if (!targetOwnerIds.includes(prevMgr.user_id)) {
+          await prisma.projectMember.deleteMany({
+            where: {
+              project_id: projectId,
+              user_id: prevMgr.user_id,
+            },
+          });
+        }
+      }
+    }
+
+    return this.formatProjectWithOwners(updated);
   }
 
   /**
@@ -2101,17 +2291,36 @@ export class ProjectService {
           },
           select: {
             id: true,
+            title: true,
             project_id: true,
             status: true,
             priority: true,
             story_points: true,
             due_date: true,
             type: true,
+            parent_id: true,
+            sprint_id: true,
             assignees: {
               select: {
                 user_id: true,
               },
             },
+          },
+        })
+      : [];
+
+    // Query all sprints for these projects
+    const projectSprints = allProjectIds.size > 0
+      ? await prisma.sprint.findMany({
+          where: {
+            project_id: { in: Array.from(allProjectIds) },
+          },
+          select: {
+            id: true,
+            project_id: true,
+            status: true,
+            start_date: true,
+            end_date: true,
           },
         })
       : [];
@@ -2157,9 +2366,20 @@ export class ProjectService {
         w.assignees.some((a) => a.user_id === lead.id)
       );
 
-      // Per-project breakdown with task metrics
+      // Per-project breakdown with task metrics and ProjectHealth assessment
       const projectSummaries = projects.map((p) => {
         const pTasks = allLeadProjectTasks.filter((t) => t.project_id === p.id);
+        const pSprints = projectSprints.filter((s) => s.project_id === p.id);
+        const healthEval = ProjectHealthService.classifyProjectHealth({
+          id: p.id,
+          name: p.name,
+          status: p.status,
+          start_date: p.start_date,
+          end_date: p.end_date,
+          work_items: pTasks as any,
+          sprints: pSprints as any,
+        });
+
         const pCompleted = pTasks.filter((t) => t.status === 'COMPLETED').length;
         const pTotal = pTasks.length;
         const pRate = pTotal > 0 ? Math.round((pCompleted / pTotal) * 100) : 0;
@@ -2168,23 +2388,85 @@ export class ProjectService {
           .filter((t) => t.status === 'COMPLETED')
           .reduce((acc, t) => acc + (Number(t.story_points) || 0), 0);
 
+        const healthLabel = healthEval.health === 'HEALTHY' ? 'Healthy'
+          : healthEval.health === 'NEEDS_ATTENTION' ? 'Needs Attention'
+          : healthEval.health === 'AT_RISK' ? 'At Risk'
+          : healthEval.health === 'CRITICAL' ? 'Critical'
+          : 'Insufficient Data';
+
+        const riskLabel = healthEval.risk_level === 'LOW' ? 'Low'
+          : healthEval.risk_level === 'MODERATE' ? 'Moderate'
+          : healthEval.risk_level === 'HIGH' ? 'High'
+          : healthEval.risk_level === 'CRITICAL' ? 'Critical'
+          : 'Insufficient Data';
+
+        const scheduleLabel = healthEval.schedule_health === 'ON_TRACK' ? 'On Track'
+          : healthEval.schedule_health === 'BEHIND' ? 'Behind Schedule'
+          : healthEval.schedule_health === 'AHEAD' ? 'Ahead of Schedule'
+          : 'No Schedule';
+
         return {
           id: p.id,
           name: p.name,
           status: p.status,
+          start_date: p.start_date,
+          end_date: p.end_date,
           total_tasks: pTotal,
           completed_tasks: pCompleted,
           completion_rate: pRate,
           total_points: pPoints,
           completed_points: pCompletedPoints,
+          remaining_points: Math.max(0, pPoints - pCompletedPoints),
+          has_estimated_work: healthEval.has_estimated_work,
+          progress_percentage: healthEval.progress_percentage,
+          delivery_progress_percentage: healthEval.delivery_progress_percentage ?? healthEval.progress_percentage,
+          total_sp: healthEval.total_sp,
+          completed_sp: healthEval.completed_sp,
+          remaining_sp: healthEval.remaining_sp,
+          overdue_sp: healthEval.overdue_sp ?? 0,
+          overdue_sp_percentage: healthEval.overdue_sp_percentage ?? 0,
+          blocked_sp: healthEval.blocked_sp ?? 0,
+          blocked_sp_percentage: healthEval.blocked_sp_percentage ?? 0,
+          blocked_work_percentage: healthEval.blocked_work_percentage,
+          totalSP: healthEval.total_sp,
+          completedSP: healthEval.completed_sp,
+          remainingSP: healthEval.remaining_sp,
+          deliveryProgressPercentage: healthEval.delivery_progress_percentage ?? healthEval.progress_percentage,
+          overdueSP: healthEval.overdue_sp ?? 0,
+          overdueSPPercentage: healthEval.overdue_sp_percentage ?? 0,
+          blockedSP: healthEval.blocked_sp ?? 0,
+          blockedSPPercentage: healthEval.blocked_sp_percentage ?? 0,
+          story_count: healthEval.story_count,
+          completed_stories_count: healthEval.completed_stories_count,
+          blocked_stories_count: healthEval.blocked_stories_count,
+          overdue_stories_count: healthEval.overdue_stories_count,
+          health_score: healthEval.health_score,
+          health: healthEval.health,
+          health_label: healthLabel,
+          risk_level: riskLabel,
+          schedule_health: healthEval.schedule_health,
+          schedule_label: scheduleLabel,
+          schedule_variance_days: healthEval.schedule_variance_days ?? null,
+          schedule_variance_percentage: healthEval.schedule_variance_percentage ?? null,
+          overdue_tasks: healthEval.overdue_tasks,
+          overdue_percentage: healthEval.overdue_percentage,
+          blocked_tasks: healthEval.blocked_tasks,
+          blocked_percentage: healthEval.blocked_percentage,
+          reasons: healthEval.reasons,
+          risk_factors: healthEval.risk_factors,
+          recommended_actions: healthEval.recommended_actions,
         };
       });
 
-      // Overall Project Task Metrics
+      // Overall Project Task Metrics & Story Points Metrics
       const totalProjectTasks = allLeadProjectTasks.length;
       const completedProjectTasks = allLeadProjectTasks.filter((t) => t.status === 'COMPLETED').length;
       const inProgressProjectTasks = allLeadProjectTasks.filter((t) => t.status === 'IN_PROGRESS' || t.status === 'IN_REVIEW').length;
       const blockedProjectTasks = allLeadProjectTasks.filter((t) => t.status === 'BLOCKED').length;
+      const totalProjectSp = projectSummaries.reduce((sum, p) => sum + (p.total_sp || p.total_points || 0), 0);
+      const completedProjectSp = projectSummaries.reduce((sum, p) => sum + (p.completed_sp || p.completed_points || 0), 0);
+      const hasEstimatedLeadWork = totalProjectSp > 0;
+      const projectSpProgress = hasEstimatedLeadWork ? Math.round((completedProjectSp / totalProjectSp) * 100) : null;
       const projectCompletionRate = totalProjectTasks > 0
         ? Math.round((completedProjectTasks / totalProjectTasks) * 100)
         : 0;
@@ -2197,8 +2479,6 @@ export class ProjectService {
         : 0;
 
       // Overall Performance Score (0-100)
-      // Calculated from project completion progress (60% weight) and lead's direct task execution (40% weight)
-      // Condition: if 0 active project tasks, score should be 0%
       let performanceScore = 0;
       if (totalProjectTasks === 0) {
         performanceScore = 0;
@@ -2208,7 +2488,7 @@ export class ProjectService {
         performanceScore = projectCompletionRate;
       }
 
-      // Performance rating label
+      // Performance rating label (backward-compatible)
       let performanceLabel = 'Exceptional';
       let performanceColor = 'text-emerald-700 bg-emerald-50 border-emerald-200';
       if (totalProjectTasks === 0) {
@@ -2231,6 +2511,54 @@ export class ProjectService {
         performanceColor = 'text-rose-700 bg-rose-50 border-rose-200';
       }
 
+      // Tech Lead Overall Project Health assessment across assigned projects
+      const assessedProjects = projectSummaries.filter((p) => p.health_score !== null);
+      let leadHealthScore: number | null = null;
+      let leadHealthStatus = 'INSUFFICIENT_DATA';
+      let leadHealthLabel = projectSummaries.length === 0 ? 'No Projects' : 'Insufficient Data';
+      let leadRiskLevel = 'Insufficient Data';
+      let leadHealthColor = 'text-slate-600 bg-slate-100 border-slate-200';
+
+      if (assessedProjects.length > 0) {
+        const sumTasks = assessedProjects.reduce((s, p) => s + Math.max(1, p.total_tasks), 0);
+        leadHealthScore = Math.round(
+          assessedProjects.reduce((s, p) => s + (p.health_score! * Math.max(1, p.total_tasks)), 0) / sumTasks
+        );
+
+        if (assessedProjects.some((p) => p.health === 'CRITICAL') || leadHealthScore < 35) {
+          leadHealthStatus = 'CRITICAL';
+          leadHealthLabel = 'Critical';
+          leadRiskLevel = 'Critical';
+          leadHealthColor = 'text-rose-700 bg-rose-50 border-rose-200';
+        } else if (assessedProjects.some((p) => p.health === 'AT_RISK') || leadHealthScore < 55) {
+          leadHealthStatus = 'AT_RISK';
+          leadHealthLabel = 'At Risk';
+          leadRiskLevel = 'High';
+          leadHealthColor = 'text-orange-700 bg-orange-50 border-orange-200';
+        } else if (assessedProjects.some((p) => p.health === 'NEEDS_ATTENTION') || leadHealthScore < 75) {
+          leadHealthStatus = 'NEEDS_ATTENTION';
+          leadHealthLabel = 'Needs Attention';
+          leadRiskLevel = 'Moderate';
+          leadHealthColor = 'text-amber-700 bg-amber-50 border-amber-200';
+        } else {
+          leadHealthStatus = 'HEALTHY';
+          leadHealthLabel = 'Healthy';
+          leadRiskLevel = 'Low';
+          leadHealthColor = 'text-emerald-700 bg-emerald-50 border-emerald-200';
+        }
+      }
+
+      const totalOverdueProjectTasks = projectSummaries.reduce((s, p) => s + (p.overdue_tasks || 0), 0);
+      const totalBlockedProjectTasks = projectSummaries.reduce((s, p) => s + (p.blocked_tasks || 0), 0);
+      const totalOverdueProjectSp = projectSummaries.reduce((s, p) => s + (p.overdue_sp || 0), 0);
+      const totalBlockedProjectSp = projectSummaries.reduce((s, p) => s + (p.blocked_sp || 0), 0);
+      const leadHealthReasons = Array.from(
+        new Set(projectSummaries.flatMap((p) => (p.reasons || []).map((r: string) => `${p.name}: ${r}`)))
+      );
+      const leadRecommendedActions = Array.from(
+        new Set(projectSummaries.flatMap((p) => p.recommended_actions || []))
+      );
+
       const { projectsMap, ...cleanLead } = lead;
 
       return {
@@ -2241,6 +2569,9 @@ export class ProjectService {
         completed_project_tasks: completedProjectTasks,
         in_progress_project_tasks: inProgressProjectTasks,
         blocked_project_tasks: blockedProjectTasks,
+        total_project_sp: totalProjectSp,
+        completed_project_sp: completedProjectSp,
+        project_sp_progress: projectSpProgress,
         project_completion_rate: projectCompletionRate,
         direct_assigned_tasks: totalAssignedTasks,
         direct_completed_tasks: completedAssignedTasks,
@@ -2248,6 +2579,20 @@ export class ProjectService {
         performance_score: performanceScore,
         performance_label: performanceLabel,
         performance_color: performanceColor,
+        health_score: leadHealthScore,
+        health_status: leadHealthStatus,
+        health_label: leadHealthLabel,
+        risk_level: leadRiskLevel,
+        health_color: leadHealthColor,
+        health_reasons: leadHealthReasons,
+        recommended_actions: leadRecommendedActions,
+        overdue_project_tasks: totalOverdueProjectTasks,
+        overdue_project_sp: totalOverdueProjectSp,
+        blocked_project_sp: totalBlockedProjectSp,
+        totalProjectSP: totalProjectSp,
+        completedProjectSP: completedProjectSp,
+        overdueProjectSP: totalOverdueProjectSp,
+        blockedProjectSP: totalBlockedProjectSp,
       };
     });
 

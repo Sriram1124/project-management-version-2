@@ -16,6 +16,7 @@ export default function SprintSection({
   sprints = [],
   members = [],
   selectedIssueId,
+  isKanban = false,
   onSelectIssue,
   onUpdateStatus,
   onUpdatePriority,
@@ -35,6 +36,9 @@ export default function SprintSection({
   onStartSprint,
   hasActiveFilters = false,
 }) {
+  const term = isKanban ? 'cycle' : 'sprint';
+  const Term = isKanban ? 'Cycle' : 'Sprint';
+
   const [isSectionOpen, setIsSectionOpen] = useState(true);
   const [isDragOver, setIsDragOver] = useState(false);
 
@@ -111,7 +115,7 @@ export default function SprintSection({
           {/* Status Badge */}
           {isActive ? (
             <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-purple-100 text-purple-700 border border-purple-200/80 uppercase tracking-wider">
-              Active Cycle
+              Active {Term}
             </span>
           ) : !isBacklog ? (
             <span className="px-2 py-0.5 rounded text-[10px] font-semibold bg-slate-200/70 text-slate-700 uppercase tracking-wider">
@@ -145,7 +149,7 @@ export default function SprintSection({
               className="px-2.5 py-1 rounded-md border border-slate-200 bg-white hover:bg-slate-50 text-slate-700 text-xs font-medium transition-colors flex items-center gap-1 cursor-pointer"
             >
               <Check className="w-3 h-3 text-emerald-600" />
-              <span>Complete cycle</span>
+              <span>Complete {term}</span>
             </button>
           ) : !isBacklog ? (
             <button
@@ -153,13 +157,13 @@ export default function SprintSection({
               onClick={() => onStartSprint?.(sprint.id)}
               title={
                 sprints?.find((s) => s.id !== sprint.id && s.status === 'ACTIVE')
-                  ? `Cannot start cycle: Cycle "${sprints.find((s) => s.id !== sprint.id && s.status === 'ACTIVE').name}" is currently active`
+                  ? `Cannot start ${term}: ${Term} "${sprints.find((s) => s.id !== sprint.id && s.status === 'ACTIVE').name}" is currently active`
                   : `Start ${sprint.name}`
               }
               className="px-2.5 py-1 rounded-md border border-purple-200 bg-purple-50 hover:bg-purple-100 text-purple-700 text-xs font-semibold transition-colors flex items-center gap-1 cursor-pointer"
             >
               <Play className="w-3 h-3 fill-purple-600 text-purple-600" />
-              <span>Start cycle</span>
+              <span>Start {term}</span>
             </button>
           ) : null}
 
@@ -198,6 +202,7 @@ export default function SprintSection({
           hasActiveFilters={hasActiveFilters}
           onDragStart={onDragStart}
           onDragEnd={onDragEnd}
+          isKanban={isKanban}
           emptyMessage={isBacklog ? 'No unassigned backlog tasks.' : `No tasks in ${sprint.name}. Drag tasks here or click Create to add one.`}
         />
       )}

@@ -50,6 +50,71 @@ const TYPE_CONFIG = {
   BUG: { label: 'Bugs', color: '#DC2626', badgeClass: 'bg-rose-100 text-rose-800 border-rose-200' },
 };
 
+function AnalyticsSkeleton() {
+  return (
+    <div className="bg-white rounded-2xl border border-slate-200/80 shadow-xs overflow-hidden animate-pulse">
+      {/* Header skeleton */}
+      <div className="p-4 sm:p-5 flex items-center justify-between border-b border-slate-100">
+        <div className="flex items-center gap-3">
+          <div className="w-9 h-9 rounded-xl bg-slate-200 shrink-0" />
+          <div className="space-y-2">
+            <div className="h-4 w-48 bg-slate-200 rounded" />
+            <div className="h-3 w-72 bg-slate-100 rounded" />
+          </div>
+        </div>
+        <div className="h-8 w-24 bg-slate-200 rounded-xl" />
+      </div>
+
+      {/* Filter row skeleton */}
+      <div className="px-4 py-3 bg-slate-50/50 flex gap-3 border-b border-slate-100">
+        <div className="h-7 w-28 bg-slate-200 rounded-lg" />
+        <div className="h-7 w-28 bg-slate-200 rounded-lg" />
+        <div className="h-7 w-28 bg-slate-200 rounded-lg" />
+      </div>
+
+      {/* KPI Cards skeleton */}
+      <div className="p-4 sm:p-5 grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3 border-b border-slate-100">
+        {[...Array(5)].map((_, i) => (
+          <div key={i} className="p-3.5 rounded-xl border border-slate-100 bg-slate-50/60 space-y-2">
+            <div className="h-3 w-16 bg-slate-200 rounded" />
+            <div className="h-6 w-12 bg-slate-300 rounded" />
+            <div className="h-2.5 w-20 bg-slate-200 rounded" />
+          </div>
+        ))}
+      </div>
+
+      {/* Charts skeleton */}
+      <div className="p-4 sm:p-5 grid grid-cols-1 lg:grid-cols-3 gap-5">
+        <div className="p-4 rounded-xl border border-slate-100 flex flex-col items-center justify-center min-h-[220px] space-y-3">
+          <div className="w-32 h-32 rounded-full border-8 border-slate-200" />
+          <div className="h-3 w-32 bg-slate-200 rounded" />
+        </div>
+        <div className="p-4 rounded-xl border border-slate-100 space-y-3">
+          <div className="h-4 w-28 bg-slate-200 rounded mb-4" />
+          <div className="space-y-3">
+            {[...Array(4)].map((_, i) => (
+              <div key={i} className="space-y-1">
+                <div className="flex justify-between">
+                  <div className="h-3 w-14 bg-slate-200 rounded" />
+                  <div className="h-3 w-8 bg-slate-200 rounded" />
+                </div>
+                <div className="h-2 w-full bg-slate-100 rounded-full overflow-hidden">
+                  <div className="h-full bg-slate-200 rounded-full" style={{ width: `${(4 - i) * 22}%` }} />
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+        <div className="p-4 rounded-xl border border-slate-100 space-y-3">
+          <div className="h-4 w-32 bg-slate-200 rounded mb-4" />
+          <div className="h-16 w-full bg-slate-100 rounded-lg" />
+          <div className="h-10 w-full bg-slate-50 rounded-lg" />
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export default function ProjectTaskCharts({ projectId = null, members = [], readOnly = false }) {
   const { user: authUser } = useAuth();
   const authRole = String(authUser?.role?.name || authUser?.role || authUser?.type || authUser?.user_type || '').toUpperCase();
@@ -64,7 +129,10 @@ export default function ProjectTaskCharts({ projectId = null, members = [], read
   const [analyticsData, setAnalyticsData] = useState(null);
   const [workItems, setWorkItems] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [isRefreshing, setIsRefreshing] = useState(false);
   const [error, setError] = useState(null);
+  const analyticsDataRef = useRef(analyticsData);
+  analyticsDataRef.current = analyticsData;
 
   // Effective project members (from props or from backend analytics response)
   const effectiveMembers = useMemo(() => {
@@ -103,10 +171,10 @@ export default function ProjectTaskCharts({ projectId = null, members = [], read
   const [personalStatusFilter, setPersonalStatusFilter] = useState('ALL');
 
   useEffect(() => {
-    if (projectId) {
+    if (projectId && selectedProjectId !== projectId) {
       setSelectedProjectId(projectId);
     }
-  }, [projectId]);
+  }, [projectId, selectedProjectId]);
 
   useEffect(() => {
     const handleClickOutside = (e) => {
@@ -141,7 +209,7 @@ export default function ProjectTaskCharts({ projectId = null, members = [], read
     };
   };
 
-  const fetchAnalytics = useCallback(async () => {
+  const fetchAnalytics = useCallback(async (isManualRefresh = false) => {
     // Abort any ongoing request before firing a new one
     if (abortControllerRef.current) {
       abortControllerRef.current.abort();
@@ -149,7 +217,11 @@ export default function ProjectTaskCharts({ projectId = null, members = [], read
     const controller = new AbortController();
     abortControllerRef.current = controller;
 
-    setLoading(true);
+    if (isManualRefresh) {
+      setIsRefreshing(true);
+    } else if (!analyticsDataRef.current) {
+      setLoading(true);
+    }
     setError(null);
 
     try {
@@ -162,10 +234,14 @@ export default function ProjectTaskCharts({ projectId = null, members = [], read
         filterPayload.start_date = start;
         filterPayload.end_date = end;
       }
+      if (isManualRefresh) {
+        filterPayload.fresh = true;
+      }
 
       // Fetch analytics via server-scoped endpoint with cancellation signal
       const analyticsRes = await workItemsService.getAnalytics(filterPayload, {
         signal: controller.signal,
+        fresh: isManualRefresh,
       });
 
       if (!analyticsRes) {
@@ -191,6 +267,7 @@ export default function ProjectTaskCharts({ projectId = null, members = [], read
     } finally {
       if (!controller.signal.aborted) {
         setLoading(false);
+        setIsRefreshing(false);
       }
     }
   }, [selectedProjectId, projectId, selectedSprintId, dateRangeFilter, isManager]);
@@ -214,7 +291,7 @@ export default function ProjectTaskCharts({ projectId = null, members = [], read
 
   // Auto-select project if user has exactly 1 accessible project
   useEffect(() => {
-    if (!selectedProjectId && accessibleProjects.length === 1) {
+    if (!selectedProjectId && accessibleProjects.length === 1 && accessibleProjects[0]?.id) {
       setSelectedProjectId(accessibleProjects[0].id);
     }
   }, [accessibleProjects, selectedProjectId]);
@@ -541,14 +618,8 @@ export default function ProjectTaskCharts({ projectId = null, members = [], read
     });
   }, [analytics.taskBreakdown, personalStatusFilter, personalSearchQuery]);
 
-  if (loading) {
-    return (
-      <div className="bg-white rounded-2xl p-10 border border-slate-200/80 shadow-card flex flex-col items-center justify-center min-h-[300px]">
-        <Loader2 className="w-8 h-8 text-purple-600 animate-spin mb-3" />
-        <p className="text-xs font-semibold text-slate-700">Loading task analytics & performance...</p>
-        <p className="text-[11px] text-slate-400 mt-0.5">Fetching verified workload distributions</p>
-      </div>
-    );
+  if (loading && !analyticsData) {
+    return <AnalyticsSkeleton />;
   }
 
   if (error) {
@@ -627,12 +698,13 @@ export default function ProjectTaskCharts({ projectId = null, members = [], read
             {/* Refresh Button */}
             <button
               type="button"
-              onClick={fetchAnalytics}
-              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-slate-50 hover:bg-slate-100 text-slate-700 border border-slate-200 text-xs font-semibold transition-colors cursor-pointer shadow-2xs"
+              onClick={() => fetchAnalytics(true)}
+              disabled={isRefreshing}
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-slate-50 hover:bg-slate-100 text-slate-700 border border-slate-200 text-xs font-semibold transition-colors cursor-pointer shadow-2xs disabled:opacity-60"
               title="Refresh current data"
             >
-              <RefreshCw className="w-3.5 h-3.5 text-slate-500" />
-              <span>Refresh</span>
+              <RefreshCw className={`w-3.5 h-3.5 text-slate-500 ${isRefreshing ? 'animate-spin text-purple-600' : ''}`} />
+              <span>{isRefreshing ? 'Refreshing...' : 'Refresh'}</span>
             </button>
           </div>
         </div>

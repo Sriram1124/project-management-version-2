@@ -13,15 +13,19 @@ import {
 import { workItemsService } from '../services/workItemsService';
 
 export default function MySprintSection({
-  cycleName = 'Cycle 05: Authentication & Access Control',
+  cycleName = 'Sprint 05: Authentication & Access Control',
   cycleDates = 'Active Iteration',
   sprintName,
   sprintDates,
   activeCycle = null,
   workItems = [],
+  isKanban = false,
   onTaskClick,
   onToggleTask
 }) {
+  const Term = isKanban ? 'Cycle' : 'Sprint';
+  const term = isKanban ? 'cycle' : 'sprint';
+
   const effectiveName = activeCycle?.name || sprintName || cycleName;
   const effectiveDates = activeCycle?.start_date && activeCycle?.end_date
     ? `${new Date(activeCycle.start_date).toLocaleDateString([], { month: 'short', day: 'numeric' })} — ${new Date(activeCycle.end_date).toLocaleDateString([], { month: 'short', day: 'numeric' })}`
@@ -49,10 +53,10 @@ export default function MySprintSection({
         <div>
           <div className="flex items-center gap-2">
             <span className="flex items-center gap-1 text-[10px] font-bold uppercase tracking-wider text-purple-700 bg-purple-100 px-2 py-0.5 rounded">
-              <Zap className="w-3 h-3 fill-purple-600" /> Active Cycle
+              <Zap className="w-3 h-3 fill-purple-600" /> Active {Term}
             </span>
             <span className="text-xs text-slate-400 font-mono">
-              {effectiveName.split(':')[0] || 'Cycle'}
+              {effectiveName.split(':')[0] || Term}
             </span>
           </div>
           <h3 className="text-base font-bold text-slate-900 mt-1">
@@ -63,7 +67,7 @@ export default function MySprintSection({
             <span>{effectiveDates}</span>
             <span>•</span>
             <span className="font-semibold text-purple-700">
-              Your Cycle Contribution: {total} Assigned Tasks
+              Your {Term} Contribution: {total} Assigned Tasks
             </span>
           </div>
         </div>
@@ -85,7 +89,7 @@ export default function MySprintSection({
             />
           </div>
           <span className="text-[10px] text-slate-400 block mt-1">
-            {completed} of {total} cycle items delivered
+            {completed} of {total} {term} items delivered
           </span>
         </div>
       </div>
@@ -135,7 +139,7 @@ export default function MySprintSection({
       {/* Intern's Cycle Tickets List */}
       <div className="space-y-2 pt-1">
         <h4 className="text-[11px] font-bold uppercase text-slate-400 tracking-wider">
-          My Cycle Work Items ({cycleTasks.length})
+          My {Term} Work Items ({cycleTasks.length})
         </h4>
 
         {cycleTasks.map((t) => {

@@ -637,6 +637,7 @@ export default function KanbanBoard({ projectId, project = null, isKanbanProject
         completedCount={completedCount}
         incompleteCount={incompleteCount}
         tasks={workItems.filter((w) => w.sprint_id === activeSprint?.id)}
+        isKanban={true}
         onConfirmComplete={handleConfirmCompleteSprint}
       />
     </div>

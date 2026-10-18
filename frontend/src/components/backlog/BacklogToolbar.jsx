@@ -195,9 +195,9 @@ export default function BacklogToolbar({
                 {groupBy === 'none'
                   ? 'Stories & Tasks (Flat)'
                   : groupBy === 'sprint' || groupBy === 'all_cycles'
-                  ? 'All Cycles'
+                  ? (isKanban ? 'All Cycles' : 'All Sprints')
                   : groupBy?.startsWith('cycle:')
-                  ? sprints.find((s) => s.id === groupBy.replace('cycle:', ''))?.name || 'Cycle'
+                  ? sprints.find((s) => s.id === groupBy.replace('cycle:', ''))?.name || (isKanban ? 'Cycle' : 'Sprint')
                   : 'Backlog'}
               </span>
               <ChevronDown className="w-3.5 h-3.5 text-slate-400" />
@@ -245,7 +245,7 @@ export default function BacklogToolbar({
                     groupBy === 'all_cycles' || groupBy === 'sprint' ? 'text-purple-700 font-semibold bg-purple-50/50' : 'text-slate-700'
                   }`}
                 >
-                  <span>All Cycles</span>
+                  <span>{isKanban ? 'All Cycles' : 'All Sprints'}</span>
                   {(groupBy === 'all_cycles' || groupBy === 'sprint') && <Check className="w-3.5 h-3.5 text-purple-600" />}
                 </button>
 
@@ -492,9 +492,9 @@ export default function BacklogToolbar({
               <span>
                 {selectedSprintId
                   ? selectedSprintId === 'backlog'
-                    ? 'Backlog (No Cycle)'
-                    : sprints.find((s) => s.id === selectedSprintId)?.name || 'Cycle'
-                  : 'Cycle'}
+                    ? (isKanban ? 'Backlog (No Cycle)' : 'Backlog (No Sprint)')
+                    : sprints.find((s) => s.id === selectedSprintId)?.name || (isKanban ? 'Cycle' : 'Sprint')
+                  : (isKanban ? 'Cycle' : 'Sprint')}
               </span>
               <ChevronDown className="w-3 h-3 text-slate-400" />
             </button>
@@ -511,7 +511,7 @@ export default function BacklogToolbar({
                     !selectedSprintId ? 'text-purple-700 font-semibold bg-purple-50/40' : 'text-slate-700'
                   }`}
                 >
-                  <span>All Cycles</span>
+                  <span>{isKanban ? 'All Cycles' : 'All Sprints'}</span>
                   {!selectedSprintId && <Check className="w-3 h-3 text-purple-600" />}
                 </button>
 
@@ -525,7 +525,7 @@ export default function BacklogToolbar({
                     selectedSprintId === 'backlog' ? 'text-purple-700 font-semibold bg-purple-50/40' : 'text-slate-700'
                   }`}
                 >
-                  <span>Backlog (No Cycle)</span>
+                  <span>{isKanban ? 'Backlog (No Cycle)' : 'Backlog (No Sprint)'}</span>
                   {selectedSprintId === 'backlog' && <Check className="w-3 h-3 text-purple-600" />}
                 </button>
 

@@ -9,9 +9,12 @@ export default function EditSprintModal({
   projectName = '',
   sprint,
   allSprints = [],
+  isKanban = false,
   onSuccess,
   onDelete,
 }) {
+  const iterationLabel = isKanban ? 'Cycle' : 'Sprint';
+  const iterationLower = iterationLabel.toLowerCase();
   const [name, setName] = useState('');
   const [goal, setGoal] = useState('');
   const [startDate, setStartDate] = useState('');
@@ -83,8 +86,8 @@ export default function EditSprintModal({
       onDelete?.(sprint);
       onClose();
     } catch (err) {
-      console.error('Failed to delete sprint:', err);
-      setError(err?.response?.data?.error || err.message || 'Failed to delete sprint');
+      console.error(`Failed to delete ${iterationLower}:`, err);
+      setError(err?.response?.data?.error || err.message || `Failed to delete ${iterationLower}`);
       setIsConfirmingDelete(false);
     } finally {
       setDeleting(false);
@@ -94,17 +97,17 @@ export default function EditSprintModal({
   const handleSubmit = async (e) => {
     e.preventDefault();
     if (!name.trim()) {
-      setError('Sprint name is required');
+      setError(`${iterationLabel} name is required`);
       return;
     }
 
     if (startDate && endDate && new Date(startDate) > new Date(endDate)) {
-      setError('Sprint start date cannot be later than its end date');
+      setError(`${iterationLabel} start date cannot be later than its end date`);
       return;
     }
 
     if (status === 'ACTIVE' && otherActiveSprint) {
-      setError(`Cannot activate sprint: Sprint "${otherActiveSprint.name}" is currently active. Please complete or resolve it first.`);
+      setError(`Cannot activate ${iterationLower}: ${iterationLabel} "${otherActiveSprint.name}" is currently active. Please complete or resolve it first.`);
       return;
     }
 
@@ -141,9 +144,9 @@ export default function EditSprintModal({
               <Edit3 className="w-5 h-5 ml-0.5" />
             </div>
             <div>
-              <h2 className="text-base font-bold text-slate-900 tracking-tight">Edit Sprint</h2>
+              <h2 className="text-base font-bold text-slate-900 tracking-tight">Edit {iterationLabel}</h2>
               <p className="text-xs text-slate-500 mt-0.5">
-                Update sprint details and schedule for {projectName ? `"${projectName}"` : 'this project'}.
+                Update {iterationLower} details and schedule for {projectName ? `"${projectName}"` : 'this project'}.
               </p>
             </div>
           </div>
@@ -167,7 +170,7 @@ export default function EditSprintModal({
 
           <div>
             <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1.5">
-              Sprint Name <span className="text-rose-500">*</span>
+              {iterationLabel} Name <span className="text-rose-500">*</span>
             </label>
             <input
               type="text"
@@ -175,20 +178,20 @@ export default function EditSprintModal({
               autoFocus
               value={name}
               onChange={(e) => setName(e.target.value)}
-              placeholder="e.g., Sprint 01 or Sprint 02"
+              placeholder={`e.g., ${iterationLabel} 01 or ${iterationLabel} 02`}
               className="w-full px-3 py-2 text-xs bg-slate-50 border border-slate-200 rounded-xl text-slate-900 placeholder:text-slate-400 focus:bg-white focus:outline-hidden focus:ring-2 focus:ring-purple-500/20 focus:border-purple-500 transition-all font-medium"
             />
           </div>
 
           <div>
             <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1.5">
-              Sprint Goal
+              {iterationLabel} Goal
             </label>
             <textarea
               rows={2}
               value={goal}
               onChange={(e) => setGoal(e.target.value)}
-              placeholder="What is the objective or target milestone for this sprint?"
+              placeholder={`What is the objective or target deliverable for this ${iterationLower}?`}
               className="w-full px-3 py-2 text-xs bg-slate-50 border border-slate-200 rounded-xl text-slate-900 placeholder:text-slate-400 focus:bg-white focus:outline-hidden focus:ring-2 focus:ring-purple-500/20 focus:border-purple-500 transition-all resize-none"
             />
           </div>
@@ -211,7 +214,7 @@ export default function EditSprintModal({
               <div className="mt-2 p-2.5 bg-rose-50 border border-rose-200 text-rose-800 rounded-xl text-xs flex items-start gap-2 animate-in fade-in">
                 <AlertCircle className="w-4 h-4 text-rose-600 shrink-0 mt-0.5" />
                 <span>
-                  Sprint <strong>"{otherActiveSprint.name}"</strong> is currently active. Please complete or resolve it first before activating this sprint.
+                  {iterationLabel} <strong>"{otherActiveSprint.name}"</strong> is currently active. Please complete or resolve it first before activating this {iterationLower}.
                 </span>
               </div>
             )}
@@ -251,7 +254,7 @@ export default function EditSprintModal({
                   Overlapping Schedule Notice
                 </div>
                 <div className="text-[11px] text-amber-700 leading-relaxed">
-                  Dates overlap with {overlappingSprints.map((s) => `"${s.name}"`).join(', ')}. Multiple planned sprints are allowed, but only one sprint can be active at a time.
+                  Dates overlap with {overlappingSprints.map((s) => `"${s.name}"`).join(', ')}. Multiple planned {isKanban ? 'cycles' : 'sprints'} are allowed, but only one {iterationLower} can be active at a time.
                 </div>
               </div>
             </div>
@@ -266,10 +269,10 @@ export default function EditSprintModal({
                   onClick={() => setIsConfirmingDelete(true)}
                   disabled={submitting || deleting}
                   className="px-3 py-2 text-xs font-bold text-rose-700 hover:text-rose-800 hover:bg-rose-50 rounded-xl transition-colors cursor-pointer flex items-center gap-1.5 disabled:opacity-50"
-                  title="Delete this sprint"
+                  title={`Delete this ${iterationLower}`}
                 >
                   <Trash2 className="w-3.5 h-3.5 text-rose-600" />
-                  <span>Delete Sprint</span>
+                  <span>Delete {iterationLabel}</span>
                 </button>
               ) : (
                 <div className="flex items-center gap-1.5 animate-in fade-in">

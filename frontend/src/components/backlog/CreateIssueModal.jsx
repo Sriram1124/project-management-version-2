@@ -465,16 +465,20 @@ export default function CreateIssueModal({
                 )}
               </div>
 
-              {/* Cycle Selector (hidden in Kanban) */}
+              {/* Sprint / Cycle Selector (hidden in Kanban) */}
               {!isKanban && (
                 <div>
-                  <label className="block text-slate-700 font-semibold mb-1">Cycle</label>
+                  <label className="block text-slate-700 font-semibold mb-1">
+                    {isKanban ? 'Cycle' : 'Sprint'}
+                  </label>
                   <select
                     value={sprintId}
                     onChange={(e) => setSprintId(e.target.value)}
                     className="w-full px-2.5 py-1.5 rounded border border-slate-200 bg-white text-slate-800 focus:outline-none focus:border-purple-600"
                   >
-                    <option value="backlog">Backlog (No Cycle)</option>
+                    <option value="backlog">
+                      {isKanban ? 'Backlog (No Cycle)' : 'Backlog (No Sprint)'}
+                    </option>
                     {sprints.map((s) => (
                       <option key={s.id} value={s.id}>{s.name}</option>
                     ))}

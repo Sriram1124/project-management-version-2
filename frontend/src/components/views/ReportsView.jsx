@@ -427,25 +427,29 @@ export default function ReportsView({ onToast, selectedCohort, selectedCohortId 
       : (projectHealthData?.summary?.assessed ?? 0);
 
     const healthyCount = currentList.filter((p) => p.health === 'HEALTHY').length;
+    const needsAttentionCount = currentList.filter((p) => p.health === 'NEEDS_ATTENTION').length;
     const atRiskCount = currentList.filter((p) => p.health === 'AT_RISK').length;
     const criticalCount = currentList.filter((p) => p.health === 'CRITICAL').length;
     const notAssessedCount = currentList.filter((p) => p.health === 'NOT_ASSESSED' || p.health === 'INSUFFICIENT_DATA').length;
 
     const healthyPct = assessedProjects > 0 ? Math.round((healthyCount / assessedProjects) * 100) : 0;
+    const needsAttentionPct = assessedProjects > 0 ? Math.round((needsAttentionCount / assessedProjects) * 100) : 0;
     const atRiskPct = assessedProjects > 0 ? Math.round((atRiskCount / assessedProjects) * 100) : 0;
     const criticalPct = assessedProjects > 0 ? Math.round((criticalCount / assessedProjects) * 100) : 0;
 
-    const attentionProjects = currentList.filter((p) => p.health === 'AT_RISK' || p.health === 'CRITICAL');
+    const attentionProjects = currentList.filter((p) => p.health === 'AT_RISK' || p.health === 'CRITICAL' || p.health === 'NEEDS_ATTENTION');
     const attentionRate = assessedProjects > 0 ? Math.round((attentionProjects.length / assessedProjects) * 100) : 0;
 
     return {
       totalProjects,
       assessedProjects,
       healthyCount,
+      needsAttentionCount,
       atRiskCount,
       criticalCount,
       notAssessedCount,
       healthyPct,
+      needsAttentionPct,
       atRiskPct,
       criticalPct,
       attentionProjects,
@@ -866,7 +870,7 @@ export default function ReportsView({ onToast, selectedCohort, selectedCohortId 
                         title={
                           (analytics.project_health_reasons?.length ? analytics.project_health_reasons.join(' · ') : null) ||
                           (analytics.delivery_risk_reasons?.join(' · ')) ||
-                          'Project health classification based on story points, blockers, and cycle context'
+                          'Project health classification based on story points, blockers, and sprint/cycle context'
                         }
                       >
                         <Shield className="w-3.5 h-3.5" />
@@ -1302,10 +1306,17 @@ export default function ReportsView({ onToast, selectedCohort, selectedCohortId 
                                     title={`Healthy: ${projectHealthMetrics.healthyCount} (${projectHealthMetrics.healthyPct}%)`}
                                   />
                                 )}
+                                {projectHealthMetrics.needsAttentionPct > 0 && (
+                                  <div
+                                    style={{ width: `${projectHealthMetrics.needsAttentionPct}%` }}
+                                    className="bg-amber-500 h-full transition-all duration-300"
+                                    title={`Needs Attention: ${projectHealthMetrics.needsAttentionCount} (${projectHealthMetrics.needsAttentionPct}%)`}
+                                  />
+                                )}
                                 {projectHealthMetrics.atRiskPct > 0 && (
                                   <div
                                     style={{ width: `${projectHealthMetrics.atRiskPct}%` }}
-                                    className="bg-amber-500 h-full transition-all duration-300"
+                                    className="bg-orange-500 h-full transition-all duration-300"
                                     title={`At Risk: ${projectHealthMetrics.atRiskCount} (${projectHealthMetrics.atRiskPct}%)`}
                                   />
                                 )}
@@ -1323,8 +1334,8 @@ export default function ReportsView({ onToast, selectedCohort, selectedCohortId 
                           </div>
                         </div>
 
-                        {/* Status Breakdown Pills (Healthy, At Risk, Critical, Not Assessed) */}
-                        <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-xs pt-2">
+                        {/* Status Breakdown Pills (Healthy, Needs Attention, At Risk, Critical, Not Assessed) */}
+                        <div className="grid grid-cols-2 sm:grid-cols-5 gap-2 text-xs pt-2">
                           <div className="p-2.5 rounded-xl bg-emerald-50 border border-emerald-100 text-emerald-900">
                             <div className="text-[11px] font-medium text-emerald-700 flex items-center gap-1">
                               <span className="w-2 h-2 rounded-full bg-emerald-500" />
@@ -1337,10 +1348,19 @@ export default function ReportsView({ onToast, selectedCohort, selectedCohortId 
                           <div className="p-2.5 rounded-xl bg-amber-50 border border-amber-100 text-amber-900">
                             <div className="text-[11px] font-medium text-amber-700 flex items-center gap-1">
                               <span className="w-2 h-2 rounded-full bg-amber-500" />
+                              <span>Needs Attention</span>
+                            </div>
+                            <div className="text-base font-bold mt-0.5">{projectHealthMetrics.needsAttentionCount}</div>
+                            <div className="text-[10px] text-amber-600 font-semibold">{projectHealthMetrics.needsAttentionPct}% of assessed</div>
+                          </div>
+
+                          <div className="p-2.5 rounded-xl bg-orange-50 border border-orange-100 text-orange-900">
+                            <div className="text-[11px] font-medium text-orange-700 flex items-center gap-1">
+                              <span className="w-2 h-2 rounded-full bg-orange-500" />
                               <span>At Risk</span>
                             </div>
                             <div className="text-base font-bold mt-0.5">{projectHealthMetrics.atRiskCount}</div>
-                            <div className="text-[10px] text-amber-600 font-semibold">{projectHealthMetrics.atRiskPct}% of assessed</div>
+                            <div className="text-[10px] text-orange-600 font-semibold">{projectHealthMetrics.atRiskPct}% of assessed</div>
                           </div>
 
                           <div className="p-2.5 rounded-xl bg-rose-50 border border-rose-100 text-rose-900">
@@ -1378,7 +1398,7 @@ export default function ReportsView({ onToast, selectedCohort, selectedCohortId 
                               {projectHealthMetrics.attentionProjects.length} {projectHealthMetrics.attentionProjects.length === 1 ? 'Project' : 'Projects'}
                             </span>
                           </div>
-                          <p className="text-xs text-slate-500 mb-3">Portfolio deliverables at risk or blocked</p>
+                          <p className="text-xs text-slate-500 mb-3">Portfolio deliverables at risk, critical, or needing attention</p>
 
                           {projectHealthMetrics.attentionProjects.length === 0 ? (
                             <div className="p-6 text-center bg-emerald-50/40 rounded-xl border border-emerald-100 my-auto">
@@ -1401,17 +1421,27 @@ export default function ReportsView({ onToast, selectedCohort, selectedCohortId 
                                       className={`text-[9px] font-extrabold px-1.5 py-0.5 rounded border uppercase shrink-0 ${
                                         proj.health === 'CRITICAL'
                                           ? 'bg-rose-100 text-rose-800 border-rose-200'
-                                          : 'bg-amber-100 text-amber-800 border-amber-200'
+                                          : proj.health === 'NEEDS_ATTENTION'
+                                          ? 'bg-amber-100 text-amber-800 border-amber-200'
+                                          : 'bg-orange-100 text-orange-800 border-orange-200'
                                       }`}
                                     >
-                                      {proj.health === 'CRITICAL' ? 'Critical' : 'At Risk'}
+                                      {proj.health === 'CRITICAL' ? 'Critical' : proj.health === 'NEEDS_ATTENTION' ? 'Needs Attention' : 'At Risk'}
                                     </span>
                                   </div>
                                   <div className="text-[11px] text-slate-600 font-medium mt-1 line-clamp-2">
                                     {proj.reasons?.[0] || 'Schedule risk detected'}
                                   </div>
-                                  <div className="flex items-center justify-between text-[10px] text-slate-400 mt-1.5 pt-1 border-t border-slate-200/60">
-                                    <span>{proj.completed_sp || 0}/{proj.total_sp || 0} SP</span>
+                                  <div className="flex items-center justify-between text-[10px] text-slate-400 mt-1.5 pt-1 border-t border-slate-200/60 flex-wrap gap-1">
+                                    <span>
+                                      {proj.completed_sp || 0}/{proj.total_sp || 0} SP ({proj.delivery_progress_percentage ?? proj.progress_percentage ?? 0}%)
+                                    </span>
+                                    {proj.remaining_sp !== undefined && (
+                                      <span>{proj.remaining_sp} SP remaining</span>
+                                    )}
+                                    {proj.overdue_sp > 0 && (
+                                      <span className="text-rose-600 font-semibold">{proj.overdue_sp} SP overdue</span>
+                                    )}
                                     {proj.blocked_sp > 0 && (
                                       <span className="text-amber-600 font-semibold">{proj.blocked_sp} SP blocked</span>
                                     )}
