@@ -76,4 +76,4 @@ test_*.js
 
 
 # Generated test coverage reports
-backend-node/coverage/
+backend-node/coverage/.s3-local-data/

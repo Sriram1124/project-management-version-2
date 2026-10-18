@@ -374,9 +374,18 @@ export class ProjectController {
       const projectId = req.params.id || (req.params as any).projectId;
       const documentId = req.params.documentId || (req.params as any).metadataDocumentId;
 
-      const { filePath, document, mimeType } = await ProjectService.getProjectDocumentFile(projectId, documentId, user);
-      res.setHeader('Content-Type', mimeType);
-      res.download(filePath, document.name);
+      const fileData = await ProjectService.getProjectDocumentFile(projectId, documentId, user);
+      res.setHeader('Content-Type', fileData.mimeType);
+      res.setHeader('Content-Disposition', `attachment; filename="${encodeURIComponent(fileData.document.name)}"`);
+
+      if (fileData.s3Stream) {
+        if (fileData.contentLength) {
+          res.setHeader('Content-Length', fileData.contentLength);
+        }
+        fileData.s3Stream.pipe(res);
+      } else if (fileData.filePath) {
+        res.download(fileData.filePath, fileData.document.name);
+      }
     } catch (error) {
       ProjectController.handleError(res, error);
     }
@@ -388,10 +397,18 @@ export class ProjectController {
       const projectId = req.params.id || (req.params as any).projectId;
       const documentId = req.params.documentId || (req.params as any).metadataDocumentId;
 
-      const { filePath, document, mimeType } = await ProjectService.getProjectDocumentFile(projectId, documentId, user);
-      res.setHeader('Content-Type', mimeType);
-      res.setHeader('Content-Disposition', `inline; filename="${encodeURIComponent(document.name)}"`);
-      res.sendFile(filePath);
+      const fileData = await ProjectService.getProjectDocumentFile(projectId, documentId, user);
+      res.setHeader('Content-Type', fileData.mimeType);
+      res.setHeader('Content-Disposition', `inline; filename="${encodeURIComponent(fileData.document.name)}"`);
+
+      if (fileData.s3Stream) {
+        if (fileData.contentLength) {
+          res.setHeader('Content-Length', fileData.contentLength);
+        }
+        fileData.s3Stream.pipe(res);
+      } else if (fileData.filePath) {
+        res.sendFile(fileData.filePath);
+      }
     } catch (error) {
       ProjectController.handleError(res, error);
     }
