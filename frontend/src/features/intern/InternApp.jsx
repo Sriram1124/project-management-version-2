@@ -4,7 +4,7 @@ import {
   LayoutDashboard, 
   FolderKanban, 
   CheckSquare, 
-  FileText, 
+  Hash, 
   CalendarCheck, 
   User, 
   LogOut, 
@@ -403,7 +403,7 @@ export default function InternApp({ onLogout, onSelectProject, onToast }) {
                   }`}
                 >
                   <div className="flex items-center gap-2.5">
-                    <FileText className={`w-4 h-4 shrink-0 ${currentTab === 'forms' ? 'text-white' : 'text-purple-300/80'}`} />
+                    <Hash className={`w-4 h-4 shrink-0 ${currentTab === 'forms' ? 'text-white' : 'text-purple-300/80'}`} />
                     <span>Teams Channel</span>
                   </div>
                   <span className="px-2 py-0.5 text-[10px] font-bold rounded-md bg-[#064e3b] text-[#34d399] border border-[#047857]/40 tracking-wide font-mono">
@@ -537,7 +537,7 @@ export default function InternApp({ onLogout, onSelectProject, onToast }) {
 
         {/* Page Content */}
         <main className={`flex-1 min-h-0 min-w-0 overflow-y-auto ${selectedProjectId && currentTab === 'projects' ? 'px-4 sm:px-6 pb-4 sm:pb-6 pt-0' : 'p-4 sm:p-6'}`}>
-          <div className={currentTab === 'dashboard' || currentTab === 'projects' ? 'w-full space-y-6 min-w-0' : 'max-w-6xl mx-auto space-y-6 min-w-0'}>
+          <div className={currentTab === 'dashboard' || currentTab === 'projects' || currentTab === 'profile' ? 'w-full space-y-6 min-w-0' : 'max-w-6xl mx-auto space-y-6 min-w-0'}>
             {/* Render Tab View */}
             {currentTab === 'dashboard' && (
               <InternDashboardTab

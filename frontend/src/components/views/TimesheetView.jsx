@@ -630,7 +630,7 @@ export default function TimesheetView({
               onClick={handleCurrentWeek}
               className="px-2.5 py-0.5 font-semibold text-xs rounded-lg hover:bg-white hover:text-purple-700 transition-colors cursor-pointer"
             >
-              Today
+              This Week
             </button>
             <button
               type="button"
