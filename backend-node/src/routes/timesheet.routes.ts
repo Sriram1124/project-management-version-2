@@ -21,5 +21,8 @@ router.get('/task-time', TimesheetController.getTaskTime);
 router.get('/intern-report', TimesheetController.getInternReport);
 router.get('/manager-report', TimesheetController.getManagerReport);
 router.get('/review', requireRole(['MANAGER', 'ADMIN', 'SUPER_ADMIN', 'TECH_LEAD']), TimesheetController.getManagerTimesheetsReview);
+router.post('/corrections/request', TimesheetController.requestTimeCorrection);
+router.get('/corrections', TimesheetController.getTimeCorrections);
+router.post('/corrections/:requestId/review', requireRole(['MANAGER', 'ADMIN', 'SUPER_ADMIN', 'TECH_LEAD']), TimesheetController.reviewTimeCorrection);
 
 export { router as timesheetRouter };

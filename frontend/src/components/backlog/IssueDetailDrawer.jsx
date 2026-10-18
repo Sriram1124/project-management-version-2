@@ -283,6 +283,28 @@ export default function IssueDetailDrawer({
   }, [isOpen, issue?.id, loadTaskTimeData]);
 
   useEffect(() => {
+    if (!isOpen || !issue?.id) return;
+    const handleSync = () => {
+      loadTaskTimeData();
+    };
+
+    window.addEventListener('timer-session-updated', handleSync);
+    window.addEventListener('focus', handleSync);
+    const handleVis = () => {
+      if (document.visibilityState === 'visible') {
+        handleSync();
+      }
+    };
+    document.addEventListener('visibilitychange', handleVis);
+
+    return () => {
+      window.removeEventListener('timer-session-updated', handleSync);
+      window.removeEventListener('focus', handleSync);
+      document.removeEventListener('visibilitychange', handleVis);
+    };
+  }, [isOpen, issue?.id, loadTaskTimeData]);
+
+  useEffect(() => {
     if (!activeSession?.started_at) {
       setElapsedText('00:00:00');
       return;

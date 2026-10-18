@@ -276,6 +276,31 @@ export default function TaskDetailModal({
     };
   }, [isOpen, liveTask?.id]);
 
+  useEffect(() => {
+    if (!isOpen || !liveTask?.id) return;
+    const handleSync = () => {
+      timesheetService
+        .getActiveTaskSession(liveTask.id)
+        .then((data) => setTaskSession(data?.session || null))
+        .catch(() => setTaskSession(null));
+    };
+
+    window.addEventListener('timer-session-updated', handleSync);
+    window.addEventListener('focus', handleSync);
+    const handleVis = () => {
+      if (document.visibilityState === 'visible') {
+        handleSync();
+      }
+    };
+    document.addEventListener('visibilitychange', handleVis);
+
+    return () => {
+      window.removeEventListener('timer-session-updated', handleSync);
+      window.removeEventListener('focus', handleSync);
+      document.removeEventListener('visibilitychange', handleVis);
+    };
+  }, [isOpen, liveTask?.id]);
+
   const handleStatusChange = async (newStatus) => {
     try {
       setStatus(newStatus);

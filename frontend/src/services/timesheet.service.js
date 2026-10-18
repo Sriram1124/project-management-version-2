@@ -9,12 +9,38 @@ export const timesheetService = {
     return api.put('/timesheet/organization-policy', payload);
   },
 
-  startSession(payload = {}) {
-    return api.post('/timesheet/work-sessions/start', payload);
+  async startSession(payload = {}) {
+    const res = await api.post('/timesheet/work-sessions/start', payload);
+    if (typeof window !== 'undefined' && typeof window.dispatchEvent === 'function') {
+      window.dispatchEvent(
+        new CustomEvent('timer-session-updated', {
+          detail: { action: 'start', session: res?.session || null, taskId: payload.task_id },
+        })
+      );
+      window.dispatchEvent(
+        new CustomEvent('work-items-updated', {
+          detail: { action: 'timer-sync' },
+        })
+      );
+    }
+    return res;
   },
 
-  endSession(payload = {}) {
-    return api.post('/timesheet/work-sessions/end', payload);
+  async endSession(payload = {}) {
+    const res = await api.post('/timesheet/work-sessions/end', payload);
+    if (typeof window !== 'undefined' && typeof window.dispatchEvent === 'function') {
+      window.dispatchEvent(
+        new CustomEvent('timer-session-updated', {
+          detail: { action: 'stop', session: res?.session || null, taskId: payload.task_id },
+        })
+      );
+      window.dispatchEvent(
+        new CustomEvent('work-items-updated', {
+          detail: { action: 'timer-sync' },
+        })
+      );
+    }
+    return res;
   },
 
   getActiveTaskSession(taskId = null) {
@@ -87,5 +113,22 @@ export const timesheetService = {
     if (filters.limit) params.set('limit', String(filters.limit));
     const qs = params.toString();
     return api.get(`/timesheet/review${qs ? `?${qs}` : ''}`);
+  },
+
+  // Time Correction Request APIs
+  requestTimeCorrection(payload) {
+    return api.post('/timesheet/corrections/request', payload);
+  },
+
+  getTimeCorrections(filters = {}) {
+    const params = new URLSearchParams();
+    if (filters.status && filters.status !== 'ALL') params.set('status', filters.status);
+    if (filters.user_id) params.set('user_id', filters.user_id);
+    const qs = params.toString();
+    return api.get(`/timesheet/corrections${qs ? `?${qs}` : ''}`);
+  },
+
+  reviewTimeCorrection(requestId, payload) {
+    return api.post(`/timesheet/corrections/${encodeURIComponent(requestId)}/review`, payload);
   },
 };
