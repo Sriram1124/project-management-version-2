@@ -79,6 +79,10 @@ export default function TimesheetView({
   internInfo = null,
 }) {
   const { user: authUser } = useAuth();
+  const authRole = String(
+    authUser?.role?.name || authUser?.role || authUser?.type || authUser?.user_type || ''
+  ).toUpperCase();
+  const isManager = authRole === 'MANAGER';
 
   // Week navigation state
   const [selectedDate, setSelectedDate] = useState(() => new Date());
@@ -263,6 +267,10 @@ export default function TimesheetView({
 
   // Start / Stop timer
   const handleStartTimer = async (taskId) => {
+    if (isManager) {
+      onToast?.('Managers do not have permission to start timers on tasks');
+      return;
+    }
     try {
       setActionLoading(true);
       const res = await timesheetService.startSession({ task_id: taskId });
@@ -672,7 +680,7 @@ export default function TimesheetView({
           </button>
 
           {/* Start Timer Button (Intern Only, when no timer is active) */}
-          {!readOnly && !activeSession && (
+          {!readOnly && !isManager && !activeSession && (
             <button
               type="button"
               onClick={() => {
@@ -1093,7 +1101,7 @@ export default function TimesheetView({
                                   <Square className="w-3 h-3 fill-current" />
                                 </button>
                               </div>
-                            ) : (
+                            ) : !isManager ? (
                               <button
                                 type="button"
                                 onClick={() => handleStartTimer(task.id)}
@@ -1103,7 +1111,7 @@ export default function TimesheetView({
                               >
                                 <Play className="w-3.5 h-3.5 fill-current" />
                               </button>
-                            )}
+                            ) : null}
                           </div>
                         </div>
                       </td>

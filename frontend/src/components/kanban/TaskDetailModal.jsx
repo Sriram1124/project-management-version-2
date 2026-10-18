@@ -515,6 +515,10 @@ export default function TaskDetailModal({
   const storyProgress = storyTotalSp > 0 ? Math.round((storyCompletedSp / storyTotalSp) * 100) : null;
 
   const handleStartWork = async () => {
+    if (authRole === 'MANAGER') {
+      setError('Managers do not have permission to start timers on tasks');
+      return;
+    }
     try {
       setTaskSessionLoading(true);
       setError('');

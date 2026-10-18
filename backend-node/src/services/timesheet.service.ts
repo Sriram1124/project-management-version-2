@@ -330,6 +330,10 @@ export class TimesheetService {
   }
 
   static async startSession(user: any, input: SessionInput = {}) {
+    if (this.hasRole(user, ['MANAGER'])) {
+      throw new Error('Forbidden: managers do not have permission to start timers on tasks');
+    }
+
     const orgId = this.resolveOrganizationId(user, user.organization_id) || await this.getDefaultOrganizationId();
     // Auto-clock any expired/stale sessions before starting a new one
     await this.autoClockExpiredSessions(orgId, user.id);
@@ -344,7 +348,7 @@ export class TimesheetService {
       if (!task) throw new Error('Task not found in your organization');
 
       const userIsAssignee = task.assignees.some((assignee) => assignee.user_id === user.id);
-      const canManageTask = this.hasRole(user, ['MANAGER', 'ADMIN', 'SUPER_ADMIN', 'TECH_LEAD']) || this.hasPermission(user, 'TASK_UPDATE');
+      const canManageTask = this.hasRole(user, ['ADMIN', 'SUPER_ADMIN', 'TECH_LEAD']) || this.hasPermission(user, 'TASK_UPDATE');
       if (!userIsAssignee && !canManageTask && task.created_by !== user.id) {
         throw new Error('Forbidden: you are not assigned to this task');
       }

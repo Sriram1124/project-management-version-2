@@ -24,10 +24,12 @@ export default function ProjectWorkspaceView({
   onProjectLoaded,
   readOnly = false,
   userRole = null,
+  isIntern = false,
 }) {
   const { user: authUser } = useAuth();
   const currentUserId = authUser?.id || authUser?.user_id;
   const authRole = String(authUser?.role?.name || authUser?.role || authUser?.type || authUser?.user_type || '').toUpperCase();
+  const isInternUser = isIntern || authRole === 'INTERN';
 
   const [currentTab, setCurrentTab] = useState(activeTab);
   const [liveProject, setLiveProject] = useState(null);
@@ -68,8 +70,16 @@ export default function ProjectWorkspaceView({
 
   const isKanban = isKanbanProject(liveProject);
   const tabs = useMemo(() => {
-    return getProjectTabs(liveProject);
-  }, [liveProject]);
+    return getProjectTabs(liveProject, { isIntern: isInternUser });
+  }, [liveProject, isInternUser]);
+
+  // If intern is somehow on approvals tab, redirect to overview
+  useEffect(() => {
+    if (isInternUser && currentTab === 'approvals') {
+      setCurrentTab('overview');
+      onTabChange?.('overview');
+    }
+  }, [isInternUser, currentTab, onTabChange]);
 
   // Adjust active tab when switching between Scrum and Kanban projects
   useEffect(() => {
@@ -216,7 +226,7 @@ export default function ProjectWorkspaceView({
             onToast={onToast}
             readOnly={effectiveReadOnly}
           />
-        ) : currentTab === 'approvals' ? (
+        ) : (currentTab === 'approvals' && !isInternUser) ? (
           <ProjectApprovalsTab
             projectId={projectId}
             project={liveProject}

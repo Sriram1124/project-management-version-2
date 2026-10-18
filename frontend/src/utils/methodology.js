@@ -60,31 +60,35 @@ export function getIterationTerm(projectOrMethodology, { plural = false, lower =
   return lower ? term.toLowerCase() : term;
 }
 
-export function getProjectTabs(projectOrMethodology) {
+export function getProjectTabs(projectOrMethodology, { isIntern = false } = {}) {
   const meth = typeof projectOrMethodology === 'string'
     ? (projectOrMethodology.toUpperCase().trim() === 'KANBAN' ? 'KANBAN' : 'SCRUM')
     : getProjectMethodology(projectOrMethodology);
 
-  if (meth === METHODOLOGY.KANBAN) {
-    return [
-      { id: 'overview', label: 'Overview' },
-      { id: 'roadmap', label: 'Roadmap' },
-      { id: 'cycles', label: 'Planning & Cycles' },
-      { id: 'backlog', label: 'Backlog' },
-      { id: 'kanban', label: 'Kanban Board' },
-      { id: 'action-items', label: 'Action Items' },
-      { id: 'approvals', label: 'Approvals' },
-    ];
+  const tabs = meth === METHODOLOGY.KANBAN
+    ? [
+        { id: 'overview', label: 'Overview' },
+        { id: 'roadmap', label: 'Roadmap' },
+        { id: 'cycles', label: 'Planning & Cycles' },
+        { id: 'backlog', label: 'Backlog' },
+        { id: 'kanban', label: 'Kanban Board' },
+        { id: 'action-items', label: 'Action Items' },
+        { id: 'approvals', label: 'Approvals' },
+      ]
+    : [
+        { id: 'overview', label: 'Overview' },
+        { id: 'roadmap', label: 'Roadmap' },
+        { id: 'sprint', label: 'Sprint Workspace' },
+        { id: 'backlog', label: 'Backlog' },
+        { id: 'scrum', label: 'Scrum Board' },
+        { id: 'action-items', label: 'Action Items' },
+        { id: 'approvals', label: 'Approvals' },
+      ];
+
+  if (isIntern) {
+    return tabs.filter((t) => t.id !== 'approvals');
   }
 
-  return [
-    { id: 'overview', label: 'Overview' },
-    { id: 'roadmap', label: 'Roadmap' },
-    { id: 'sprint', label: 'Sprint Workspace' },
-    { id: 'backlog', label: 'Backlog' },
-    { id: 'scrum', label: 'Scrum Board' },
-    { id: 'action-items', label: 'Action Items' },
-    { id: 'approvals', label: 'Approvals' },
-  ];
+  return tabs;
 }
 

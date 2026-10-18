@@ -224,6 +224,13 @@ export default function WorkItemDetailModal({
   };
 
   const handleStartWork = async () => {
+    const authRole = String(
+      authUser?.role?.name || authUser?.role || authUser?.type || authUser?.user_type || ''
+    ).toUpperCase();
+    if (authRole === 'MANAGER') {
+      setError('Managers do not have permission to start timers on tasks');
+      return;
+    }
     try {
       setTaskSessionLoading(true);
       setError('');

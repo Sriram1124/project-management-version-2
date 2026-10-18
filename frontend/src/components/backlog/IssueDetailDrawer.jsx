@@ -44,7 +44,11 @@ export default function IssueDetailDrawer({
 }) {
   const Term = isKanban ? 'Cycle' : 'Sprint';
   const { user: authUser } = useAuth();
-  const isIntern = authUser?.role === 'INTERN';
+  const authRole = String(
+    authUser?.role?.name || authUser?.role || authUser?.type || authUser?.user_type || ''
+  ).toUpperCase();
+  const isManager = authRole === 'MANAGER';
+  const isIntern = authRole === 'INTERN';
   const currentUserId = authUser?.id || authUser?.user_id;
 
   const isAssignedToMe = useMemo(() => {
@@ -328,6 +332,10 @@ export default function IssueDetailDrawer({
   }, [activeSession, loadTaskTimeData]);
 
   const handleStartTaskTimer = async () => {
+    if (isManager) {
+      alert('Managers do not have permission to start timers on tasks');
+      return;
+    }
     try {
       setTimeActionLoading(true);
       const res = await timesheetService.startSession({ task_id: issue.id });
@@ -1143,7 +1151,7 @@ export default function IssueDetailDrawer({
                     <Square className="w-2.5 h-2.5 fill-current" />
                     <span>{elapsedText}</span>
                   </button>
-                ) : (
+                ) : !isManager ? (
                   <button
                     type="button"
                     onClick={handleStartTaskTimer}
@@ -1154,7 +1162,7 @@ export default function IssueDetailDrawer({
                     <Play className="w-2.5 h-2.5 fill-current" />
                     <span>Timer</span>
                   </button>
-                )}
+                ) : null}
               </div>
             </div>
 

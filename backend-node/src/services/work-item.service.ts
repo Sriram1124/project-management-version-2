@@ -3150,10 +3150,27 @@ export class WorkItemService {
       throw err;
     }
 
+    // Interns are not permitted to view project approval requests
+    if (this.isIntern(user)) {
+      const err: any = new Error('Forbidden: interns do not have access to project approval requests');
+      err.statusCode = 403;
+      throw err;
+    }
+
     if (!isMgr && project.owner_id !== user.id) {
       const isMember = await this.verifyProjectMembership(projectId, user.id, orgId);
       if (!isMember) {
         const err: any = new Error('Forbidden: you are not authorized to view this project');
+        err.statusCode = 403;
+        throw err;
+      }
+
+      const membership = await prisma.projectMember.findFirst({
+        where: { project_id: projectId, user_id: user.id },
+        select: { project_role: true },
+      });
+      if (membership?.project_role !== 'TECH_LEAD' && membership?.project_role !== 'MANAGER' && !this.isOrgTechLead(user)) {
+        const err: any = new Error('Forbidden: you are not authorized to view project approval requests');
         err.statusCode = 403;
         throw err;
       }

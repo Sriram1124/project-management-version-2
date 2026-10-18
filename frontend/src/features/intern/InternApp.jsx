@@ -565,6 +565,7 @@ export default function InternApp({ onLogout, onSelectProject, onToast }) {
                   onBackToDirectory={() => handleSelectInternProject(null)}
                   readOnly={!isTechLead}
                   onToast={onToast}
+                  isIntern={true}
                 />
               ) : (
                 <ProjectsDirectoryView
