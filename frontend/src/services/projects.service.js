@@ -161,4 +161,10 @@ export const projectsService = {
     const res = await api.post(`/projects/${id}/roles`, data);
     return res.role || res.data || res;
   },
+
+  async getExtensionRequests(id, status) {
+    const qs = status ? `?status=${encodeURIComponent(status)}` : '';
+    const res = await api.get(`/projects/${id}/extension-requests${qs}`);
+    return res.extension_requests || res.requests || res.data || [];
+  },
 };

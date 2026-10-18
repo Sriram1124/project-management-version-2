@@ -228,6 +228,55 @@ export const workItemsService = {
     if (!workItemId || !commentId) throw new Error('Work item ID and comment ID are required');
     return await api.delete(`/work-items/${workItemId}/comments/${commentId}`);
   },
+
+  /**
+   * Request due-date extension
+   */
+  async requestExtension(id, { requested_due_date, reason }) {
+    if (!id) throw new Error('Work item ID is required');
+    const data = await api.post(`/work-items/${id}/extension-request`, {
+      requested_due_date,
+      reason,
+    });
+    if (typeof window !== 'undefined') {
+      window.dispatchEvent(new CustomEvent('work-items-updated', { detail: { action: 'extension-requested', id } }));
+    }
+    return data.extension_request || data.request || data;
+  },
+
+  /**
+   * Get all extension requests for a work item
+   */
+  async getExtensionRequests(id) {
+    if (!id) throw new Error('Work item ID is required');
+    const data = await api.get(`/work-items/${id}/extension-requests`);
+    return data.extension_requests || data.requests || data || [];
+  },
+
+  /**
+   * Approve or reject an extension request
+   */
+  async decideExtension(id, requestId, { decision, decision_note }) {
+    if (!id || !requestId) throw new Error('Work item ID and Request ID are required');
+    const data = await api.post(`/work-items/${id}/extension-requests/${requestId}/decision`, {
+      decision,
+      decision_note,
+    });
+    if (typeof window !== 'undefined') {
+      window.dispatchEvent(new CustomEvent('work-items-updated', { detail: { action: 'extension-decided', id, decision } }));
+    }
+    return data;
+  },
+
+  /**
+   * Get all extension requests for a project
+   */
+  async getProjectExtensionRequests(projectId, status) {
+    if (!projectId) throw new Error('Project ID is required');
+    const qs = status ? `?status=${encodeURIComponent(status)}` : '';
+    const data = await api.get(`/projects/${projectId}/extension-requests${qs}`);
+    return data.extension_requests || data.requests || data || [];
+  },
 };
 
 export default workItemsService;

@@ -45,7 +45,29 @@ export default function WorkItemDetailModal({
   const [logMinutes, setLogMinutes] = useState('30');
   const [logDate, setLogDate] = useState(() => new Date().toISOString().slice(0, 10));
   const [logNotes, setLogNotes] = useState('');
+  const [extensionRequests, setExtensionRequests] = useState([]);
+  const [loadingExtensions, setLoadingExtensions] = useState(false);
+  const [isExtensionModalOpen, setIsExtensionModalOpen] = useState(false);
+  const [requestedDueDate, setRequestedDueDate] = useState('');
+  const [extensionReason, setExtensionReason] = useState('');
+  const [extensionSubmitting, setExtensionSubmitting] = useState(false);
+  const [extensionError, setExtensionError] = useState('');
   const { user: authUser } = useAuth();
+  const item = liveItem || workItem;
+
+  const loadExtensionRequests = React.useCallback(async () => {
+    const currentItemId = liveItem?.id || workItem?.id;
+    if (!currentItemId) return;
+    try {
+      setLoadingExtensions(true);
+      const res = await workItemsService.getExtensionRequests(currentItemId);
+      setExtensionRequests(Array.isArray(res) ? res : []);
+    } catch {
+      setExtensionRequests([]);
+    } finally {
+      setLoadingExtensions(false);
+    }
+  }, [liveItem?.id, workItem?.id]);
 
   const loadTaskEntries = React.useCallback(async () => {
     const currentItemId = liveItem?.id || workItem?.id;
@@ -98,10 +120,11 @@ export default function WorkItemDetailModal({
         if (!cancelled) setTaskSessionLoading(false);
       });
     loadTaskEntries();
+    loadExtensionRequests();
     return () => {
       cancelled = true;
     };
-  }, [isOpen, liveItem?.id, workItem?.id, loadTaskEntries]);
+  }, [isOpen, liveItem?.id, workItem?.id, loadTaskEntries, loadExtensionRequests]);
 
   useEffect(() => {
     if (!taskSession?.started_at) {
@@ -129,8 +152,9 @@ export default function WorkItemDetailModal({
     return () => clearInterval(interval);
   }, [taskSession, item?.id, loadTaskEntries]);
 
-  const item = liveItem || workItem;
   const isOverdue = workItemsService.isOverdue(item);
+  const pendingExtension = extensionRequests.find((r) => r.status === 'PENDING') || item.pending_extension || null;
+  const latestReviewedExtension = extensionRequests.find((r) => r.status !== 'PENDING') || null;
   const childItems = item.children || [];
   const parentItem = item.parent || null;
   const assignees = item.assignees || [];
@@ -232,6 +256,54 @@ export default function WorkItemDetailModal({
       setError(err.message || 'Failed to delete time entry');
     } finally {
       setTaskSessionLoading(false);
+    }
+  };
+
+  const handleRequestExtension = async (e) => {
+    e?.preventDefault();
+    setExtensionError('');
+
+    if (!requestedDueDate) {
+      setExtensionError('Please select a new requested due date.');
+      return;
+    }
+
+    const currentDue = item.due_date ? new Date(item.due_date).getTime() : 0;
+    const chosen = new Date(requestedDueDate).getTime();
+
+    if (item.due_date && chosen <= currentDue) {
+      setExtensionError('Requested due date must be later than the current due date.');
+      return;
+    }
+    if (!item.due_date && chosen <= Date.now()) {
+      setExtensionError('Requested due date must be in the future.');
+      return;
+    }
+    if (!extensionReason || !extensionReason.trim()) {
+      setExtensionError('Reason is mandatory for requesting an extension.');
+      return;
+    }
+
+    try {
+      setExtensionSubmitting(true);
+      const res = await workItemsService.requestExtension(item.id, {
+        requested_due_date: new Date(requestedDueDate).toISOString(),
+        reason: extensionReason.trim(),
+      });
+      setIsExtensionModalOpen(false);
+      setRequestedDueDate('');
+      setExtensionReason('');
+      await loadExtensionRequests();
+      onToast?.('Extension request submitted to project manager.');
+      onTaskUpdated?.({
+        ...item,
+        has_pending_extension: true,
+        pending_extension: res,
+      });
+    } catch (err) {
+      setExtensionError(err.message || 'Failed to submit extension request.');
+    } finally {
+      setExtensionSubmitting(false);
     }
   };
 
@@ -567,6 +639,53 @@ export default function WorkItemDetailModal({
                       </span>
                     )}
                   </div>
+
+                  {/* Extension Status / Action immediately below Due Date */}
+                  {item.project_id && (
+                    <div className="mt-2.5 pt-2 border-t border-slate-200/80">
+                      {pendingExtension ? (
+                        <div className="bg-amber-100/70 border border-amber-300 rounded-lg p-2 text-amber-900">
+                          <div className="flex items-center justify-between text-[11px] font-bold">
+                            <span className="flex items-center gap-1.5 text-amber-800">
+                              <Clock className="w-3.5 h-3.5 text-amber-600" />
+                              Extension Pending
+                            </span>
+                            <span className="px-1.5 py-0.5 rounded bg-amber-200 text-amber-900 text-[10px]">
+                              {new Date(pendingExtension.requested_due_date).toLocaleDateString([], { month: 'short', day: 'numeric' })}
+                            </span>
+                          </div>
+                          <p className="mt-1 text-[11px] text-amber-950/80 italic line-clamp-2" title={pendingExtension.reason}>
+                            "{pendingExtension.reason}"
+                          </p>
+                        </div>
+                      ) : (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setExtensionError('');
+                            setRequestedDueDate('');
+                            setExtensionReason('');
+                            setIsExtensionModalOpen(true);
+                          }}
+                          className="w-full py-1.5 px-2.5 text-xs font-semibold rounded-lg bg-white hover:bg-purple-50 text-purple-700 border border-purple-200 hover:border-purple-300 transition-colors flex items-center justify-center gap-1.5 cursor-pointer shadow-2xs"
+                        >
+                          <Calendar className="w-3.5 h-3.5 text-purple-600" />
+                          <span>Request Extension</span>
+                        </button>
+                      )}
+
+                      {latestReviewedExtension && !pendingExtension && (
+                        <div className="mt-1.5 flex items-center justify-between text-[10px] text-slate-500">
+                          <span>
+                            Prior: <span className={latestReviewedExtension.status === 'APPROVED' ? 'text-emerald-600 font-bold' : 'text-rose-600 font-bold'}>{latestReviewedExtension.status}</span>
+                          </span>
+                          <span className="text-slate-400">
+                            {new Date(latestReviewedExtension.reviewed_at || latestReviewedExtension.created_at).toLocaleDateString()}
+                          </span>
+                        </div>
+                      )}
+                    </div>
+                  )}
                 </div>
               </div>
 
@@ -882,6 +1001,116 @@ export default function WorkItemDetailModal({
           </button>
         </div>
       </div>
+
+      {/* Request Extension Modal */}
+      {isExtensionModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/50 backdrop-blur-xs">
+          <div className="bg-white rounded-2xl shadow-xl border border-slate-200 max-w-md w-full p-6 animate-in fade-in duration-200">
+            <div className="flex items-center justify-between pb-3 border-b border-slate-100">
+              <div className="flex items-center gap-2">
+                <div className="w-8 h-8 rounded-xl bg-purple-100 text-purple-700 flex items-center justify-center">
+                  <Calendar className="w-4 h-4" />
+                </div>
+                <div>
+                  <h3 className="text-sm font-bold text-slate-900">Request Due Date Extension</h3>
+                  <p className="text-[11px] text-slate-500">Submit an extension request to the project manager</p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setIsExtensionModalOpen(false)}
+                className="p-1 rounded-lg hover:bg-slate-100 text-slate-400 hover:text-slate-600 cursor-pointer"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            {extensionError && (
+              <div className="mt-3 p-2.5 rounded-xl bg-rose-50 border border-rose-200 text-xs text-rose-700 flex items-center gap-2">
+                <AlertCircle className="w-4 h-4 shrink-0 text-rose-600" />
+                <span>{extensionError}</span>
+              </div>
+            )}
+
+            <form onSubmit={handleRequestExtension} className="mt-4 space-y-4">
+              <div>
+                <label className="block text-[11px] font-bold uppercase text-slate-400 mb-1">
+                  Task
+                </label>
+                <div className="p-2.5 bg-slate-50 rounded-xl border border-slate-200 text-xs font-semibold text-slate-800">
+                  {item.title}
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-[11px] font-bold uppercase text-slate-400 mb-1">
+                  Current Due Date
+                </label>
+                <div className="p-2.5 bg-slate-50 rounded-xl border border-slate-200 text-xs font-medium text-slate-700 flex items-center gap-2">
+                  <Clock className="w-3.5 h-3.5 text-slate-400" />
+                  <span>
+                    {item.due_date ? new Date(item.due_date).toLocaleDateString() : 'No current due date'}
+                  </span>
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-[11px] font-bold uppercase text-slate-400 mb-1">
+                  Requested New Due Date <span className="text-rose-500">*</span>
+                </label>
+                <input
+                  type="date"
+                  required
+                  min={
+                    item.due_date
+                      ? new Date(new Date(item.due_date).getTime() + 86400000).toISOString().split('T')[0]
+                      : new Date().toISOString().split('T')[0]
+                  }
+                  value={requestedDueDate}
+                  onChange={(e) => setRequestedDueDate(e.target.value)}
+                  className="w-full p-2.5 bg-white rounded-xl border border-slate-200 text-xs font-medium text-slate-900 focus:outline-none focus:border-purple-600 focus:ring-1 focus:ring-purple-600"
+                />
+              </div>
+
+              <div>
+                <label className="block text-[11px] font-bold uppercase text-slate-400 mb-1">
+                  Reason for Extension <span className="text-rose-500">*</span>
+                </label>
+                <textarea
+                  required
+                  rows={3}
+                  maxLength={2000}
+                  value={extensionReason}
+                  onChange={(e) => setExtensionReason(e.target.value)}
+                  placeholder="Explain why you need additional time to complete this deliverable..."
+                  className="w-full p-2.5 bg-white rounded-xl border border-slate-200 text-xs font-medium text-slate-900 placeholder-slate-400 focus:outline-none focus:border-purple-600 focus:ring-1 focus:ring-purple-600 resize-none"
+                />
+                <div className="text-[10px] text-right text-slate-400 mt-0.5">
+                  {extensionReason.length} / 2000
+                </div>
+              </div>
+
+              <div className="flex items-center justify-end gap-2 pt-2 border-t border-slate-100">
+                <button
+                  type="button"
+                  onClick={() => setIsExtensionModalOpen(false)}
+                  className="px-3.5 py-2 text-xs font-semibold rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 transition-colors cursor-pointer"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={extensionSubmitting}
+                  className="px-4 py-2 text-xs font-semibold rounded-xl bg-purple-600 hover:bg-purple-700 text-white transition-colors disabled:opacity-50 flex items-center gap-1.5 cursor-pointer shadow-2xs"
+                >
+                  {extensionSubmitting && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
+                  Submit Request
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

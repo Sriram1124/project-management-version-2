@@ -127,6 +127,14 @@ export default function TaskCard({
           >
             {isOverdue ? 'Overdue' : `Due ${formattedDueDate}`}
           </span>
+          {(task.has_pending_extension || task.pending_extension) && (
+            <span
+              className="ml-1 px-1 py-0.2 rounded bg-amber-100 text-amber-800 text-[9px] font-bold border border-amber-200"
+              title="Extension requested"
+            >
+              ⏳ Ext
+            </span>
+          )}
         </div>
 
         {assignees.length > 0 ? (

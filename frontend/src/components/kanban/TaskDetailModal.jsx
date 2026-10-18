@@ -81,6 +81,105 @@ export default function TaskDetailModal({
     task?.due_date ? task.due_date.split('T')[0] : ''
   );
 
+  // Due-Date Extension Requests
+  const [extensionRequests, setExtensionRequests] = useState([]);
+  const [decisionNote, setDecisionNote] = useState('');
+  const [decidingId, setDecidingId] = useState(null);
+  const [isExtensionModalOpen, setIsExtensionModalOpen] = useState(false);
+  const [requestedDueDate, setRequestedDueDate] = useState('');
+  const [extensionReason, setExtensionReason] = useState('');
+  const [extensionSubmitting, setExtensionSubmitting] = useState(false);
+  const [extensionError, setExtensionError] = useState('');
+
+  const loadExtensionRequests = async (id) => {
+    if (!id) return;
+    try {
+      const res = await workItemsService.getExtensionRequests(id);
+      setExtensionRequests(Array.isArray(res) ? res : []);
+    } catch {
+      setExtensionRequests([]);
+    }
+  };
+
+  const handleDecideExtension = async (decision) => {
+    const pendingReq = extensionRequests.find((r) => r.status === 'PENDING') || liveTask.pending_extension;
+    if (!pendingReq || !liveTask.id) return;
+    try {
+      setDecidingId(pendingReq.id);
+      const res = await workItemsService.decideExtension(liveTask.id, pendingReq.id, {
+        decision,
+        decision_note: decisionNote.trim() || undefined,
+      });
+      await loadExtensionRequests(liveTask.id);
+      setDecisionNote('');
+      onToast?.(`Extension ${decision === 'APPROVE' ? 'approved' : 'rejected'}`);
+      if (res.work_item) {
+        setLiveTask(res.work_item);
+        if (res.work_item.due_date) {
+          setDueDate(res.work_item.due_date.split('T')[0]);
+        }
+        notifyTaskUpdated(res.work_item);
+      } else {
+        const nextDate = decision === 'APPROVE' && pendingReq.requested_due_date ? pendingReq.requested_due_date.split('T')[0] : dueDate;
+        setDueDate(nextDate);
+        notifyTaskUpdated({
+          ...liveTask,
+          due_date: decision === 'APPROVE' ? pendingReq.requested_due_date : liveTask.due_date,
+          has_pending_extension: false,
+          pending_extension: null,
+        });
+      }
+    } catch (err) {
+      setError(err.message || 'Failed to record decision');
+    } finally {
+      setDecidingId(null);
+    }
+  };
+
+  const handleRequestExtension = async (e) => {
+    e?.preventDefault();
+    setExtensionError('');
+    if (!requestedDueDate) {
+      setExtensionError('Please select a new requested due date.');
+      return;
+    }
+    const currentDue = liveTask.due_date ? new Date(liveTask.due_date).getTime() : 0;
+    const chosen = new Date(requestedDueDate).getTime();
+    if (liveTask.due_date && chosen <= currentDue) {
+      setExtensionError('Requested due date must be later than the current due date.');
+      return;
+    }
+    if (!liveTask.due_date && chosen <= Date.now()) {
+      setExtensionError('Requested due date must be in the future.');
+      return;
+    }
+    if (!extensionReason || !extensionReason.trim()) {
+      setExtensionError('Reason is mandatory.');
+      return;
+    }
+    try {
+      setExtensionSubmitting(true);
+      const res = await workItemsService.requestExtension(liveTask.id, {
+        requested_due_date: new Date(requestedDueDate).toISOString(),
+        reason: extensionReason.trim(),
+      });
+      setIsExtensionModalOpen(false);
+      setRequestedDueDate('');
+      setExtensionReason('');
+      await loadExtensionRequests(liveTask.id);
+      onToast?.('Extension request submitted');
+      notifyTaskUpdated({
+        ...liveTask,
+        has_pending_extension: true,
+        pending_extension: res,
+      });
+    } catch (err) {
+      setExtensionError(err.message || 'Failed to submit extension request');
+    } finally {
+      setExtensionSubmitting(false);
+    }
+  };
+
   // Assignees
   const [projectMembers, setProjectMembers] = useState([]);
   const [selectedNewAssignee, setSelectedNewAssignee] = useState('');
@@ -106,6 +205,7 @@ export default function TaskDetailModal({
       setStoryPoints(data.story_points ?? '');
       setStartDate(data.start_date ? data.start_date.split('T')[0] : '');
       setDueDate(data.due_date ? data.due_date.split('T')[0] : '');
+      loadExtensionRequests(id);
     } catch (err) {
       setError(err.message || 'Failed to fetch task details');
     } finally {
@@ -340,6 +440,8 @@ export default function TaskDetailModal({
   };
 
   const isOverdue = liveTask.is_overdue || workItemsService.isOverdue(liveTask);
+  const pendingExtension = extensionRequests.find((r) => r.status === 'PENDING') || liveTask.pending_extension || null;
+  const latestReviewedExtension = extensionRequests.find((r) => r.status !== 'PENDING') || null;
   const children = liveTask.children || [];
   const parent = liveTask.parent;
   const currentAssignees = liveTask.assignees || [];
@@ -352,6 +454,7 @@ export default function TaskDetailModal({
   const isAssignedIntern = ['INTERN', 'EMPLOYEE'].includes(authRole) && Boolean(authUserId) && assignedUserIds.includes(String(authUserId));
   const isIntern = authRole === 'INTERN';
   const isManagerOrAdmin = authUser?.role === 'MANAGER' || authUser?.role === 'ADMIN' || authUser?.role === 'TECH_LEAD';
+  const isManagerOrLead = isManagerOrAdmin;
   const canDelete = !isIntern && Boolean(liveTask?.id) && isManagerOrAdmin;
   const canEditFields = !isIntern;
   const canUpdateStatus = !isIntern || isAssignedIntern;
@@ -511,6 +614,85 @@ export default function TaskDetailModal({
               </h2>
             )}
           </div>
+
+          {/* Due-Date Extension Request Banner */}
+          {pendingExtension && (
+            <div className="p-3.5 rounded-xl border border-amber-300 bg-amber-50/90 shadow-2xs space-y-2.5">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <Clock className="w-4 h-4 text-amber-600 animate-pulse" />
+                  <span className="text-xs font-bold uppercase tracking-wider text-amber-900">
+                    Due Date Extension Requested
+                  </span>
+                </div>
+                <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-200 text-amber-800">
+                  PENDING REVIEW
+                </span>
+              </div>
+
+              <div className="text-xs text-amber-950 space-y-1">
+                <div>
+                  <span className="text-slate-500">Requested by: </span>
+                  <span className="font-semibold text-slate-800">
+                    {pendingExtension.requester?.name || pendingExtension.requester?.email || 'Intern'}
+                  </span>
+                  <span className="text-slate-400 text-[10px] ml-1.5">
+                    ({new Date(pendingExtension.created_at).toLocaleString()})
+                  </span>
+                </div>
+                <div className="flex items-center gap-3">
+                  <div>
+                    <span className="text-slate-500">Current Due Date: </span>
+                    <span className="font-medium line-through text-slate-600">
+                      {pendingExtension.original_due_date ? new Date(pendingExtension.original_due_date).toLocaleDateString() : 'None'}
+                    </span>
+                  </div>
+                  <div>
+                    <span className="text-amber-800 font-semibold">Requested: </span>
+                    <span className="font-bold text-amber-900">
+                      {new Date(pendingExtension.requested_due_date).toLocaleDateString()}
+                    </span>
+                  </div>
+                </div>
+                <div className="mt-1 pt-1 border-t border-amber-200/60">
+                  <span className="font-semibold text-amber-900">Reason: </span>
+                  <span className="italic text-amber-900">"{pendingExtension.reason}"</span>
+                </div>
+              </div>
+
+              {/* Decision note & Action buttons for Manager */}
+              {isManagerOrLead && (
+                <div className="pt-2 border-t border-amber-200 space-y-2">
+                  <input
+                    type="text"
+                    value={decisionNote}
+                    onChange={(e) => setDecisionNote(e.target.value)}
+                    placeholder="Optional decision note for intern..."
+                    className="w-full px-2.5 py-1.5 text-xs rounded-lg border border-amber-300 bg-white text-slate-800 placeholder-slate-400 focus:outline-none focus:ring-1 focus:ring-amber-500"
+                  />
+                  <div className="flex items-center justify-end gap-2">
+                    <button
+                      type="button"
+                      disabled={decidingId === pendingExtension.id}
+                      onClick={() => handleDecideExtension('REJECT')}
+                      className="px-3 py-1.5 text-xs font-semibold rounded-lg border border-rose-300 bg-white hover:bg-rose-50 text-rose-700 transition-colors disabled:opacity-50 cursor-pointer"
+                    >
+                      Reject
+                    </button>
+                    <button
+                      type="button"
+                      disabled={decidingId === pendingExtension.id}
+                      onClick={() => handleDecideExtension('APPROVE')}
+                      className="px-3 py-1.5 text-xs font-semibold rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white transition-colors disabled:opacity-50 flex items-center gap-1.5 cursor-pointer shadow-2xs"
+                    >
+                      {decidingId === pendingExtension.id && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
+                      Approve Extension
+                    </button>
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
 
           {/* Story Progress Banner (Aggregated Child Task SP) */}
           {liveTask.type === 'STORY' && (
@@ -735,8 +917,32 @@ export default function TaskDetailModal({
                   className="w-full px-2.5 py-1.5 rounded-lg border border-slate-200 bg-white text-slate-800 text-xs font-medium focus:outline-hidden focus:border-purple-600 focus:ring-2 focus:ring-purple-500/20"
                 />
               ) : (
-                <div className="w-full px-2.5 py-1.5 rounded-lg border border-slate-200 bg-slate-50 text-slate-700 text-xs font-medium">
-                  {dueDate || <span className="text-slate-400 italic">Not set</span>}
+                <div className="space-y-1.5">
+                  <div className="w-full px-2.5 py-1.5 rounded-lg border border-slate-200 bg-slate-50 text-slate-700 text-xs font-medium">
+                    {dueDate || <span className="text-slate-400 italic">Not set</span>}
+                  </div>
+                  {Boolean(liveTask.project_id) && (
+                    pendingExtension ? (
+                      <div className="px-2 py-1 rounded bg-amber-100 text-amber-800 text-[11px] font-semibold flex items-center gap-1">
+                        <Clock className="w-3 h-3 text-amber-600" />
+                        <span>Extension Pending ({new Date(pendingExtension.requested_due_date).toLocaleDateString([], { month: 'short', day: 'numeric' })})</span>
+                      </div>
+                    ) : (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setExtensionError('');
+                          setRequestedDueDate('');
+                          setExtensionReason('');
+                          setIsExtensionModalOpen(true);
+                        }}
+                        className="w-full py-1 px-2 text-xs font-semibold rounded bg-purple-50 text-purple-700 hover:bg-purple-100 border border-purple-200 transition-colors flex items-center justify-center gap-1 cursor-pointer"
+                      >
+                        <Calendar className="w-3.5 h-3.5 text-purple-600" />
+                        <span>Request Extension</span>
+                      </button>
+                    )
+                  )}
                 </div>
               )}
             </div>
@@ -1038,6 +1244,116 @@ export default function TaskDetailModal({
           }}
           onToast={onToast}
         />
+      )}
+
+      {/* Request Extension Modal Dialog */}
+      {isExtensionModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/50 backdrop-blur-xs">
+          <div className="bg-white rounded-2xl shadow-xl border border-slate-200 max-w-md w-full p-6 animate-in fade-in duration-200">
+            <div className="flex items-center justify-between pb-3 border-b border-slate-100">
+              <div className="flex items-center gap-2">
+                <div className="w-8 h-8 rounded-xl bg-purple-100 text-purple-700 flex items-center justify-center">
+                  <Calendar className="w-4 h-4" />
+                </div>
+                <div>
+                  <h3 className="text-sm font-bold text-slate-900">Request Due Date Extension</h3>
+                  <p className="text-[11px] text-slate-500">Submit an extension request to the project manager</p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setIsExtensionModalOpen(false)}
+                className="p-1 rounded-lg hover:bg-slate-100 text-slate-400 hover:text-slate-600 cursor-pointer"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            {extensionError && (
+              <div className="mt-3 p-2.5 rounded-xl bg-rose-50 border border-rose-200 text-xs text-rose-700 flex items-center gap-2">
+                <AlertCircle className="w-4 h-4 shrink-0 text-rose-600" />
+                <span>{extensionError}</span>
+              </div>
+            )}
+
+            <form onSubmit={handleRequestExtension} className="mt-4 space-y-4">
+              <div>
+                <label className="block text-[11px] font-bold uppercase text-slate-400 mb-1">
+                  Task
+                </label>
+                <div className="p-2.5 bg-slate-50 rounded-xl border border-slate-200 text-xs font-semibold text-slate-800">
+                  {liveTask.title}
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-[11px] font-bold uppercase text-slate-400 mb-1">
+                  Current Due Date
+                </label>
+                <div className="p-2.5 bg-slate-50 rounded-xl border border-slate-200 text-xs font-medium text-slate-700 flex items-center gap-2">
+                  <Clock className="w-3.5 h-3.5 text-slate-400" />
+                  <span>
+                    {liveTask.due_date ? new Date(liveTask.due_date).toLocaleDateString() : 'No current due date'}
+                  </span>
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-[11px] font-bold uppercase text-slate-400 mb-1">
+                  Requested New Due Date <span className="text-rose-500">*</span>
+                </label>
+                <input
+                  type="date"
+                  required
+                  min={
+                    liveTask.due_date
+                      ? new Date(new Date(liveTask.due_date).getTime() + 86400000).toISOString().split('T')[0]
+                      : new Date().toISOString().split('T')[0]
+                  }
+                  value={requestedDueDate}
+                  onChange={(e) => setRequestedDueDate(e.target.value)}
+                  className="w-full p-2.5 bg-white rounded-xl border border-slate-200 text-xs font-medium text-slate-900 focus:outline-none focus:border-purple-600 focus:ring-1 focus:ring-purple-600"
+                />
+              </div>
+
+              <div>
+                <label className="block text-[11px] font-bold uppercase text-slate-400 mb-1">
+                  Reason for Extension <span className="text-rose-500">*</span>
+                </label>
+                <textarea
+                  required
+                  rows={3}
+                  maxLength={2000}
+                  value={extensionReason}
+                  onChange={(e) => setExtensionReason(e.target.value)}
+                  placeholder="Explain why you need additional time to complete this deliverable..."
+                  className="w-full p-2.5 bg-white rounded-xl border border-slate-200 text-xs font-medium text-slate-900 placeholder-slate-400 focus:outline-none focus:border-purple-600 focus:ring-1 focus:ring-purple-600 resize-none"
+                />
+                <div className="text-[10px] text-right text-slate-400 mt-0.5">
+                  {extensionReason.length} / 2000
+                </div>
+              </div>
+
+              <div className="flex items-center justify-end gap-2 pt-2 border-t border-slate-100">
+                <button
+                  type="button"
+                  onClick={() => setIsExtensionModalOpen(false)}
+                  className="px-3.5 py-2 text-xs font-semibold rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 transition-colors cursor-pointer"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={extensionSubmitting}
+                  className="px-4 py-2 text-xs font-semibold rounded-xl bg-purple-600 hover:bg-purple-700 text-white transition-colors disabled:opacity-50 flex items-center gap-1.5 cursor-pointer shadow-2xs"
+                >
+                  {extensionSubmitting && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
+                  Submit Request
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
       )}
     </div>
   );

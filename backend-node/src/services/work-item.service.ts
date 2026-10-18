@@ -479,6 +479,12 @@ export class WorkItemService {
 
     const primaryAssignee = formattedAssignees[0] || null;
 
+    const extension_requests = Array.isArray(item.extension_requests)
+      ? item.extension_requests
+      : [];
+    const pending_extension = extension_requests.find((r: any) => r.status === 'PENDING') || null;
+    const has_pending_extension = Boolean(pending_extension);
+
     return {
       ...item,
       is_overdue,
@@ -488,6 +494,9 @@ export class WorkItemService {
       assignee: primaryAssignee,
       assignee_id: primaryAssignee?.user_id || null,
       children: formattedChildren,
+      extension_requests,
+      pending_extension,
+      has_pending_extension,
     };
   }
 
@@ -900,6 +909,17 @@ export class WorkItemService {
             user: { select: { id: true, name: true, email: true } },
           },
         },
+        extension_requests: {
+          orderBy: { created_at: 'desc' },
+          select: {
+            id: true,
+            status: true,
+            requested_due_date: true,
+            original_due_date: true,
+            reason: true,
+            created_at: true,
+          },
+        },
       },
       orderBy: { created_at: 'desc' },
     });
@@ -954,6 +974,13 @@ export class WorkItemService {
             date: true,
             user_id: true,
             user: { select: { id: true, name: true, email: true } },
+          },
+        },
+        extension_requests: {
+          orderBy: { created_at: 'desc' },
+          include: {
+            requester: { select: { id: true, name: true, email: true } },
+            reviewer: { select: { id: true, name: true, email: true } },
           },
         },
       },

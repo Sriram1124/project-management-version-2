@@ -485,6 +485,10 @@ export default function ProjectBacklogTab({ projectId, project = null, isKanbanP
     return workItems.filter((w) => w.type !== 'EPIC');
   }, [workItems]);
 
+  const pendingExtensionsCount = useMemo(() => {
+    return workItems.filter((w) => w.has_pending_extension || w.pending_extension).length;
+  }, [workItems]);
+
   // Filter evaluation logic
   const filteredWorkItems = useMemo(() => {
     return workItems.filter((item) => {
@@ -693,6 +697,23 @@ export default function ProjectBacklogTab({ projectId, project = null, isKanbanP
         onCollapseAll={handleCollapseAll}
         allExpanded={expandedIds.size > 0}
       />
+
+      {/* Pending Extensions Notice for Managers */}
+      {pendingExtensionsCount > 0 && (
+        <div className="flex items-center justify-between p-3 rounded-xl bg-amber-50 border border-amber-300 text-amber-900 shadow-2xs">
+          <div className="flex items-center gap-2">
+            <span className="px-2 py-0.5 rounded-lg bg-amber-200 text-amber-900 font-bold text-xs">
+              ⏳ {pendingExtensionsCount}
+            </span>
+            <span className="text-xs font-bold">
+              {pendingExtensionsCount} pending due-date extension request{pendingExtensionsCount === 1 ? '' : 's'} waiting for review
+            </span>
+          </div>
+          <span className="text-[11px] text-amber-800 font-medium">
+            Open any deliverable marked with ⏳ to review, approve, or reject
+          </span>
+        </div>
+      )}
 
       {/* 2. MAIN WORKSPACE CONTENT */}
       {/* VIEW MODE A: HIERARCHICAL TREE (EPICS AT ROOT EXPANDING DOWN) */}

@@ -864,6 +864,11 @@ function HierarchicalRow({
             }`}
           >
             {formattedDueDate || '-'}
+            {(item.has_pending_extension || item.pending_extension) && (
+              <span className="ml-1 inline-flex items-center px-1 py-0.2 rounded text-[9px] font-bold bg-amber-100 text-amber-800 border border-amber-200" title="Extension requested">
+                ⏳
+              </span>
+            )}
           </button>
 
           {canChangeDueDate && menuOpen === 'date' && (
