@@ -1,6 +1,7 @@
 const createModelMock = () => ({
   findMany: jest.fn().mockResolvedValue([]),
   findUnique: jest.fn().mockResolvedValue(null),
+  findUniqueOrThrow: jest.fn().mockImplementation((args: any) => Promise.resolve({ id: args?.where?.id || 'mock-id' })),
   findFirst: jest.fn().mockResolvedValue(null),
   create: jest.fn().mockImplementation((args: any) => Promise.resolve({ id: 'mock-id', ...args?.data })),
   createMany: jest.fn().mockResolvedValue({ count: 1 }),

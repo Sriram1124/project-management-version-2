@@ -59,8 +59,8 @@ describe('TimesheetService Unit Tests', () => {
       expect(cutoff).toBeInstanceOf(Date);
     });
 
-    it('returns running active session idempotently or rejects starting on a different task', async () => {
-      // Idempotent return when session already running
+    it('returns running active session idempotently or switches task', async () => {
+      // Idempotent return when session already running on same task
       mockPrisma.workSession.findFirst.mockResolvedValueOnce({
         id: 'session-already-running',
         user_id: mockIntern.id,
@@ -70,22 +70,36 @@ describe('TimesheetService Unit Tests', () => {
       const res = await TimesheetService.startSession(mockIntern, {});
       expect(res.id).toBe('session-already-running');
 
-      // Collision rejection when timer is active on another task
+      // Task switching when timer is active on another task
       mockPrisma.workItem.findFirst.mockResolvedValueOnce({
         id: 'task-2',
         title: 'Task 2',
         assignees: [{ user_id: mockIntern.id }],
       });
-      mockPrisma.workSession.findFirst.mockResolvedValueOnce({
-        id: 'session-task-1',
-        task_id: 'task-1',
-        task: { id: 'task-1', title: 'Task 1' },
-        ended_at: null,
+      mockPrisma.workSession.findFirst
+        .mockResolvedValueOnce({
+          id: 'session-task-1',
+          task_id: 'task-1',
+          task: { id: 'task-1', title: 'Task 1' },
+          started_at: new Date(Date.now() - 3600000),
+          ended_at: null,
+        })
+        .mockResolvedValueOnce({
+          id: 'session-task-1',
+          task_id: 'task-1',
+          task: { id: 'task-1', title: 'Task 1' },
+          started_at: new Date(Date.now() - 3600000),
+          ended_at: null,
+        });
+
+      mockPrisma.workSession.create.mockResolvedValueOnce({
+        id: 'session-task-2',
+        user_id: mockIntern.id,
+        task_id: 'task-2',
       });
 
-      await expect(
-        TimesheetService.startSession(mockIntern, { task_id: 'task-2' })
-      ).rejects.toThrow('You already have an active timer running on "Task 1"');
+      const switched = await TimesheetService.startSession(mockIntern, { task_id: 'task-2' });
+      expect(switched.id).toBe('session-task-2');
     });
 
     it('rejects ending when no active session and no previous session is found', async () => {

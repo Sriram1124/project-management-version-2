@@ -226,7 +226,14 @@ export class TimesheetService {
     return fourHoursLater.getTime() < nextDayCutoff.getTime() ? fourHoursLater : nextDayCutoff;
   }
 
+  private static isAutoClocking = false;
+
   static async autoClockExpiredSessions(orgId?: string, userId?: string): Promise<number> {
+    if (this.isAutoClocking) {
+      return 0;
+    }
+    this.isAutoClocking = true;
+
     try {
       const now = Date.now();
       const openSessions = await prisma.workSession.findMany({
@@ -262,13 +269,19 @@ export class TimesheetService {
             : 'Auto-clocked at 18:15 (daily safety cutoff)';
 
           await prisma.$transaction(async (tx) => {
-            await tx.workSession.update({
-              where: { id: session.id },
+            // Atomic conditional update: only the first caller to transition ended_at from null proceeds
+            const updateResult = await tx.workSession.updateMany({
+              where: { id: session.id, ended_at: null },
               data: {
                 ended_at: cutoffTime,
                 notes: autoNotes,
               },
             });
+
+            if (updateResult.count === 0) {
+              // Session was already finalized concurrently by another worker or request
+              return;
+            }
 
             if (session.task_id) {
               const existingEntry = await tx.timeEntry.findFirst({
@@ -311,6 +324,8 @@ export class TimesheetService {
     } catch (err) {
       console.error('Failed to auto-clock expired sessions:', err);
       return 0;
+    } finally {
+      this.isAutoClocking = false;
     }
   }
 
@@ -351,7 +366,7 @@ export class TimesheetService {
     });
 
     if (existingActive) {
-      if (existingActive.task_id === taskId) {
+      if ((existingActive.task_id ?? null) === taskId) {
         // Idempotent: already running on this task, return without duplicate creation
         return existingActive;
       }
@@ -430,14 +445,37 @@ export class TimesheetService {
     }
 
     return await prisma.$transaction(async (tx) => {
-      const session = await tx.workSession.update({
-        where: { id: activeSession.id },
+      // Atomic conditional update: only the first caller to transition ended_at from null proceeds
+      const updateResult = await tx.workSession.updateMany({
+        where: { id: activeSession.id, ended_at: null },
         data: {
           ended_at: effectiveEndedAt,
           break_minutes: breakMinutes,
           notes: effectiveNotes,
         },
       });
+
+      if (updateResult.count === 0) {
+        // Concurrently ended or auto-clocked
+        const ended = await tx.workSession.findUnique({
+          where: { id: activeSession.id },
+          include: {
+            time_entries: {
+              include: { task: true, project: true },
+              orderBy: { created_at: 'desc' },
+              take: 1,
+            },
+          },
+        });
+        return {
+          ...ended,
+          time_entry: ended?.time_entries?.[0] || null,
+        };
+      }
+
+      const session = (await tx.workSession.findUnique({
+        where: { id: activeSession.id },
+      })) || activeSession;
 
       if (activeSession.task_id) {
         const rawDiff = diffMinutes(activeSession.started_at, effectiveEndedAt);
