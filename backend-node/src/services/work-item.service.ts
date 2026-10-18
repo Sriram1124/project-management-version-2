@@ -1838,10 +1838,12 @@ export class WorkItemService {
           targetUserId = filters.user_id;
         }
       } else {
+        const isInternRole = !isMgr && !this.isOrgTechLead(user);
         const isLead =
-          membershipRecord?.project_role === 'TECH_LEAD' ||
-          membershipRecord?.project_role === 'MANAGER' ||
-          this.isOrgTechLead(user);
+          !isInternRole &&
+          (membershipRecord?.project_role === 'TECH_LEAD' ||
+            membershipRecord?.project_role === 'MANAGER' ||
+            this.isOrgTechLead(user));
         if (isLead) {
           isActingAsLead = true;
           if (filters?.user_id) {
@@ -1860,6 +1862,7 @@ export class WorkItemService {
       // No specific project provided in filters
       authorizedLeadProjects = orgId ? await this.getAuthorizedLeadProjectIds(user, orgId) : [];
       isLeadAnyProject = authorizedLeadProjects.length > 0;
+      const isInternRole = !isMgr && !this.isOrgTechLead(user) && !isLeadAnyProject;
       if (isMgr || isLeadAnyProject) {
         isActingAsLead = true;
         if (filters?.user_id) {
@@ -1959,9 +1962,7 @@ export class WorkItemService {
             orderBy: { created_at: 'asc' },
           })
         : Promise.resolve([]),
-      filters?.project_id && project
-        ? Promise.resolve([{ id: project.id, name: project.name }])
-        : isMgr
+      isMgr
         ? prisma.project.findMany({
             where: { organization_id: orgId },
             select: { id: true, name: true },

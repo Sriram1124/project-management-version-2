@@ -41,16 +41,6 @@ export default function InternDashboardTab({
       .finally(() => setLoadingProjects(false));
   }, []);
 
-  // Dynamic greeting based on time of day
-  const getGreeting = () => {
-    const hour = new Date().getHours();
-    if (hour < 12) return 'Good morning';
-    if (hour < 17) return 'Good afternoon';
-    return 'Good evening';
-  };
-
-  const greeting = getGreeting();
-
   // Real data calculations
   const totalTasks = workItems.length;
   const completedTasks = workItems.filter((w) => w.status === 'COMPLETED').length;
@@ -86,21 +76,7 @@ export default function InternDashboardTab({
 
   return (
     <div className="w-full space-y-6 pb-10">
-      
-      {/* 1. TOP HEADER SECTION */}
-      <div className="bg-white rounded-2xl p-6 border border-slate-200/90 shadow-xs flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-        <div>
-          <h1 className="text-xl sm:text-2xl font-black text-slate-900 tracking-tight">
-            {greeting}, {userName}! 👋
-          </h1>
-          <p className="text-xs sm:text-sm text-slate-500 mt-1 font-medium">
-            Here is your daily workstation overview and active assignments.
-          </p>
-        </div>
-
-      </div>
-
-      {/* 2. QUICK STATUS CARDS */}
+      {/* 1. QUICK STATUS CARDS */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
         {[
           {

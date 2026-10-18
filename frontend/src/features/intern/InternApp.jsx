@@ -262,7 +262,7 @@ export default function InternApp({ onLogout, onSelectProject, onToast }) {
   const analyticsNavItems = [
     { id: 'timesheet', label: 'Timesheets', icon: Clock },
     { id: 'alerts', label: 'Alerts & Notices', icon: Bell, badge: unreadCount > 0 ? unreadCount : null, badgeColor: 'bg-rose-500' },
-    ...(isTechLead ? [{ id: 'analytics', label: 'Reports', icon: BarChart3 }] : []),
+    { id: 'analytics', label: 'Reports', icon: BarChart3 },
   ];
 
   const getBreadcrumbTitle = () => {
@@ -284,7 +284,7 @@ export default function InternApp({ onLogout, onSelectProject, onToast }) {
       case 'analytics':
         return 'Task Analytics & Work Distribution';
       case 'forms':
-        return 'Assigned Evaluations & Forms';
+        return 'Teams Channel';
       case 'attendance':
         return 'Attendance & Session History';
       case 'profile':
@@ -536,8 +536,20 @@ export default function InternApp({ onLogout, onSelectProject, onToast }) {
         </header>
 
         {/* Page Content */}
-        <main className={`flex-1 min-h-0 min-w-0 overflow-y-auto ${selectedProjectId && currentTab === 'projects' ? 'px-4 sm:px-6 pb-4 sm:pb-6 pt-0' : 'p-4 sm:p-6'}`}>
-          <div className={currentTab === 'dashboard' || currentTab === 'projects' || currentTab === 'profile' ? 'w-full space-y-6 min-w-0' : 'max-w-6xl mx-auto space-y-6 min-w-0'}>
+        <main className={`flex-1 min-h-0 min-w-0 ${
+          currentTab === 'forms'
+            ? 'p-3 sm:p-4 md:p-5 flex flex-col overflow-hidden h-full'
+            : selectedProjectId && currentTab === 'projects'
+            ? 'px-4 sm:px-6 pb-4 sm:pb-6 pt-0 overflow-y-auto'
+            : 'p-4 sm:p-6 overflow-y-auto'
+        }`}>
+          <div className={
+            currentTab === 'forms'
+              ? 'w-full h-full min-h-0 min-w-0 flex flex-col'
+              : currentTab === 'dashboard' || currentTab === 'projects' || currentTab === 'profile' || currentTab === 'analytics'
+              ? 'w-full space-y-6 min-w-0'
+              : 'max-w-6xl mx-auto space-y-6 min-w-0'
+          }>
             {/* Render Tab View */}
             {currentTab === 'dashboard' && (
               <InternDashboardTab
@@ -600,6 +612,7 @@ export default function InternApp({ onLogout, onSelectProject, onToast }) {
               <AssignedFormsTab
                 forms={forms}
                 onOpenFormModal={(f) => setSelectedForm(f)}
+                onToast={onToast}
               />
             )}
 

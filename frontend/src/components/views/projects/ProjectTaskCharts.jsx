@@ -21,9 +21,11 @@ import {
   Calendar,
   ArrowRight,
   Timer,
-  Sparkles
+  Sparkles,
+  CheckSquare
 } from 'lucide-react';
 import { workItemsService } from '../../../services/workItems.service';
+import { projectsService } from '../../../services/projects.service';
 import { PROJECT_ROLE_LABELS } from '../../modals/AssignProjectRolesModal';
 import { useAuth } from '../../../context/AuthContext';
 
@@ -281,20 +283,30 @@ export default function ProjectTaskCharts({ projectId = null, members = [], read
     };
   }, [fetchAnalytics]);
 
+  // Load assigned projects for user
+  const [userProjects, setUserProjects] = useState([]);
+
+  useEffect(() => {
+    projectsService.getProjects({ my: true })
+      .then((data) => {
+        if (Array.isArray(data)) setUserProjects(data);
+      })
+      .catch((err) => console.error('Failed to load assigned projects for analytics filter:', err));
+  }, []);
+
   // Accessible filter options returned from server
   const accessibleProjects = useMemo(() => {
-    if (analyticsData?.filters?.projects?.length > 0) {
+    if (userProjects.length > 0) {
+      return userProjects;
+    }
+    if (Array.isArray(analyticsData?.projects) && analyticsData.projects.length > 0) {
+      return analyticsData.projects;
+    }
+    if (Array.isArray(analyticsData?.filters?.projects) && analyticsData.filters.projects.length > 0) {
       return analyticsData.filters.projects;
     }
     return projectId ? [{ id: projectId, name: 'Current Project' }] : [];
-  }, [analyticsData, projectId]);
-
-  // Auto-select project if user has exactly 1 accessible project
-  useEffect(() => {
-    if (!selectedProjectId && accessibleProjects.length === 1 && accessibleProjects[0]?.id) {
-      setSelectedProjectId(accessibleProjects[0].id);
-    }
-  }, [accessibleProjects, selectedProjectId]);
+  }, [userProjects, analyticsData, projectId]);
 
   const accessibleSprints = useMemo(() => {
     return analyticsData?.filters?.sprints || [];
@@ -716,21 +728,19 @@ export default function ProjectTaskCharts({ projectId = null, members = [], read
         <div className="px-4 py-3 sm:px-5 flex flex-wrap items-center justify-between gap-3 bg-slate-50/50 text-xs">
           <div className="flex flex-wrap items-center gap-2.5">
             {/* Project Filter */}
-            {accessibleProjects.length > 1 && (
-              <div className="inline-flex items-center gap-1.5">
-                <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Project:</span>
-                <select
-                  value={selectedProjectId || ''}
-                  onChange={(e) => setSelectedProjectId(e.target.value)}
-                  className="bg-white border border-slate-200 rounded-lg px-2.5 py-1 text-xs font-semibold text-slate-700 focus:outline-purple-500 cursor-pointer shadow-2xs"
-                >
-                  <option value="">All Projects</option>
-                  {accessibleProjects.map((p) => (
-                    <option key={p.id} value={p.id}>{p.name}</option>
-                  ))}
-                </select>
-              </div>
-            )}
+            <div className="inline-flex items-center gap-1.5">
+              <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Project:</span>
+              <select
+                value={selectedProjectId || ''}
+                onChange={(e) => setSelectedProjectId(e.target.value)}
+                className="bg-white border border-slate-200 rounded-lg px-2.5 py-1 text-xs font-semibold text-slate-700 focus:outline-purple-500 cursor-pointer shadow-2xs"
+              >
+                <option value="">{isInternUser ? 'All Assigned Projects (Aggregate)' : 'All Projects'}</option>
+                {accessibleProjects.map((p) => (
+                  <option key={p.id} value={p.id}>{p.name}</option>
+                ))}
+              </select>
+            </div>
 
             {/* Sprint Filter */}
             {accessibleSprints.length > 0 && (
@@ -766,7 +776,7 @@ export default function ProjectTaskCharts({ projectId = null, members = [], read
             </div>
 
             {/* Clear Filters Button if any active */}
-            {(selectedSprintId !== 'ALL' || dateRangeFilter !== 'ALL' || (accessibleProjects.length > 1 && selectedProjectId)) && (
+            {(selectedSprintId !== 'ALL' || dateRangeFilter !== 'ALL' || selectedProjectId) && (
               <button
                 type="button"
                 onClick={() => {
@@ -784,10 +794,23 @@ export default function ProjectTaskCharts({ projectId = null, members = [], read
 
           {/* Current Scope Badge */}
           <div className="flex items-center gap-1.5 text-[11px] text-slate-500 font-medium">
-            <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 inline-block" />
+            <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 inline-block shrink-0" />
             <span>
-              {isInternUser ? 'Your Verified Personal Workload' : 'Project Scope'} (
-              <strong className="text-slate-800">{analytics.total}</strong> {analytics.total === 1 ? 'task' : 'tasks'})
+              {isInternUser ? (
+                selectedProjectId ? (
+                  <>
+                    Project Scope: <strong className="text-slate-800">{accessibleProjects.find((p) => p.id === selectedProjectId)?.name || 'Selected Project'}</strong> ({analytics.total} {analytics.total === 1 ? 'task' : 'tasks'} assigned to you)
+                  </>
+                ) : (
+                  <>
+                    Aggregate Scope: <strong className="text-slate-800">All Assigned Projects</strong> ({analytics.total} {analytics.total === 1 ? 'task' : 'tasks'} assigned to you)
+                  </>
+                )
+              ) : (
+                <>
+                  Project Scope (<strong className="text-slate-800">{analytics.total}</strong> {analytics.total === 1 ? 'task' : 'tasks'})
+                </>
+              )}
             </span>
           </div>
         </div>
@@ -798,9 +821,9 @@ export default function ProjectTaskCharts({ projectId = null, members = [], read
         {/* 3. TAB A: TASKS & GRAPHS VIEW */}
         {(viewMode === 'TASKS' || (!isInternUser && viewMode === 'BOTH')) && (
           <div>
-            {/* KPI Row: 4 evenly spaced compact metric blocks */}
+            {/* KPI Row: 6 individual statistics metric blocks */}
             <div className="p-4 sm:p-5">
-              <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+              <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
                 {/* 1. Tasks Assigned */}
                 <div className="p-3.5 rounded-xl bg-slate-50/70 border border-slate-100 flex flex-col justify-between">
                   <div className="flex items-center justify-between">
@@ -810,14 +833,8 @@ export default function ProjectTaskCharts({ projectId = null, members = [], read
                     </div>
                   </div>
                   <div className="text-2xl font-bold text-slate-900 mt-2">{analytics.total}</div>
-                  <div className="text-[11px] text-slate-500 mt-0.5 truncate">
-                    {isInternUser 
-                      ? 'Assigned to you in this project' 
-                      : selectedPerformanceFilter === 'ALL'
-                      ? 'Across entire project'
-                      : selectedPerformanceFilter === 'TECH_LEADS'
-                      ? 'Assigned to Tech Leads'
-                      : 'Assigned to selected member'}
+                  <div className="text-[11px] text-slate-500 mt-0.5 truncate" title={`${analytics.inProgress} in progress · ${analytics.inReview} in review`}>
+                    {analytics.inProgress} in progress · {analytics.inReview} in review
                   </div>
                 </div>
 
@@ -831,14 +848,14 @@ export default function ProjectTaskCharts({ projectId = null, members = [], read
                   </div>
                   <div className="text-2xl font-bold text-emerald-600 mt-2">{analytics.completed}</div>
                   <div className="text-[11px] text-slate-500 mt-0.5 truncate">
-                    {analytics.completionRate}% completion rate ({analytics.inProgress} active)
+                    {analytics.completionRate}% completion rate
                   </div>
                 </div>
 
                 {/* 3. Completed On-Time Rate */}
                 <div className="p-3.5 rounded-xl bg-slate-50/70 border border-slate-100 flex flex-col justify-between">
                   <div className="flex items-center justify-between">
-                    <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">Completed On-Time Rate</span>
+                    <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">On-Time Rate</span>
                     <div className="w-7 h-7 rounded-lg bg-blue-100/80 text-blue-600 flex items-center justify-center">
                       <CalendarCheck className="w-3.5 h-3.5" />
                     </div>
@@ -850,8 +867,8 @@ export default function ProjectTaskCharts({ projectId = null, members = [], read
                   </div>
                   <div className="text-[11px] text-slate-500 mt-0.5 truncate">
                     {analytics.completedWithDueDateCount > 0
-                      ? `${analytics.completedOnTime} of ${analytics.completedWithDueDateCount} delivered on time`
-                      : 'No completed items with due dates'}
+                      ? `${analytics.completedOnTime} of ${analytics.completedWithDueDateCount} on time`
+                      : 'No items with deadlines'}
                   </div>
                 </div>
 
@@ -868,10 +885,44 @@ export default function ProjectTaskCharts({ projectId = null, members = [], read
                   </div>
                   <div className="text-[11px] text-slate-500 mt-0.5 truncate">
                     {analytics.pastDue > 0
-                      ? `${analytics.pastDue} overdue of ${analytics.scheduledItemsCount || 0} with deadlines (${analytics.overdueRate || 0}%)`
-                      : (analytics.scheduledItemsCount > 0
-                          ? `0 overdue of ${analytics.scheduledItemsCount} with deadlines (0%)`
-                          : '0 overdue · No items with deadlines')}
+                      ? `${analytics.pastDue} overdue of ${analytics.scheduledItemsCount || 0}`
+                      : '0 overdue items'}
+                  </div>
+                </div>
+
+                {/* 5. Story Points */}
+                <div className="p-3.5 rounded-xl bg-slate-50/70 border border-slate-100 flex flex-col justify-between">
+                  <div className="flex items-center justify-between">
+                    <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">Story Points</span>
+                    <div className="w-7 h-7 rounded-lg bg-indigo-100/80 text-indigo-600 flex items-center justify-center">
+                      <CheckSquare className="w-3.5 h-3.5" />
+                    </div>
+                  </div>
+                  <div className="text-2xl font-bold text-indigo-600 mt-2">
+                    {analytics.storyPointsCompleted || 0}
+                    <span className="text-xs font-semibold text-slate-400 ml-1">/ {analytics.storyPointsTotal || 0} pts</span>
+                  </div>
+                  <div className="text-[11px] text-slate-500 mt-0.5 truncate">
+                    {analytics.storyPointsTotal > 0
+                      ? `${Math.round(((analytics.storyPointsCompleted || 0) / analytics.storyPointsTotal) * 100)}% completed`
+                      : 'No points estimated'}
+                  </div>
+                </div>
+
+                {/* 6. Logged Effort */}
+                <div className="p-3.5 rounded-xl bg-slate-50/70 border border-slate-100 flex flex-col justify-between">
+                  <div className="flex items-center justify-between">
+                    <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">Logged Effort</span>
+                    <div className="w-7 h-7 rounded-lg bg-amber-100/80 text-amber-600 flex items-center justify-center">
+                      <Clock className="w-3.5 h-3.5" />
+                    </div>
+                  </div>
+                  <div className="text-2xl font-bold text-amber-600 mt-2">
+                    {analytics.totalLoggedHours || 0}
+                    <span className="text-xs font-semibold text-slate-400 ml-1">hrs</span>
+                  </div>
+                  <div className="text-[11px] text-slate-500 mt-0.5 truncate">
+                    {analytics.totalLoggedMinutes || 0}m actual effort
                   </div>
                 </div>
               </div>
@@ -881,6 +932,28 @@ export default function ProjectTaskCharts({ projectId = null, members = [], read
             <div className="border-t border-slate-100" />
 
             {/* Analytics Row: 42% Status Distribution (col-span-5) | 58% Priority Mix (col-span-7) with thin vertical divider */}
+            {analytics.total === 0 ? (
+              <div className="p-8 text-center bg-slate-50/60 rounded-xl border border-dashed border-slate-200 m-5">
+                <div className="w-10 h-10 rounded-full bg-purple-50 text-purple-600 flex items-center justify-center mx-auto mb-2.5">
+                  <Layers className="w-5 h-5" />
+                </div>
+                <h4 className="text-sm font-bold text-slate-800">
+                  No tasks assigned to you in {accessibleProjects.find((p) => p.id === selectedProjectId)?.name || 'this scope'}
+                </h4>
+                <p className="text-xs text-slate-500 mt-1 max-w-sm mx-auto">
+                  You currently have no tasks assigned to your account in this selected project.
+                </p>
+                {selectedProjectId && (
+                  <button
+                    type="button"
+                    onClick={() => setSelectedProjectId('')}
+                    className="mt-3.5 px-3.5 py-1.5 rounded-lg bg-purple-600 hover:bg-purple-700 text-white text-xs font-semibold inline-flex items-center gap-1.5 cursor-pointer shadow-2xs"
+                  >
+                    <span>View All Assigned Projects</span>
+                  </button>
+                )}
+              </div>
+            ) : (
             <div className="grid grid-cols-1 lg:grid-cols-12 divide-y lg:divide-y-0 lg:divide-x divide-slate-100">
               {/* Left: Status Distribution (approx 42% on desktop) */}
               <div className="lg:col-span-5 p-5 sm:p-6 flex flex-col justify-between">
@@ -1065,6 +1138,7 @@ export default function ProjectTaskCharts({ projectId = null, members = [], read
                 </div>
               </div>
             </div>
+            )}
           </div>
         )}
 
