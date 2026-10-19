@@ -955,7 +955,7 @@ export class ProjectService {
     return roles.map((r) => ({
       id: r.id,
       name: r.name,
-      label: BUILTIN_LABELS[r.name] || r.description || r.name,
+      label: r.is_custom ? r.name : (BUILTIN_LABELS[r.name] || r.name),
       description: r.description || (r.is_custom ? 'Custom project role' : 'Standard built-in role'),
       is_custom: Boolean(r.is_custom),
       is_template: Boolean(r.is_custom && !r.project_id),
