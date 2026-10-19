@@ -6,6 +6,7 @@ import { prisma } from './lib/prisma';
 import { closeRedisConnections, getRedisConfig } from './lib/redis';
 import { TimesheetService } from './services/timesheet.service';
 import { connectMongoDB, disconnectMongoDB } from './lib/mongodb';
+import { ensureLocalS3Service, stopLocalS3Service } from './lib/local-s3';
 
 const PORT = Number(process.env.PORT) || 3001;
 const HOST = '0.0.0.0';
@@ -25,6 +26,9 @@ async function start() {
         console.warn('[MongoDB] Warning: Initial MongoDB connection failed (server continuing with SQL fallback):', mongoErr.message);
       }
     }
+
+    // Auto-boot local S3 storage service if running locally with S3
+    await ensureLocalS3Service();
 
     const redisConfig = getRedisConfig();
     console.log(`[Redis] Broker Status: ${redisConfig.maskedUrl}`);
@@ -57,6 +61,7 @@ async function start() {
       server.close(async () => {
         await closeRedisConnections();
         await disconnectMongoDB().catch(() => {});
+        await stopLocalS3Service().catch(() => {});
         await prisma.$disconnect();
         console.log('Server and connections closed.');
         process.exit(0);

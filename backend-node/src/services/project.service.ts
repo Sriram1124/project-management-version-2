@@ -2212,26 +2212,33 @@ export class ProjectService {
       throw err;
     }
 
+    // Dual-write to S3 and MongoDB if enabled
     if (process.env.DUAL_WRITE_PROJECT_FILES === 'true') {
       try {
-        const hash = crypto.createHash('sha256').update(file.buffer).digest('hex');
+        const uploadResult = await ObjectStorageService.uploadBuffer(
+          projectId,
+          file.originalname,
+          file.buffer,
+          file.mimetype || 'application/octet-stream'
+        );
+
         await ProjectFile.create({
           file_id: createdDoc.id,
           project_id: projectId,
           organization_id: project.organization_id,
-          name: file.originalname.trim(),
+          name: createdDoc.name,
           original_name: file.originalname,
           document_type: ext,
-          mime_type: file.mimetype || 'application/octet-stream',
-          file_size_bytes: file.buffer.length,
-          storage_provider: 'local',
-          storage_key: storageKey,
-          checksum_sha256: hash,
+          mime_type: uploadResult.mimeType,
+          file_size_bytes: uploadResult.byteLength,
+          storage_provider: 's3',
+          storage_key: uploadResult.storageKey,
+          checksum_sha256: uploadResult.checksumSha256,
           uploaded_by: user.id || 'system',
           is_archived: false,
         });
-      } catch (dualWriteErr) {
-        console.warn('[ProjectService] Dual-write to MongoDB failed (non-blocking):', dualWriteErr);
+      } catch (dualErr) {
+        console.warn('[ProjectService] Dual-write to MongoDB/S3 failed (non-blocking):', dualErr);
       }
     }
 
@@ -2381,21 +2388,12 @@ export class ProjectService {
       throw new Error('Invalid file path traversal');
     }
 
-    // Ensure physical fixture file exists for download and preview
+    // Removed synthetic dummy-file generation: return explicit 404 error if missing on disk
     if (!fs.existsSync(resolvedPath)) {
-      const parentDir = path.dirname(resolvedPath);
-      if (!fs.existsSync(parentDir)) {
-        fs.mkdirSync(parentDir, { recursive: true });
-      }
-      const ext = path.extname(document.name).toLowerCase();
-      if (ext === '.pdf' || document.document_type?.toLowerCase() === 'pdf' || document.document_type === 'REQUIREMENTS') {
-        const dummyPdf = Buffer.from(
-          '%PDF-1.4\n1 0 obj<</Type/Catalog/Pages 2 0 R>>endobj 2 0 obj<</Type/Pages/Kids[3 0 R]/Count 1>>endobj 3 0 obj<</Type/Page/MediaBox[0 0 612 792]/Parent 2 0 R/Resources<<>>>>endobj\nxref\n0 4\n0000000000 65535 f\n0000000009 00000 n\n0000000052 00000 n\n0000000101 00000 n\ntrailer<</Size 4/Root 1 0 R>>\nstartxref\n178\n%%EOF'
-        );
-        fs.writeFileSync(resolvedPath, dummyPdf);
-      } else {
-        fs.writeFileSync(resolvedPath, Buffer.from(`Document Content: ${document.name}\nProject: ${projectId}\n`));
-      }
+      console.error(`[ProjectStorage] CRITICAL: File missing from storage for document ${document.id} (key: ${document.storage_key})`);
+      const missingErr = new Error(`File not found in storage: ${document.name}`);
+      (missingErr as any).statusCode = 404;
+      throw missingErr;
     }
 
     const mimeType = StorageService.getMimeType(document.name);
