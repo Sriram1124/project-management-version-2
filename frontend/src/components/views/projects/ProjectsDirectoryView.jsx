@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { 
   FolderKanban, 
   Plus, 
@@ -43,6 +43,9 @@ export default function ProjectsDirectoryView({ onSelectProject, isIntern = fals
     end_date: '',
     owner_id: '',
   });
+  const [createSelectedOwners, setCreateSelectedOwners] = useState([]);
+  const [createOwnerSearch, setCreateOwnerSearch] = useState('');
+  const [isOwnerDropdownOpen, setIsOwnerDropdownOpen] = useState(false);
   const [createSelectedMembers, setCreateSelectedMembers] = useState([]);
   const [createSubmitting, setCreateSubmitting] = useState(false);
   const [createError, setCreateError] = useState(null);
@@ -108,16 +111,69 @@ export default function ProjectsDirectoryView({ onSelectProject, isIntern = fals
     fetchOrgUsers();
   }, []);
 
-  // Show ONLY interns in the project member pickers
-  const internUsers = orgUsers.filter((u) => u.type === 'INTERN' || u.role === 'INTERN');
+  // Eligible Project Owners: strictly active Managers, Admins, Super Admins (NEVER interns)
+  const eligibleOwners = useMemo(() => {
+    return orgUsers.filter((u) => {
+      if (u.is_active === false) return false;
+      const roleStr = (u.type || u.role?.name || u.role || '').toUpperCase();
+      const roles = Array.isArray(u.roles)
+        ? u.roles.map((r) => (r.role?.name || r.name || (typeof r === 'string' ? r : '')).toUpperCase())
+        : [];
+      if (roleStr) roles.push(roleStr);
 
-  const filteredCreateInterns = internUsers.filter((u) => {
-    if (!createMemberSearch.trim()) return true;
+      const isIntern = roles.includes('INTERN');
+      const isManagerOrHigher = roles.some((r) => ['MANAGER', 'ADMIN', 'SUPER_ADMIN'].includes(r));
+
+      return !isIntern && isManagerOrHigher;
+    });
+  }, [orgUsers]);
+
+  const filteredCreateOwners = useMemo(() => {
+    if (!createOwnerSearch.trim()) return eligibleOwners;
+    const term = createOwnerSearch.toLowerCase().trim();
+    return eligibleOwners.filter((u) => {
+      const matchName = u.name && u.name.toLowerCase().includes(term);
+      const matchEmail = u.email && u.email.toLowerCase().includes(term);
+      const matchRole = (u.type || u.role || '').toLowerCase().includes(term);
+      return matchName || matchEmail || matchRole;
+    });
+  }, [eligibleOwners, createOwnerSearch]);
+
+  // Eligible Project Members:
+  // - Must be active
+  // - Exclude users already selected as Project Owners to prevent duplicate roles/assignments
+  // - Exclude platform SUPER_ADMIN
+  const eligibleMembers = useMemo(() => {
+    return orgUsers.filter((u) => {
+      if (u.is_active === false) return false;
+      if (createSelectedOwners.includes(u.id)) return false;
+
+      const roleStr = (u.type || u.role?.name || u.role || '').toUpperCase();
+      const roles = Array.isArray(u.roles)
+        ? u.roles.map((r) => (r.role?.name || r.name || (typeof r === 'string' ? r : '')).toUpperCase())
+        : [];
+      if (roleStr) roles.push(roleStr);
+
+      if (roles.includes('SUPER_ADMIN')) return false;
+
+      return true;
+    });
+  }, [orgUsers, createSelectedOwners]);
+
+  const filteredCreateMembers = useMemo(() => {
+    if (!createMemberSearch.trim()) return eligibleMembers;
     const term = createMemberSearch.toLowerCase().trim();
-    const matchesName = u.name && u.name.toLowerCase().includes(term);
-    const matchesEmail = u.email && u.email.toLowerCase().includes(term);
-    return matchesName || matchesEmail;
-  });
+    return eligibleMembers.filter((u) => {
+      const matchName = u.name && u.name.toLowerCase().includes(term);
+      const matchEmail = u.email && u.email.toLowerCase().includes(term);
+      const matchRole = (u.type || u.role || '').toLowerCase().includes(term);
+      const matchBatch = (u.batch || '').toLowerCase().includes(term) || (u.subbatch || '').toLowerCase().includes(term);
+      return matchName || matchEmail || matchRole || matchBatch;
+    });
+  }, [eligibleMembers, createMemberSearch]);
+
+  // Backward-compatible intern filter for edit modal
+  const internUsers = orgUsers.filter((u) => u.type === 'INTERN' || u.role === 'INTERN');
 
   const filteredEditInterns = internUsers.filter((u) => {
     if (!editMemberSearch.trim()) return true;
@@ -127,8 +183,28 @@ export default function ProjectsDirectoryView({ onSelectProject, isIntern = fals
     return matchesName || matchesEmail;
   });
 
+  const toggleSelectOwner = (userId) => {
+    setCreateSelectedOwners((prev) => {
+      const exists = prev.includes(userId);
+      const next = exists ? prev.filter((id) => id !== userId) : [...prev, userId];
+      // When added as owner, ensure removed from selected members if previously checked
+      if (!exists) {
+        setCreateSelectedMembers((memPrev) => memPrev.filter((id) => id !== userId));
+      }
+      return next;
+    });
+  };
+
+  const clearSelectedOwners = () => {
+    setCreateSelectedOwners([]);
+  };
+
   const handleOpenCreate = () => {
-    const defaultOwnerId = authUser?.id || (orgUsers.length > 0 ? orgUsers[0].id : '');
+    const isAuthUserEligible = authUser?.id && eligibleOwners.some((o) => o.id === authUser.id);
+    const initialOwners = isAuthUserEligible
+      ? [authUser.id]
+      : (eligibleOwners.length > 0 ? [eligibleOwners[0].id] : []);
+
     setCreateForm({
       name: '',
       methodology: '',
@@ -136,8 +212,11 @@ export default function ProjectsDirectoryView({ onSelectProject, isIntern = fals
       status: 'PLANNED',
       start_date: '',
       end_date: '',
-      owner_id: defaultOwnerId,
+      owner_id: initialOwners[0] || '',
     });
+    setCreateSelectedOwners(initialOwners);
+    setCreateOwnerSearch('');
+    setIsOwnerDropdownOpen(false);
     setCreateSelectedMembers([]);
     setCreateMemberSearch('');
     setCreateError(null);
@@ -166,8 +245,8 @@ export default function ProjectsDirectoryView({ onSelectProject, isIntern = fals
       setCreateError('Project Methodology is required. Please select Scrum or Kanban.');
       return;
     }
-    if (!createForm.owner_id) {
-      setCreateError('Project owner is required');
+    if (createSelectedOwners.length === 0) {
+      setCreateError('At least one project owner is required');
       return;
     }
     setCreateSubmitting(true);
@@ -180,14 +259,16 @@ export default function ProjectsDirectoryView({ onSelectProject, isIntern = fals
         status: createForm.status,
         start_date: createForm.start_date || undefined,
         end_date: createForm.end_date || undefined,
-        owner_id: createForm.owner_id,
+        owner_id: createSelectedOwners[0],
+        owner_ids: createSelectedOwners,
         member_ids: createSelectedMembers,
       };
       const created = await projectsService.createProject(payload);
       setProjects((prev) => [created, ...prev]);
       setIsCreateOpen(false);
+      const ownerCount = created.owners?.length || createSelectedOwners.length;
       const memberCount = created.members?.length || createSelectedMembers.length;
-      showToast(`Project "${created.name}" created successfully with ${memberCount} member(s)`);
+      showToast(`Project "${created.name}" created successfully with ${ownerCount} owner(s) and ${memberCount} member(s)`);
     } catch (err) {
       setCreateError(err?.message || 'Failed to create project');
     } finally {
@@ -341,9 +422,12 @@ export default function ProjectsDirectoryView({ onSelectProject, isIntern = fals
       const q = searchQuery.toLowerCase();
       const matchName = p.name?.toLowerCase().includes(q);
       const matchId = p.id?.toLowerCase().includes(q);
-      const matchOwner = p.owner 
-        ? `${p.owner.name || ''} ${p.owner.email || ''}`.toLowerCase().includes(q)
-        : false;
+      const owners = (p.owners && p.owners.length > 0)
+        ? p.owners
+        : (p.owner ? [p.owner] : []);
+      const matchOwner = owners.some((o) =>
+        `${o.name || ''} ${o.email || ''}`.toLowerCase().includes(q)
+      );
       return matchName || matchId || matchOwner;
     }
     return true;
@@ -471,8 +555,12 @@ export default function ProjectsDirectoryView({ onSelectProject, isIntern = fals
                 </thead>
                 <tbody className="divide-y divide-slate-100">
                   {filteredProjects.map((proj) => {
-                    const ownerName = proj.owner 
-                      ? proj.owner.name || proj.owner.email || 'Owner'
+                    const owners = (proj.owners && proj.owners.length > 0)
+                      ? proj.owners
+                      : (proj.owner ? [proj.owner] : []);
+                    const primaryOwner = owners[0];
+                    const ownerName = primaryOwner 
+                      ? primaryOwner.name || primaryOwner.email || 'Owner'
                       : 'Unassigned';
                     const ownerAvatar = `https://ui-avatars.com/api/?name=${encodeURIComponent(ownerName)}&background=7C3AED&color=fff`;
 
@@ -515,17 +603,37 @@ export default function ProjectsDirectoryView({ onSelectProject, isIntern = fals
                         {/* Project Owner */}
                         <td className="py-4 px-6">
                           <div className="flex items-center gap-2.5">
-                            <img
-                              src={ownerAvatar}
-                              alt={ownerName}
-                              className="w-7 h-7 rounded-full object-cover ring-1 ring-purple-200"
-                            />
-                            <div>
-                              <span className="font-semibold text-slate-800 text-xs block leading-tight">
-                                {ownerName}
-                              </span>
-                              <span className="text-[10px] text-slate-400 block leading-tight">
-                                {proj.owner?.email || 'Owner'}
+                            <div className="relative shrink-0">
+                              <img
+                                src={ownerAvatar}
+                                alt={ownerName}
+                                className="w-7 h-7 rounded-full object-cover ring-1 ring-purple-200"
+                              />
+                              {owners.length > 1 && (
+                                <span
+                                  className="absolute -top-1.5 -right-1.5 px-1 py-0.2 bg-purple-600 text-white text-[8px] font-bold rounded-full border border-white"
+                                  title={`${owners.length} Project Owners: ${owners.map((o) => o.name || o.email).join(', ')}`}
+                                >
+                                  +{owners.length - 1}
+                                </span>
+                              )}
+                            </div>
+                            <div className="min-w-0">
+                              <div className="flex items-center gap-1.5">
+                                <span className="font-semibold text-slate-800 text-xs block leading-tight truncate max-w-[120px]">
+                                  {ownerName}
+                                </span>
+                                {owners.length > 1 && (
+                                  <span
+                                    className="text-[9px] font-bold text-purple-700 bg-purple-50 px-1 py-0.2 rounded border border-purple-200 shrink-0"
+                                    title={owners.map((o) => o.name || o.email).join(', ')}
+                                  >
+                                    +{owners.length - 1}
+                                  </span>
+                                )}
+                              </div>
+                              <span className="text-[10px] text-slate-400 block leading-tight truncate max-w-[130px]">
+                                {primaryOwner?.email || 'Owner'}
                               </span>
                             </div>
                           </div>
@@ -772,24 +880,145 @@ export default function ProjectsDirectoryView({ onSelectProject, isIntern = fals
                 />
               </div>
 
-              {/* Project Owner Selector */}
+              {/* Project Owners Multi-Select Selector */}
               <div>
-                <label className="block text-xs font-semibold text-slate-700 mb-1">
-                  Project Owner <span className="text-rose-500">*</span>
-                </label>
-                <select
-                  required
-                  value={createForm.owner_id}
-                  onChange={(e) => setCreateForm({ ...createForm, owner_id: e.target.value })}
-                  className="w-full px-3 py-2 border border-slate-300 rounded-xl text-xs text-slate-800 focus:outline-hidden focus:border-purple-600 focus:ring-1 focus:ring-purple-600 bg-white"
-                >
-                  <option value="" disabled>Select project owner...</option>
-                  {orgUsers.map((u) => (
-                    <option key={u.id} value={u.id}>
-                      {u.name} ({u.email})
-                    </option>
-                  ))}
-                </select>
+                <div className="flex items-center justify-between mb-1.5">
+                  <label className="block text-xs font-semibold text-slate-700">
+                    Project Owners <span className="text-rose-500">*</span>
+                  </label>
+                  <div className="flex items-center gap-2">
+                    <span className="text-[11px] font-semibold text-purple-600">
+                      {createSelectedOwners.length} selected
+                    </span>
+                    {createSelectedOwners.length > 0 && (
+                      <button
+                        type="button"
+                        onClick={clearSelectedOwners}
+                        className="text-[11px] text-slate-400 hover:text-rose-600 transition-colors font-medium cursor-pointer"
+                      >
+                        Clear
+                      </button>
+                    )}
+                  </div>
+                </div>
+
+                {/* Selected Owners Chips */}
+                {createSelectedOwners.length > 0 && (
+                  <div className="flex flex-wrap gap-1.5 mb-2 max-h-24 overflow-y-auto p-1.5 bg-slate-50 border border-slate-200 rounded-xl">
+                    {createSelectedOwners.map((ownerId) => {
+                      const owner = eligibleOwners.find((o) => o.id === ownerId) ||
+                        orgUsers.find((o) => o.id === ownerId) ||
+                        (authUser?.id === ownerId ? authUser : null);
+                      const name = owner?.name || owner?.email || ownerId;
+                      const roleName = (owner?.type || owner?.role?.name || owner?.role || 'MANAGER').toUpperCase();
+                      return (
+                        <span
+                          key={ownerId}
+                          className="inline-flex items-center gap-1.5 px-2.5 py-1 bg-purple-100/80 text-purple-900 border border-purple-200 rounded-lg text-xs font-medium shadow-2xs"
+                        >
+                          <span className="w-4 h-4 rounded-full bg-purple-600 text-white flex items-center justify-center text-[9px] font-bold shrink-0">
+                            {(name || 'U').slice(0, 1).toUpperCase()}
+                          </span>
+                          <span className="truncate max-w-[140px]">{name}</span>
+                          <span className="text-[9px] px-1 py-0.5 rounded bg-purple-200/80 text-purple-800 font-mono font-semibold uppercase shrink-0">
+                            {roleName}
+                          </span>
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              toggleSelectOwner(ownerId);
+                            }}
+                            className="text-purple-600 hover:text-rose-600 transition-colors p-0.5 cursor-pointer rounded-xs shrink-0"
+                            title={`Remove ${name}`}
+                            aria-label={`Remove ${name}`}
+                          >
+                            <X className="w-3 h-3" />
+                          </button>
+                        </span>
+                      );
+                    })}
+                  </div>
+                )}
+
+                {/* Owner Search Field */}
+                <div className="relative mb-2">
+                  <Search className="w-3.5 h-3.5 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" />
+                  <input
+                    type="text"
+                    value={createOwnerSearch}
+                    onChange={(e) => setCreateOwnerSearch(e.target.value)}
+                    placeholder="Search eligible managers & admins by name or email..."
+                    className="w-full pl-8 pr-8 py-1.5 text-xs rounded-lg border border-slate-200 text-slate-800 placeholder-slate-400 focus:outline-hidden focus:border-purple-600 focus:ring-1 focus:ring-purple-600 bg-white shadow-2xs"
+                  />
+                  {createOwnerSearch && (
+                    <button
+                      type="button"
+                      onClick={() => setCreateOwnerSearch('')}
+                      className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 cursor-pointer p-0.5"
+                    >
+                      <X className="w-3.5 h-3.5" />
+                    </button>
+                  )}
+                </div>
+
+                {/* Eligible Owners List */}
+                <div className="max-h-36 overflow-y-auto border border-slate-200 rounded-xl divide-y divide-slate-100 bg-slate-50/50 p-1">
+                  {loadingUsers ? (
+                    <div className="p-3 text-center text-xs text-slate-400 flex items-center justify-center gap-2">
+                      <Loader2 className="w-3.5 h-3.5 animate-spin text-purple-600" />
+                      <span>Loading eligible owners...</span>
+                    </div>
+                  ) : eligibleOwners.length === 0 ? (
+                    <div className="p-3 text-center text-xs text-slate-400">
+                      No eligible managers or administrators available.
+                    </div>
+                  ) : filteredCreateOwners.length === 0 ? (
+                    <div className="p-3 text-center text-xs text-slate-400">
+                      No eligible owners found matching "{createOwnerSearch}".
+                    </div>
+                  ) : (
+                    filteredCreateOwners.map((u) => {
+                      const isSelected = createSelectedOwners.includes(u.id);
+                      const roleName = (u.type || u.role?.name || u.role || 'MANAGER').toUpperCase();
+                      return (
+                        <div
+                          key={u.id}
+                          onClick={() => toggleSelectOwner(u.id)}
+                          className={`flex items-center justify-between p-2 rounded-lg cursor-pointer transition-colors ${
+                            isSelected ? 'bg-purple-100/70 text-purple-900' : 'hover:bg-white text-slate-700'
+                          }`}
+                        >
+                          <div className="flex items-center gap-2.5 min-w-0">
+                            <div className={`w-7 h-7 rounded-full flex items-center justify-center text-[10px] font-bold shrink-0 shadow-2xs ${
+                              isSelected ? 'bg-purple-600 text-white' : 'bg-purple-100 text-purple-700'
+                            }`}>
+                              {(u.name || u.email || 'U').slice(0, 2).toUpperCase()}
+                            </div>
+                            <div className="truncate">
+                              <div className="flex items-center gap-2">
+                                <span className="text-xs font-semibold text-slate-900 leading-tight truncate">
+                                  {u.name}
+                                </span>
+                                <span className="font-mono text-[9px] font-bold text-purple-700 bg-purple-50 px-1.5 py-0.2 rounded border border-purple-200 shrink-0">
+                                  {roleName}
+                                </span>
+                              </div>
+                              <div className="text-[11px] text-slate-500 font-mono leading-tight truncate">
+                                {u.email}
+                              </div>
+                            </div>
+                          </div>
+                          <div className={`w-4 h-4 rounded border flex items-center justify-center shrink-0 ml-2 transition-colors ${
+                            isSelected ? 'bg-purple-600 border-purple-600 text-white' : 'border-slate-300 bg-white'
+                          }`}>
+                            {isSelected && <Check className="w-3 h-3 stroke-[3]" />}
+                          </div>
+                        </div>
+                      );
+                    })
+                  )}
+                </div>
               </div>
 
               {/* Project Members Multi-Select Picker */}
@@ -803,14 +1032,14 @@ export default function ProjectsDirectoryView({ onSelectProject, isIntern = fals
                   </span>
                 </div>
 
-                {/* Intern Search Field */}
+                {/* Member Search Field */}
                 <div className="relative mb-2">
                   <Search className="w-3.5 h-3.5 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" />
                   <input
                     type="text"
                     value={createMemberSearch}
                     onChange={(e) => setCreateMemberSearch(e.target.value)}
-                    placeholder="Search interns by name or email..."
+                    placeholder="Search eligible members by name, email, or role..."
                     className="w-full pl-8 pr-8 py-1.5 text-xs rounded-lg border border-slate-200 text-slate-800 placeholder-slate-400 focus:outline-hidden focus:border-purple-600 focus:ring-1 focus:ring-purple-600 bg-white shadow-2xs"
                   />
                   {createMemberSearch && (
@@ -828,19 +1057,20 @@ export default function ProjectsDirectoryView({ onSelectProject, isIntern = fals
                   {loadingUsers ? (
                     <div className="p-4 text-center text-xs text-slate-400 flex items-center justify-center gap-2">
                       <Loader2 className="w-3.5 h-3.5 animate-spin text-purple-600" />
-                      <span>Loading interns...</span>
+                      <span>Loading eligible members...</span>
                     </div>
-                  ) : internUsers.length === 0 ? (
+                  ) : eligibleMembers.length === 0 ? (
                     <div className="p-4 text-center text-xs text-slate-400">
-                      No interns available.
+                      No eligible members available.
                     </div>
-                  ) : filteredCreateInterns.length === 0 ? (
+                  ) : filteredCreateMembers.length === 0 ? (
                     <div className="p-4 text-center text-xs text-slate-400">
-                      No interns found matching "{createMemberSearch}".
+                      No eligible members found matching "{createMemberSearch}".
                     </div>
                   ) : (
-                    filteredCreateInterns.map((u) => {
+                    filteredCreateMembers.map((u) => {
                       const isSelected = createSelectedMembers.includes(u.id);
+                      const roleName = (u.type || u.role?.name || u.role || 'MEMBER').toUpperCase();
                       return (
                         <div
                           key={u.id}
@@ -859,6 +1089,9 @@ export default function ProjectsDirectoryView({ onSelectProject, isIntern = fals
                               <div className="flex items-center gap-2">
                                 <span className="text-xs font-semibold text-slate-900 leading-tight truncate">
                                   {u.name}
+                                </span>
+                                <span className="font-mono text-[9px] font-bold text-slate-600 bg-slate-200/70 px-1.5 py-0.2 rounded shrink-0">
+                                  {roleName}
                                 </span>
                                 {u.batch && u.subbatch && (
                                   <span className="font-mono text-[10px] font-bold text-purple-700 bg-purple-50 px-1.5 py-0.2 rounded border border-purple-200 shrink-0">

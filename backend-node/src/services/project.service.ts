@@ -15,6 +15,7 @@ export interface CreateProjectInput {
   end_date?: string | null;
   status?: ProjectStatus;
   owner_id?: string;
+  owner_ids?: string[];
   member_ids?: string[];
   organization_id?: string;
 }
@@ -97,11 +98,12 @@ export class ProjectService {
     if (filters?.my) {
       where.OR = [
         { owner_id: user.id },
+        { owners: { some: { user_id: user.id } } },
         { members: { some: { user_id: user.id } } },
       ];
     }
 
-    return await prisma.project.findMany({
+    const projects = await prisma.project.findMany({
       where,
       include: {
         owner: {
@@ -109,6 +111,17 @@ export class ProjectService {
             id: true,
             name: true,
             email: true,
+          },
+        },
+        owners: {
+          include: {
+            user: {
+              select: {
+                id: true,
+                name: true,
+                email: true,
+              },
+            },
           },
         },
         members: {
@@ -141,6 +154,13 @@ export class ProjectService {
       },
       orderBy: { created_at: 'desc' },
     });
+
+    return projects.map((p: any) => ({
+      ...p,
+      owners: p.owners && p.owners.length > 0
+        ? p.owners.map((o: any) => o.user || o)
+        : (p.owner ? [p.owner] : []),
+    }));
   }
 
   /**
@@ -172,6 +192,17 @@ export class ProjectService {
             email: true,
           },
         },
+        owners: {
+          include: {
+            user: {
+              select: {
+                id: true,
+                name: true,
+                email: true,
+              },
+            },
+          },
+        },
         members: {
           include: {
             user: {
@@ -200,11 +231,20 @@ export class ProjectService {
     }
 
     const isMgr = this.isManagerOrAdmin(user);
-    if (!isMgr && project.owner_id !== user.id) {
+    const isOwner = project.owner_id === user.id || project.owners?.some((o: any) => (o.user_id || o.id) === user.id);
+    if (!isMgr && !isOwner) {
       const isMember = project.members.some((m) => m.user_id === user.id);
       if (!isMember) {
         throw new Error('Forbidden: you are not a member of this project');
       }
+    }
+
+    if (project.owners && project.owners.length > 0) {
+      (project as any).owners = project.owners.map((o: any) => o.user || o);
+    } else if (project.owner) {
+      (project as any).owners = [project.owner];
+    } else {
+      (project as any).owners = [];
     }
 
     if (process.env.ENABLE_MONGODB_PROJECT_FILES === 'true') {
@@ -257,17 +297,87 @@ export class ProjectService {
     }
     const methodology = methUpper as ProjectMethodology;
 
-    let ownerId = user.id;
-    if (data.owner_id) {
-      // Validate owner belongs to the same organization
-      const ownerUser = await prisma.user.findFirst({
-        where: { id: data.owner_id, organization_id: orgId },
+    // Collect and normalize owner IDs
+    const rawOwnerIds: string[] = [];
+    if (Array.isArray(data.owner_ids) && data.owner_ids.length > 0) {
+      rawOwnerIds.push(...data.owner_ids);
+    } else if (data.owner_id && typeof data.owner_id === 'string' && data.owner_id.trim()) {
+      rawOwnerIds.push(data.owner_id.trim());
+    } else if (user?.id) {
+      rawOwnerIds.push(user.id);
+    }
+
+    const ownerIds = Array.from(new Set(rawOwnerIds.filter((id): id is string => typeof id === 'string' && !!id.trim())));
+    if (ownerIds.length === 0) {
+      throw new Error('At least one project owner is required');
+    }
+
+    // Validate owners
+    let ownerUsers: any[] = [];
+    if (ownerIds.length === 1) {
+      let ownerUser = await prisma.user.findFirst({
+        where: { id: ownerIds[0], organization_id: orgId },
+        include: {
+          roles: {
+            include: {
+              role: true,
+            },
+          },
+        },
       });
+      if (!ownerUser && user?.id === ownerIds[0] && (!user.organization_id || user.organization_id === orgId)) {
+        ownerUser = user;
+      }
       if (!ownerUser) {
         throw new Error('Project owner does not exist in your organization');
       }
-      ownerId = data.owner_id;
+      ownerUsers = [ownerUser];
+    } else {
+      ownerUsers = await prisma.user.findMany({
+        where: {
+          id: { in: ownerIds },
+          organization_id: orgId,
+        },
+        include: {
+          roles: {
+            include: {
+              role: true,
+            },
+          },
+        },
+      });
+      if (ownerUsers.length !== ownerIds.length) {
+        throw new Error('One or more selected project owners do not exist in your organization');
+      }
     }
+
+    for (const ownerUser of ownerUsers) {
+      if ((ownerUser as any).is_active === false) {
+        throw new Error(`User ${ownerUser.name || ownerUser.email || ownerUser.id} is inactive and cannot be a project owner`);
+      }
+
+      const userRoles: string[] = [];
+      if (Array.isArray(ownerUser.roles)) {
+        for (const r of ownerUser.roles) {
+          const roleName = (r.role?.name || r.name || (typeof r === 'string' ? r : '')).toUpperCase();
+          if (roleName) userRoles.push(roleName);
+        }
+      }
+      const directRole = ((ownerUser as any).role?.name || (ownerUser as any).role || (ownerUser as any).type || '').toUpperCase();
+      if (directRole) userRoles.push(directRole);
+
+      const hasRoleInfo = Array.isArray(ownerUser.roles) || ownerUser.role || (ownerUser as any).type;
+      if (hasRoleInfo) {
+        const isIntern = userRoles.includes('INTERN');
+        const isEligibleRole = userRoles.some((r) => ['MANAGER', 'ADMIN', 'SUPER_ADMIN'].includes(r));
+
+        if (isIntern || !isEligibleRole) {
+          throw new Error(`User ${ownerUser.name || ownerUser.email || ownerUser.id} is not eligible to be a project owner. Only managers or higher leadership can own projects.`);
+        }
+      }
+    }
+
+    const primaryOwnerId = ownerIds[0];
 
     // Validate dates
     let startDate: Date | null = null;
@@ -313,7 +423,10 @@ export class ProjectService {
     }
 
     // Validate members if provided
-    const memberIds = Array.from(new Set((data.member_ids || []).filter((id): id is string => typeof id === 'string' && !!id.trim())));
+    let memberIds = Array.from(new Set((data.member_ids || []).filter((id): id is string => typeof id === 'string' && !!id.trim())));
+    // Exclude selected owners from memberIds so there are no duplicate memberships or conflicts
+    memberIds = memberIds.filter((mid) => !ownerIds.includes(mid));
+
     if (memberIds.length > 0) {
       const validUsers = await prisma.user.findMany({
         where: {
@@ -321,14 +434,30 @@ export class ProjectService {
           organization_id: orgId,
           is_active: true,
         },
-        select: { id: true },
+        include: {
+          roles: {
+            include: {
+              role: true,
+            },
+          },
+        },
       });
       if (validUsers.length !== memberIds.length) {
         throw new Error('One or more selected members do not exist in your organization');
       }
+
+      for (const memberUser of validUsers) {
+        const roleNames = (memberUser.roles || []).map((r: any) => (r.role?.name || r.name || '').toUpperCase());
+        const directRole = ((memberUser as any).role?.name || (memberUser as any).role || (memberUser as any).type || '').toUpperCase();
+        if (directRole) roleNames.push(directRole);
+
+        if (roleNames.length === 1 && roleNames.includes('SUPER_ADMIN')) {
+          throw new Error(`User ${memberUser.name || memberUser.email} cannot be assigned as a project member`);
+        }
+      }
     }
 
-    return await prisma.project.create({
+    const createdProject = await prisma.project.create({
       data: {
         name: data.name.trim(),
         description: data.description?.trim() || null,
@@ -336,8 +465,11 @@ export class ProjectService {
         start_date: startDate,
         end_date: endDate,
         status,
-        owner_id: ownerId,
+        owner_id: primaryOwnerId,
         organization_id: orgId,
+        owners: {
+          create: ownerIds.map((userId) => ({ user_id: userId })),
+        },
         members: memberIds.length > 0 ? {
           create: memberIds.map((userId) => ({ user_id: userId })),
         } : undefined,
@@ -348,6 +480,17 @@ export class ProjectService {
             id: true,
             name: true,
             email: true,
+          },
+        },
+        owners: {
+          include: {
+            user: {
+              select: {
+                id: true,
+                name: true,
+                email: true,
+              },
+            },
           },
         },
         members: {
@@ -370,6 +513,13 @@ export class ProjectService {
         },
       },
     });
+
+    return {
+      ...createdProject,
+      owners: createdProject.owners && createdProject.owners.length > 0
+        ? createdProject.owners.map((o: any) => o.user || o)
+        : (createdProject.owner ? [createdProject.owner] : []),
+    };
   }
 
   /**

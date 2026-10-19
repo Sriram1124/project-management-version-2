@@ -25,6 +25,7 @@ export const mockPrisma: any = {
   userSession: createModelMock(),
   cohort: createModelMock(),
   project: createModelMock(),
+  projectOwner: createModelMock(),
   projectMember: createModelMock(),
   projectRole: createModelMock(),
   projectRolePermission: createModelMock(),

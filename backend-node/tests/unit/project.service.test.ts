@@ -22,6 +22,13 @@ jest.mock('../../src/lib/prisma', () => ({
       update: jest.fn(),
       delete: jest.fn(),
     },
+    projectOwner: {
+      findFirst: jest.fn(),
+      findUnique: jest.fn(),
+      findMany: jest.fn(),
+      create: jest.fn(),
+      deleteMany: jest.fn(),
+    },
     projectMember: {
       findFirst: jest.fn(),
       findUnique: jest.fn(),
@@ -265,6 +272,132 @@ describe('ProjectService Unit Tests', () => {
           }),
         })
       );
+    });
+
+    it('should reject if an empty owner_ids list is explicitly provided', async () => {
+      await expect(
+        ProjectService.createProject(
+          { name: 'Multi Owner Proj', methodology: 'SCRUM', owner_ids: [] },
+          { id: '', organization_id: 'org-1', role: 'MANAGER' }
+        )
+      ).rejects.toThrow('At least one project owner is required');
+    });
+
+    it('should reject if an INTERN is provided as a project owner', async () => {
+      (prisma.user.findFirst as jest.Mock).mockResolvedValue({
+        id: 'intern-1',
+        name: 'Intern User',
+        email: 'intern@test.com',
+        roles: [{ role: { name: 'INTERN' } }],
+      });
+
+      await expect(
+        ProjectService.createProject(
+          { name: 'Intern Owned Proj', methodology: 'SCRUM', owner_ids: ['intern-1'] },
+          mockOrgUser
+        )
+      ).rejects.toThrow(/not eligible to be a project owner/);
+    });
+
+    it('should reject if a selected owner is neither manager nor admin', async () => {
+      (prisma.user.findFirst as jest.Mock).mockResolvedValue({
+        id: 'dev-1',
+        name: 'Dev User',
+        email: 'dev@test.com',
+        roles: [{ role: { name: 'DEVELOPER' } }],
+      });
+
+      await expect(
+        ProjectService.createProject(
+          { name: 'Dev Owned Proj', methodology: 'SCRUM', owner_ids: ['dev-1'] },
+          mockOrgUser
+        )
+      ).rejects.toThrow(/not eligible to be a project owner/);
+    });
+
+    it('should reject if any owner in multiple owner_ids does not exist or belongs to another org', async () => {
+      (prisma.user.findMany as jest.Mock).mockResolvedValue([
+        { id: 'mgr-1', roles: [{ role: { name: 'MANAGER' } }] },
+        // mgr-2 is missing / from another org
+      ]);
+
+      await expect(
+        ProjectService.createProject(
+          { name: 'Multi Owner Proj', methodology: 'SCRUM', owner_ids: ['mgr-1', 'mgr-2'] },
+          mockOrgUser
+        )
+      ).rejects.toThrow('One or more selected project owners do not exist in your organization');
+    });
+
+    it('should successfully create project with multiple owners and persist owners relation', async () => {
+      (prisma.user.findMany as jest.Mock)
+        .mockResolvedValueOnce([
+          { id: 'mgr-1', name: 'Mgr One', roles: [{ role: { name: 'MANAGER' } }] },
+          { id: 'mgr-2', name: 'Admin Two', roles: [{ role: { name: 'ADMIN' } }] },
+        ])
+        .mockResolvedValueOnce([
+          { id: 'mem-1', name: 'Intern Mem', roles: [{ role: { name: 'INTERN' } }] },
+        ]);
+
+      (prisma.project.create as jest.Mock).mockResolvedValue({
+        id: 'p-multi',
+        name: 'Multi Owner Project',
+        owner_id: 'mgr-1',
+        owners: [
+          { user_id: 'mgr-1', user: { id: 'mgr-1', name: 'Mgr One' } },
+          { user_id: 'mgr-2', user: { id: 'mgr-2', name: 'Admin Two' } },
+        ],
+        members: [{ user_id: 'mem-1' }],
+      });
+
+      const res = await ProjectService.createProject(
+        {
+          name: 'Multi Owner Project',
+          methodology: 'SCRUM',
+          owner_ids: ['mgr-1', 'mgr-2'],
+          member_ids: ['mgr-1', 'mem-1'], // mgr-1 is already an owner, should be excluded from members
+        },
+        mockOrgUser
+      );
+
+      expect(res.id).toBe('p-multi');
+      expect(prisma.project.create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({
+            owner_id: 'mgr-1',
+            owners: {
+              create: [{ user_id: 'mgr-1' }, { user_id: 'mgr-2' }],
+            },
+            // member_ids should exclude mgr-1 because mgr-1 is an owner
+            members: {
+              create: [{ user_id: 'mem-1' }],
+            },
+          }),
+        })
+      );
+      expect(res.owners).toHaveLength(2);
+    });
+
+    it('should reject if a SUPER_ADMIN is selected as a regular project task member', async () => {
+      (prisma.user.findFirst as jest.Mock).mockResolvedValue({
+        id: 'mgr-1',
+        roles: [{ role: { name: 'MANAGER' } }],
+      });
+      (prisma.user.findMany as jest.Mock).mockResolvedValue([
+        { id: 'sa-1', name: 'Super Admin', roles: [{ role: { name: 'SUPER_ADMIN' } }] },
+      ]);
+
+      await expect(
+        ProjectService.createProject(
+          {
+            name: 'Proj',
+            methodology: 'SCRUM',
+            owner_id: 'mgr-1',
+            member_ids: ['sa-1'],
+          },
+          mockOrgUser
+        )
+      ).rejects.toThrow(/cannot be assigned as a project member/);
     });
   });
 

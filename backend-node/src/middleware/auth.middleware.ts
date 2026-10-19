@@ -328,7 +328,11 @@ export async function checkProjectMemberPermission(
 
     const project = await prisma.project.findUnique({
       where: { id: projectId },
-      select: { owner_id: true, organization_id: true },
+      select: {
+        owner_id: true,
+        organization_id: true,
+        owners: { select: { user_id: true } },
+      },
     });
 
     if (!project) {
@@ -336,7 +340,10 @@ export async function checkProjectMemberPermission(
     }
 
     // Project owner always has full project permissions
-    if (project.owner_id === fullUser.id) {
+    const isOwner =
+      project.owner_id === fullUser.id ||
+      (project.owners && project.owners.some((o: any) => o.user_id === fullUser.id));
+    if (isOwner) {
       return true;
     }
 
