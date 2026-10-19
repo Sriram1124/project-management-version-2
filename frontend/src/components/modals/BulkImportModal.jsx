@@ -68,7 +68,7 @@ export default function BulkImportModal({ isOpen, onClose, onSuccess }) {
   const handleFileChange = (e) => {
     const file = e.target.files?.[0];
     if (file) {
-      if (!file.name.endsWith('.csv')) {
+      if (!file.name.toLowerCase().endsWith('.csv')) {
         setError('Please select a valid .csv file.');
         return;
       }
@@ -77,7 +77,21 @@ export default function BulkImportModal({ isOpen, onClose, onSuccess }) {
 
       const reader = new FileReader();
       reader.onload = (event) => {
-        setCsvContent(event.target?.result || '');
+        let content = event.target?.result || '';
+        // Strip UTF-8 BOM if present at the start of the file
+        if (content.charCodeAt(0) === 0xFEFF) {
+          content = content.slice(1);
+        }
+        setCsvContent(content);
+        console.info('[BulkImport] File read successfully:', {
+          fileName: file.name,
+          sizeBytes: file.size,
+          charCount: content.length,
+        });
+      };
+      reader.onerror = (err) => {
+        console.error('[BulkImport] FileReader error:', err);
+        setError('Failed to read the selected file. Please try again.');
       };
       reader.readAsText(file);
     }
@@ -95,10 +109,30 @@ export default function BulkImportModal({ isOpen, onClose, onSuccess }) {
     setPreviewTab('ALL');
 
     try {
+      console.info('[BulkImport] Sending CSV for validation, length:', csvContent.length);
       const result = await usersService.validateBulkCsv(csvContent);
+      console.info('[BulkImport] Validation response:', {
+        isValid: result?.isValid,
+        summary: result?.summary,
+        detectedColumns: result?.detectedColumns,
+        errors: result?.errors,
+      });
+
+      const totalRows = result?.summary?.total ?? 0;
+      // If validation failed at file/header level or no rows could be parsed:
+      if (!result || totalRows === 0 || (!result.isValid && (!result.toCreateRows?.length && !result.toUpdateRows?.length && !result.toSkipRows?.length && !result.invalidRows?.length))) {
+        const errorMsg = result?.errors?.length > 0
+          ? result.errors.join(' ')
+          : 'The uploaded CSV file contains no recognizable member records or valid headers. Expected columns: name, email, type.';
+        setError(errorMsg);
+        // Do not advance to preview with 0 rows
+        return;
+      }
+
       setValidationResult(result);
       setStep('PREVIEW');
     } catch (err) {
+      console.error('[BulkImport] Validation error:', err);
       setError(err.response?.data?.reason || err.response?.data?.error || err.message || 'Failed to validate CSV file.');
     } finally {
       setIsValidating(false);
@@ -379,6 +413,19 @@ export default function BulkImportModal({ isOpen, onClose, onSuccess }) {
           {step === 'PREVIEW' && validationResult && (
             <div className="space-y-3.5">
               
+              {/* Validation Warning Alert in Preview */}
+              {validationResult?.errors?.length > 0 && invalidCount > 0 && (
+                <div className="p-3 bg-amber-50 border border-amber-200 text-amber-800 rounded-xl text-xs flex items-start gap-2.5">
+                  <AlertTriangle className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
+                  <div className="flex-1">
+                    <span className="font-bold block">Notice: {invalidCount} invalid row{invalidCount > 1 ? 's' : ''} detected</span>
+                    <span className="text-[11px] leading-relaxed mt-0.5 block">
+                      {invalidCount} row{invalidCount > 1 ? 's' : ''} failed schema validation and will be skipped. You can review them under the <strong className="font-semibold text-red-700">Invalid</strong> tab or download the Failed Rows CSV.
+                    </span>
+                  </div>
+                </div>
+              )}
+
               {/* 5 Distinct Category Stat Tiles */}
               <div className="grid grid-cols-5 gap-1.5 sm:gap-2">
                 {/* To Create */}

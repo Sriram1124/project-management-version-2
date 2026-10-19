@@ -177,17 +177,39 @@ export class UserService {
   }
 
   /**
-   * Parse a single CSV line handling quotes and trimmed values
+  /**
+   * Detect delimiter (comma, semicolon, tab) from CSV header line
    */
-  private static parseCsvLine(line: string): string[] {
+  private static detectDelimiter(headerLine: string): string {
+    const clean = headerLine.replace(/^[\uFEFF\u200B\u00A0]+/, '');
+    const commaCount = (clean.match(/,/g) || []).length;
+    const semicolonCount = (clean.match(/;/g) || []).length;
+    const tabCount = (clean.match(/\t/g) || []).length;
+    if (commaCount === 0) {
+      if (semicolonCount > 0) return ';';
+      if (tabCount > 0) return '\t';
+    }
+    return ',';
+  }
+
+  /**
+   * Parse a single CSV line handling quotes, escaped quotes, and trimmed values
+   */
+  private static parseCsvLine(line: string, delimiter = ','): string[] {
+    const cleanLine = line.replace(/^[\uFEFF\u200B\u00A0]+/, '');
     const cols: string[] = [];
     let cur = '';
     let inQuotes = false;
-    for (let i = 0; i < line.length; i++) {
-      const char = line[i];
+    for (let i = 0; i < cleanLine.length; i++) {
+      const char = cleanLine[i];
       if (char === '"') {
-        inQuotes = !inQuotes;
-      } else if (char === ',' && !inQuotes) {
+        if (inQuotes && cleanLine[i + 1] === '"') {
+          cur += '"';
+          i++; // skip next escaped quote
+        } else {
+          inQuotes = !inQuotes;
+        }
+      } else if (char === delimiter && !inQuotes) {
         cols.push(cur.trim());
         cur = '';
       } else {
@@ -195,7 +217,11 @@ export class UserService {
       }
     }
     cols.push(cur.trim());
-    return cols.map((col) => col.replace(/^["']|["']$/g, '').trim());
+    return cols.map((col) =>
+      col
+        .replace(/^[\uFEFF\u200B\u00A0\s"']+|[\uFEFF\u200B\u00A0\s"']+$/g, '')
+        .trim()
+    );
   }
 
   /**
@@ -394,8 +420,14 @@ export class UserService {
       };
     }
 
-    const lines = csvContent
-      .split(/\r?\n/)
+    // Strip UTF-8 BOM and normalize all newline variants (\r\n, \r, \n)
+    const cleanContent = csvContent
+      .replace(/^\uFEFF/, '')
+      .replace(/\r\n/g, '\n')
+      .replace(/\r/g, '\n');
+
+    const lines = cleanContent
+      .split('\n')
       .map((l) => l.trim())
       .filter((l) => l.length > 0);
 
@@ -419,7 +451,14 @@ export class UserService {
       };
     }
 
-    const rawHeaders = this.parseCsvLine(lines[0]).map((h) => h.toLowerCase().trim());
+    const delimiter = this.detectDelimiter(lines[0]);
+    const rawHeaders = this.parseCsvLine(lines[0], delimiter).map((h) =>
+      h
+        .toLowerCase()
+        .replace(/^[\uFEFF\u200B\u00A0\s"']+|[\uFEFF\u200B\u00A0\s"']+$/g, '')
+        .replace(/[\s\-_]+/g, '_')
+        .trim()
+    );
 
     // Security violation: forbid client specifying sensitive columns
     if (
@@ -448,15 +487,23 @@ export class UserService {
       };
     }
 
-    const nameIdx = rawHeaders.indexOf('name');
-    const emailIdx = rawHeaders.indexOf('email');
-    const typeIdx = rawHeaders.indexOf('type');
-    const batchIdx = rawHeaders.indexOf('batch');
+    const nameIdx = rawHeaders.findIndex(
+      (h) => h === 'name' || h === 'full_name' || h === 'fullname' || h === 'member_name' || h === 'intern_name' || h === 'user_name'
+    );
+    const emailIdx = rawHeaders.findIndex(
+      (h) => h === 'email' || h === 'email_address' || h === 'mail' || h === 'user_email'
+    );
+    const typeIdx = rawHeaders.findIndex(
+      (h) => h === 'type' || h === 'user_type' || h === 'role' || h === 'member_type'
+    );
+    const batchIdx = rawHeaders.findIndex(
+      (h) => h === 'batch' || h === 'batch_code' || h === 'batch_name'
+    );
     const subbatchIdx = rawHeaders.findIndex(
-      (h) => h === 'subbatch' || h === 'sub_batch' || h === 'sub-batch'
+      (h) => h === 'subbatch' || h === 'sub_batch' || h === 'subbatch_code' || h === 'sub_batch_code'
     );
     const cohortIdx = rawHeaders.findIndex(
-      (h) => h === 'cohort' || h === 'cohort_name' || h === 'cohort_code'
+      (h) => h === 'cohort' || h === 'cohort_name' || h === 'cohort_code' || h === 'cohort_id'
     );
 
     const requiredMissing: string[] = [];
@@ -464,7 +511,11 @@ export class UserService {
     if (emailIdx === -1) requiredMissing.push('email');
     if (typeIdx === -1) requiredMissing.push('type');
 
-    const requiredPresent = ['name', 'email', 'type'].filter((h) => rawHeaders.includes(h));
+    const requiredPresent: string[] = [];
+    if (nameIdx !== -1) requiredPresent.push(rawHeaders[nameIdx]);
+    if (emailIdx !== -1) requiredPresent.push(rawHeaders[emailIdx]);
+    if (typeIdx !== -1) requiredPresent.push(rawHeaders[typeIdx]);
+
     const optionalPresent: string[] = [];
     if (batchIdx !== -1) optionalPresent.push('batch');
     if (subbatchIdx !== -1) optionalPresent.push('subbatch');
@@ -526,13 +577,27 @@ export class UserService {
 
     for (let i = 1; i < lines.length; i++) {
       const rowNum = i + 1;
-      const cols = this.parseCsvLine(lines[i]);
+      const cols = this.parseCsvLine(lines[i], delimiter);
+
+      // Skip empty / whitespace-only rows (e.g. trailing commas from exported spreadsheets)
+      if (!cols.some((c) => c.length > 0)) {
+        continue;
+      }
+
       const name = (cols[nameIdx] || '').trim();
       const email = (cols[emailIdx] || '').trim().toLowerCase();
       const rawType = (cols[typeIdx] || '').trim().toUpperCase();
       const rawBatch = batchIdx !== -1 ? (cols[batchIdx] || '').trim().toUpperCase() : '';
       const rawSubbatch = subbatchIdx !== -1 ? (cols[subbatchIdx] || '').trim().toUpperCase() : '';
       const rawCohort = cohortIdx !== -1 ? (cols[cohortIdx] || '').trim() : '';
+
+      // Normalize type: support INTERN / EMPLOYEE
+      let type: 'INTERN' | 'EMPLOYEE' | undefined;
+      if (rawType === 'INTERN' || rawType === 'INTERNS' || rawType === 'INTERNSHIP') {
+        type = 'INTERN';
+      } else if (rawType === 'EMPLOYEE' || rawType === 'EMPLOYEES' || rawType === 'STAFF' || rawType === 'MEMBER') {
+        type = 'EMPLOYEE';
+      }
 
       parsedDataRows.push({
         rowNumber: rowNum,
@@ -542,8 +607,23 @@ export class UserService {
         rawBatch,
         rawSubbatch,
         rawCohort,
-        type: (rawType === 'INTERN' || rawType === 'EMPLOYEE') ? rawType : undefined,
+        type,
       });
+    }
+
+    if (parsedDataRows.length === 0) {
+      return {
+        isValid: false,
+        summary: { total: 0, valid: 0, invalid: 0, to_create: 0, to_skip: 0, to_update: 0, duplicate_in_csv: 0 },
+        detectedColumns,
+        validRows: [],
+        toCreateRows: [],
+        toSkipRows: [],
+        toUpdateRows: [],
+        duplicateInCsvRows: [],
+        invalidRows: [],
+        errors: ['CSV file contains headers but no data rows.'],
+      };
     }
 
     // Pass 2: Query DB for all unique valid candidate emails in this CSV

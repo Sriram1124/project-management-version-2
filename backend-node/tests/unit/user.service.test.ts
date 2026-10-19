@@ -288,6 +288,77 @@ describe('UserService Unit Tests', () => {
       expect(res.errors[0]).toContain('Missing required columns: email, type');
     });
 
+    it('should handle UTF-8 BOM gracefully without misinterpreting headers', async () => {
+      (prisma.cohort.findMany as jest.Mock).mockResolvedValue([]);
+      (prisma.user.findMany as jest.Mock).mockResolvedValue([]);
+      const csvWithBom = '\uFEFFname,email,type\nBob Smith,bob@example.com,INTERN';
+      const res = await UserService.validateBulkCsv(csvWithBom, 'org-1');
+      expect(res.isValid).toBe(true);
+      expect(res.summary.total).toBe(1);
+      expect(res.toCreateRows.length).toBe(1);
+      expect(res.toCreateRows[0].name).toBe('Bob Smith');
+      expect(res.toCreateRows[0].email).toBe('bob@example.com');
+    });
+
+    it('should handle Mac CR (\\r) and Windows CRLF (\\r\\n) line endings', async () => {
+      (prisma.cohort.findMany as jest.Mock).mockResolvedValue([]);
+      (prisma.user.findMany as jest.Mock).mockResolvedValue([]);
+      const csvMacCr = 'name,email,type\rClaire,claire@example.com,INTERN\rDan,dan@example.com,EMPLOYEE';
+      const res = await UserService.validateBulkCsv(csvMacCr, 'org-1');
+      expect(res.isValid).toBe(true);
+      expect(res.summary.total).toBe(2);
+      expect(res.toCreateRows.length).toBe(2);
+    });
+
+    it('should handle double-quoted headers and fields with escaped quotes', async () => {
+      (prisma.cohort.findMany as jest.Mock).mockResolvedValue([]);
+      (prisma.user.findMany as jest.Mock).mockResolvedValue([]);
+      const csvQuoted = '"name","email","type"\n"Emily ""The Rock"" Jones","emily@example.com","INTERN"';
+      const res = await UserService.validateBulkCsv(csvQuoted, 'org-1');
+      expect(res.isValid).toBe(true);
+      expect(res.summary.total).toBe(1);
+      expect(res.toCreateRows[0].name).toBe('Emily "The Rock" Jones');
+      expect(res.toCreateRows[0].email).toBe('emily@example.com');
+    });
+
+    it('should auto-detect semicolon delimiter', async () => {
+      (prisma.cohort.findMany as jest.Mock).mockResolvedValue([]);
+      (prisma.user.findMany as jest.Mock).mockResolvedValue([]);
+      const csvSemicolon = 'name;email;type;batch\nFrank;frank@example.com;INTERN;A';
+      const res = await UserService.validateBulkCsv(csvSemicolon, 'org-1');
+      expect(res.isValid).toBe(true);
+      expect(res.summary.total).toBe(1);
+      expect(res.toCreateRows[0].name).toBe('Frank');
+      expect(res.toCreateRows[0].batch).toBe('A');
+    });
+
+    it('should support common header aliases and skip trailing blank rows', async () => {
+      (prisma.cohort.findMany as jest.Mock).mockResolvedValue([
+        { id: 'c-1', code: 'Cohort-1', name: 'Cohort 1' },
+      ]);
+      (prisma.user.findMany as jest.Mock).mockResolvedValue([]);
+      const csvAliases = [
+        'Full Name,Email Address,User Type,Batch,Sub Batch,Cohort Name',
+        'Grace Hopper,grace@example.com,INTERN,A,A1,Cohort-1',
+        ',,,,,', // Trailing blank row with commas
+        '   ',   // Trailing whitespace line
+      ].join('\n');
+      const res = await UserService.validateBulkCsv(csvAliases, 'org-1');
+      expect(res.isValid).toBe(true);
+      expect(res.summary.total).toBe(1);
+      expect(res.toCreateRows[0].name).toBe('Grace Hopper');
+      expect(res.toCreateRows[0].subbatch).toBe('A1');
+      expect(res.toCreateRows[0].cohort_id).toBe('c-1');
+    });
+
+    it('should reject CSV with headers but no data rows', async () => {
+      const csvHeadersOnly = 'name,email,type\n';
+      const res = await UserService.validateBulkCsv(csvHeadersOnly, 'org-1');
+      expect(res.isValid).toBe(false);
+      expect(res.summary.total).toBe(0);
+      expect(res.errors[0]).toBe('CSV file must contain a header row and at least one data row.');
+    });
+
     it('should categorize invalid rows, intra-csv duplicates, and to_create candidates', async () => {
       (prisma.cohort.findMany as jest.Mock).mockResolvedValue([
         { id: 'c-1', code: 'Cohort-1', name: 'Cohort 1' },
