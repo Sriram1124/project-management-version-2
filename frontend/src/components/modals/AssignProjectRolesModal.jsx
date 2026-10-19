@@ -84,9 +84,19 @@ export default function AssignProjectRolesModal({
       }));
   }, [projectRoles]);
 
-  const customRoles = useMemo(() => {
+  const reusableRoles = useMemo(() => {
     return projectRoles
-      .filter((r) => r.is_custom)
+      .filter((r) => r.is_custom && (r.is_template || r.carry_forward || !r.project_id))
+      .map((r) => ({
+        value: r.name,
+        label: r.label || r.name,
+        description: r.description,
+      }));
+  }, [projectRoles]);
+
+  const projectOnlyRoles = useMemo(() => {
+    return projectRoles
+      .filter((r) => r.is_custom && !(r.is_template || r.carry_forward || !r.project_id))
       .map((r) => ({
         value: r.name,
         label: r.label || r.name,
@@ -291,9 +301,18 @@ export default function AssignProjectRolesModal({
                         className="px-3 py-1.5 text-xs font-medium bg-white border border-slate-200 rounded-lg text-slate-800 focus:outline-hidden focus:ring-2 focus:ring-purple-500/20 focus:border-purple-500 transition-all cursor-pointer shadow-2xs"
                       >
                         <option value="">Not Assigned</option>
-                        {customRoles.length > 0 && (
-                          <optgroup label="Custom Project Roles">
-                            {customRoles.map((role) => (
+                        {reusableRoles.length > 0 && (
+                          <optgroup label="Organization Reusable Roles">
+                            {reusableRoles.map((role) => (
+                              <option key={role.value} value={role.value}>
+                                {role.label}
+                              </option>
+                            ))}
+                          </optgroup>
+                        )}
+                        {projectOnlyRoles.length > 0 && (
+                          <optgroup label="Project-Specific Custom Roles">
+                            {projectOnlyRoles.map((role) => (
                               <option key={role.value} value={role.value}>
                                 {role.label}
                               </option>

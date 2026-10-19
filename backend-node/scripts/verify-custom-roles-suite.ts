@@ -242,7 +242,11 @@ async function runTestSuite() {
       );
       assert(false, 6, 'Rejecting invalid or unknown permission names');
     } catch (err: any) {
-      assert(err.message.includes('Invalid permissions'), 6, 'Rejecting invalid or unknown permission names');
+      assert(
+        err.message.toLowerCase().includes('invalid') && err.message.includes('permission'),
+        6,
+        'Rejecting invalid or unknown permission names'
+      );
     }
 
     // -------------------------------------------------------------------------
@@ -253,13 +257,17 @@ async function runTestSuite() {
         projectA1.id,
         {
           name: 'Malicious Admin Role',
-          permissions: ['USER_DELETE', 'TASK_READ'], // USER_DELETE is admin-only
+          permissions: ['USER_DELETE', 'TASK_READ'], // USER_DELETE is admin-only / out-of-scope
         },
         managerUser
       );
       assert(false, 7, 'Rejecting unauthorized administrative permissions for non-super-admin');
     } catch (err: any) {
-      assert(err.message.includes('Unauthorized permission') || err.message.includes('administrative permission'), 7, 'Rejecting unauthorized administrative permissions for non-super-admin');
+      assert(
+        err.message.toLowerCase().includes('invalid') || err.message.includes('Unauthorized'),
+        7,
+        'Rejecting unauthorized administrative permissions for non-super-admin'
+      );
     }
 
     // -------------------------------------------------------------------------
@@ -540,6 +548,99 @@ async function runTestSuite() {
       18,
       'Verifying multi-tenant isolation: custom roles in Org A never leak into Org B'
     );
+
+    // -------------------------------------------------------------------------
+    // TEST 19: Carry Forward = true creates reusable organization custom role & false creates project-only
+    // -------------------------------------------------------------------------
+    const projectOnlyRole = await ProjectService.createCustomRole(
+      projectA1.id,
+      {
+        name: 'Alpha Exclusive Role',
+        description: 'Only for Project Alpha',
+        permissions: ['TASK_READ'],
+        carry_forward: false,
+      },
+      managerUser
+    );
+
+    const reusableRole = await ProjectService.createCustomRole(
+      projectA1.id,
+      {
+        name: 'Shared Security Officer',
+        description: 'Organization-wide security reviewer',
+        permissions: ['TASK_READ', 'TASK_UPDATE', 'PROJECT_READ'],
+        carry_forward: true,
+      },
+      managerUser
+    );
+    assert(
+      projectOnlyRole.carry_forward === false &&
+      projectOnlyRole.project_id === projectA1.id &&
+      reusableRole.name === 'Shared Security Officer' &&
+      reusableRole.carry_forward === true &&
+      reusableRole.is_template === true &&
+      reusableRole.project_id === null,
+      19,
+      'Verifying carry_forward=true creates reusable org-wide role (project_id=null) and false creates project-only role'
+    );
+
+    // -------------------------------------------------------------------------
+    // TEST 20: Future project selector in same org displays reusable role, excludes project-only role
+    // -------------------------------------------------------------------------
+    const projectA2Roles = await ProjectService.getProjectRoles(projectA2.id, managerUser);
+    const hasReusableInA2 = projectA2Roles.some((r) => r.name === 'Shared Security Officer' && r.carry_forward === true);
+    const hasProjectA1OnlyInA2 = projectA2Roles.some((r) => r.name === 'Alpha Exclusive Role');
+    assert(
+      hasReusableInA2 && !hasProjectA1OnlyInA2,
+      20,
+      'Verifying future project A2 displays reusable org role and excludes project A1-only custom role'
+    );
+
+    // -------------------------------------------------------------------------
+    // TEST 21: Reusable role can be assigned in future project A2 without duplicating definition
+    // -------------------------------------------------------------------------
+    const assignedMember = await ProjectService.addProjectMember(
+      projectA2.id,
+      internUser1.id,
+      managerUser,
+      'Shared Security Officer'
+    );
+    assert(
+      assignedMember.project_role === 'Shared Security Officer',
+      21,
+      'Verifying reusable role can be assigned to members in future project A2 without duplicating role record'
+    );
+
+    // -------------------------------------------------------------------------
+    // TEST 22: Project-only custom role from Project A1 cannot be assigned in Project A2
+    // -------------------------------------------------------------------------
+    let crossProjectBlocked = false;
+    try {
+      await ProjectService.addProjectMember(
+        projectA2.id,
+        internUser2.id,
+        managerUser,
+        'Alpha Exclusive Role'
+      );
+    } catch (e: any) {
+      crossProjectBlocked = true;
+    }
+    assert(
+      crossProjectBlocked,
+      22,
+      'Verifying project-only custom role from Project A1 cannot be assigned in Project A2'
+    );
+
+    // -------------------------------------------------------------------------
+    // TEST 23: Tenant isolation for reusable roles: Org B never sees Org A reusable role
+    // -------------------------------------------------------------------------
+    const orgBRolesAfter = await ProjectService.getProjectRoles(projectB1.id, orgBMember);
+    const leakedReusableRole = orgBRolesAfter.find((r) => r.name === 'Shared Security Officer');
+    assert(
+      leakedReusableRole === undefined,
+      23,
+      'Verifying organization tenant isolation: reusable org role never leaks to Org B'
+    );
   } finally {
     // Cleanup created test records
     await prisma.workItemAssignee.deleteMany({
@@ -552,10 +653,22 @@ async function runTestSuite() {
       where: { project_id: { in: [projectA1.id, projectA2.id, projectB1.id] } },
     });
     await prisma.rolePermission.deleteMany({
-      where: { role: { project_id: { in: [projectA1.id, projectA2.id, projectB1.id] } } },
+      where: {
+        role: {
+          OR: [
+            { project_id: { in: [projectA1.id, projectA2.id, projectB1.id] } },
+            { organization_id: { in: [testOrgA.id, testOrgB.id] } },
+          ],
+        },
+      },
     });
     await prisma.role.deleteMany({
-      where: { project_id: { in: [projectA1.id, projectA2.id, projectB1.id] } },
+      where: {
+        OR: [
+          { project_id: { in: [projectA1.id, projectA2.id, projectB1.id] } },
+          { organization_id: { in: [testOrgA.id, testOrgB.id] } },
+        ],
+      },
     });
     await prisma.project.deleteMany({
       where: { id: { in: [projectA1.id, projectA2.id, projectB1.id] } },

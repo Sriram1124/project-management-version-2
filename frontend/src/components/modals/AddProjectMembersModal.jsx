@@ -12,7 +12,7 @@ import {
   Sparkles,
 } from 'lucide-react';
 import { projectsService } from '../../services/projects.service';
-import { PROJECT_ROLES } from './AssignProjectRolesModal';
+import { PROJECT_ROLES, PROJECT_ROLE_LABELS } from './AssignProjectRolesModal';
 
 export default function AddProjectMembersModal({
   isOpen,
@@ -24,6 +24,7 @@ export default function AddProjectMembersModal({
   onToast,
 }) {
   const [allUsers, setAllUsers] = useState([]);
+  const [projectRoles, setProjectRoles] = useState([]);
   const [loading, setLoading] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [search, setSearch] = useState('');
@@ -32,7 +33,7 @@ export default function AddProjectMembersModal({
   const [selectedRole, setSelectedRole] = useState('');
   const [error, setError] = useState('');
 
-  // Fetch organization users when modal opens
+  // Fetch organization users and project roles when modal opens
   useEffect(() => {
     if (isOpen) {
       setLoading(true);
@@ -42,14 +43,23 @@ export default function AddProjectMembersModal({
       setSelectedRole('');
       setTypeFilter('ALL');
 
-      projectsService
-        .getUsers()
-        .then((users) => {
-          setAllUsers(Array.isArray(users) ? users : []);
-        })
-        .catch((err) => {
-          console.error('Failed to load organization users:', err);
-          setError(err?.message || 'Failed to load organization members');
+      Promise.allSettled([
+        projectsService.getUsers(),
+        projectId ? projectsService.getProjectRoles(projectId) : Promise.resolve([]),
+      ])
+        .then(([usersRes, rolesRes]) => {
+          if (usersRes.status === 'fulfilled') {
+            setAllUsers(Array.isArray(usersRes.value) ? usersRes.value : []);
+          } else {
+            console.error('Failed to load organization users:', usersRes.reason);
+            setError(usersRes.reason?.message || 'Failed to load organization members');
+          }
+
+          if (rolesRes.status === 'fulfilled') {
+            setProjectRoles(Array.isArray(rolesRes.value) ? rolesRes.value : []);
+          } else {
+            console.warn('Could not fetch custom roles, fallback to defaults:', rolesRes.reason);
+          }
         })
         .finally(() => {
           setLoading(false);
@@ -88,6 +98,46 @@ export default function AddProjectMembersModal({
       return matchesSearch && matchesType;
     });
   }, [availableUsers, search, typeFilter]);
+
+  const standardRoles = useMemo(() => {
+    if (!projectRoles.length) {
+      return PROJECT_ROLES.filter((r) => r.value);
+    }
+    return projectRoles
+      .filter((r) => !r.is_custom && r.name !== 'ADMIN' && r.name !== 'SUPER_ADMIN')
+      .map((r) => ({
+        value: r.name,
+        label: r.label || PROJECT_ROLE_LABELS[r.name] || r.name,
+      }));
+  }, [projectRoles]);
+
+  const reusableRoles = useMemo(() => {
+    return projectRoles
+      .filter((r) => r.is_custom && (r.is_template || r.carry_forward || !r.project_id))
+      .map((r) => ({
+        value: r.name,
+        label: r.label || r.name,
+      }));
+  }, [projectRoles]);
+
+  const projectOnlyRoles = useMemo(() => {
+    return projectRoles
+      .filter((r) => r.is_custom && !(r.is_template || r.carry_forward || !r.project_id))
+      .map((r) => ({
+        value: r.name,
+        label: r.label || r.name,
+      }));
+  }, [projectRoles]);
+
+  const selectedRoleLabel = useMemo(() => {
+    if (!selectedRole) return '';
+    const match =
+      reusableRoles.find((r) => r.value === selectedRole) ||
+      projectOnlyRoles.find((r) => r.value === selectedRole) ||
+      standardRoles.find((r) => r.value === selectedRole) ||
+      PROJECT_ROLES.find((r) => r.value === selectedRole);
+    return match?.label || selectedRole;
+  }, [selectedRole, reusableRoles, projectOnlyRoles, standardRoles]);
 
   const handleToggleUser = (userId) => {
     setSelectedUserIds((prev) => {
@@ -219,11 +269,31 @@ export default function AddProjectMembersModal({
                 className="text-xs px-2.5 py-1.5 rounded-xl border border-slate-200 bg-slate-50 hover:bg-white text-slate-800 font-semibold focus:outline-none focus:border-purple-600 focus:ring-1 focus:ring-purple-600 cursor-pointer shadow-2xs"
               >
                 <option value="">Member (Standard)</option>
-                {PROJECT_ROLES.filter((r) => r.value).map((r) => (
-                  <option key={r.value} value={r.value}>
-                    {r.label}
-                  </option>
-                ))}
+                {reusableRoles.length > 0 && (
+                  <optgroup label="Organization Reusable Roles">
+                    {reusableRoles.map((r) => (
+                      <option key={r.value} value={r.value}>
+                        {r.label}
+                      </option>
+                    ))}
+                  </optgroup>
+                )}
+                {projectOnlyRoles.length > 0 && (
+                  <optgroup label="Project-Specific Custom Roles">
+                    {projectOnlyRoles.map((r) => (
+                      <option key={r.value} value={r.value}>
+                        {r.label}
+                      </option>
+                    ))}
+                  </optgroup>
+                )}
+                <optgroup label="Standard Roles">
+                  {standardRoles.map((r) => (
+                    <option key={r.value} value={r.value}>
+                      {r.label}
+                    </option>
+                  ))}
+                </optgroup>
               </select>
             </div>
           </div>
@@ -380,7 +450,7 @@ export default function AddProjectMembersModal({
             <span className="font-bold text-slate-900">{selectedUserIds.size}</span> members selected
             {selectedRole && (
               <span className="ml-1 text-purple-700 font-semibold">
-                · as {PROJECT_ROLES.find((r) => r.value === selectedRole)?.label || selectedRole}
+                · as {selectedRoleLabel}
               </span>
             )}
           </div>

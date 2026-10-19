@@ -462,7 +462,15 @@ describe('ProjectService Unit Tests', () => {
 
       (prisma.$transaction as jest.Mock).mockImplementation(async (callback) => {
         const tx = {
-          role: { create: jest.fn().mockResolvedValue({ id: 'custom-role-1', name: 'Scrum Assistant', created_at: new Date() }) },
+          role: {
+            create: jest.fn().mockResolvedValue({
+              id: 'custom-role-1',
+              name: 'Scrum Assistant',
+              project_id: 'p-1',
+              organization_id: 'org-1',
+              created_at: new Date(),
+            }),
+          },
           rolePermission: { createMany: jest.fn() },
         };
         return await callback(tx);
@@ -476,6 +484,139 @@ describe('ProjectService Unit Tests', () => {
 
       expect(res.name).toBe('Scrum Assistant');
       expect(res.permissions).toContain('TASK_READ');
+      expect(res.carry_forward).toBe(false);
+      expect(res.is_template).toBe(false);
+    });
+
+    it('should create project-scoped custom role when carry_forward is false', async () => {
+      (prisma.project.findUnique as jest.Mock).mockResolvedValue({ id: 'p-1', organization_id: 'org-1' });
+      (prisma.role.findFirst as jest.Mock).mockResolvedValue(null);
+      (prisma.permission.findMany as jest.Mock).mockResolvedValue([
+        { id: 'perm-read', name: 'TASK_READ' },
+      ]);
+
+      let createRolePayload: any = null;
+      (prisma.$transaction as jest.Mock).mockImplementation(async (callback) => {
+        const tx = {
+          role: {
+            create: jest.fn().mockImplementation(async ({ data }) => {
+              createRolePayload = data;
+              return {
+                id: 'custom-role-project-only',
+                name: 'Project Specialist',
+                organization_id: data.organization_id,
+                project_id: data.project_id,
+                is_custom: true,
+                created_at: new Date(),
+              };
+            }),
+          },
+          rolePermission: { createMany: jest.fn() },
+        };
+        return await callback(tx);
+      });
+
+      const res = await ProjectService.createCustomRole(
+        'p-1',
+        { name: 'Project Specialist', permissions: ['TASK_READ'], carry_forward: false },
+        mockOrgUser
+      );
+
+      expect(createRolePayload.project_id).toBe('p-1');
+      expect(createRolePayload.organization_id).toBe('org-1');
+      expect(res.carry_forward).toBe(false);
+      expect(res.is_template).toBe(false);
+      expect(res.project_id).toBe('p-1');
+    });
+
+    it('should create reusable organization-scoped custom role when carry_forward is true', async () => {
+      (prisma.project.findUnique as jest.Mock).mockResolvedValue({ id: 'p-1', organization_id: 'org-1' });
+      (prisma.role.findFirst as jest.Mock).mockResolvedValue(null);
+      (prisma.permission.findMany as jest.Mock).mockResolvedValue([
+        { id: 'perm-read', name: 'TASK_READ' },
+      ]);
+
+      let createRolePayload: any = null;
+      (prisma.$transaction as jest.Mock).mockImplementation(async (callback) => {
+        const tx = {
+          role: {
+            create: jest.fn().mockImplementation(async ({ data }) => {
+              createRolePayload = data;
+              return {
+                id: 'custom-role-reusable',
+                name: 'Org Reusable Specialist',
+                organization_id: data.organization_id,
+                project_id: data.project_id,
+                is_custom: true,
+                created_at: new Date(),
+              };
+            }),
+          },
+          rolePermission: { createMany: jest.fn() },
+        };
+        return await callback(tx);
+      });
+
+      const res = await ProjectService.createCustomRole(
+        'p-1',
+        { name: 'Org Reusable Specialist', permissions: ['TASK_READ'], carry_forward: true },
+        mockOrgUser
+      );
+
+      expect(createRolePayload.project_id).toBeNull();
+      expect(createRolePayload.organization_id).toBe('org-1');
+      expect(res.carry_forward).toBe(true);
+      expect(res.is_template).toBe(true);
+      expect(res.project_id).toBeNull();
+    });
+
+    it('should expose carry_forward and is_template flags in getProjectRoles', async () => {
+      (prisma.project.findUnique as jest.Mock).mockResolvedValue({ id: 'p-1', organization_id: 'org-1' });
+      (prisma.role.findMany as jest.Mock).mockResolvedValue([
+        {
+          id: 'r-builtin',
+          name: 'DEVELOPER',
+          is_custom: false,
+          organization_id: null,
+          project_id: null,
+          permissions: [{ permission: { name: 'PROJECT_READ' } }],
+        },
+        {
+          id: 'r-project-only',
+          name: 'Project Specific Analyst',
+          is_custom: true,
+          organization_id: 'org-1',
+          project_id: 'p-1',
+          permissions: [{ permission: { name: 'TASK_READ' } }],
+        },
+        {
+          id: 'r-reusable',
+          name: 'Org Reusable Lead',
+          is_custom: true,
+          organization_id: 'org-1',
+          project_id: null,
+          permissions: [{ permission: { name: 'TASK_READ' } }, { permission: { name: 'TASK_CREATE' } }],
+        },
+      ]);
+
+      const roles = await ProjectService.getProjectRoles('p-1', mockOrgUser);
+      expect(roles.length).toBe(3);
+
+      const builtin = roles.find((r) => r.name === 'DEVELOPER');
+      expect(builtin.is_custom).toBe(false);
+      expect(builtin.carry_forward).toBe(false);
+
+      const projOnly = roles.find((r) => r.name === 'Project Specific Analyst');
+      expect(projOnly.is_custom).toBe(true);
+      expect(projOnly.project_id).toBe('p-1');
+      expect(projOnly.carry_forward).toBe(false);
+      expect(projOnly.is_template).toBe(false);
+
+      const reusable = roles.find((r) => r.name === 'Org Reusable Lead');
+      expect(reusable.is_custom).toBe(true);
+      expect(reusable.project_id).toBeNull();
+      expect(reusable.carry_forward).toBe(true);
+      expect(reusable.is_template).toBe(true);
     });
   });
 

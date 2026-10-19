@@ -958,6 +958,8 @@ export class ProjectService {
       label: BUILTIN_LABELS[r.name] || r.description || r.name,
       description: r.description || (r.is_custom ? 'Custom project role' : 'Standard built-in role'),
       is_custom: Boolean(r.is_custom),
+      is_template: Boolean(r.is_custom && !r.project_id),
+      carry_forward: Boolean(r.is_custom && !r.project_id),
       organization_id: r.organization_id,
       project_id: r.project_id,
       permissions: r.permissions.map((rp) => rp.permission.name),
@@ -971,7 +973,14 @@ export class ProjectService {
    */
   static async createCustomRole(
     projectId: string,
-    data: { name: string; description?: string; permissions: string[] },
+    data: {
+      name: string;
+      description?: string;
+      permissions: string[];
+      carry_forward?: boolean;
+      carryForward?: boolean;
+      is_template?: boolean;
+    },
     user: any
   ) {
     if (!projectId || projectId === 'undefined') {
@@ -1022,15 +1031,33 @@ export class ProjectService {
       throw err;
     }
 
+    // Determine role scope: carry_forward / is_template
+    const isCarryForward = Boolean(
+      (data as any)?.carry_forward ??
+      (data as any)?.carryForward ??
+      (data as any)?.is_template ??
+      (data as any)?.is_reusable_template ??
+      false
+    );
+
     // Check duplicate name within scope (case-insensitive)
+    const collisionOrs: any[] = [
+      { organization_id: null, project_id: null }, // Built-in collision
+      { organization_id: project.organization_id, project_id: null }, // Org collision
+    ];
+
+    if (isCarryForward) {
+      // Reusable organization role: check collisions across the whole organization
+      collisionOrs.push({ organization_id: project.organization_id });
+    } else {
+      // Project-only role: check collisions within current project
+      collisionOrs.push({ organization_id: project.organization_id, project_id: projectId });
+    }
+
     const existingDuplicate = await prisma.role.findFirst({
       where: {
         name: { equals: trimmedName, mode: 'insensitive' },
-        OR: [
-          { organization_id: null, project_id: null }, // Built-in collision
-          { organization_id: project.organization_id, project_id: projectId }, // Project collision
-          { organization_id: project.organization_id, project_id: null }, // Org collision
-        ],
+        OR: collisionOrs,
       },
     });
 
@@ -1098,7 +1125,6 @@ export class ProjectService {
 
     // 5. Transactional Creation
     const trimmedDesc = typeof data.description === 'string' && data.description.trim() ? data.description.trim() : null;
-    const isTemplate = Boolean((data as any).is_template || (data as any).is_reusable_template);
 
     const createdRole = await prisma.$transaction(async (tx) => {
       const role = await tx.role.create({
@@ -1106,7 +1132,7 @@ export class ProjectService {
           name: trimmedName,
           description: trimmedDesc,
           organization_id: project.organization_id,
-          project_id: isTemplate ? null : projectId,
+          project_id: isCarryForward ? null : projectId,
           is_custom: true,
         },
       });
@@ -1128,6 +1154,7 @@ export class ProjectService {
       description: createdRole.description,
       is_custom: true,
       is_template: !createdRole.project_id,
+      carry_forward: !createdRole.project_id,
       organization_id: createdRole.organization_id,
       project_id: createdRole.project_id,
       permissions: dbPermissions.map((p) => p.name),
@@ -1475,31 +1502,51 @@ export class ProjectService {
     }
 
     // Resolve role and role_id if provided
-    let normalizedRole: string | null = role ? role.trim() : null;
-    let roleIdToPersist: string | null = roleId || null;
+    let normalizedRole: string | null = null;
+    let roleIdToPersist: string | null = null;
 
-    if (normalizedRole || roleIdToPersist) {
-      const matchedRole = await prisma.role.findFirst({
-        where: {
-          OR: [
-            ...(roleIdToPersist ? [{ id: roleIdToPersist }] : []),
-            ...(normalizedRole ? [{ name: { equals: normalizedRole, mode: 'insensitive' as const } }] : []),
-          ],
-          AND: [
-            {
-              OR: [
-                { project_id: projectId },
-                { organization_id: project.organization_id },
-                { organization_id: null, project_id: null },
-              ],
-            },
-          ],
-        },
-      });
+    if (roleId) {
+      const directRole = await prisma.role.findUnique({ where: { id: roleId } });
+      if (!directRole) {
+        throw new Error('Role not found');
+      }
+      if (directRole.project_id && directRole.project_id !== projectId) {
+        throw new Error(`Cross-project role assignment rejected: Role is scoped to project ${directRole.project_id}`);
+      }
+      if (directRole.organization_id && project.organization_id && directRole.organization_id !== project.organization_id) {
+        throw new Error('Cross-organization role assignment rejected.');
+      }
+      roleIdToPersist = directRole.id;
+      normalizedRole = directRole.name;
+    } else if (role && typeof role === 'string' && role.trim()) {
+      const candidate = role.trim();
+      const candidateUpper = candidate.toUpperCase();
 
-      if (matchedRole) {
-        normalizedRole = matchedRole.name;
-        roleIdToPersist = matchedRole.id;
+      if (candidateUpper === 'LEAD') {
+        normalizedRole = 'TECH_LEAD';
+      } else if (candidateUpper === 'MEMBER') {
+        normalizedRole = 'DEVELOPER';
+      } else if (this.ALLOWED_PROJECT_ROLES.includes(candidateUpper as any)) {
+        normalizedRole = candidateUpper;
+      } else {
+        const customRole = await prisma.role.findFirst({
+          where: {
+            name: { equals: candidate, mode: 'insensitive' },
+            OR: [
+              { project_id: projectId },
+              { organization_id: project.organization_id, project_id: null },
+              { organization_id: null, project_id: null },
+            ],
+          },
+        });
+
+        if (!customRole) {
+          throw new Error(
+            `Invalid project role: ${role}. Role not recognized or not available in this project.`
+          );
+        }
+        normalizedRole = customRole.name;
+        roleIdToPersist = customRole.id;
       }
     }
 

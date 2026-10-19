@@ -55,6 +55,7 @@ export default function AddCustomRoleModal({
   const [description, setDescription] = useState('');
   const [permissionsData, setPermissionsData] = useState([]);
   const [selectedPermissions, setSelectedPermissions] = useState(() => new Set());
+  const [carryForward, setCarryForward] = useState(false);
   const [permSearch, setPermSearch] = useState('');
   const [loadingPerms, setLoadingPerms] = useState(false);
   const [submitting, setSubmitting] = useState(false);
@@ -66,6 +67,7 @@ export default function AddCustomRoleModal({
       setRoleName('');
       setDescription('');
       setSelectedPermissions(new Set());
+      setCarryForward(false);
       setPermSearch('');
       setError('');
       setLoadingPerms(true);
@@ -197,12 +199,13 @@ export default function AddCustomRoleModal({
         name: trimmedName,
         description: description.trim() || undefined,
         permissions: Array.from(selectedPermissions),
+        carry_forward: carryForward,
       });
 
       onToast?.({
         type: 'success',
         title: 'Custom Role Created',
-        message: `Role "${newRole.name}" has been created with ${selectedPermissions.size} permissions.`,
+        message: `Role "${newRole.name}" has been created ${carryForward ? 'for all projects in your organization' : 'for this project'}.`,
       });
 
       onRoleCreated?.(newRole);
@@ -242,7 +245,7 @@ export default function AddCustomRoleModal({
                   Add Custom Role
                 </h2>
                 <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-purple-100 text-purple-700 border border-purple-200 uppercase tracking-wider">
-                  Project Scope
+                  {carryForward ? 'Organization Scope' : 'Project Scope'}
                 </span>
               </div>
               <p className="text-xs text-slate-500 mt-0.5">
@@ -468,6 +471,90 @@ export default function AddCustomRoleModal({
                 })}
               </div>
             )}
+          </div>
+
+          {/* Carry Forward Role Section */}
+          <div className="pt-4 border-t border-slate-100">
+            <div className="mb-2">
+              <h3 className="text-xs font-bold text-slate-800">
+                Carry Forward Role
+              </h3>
+              <p className="text-[11px] text-slate-500 mt-0.5">
+                Make this role available for future projects in your organization?
+              </p>
+            </div>
+
+            <div
+              className="grid grid-cols-1 sm:grid-cols-2 gap-2"
+              role="radiogroup"
+              aria-label="Carry Forward Role"
+            >
+              {/* Option No (Default) */}
+              <label
+                htmlFor="carry-forward-no"
+                className={`flex items-start gap-2.5 p-2.5 rounded-xl border text-left cursor-pointer transition-all select-none ${
+                  !carryForward
+                    ? 'bg-purple-50/70 border-purple-300 ring-1 ring-purple-400/30 text-purple-950 font-medium'
+                    : 'bg-white border-slate-200/80 text-slate-700 hover:bg-slate-50/80 hover:border-slate-300'
+                }`}
+              >
+                <input
+                  id="carry-forward-no"
+                  type="radio"
+                  name="carryForwardOption"
+                  value="no"
+                  checked={!carryForward}
+                  onChange={() => setCarryForward(false)}
+                  className="w-3.5 h-3.5 text-purple-600 focus:ring-purple-500 cursor-pointer mt-0.5 shrink-0"
+                />
+                <div className="min-w-0 flex-1">
+                  <div className="flex items-center gap-1.5">
+                    <span className="text-xs font-bold text-slate-900">
+                      No
+                    </span>
+                    <span className="text-[9px] font-semibold px-1.5 py-0.2 rounded bg-slate-100 text-slate-500 border border-slate-200">
+                      Default
+                    </span>
+                  </div>
+                  <p className="text-[11px] text-slate-500 mt-0.5 leading-snug">
+                    Keep this role limited to the current project.
+                  </p>
+                </div>
+              </label>
+
+              {/* Option Yes */}
+              <label
+                htmlFor="carry-forward-yes"
+                className={`flex items-start gap-2.5 p-2.5 rounded-xl border text-left cursor-pointer transition-all select-none ${
+                  carryForward
+                    ? 'bg-purple-50/70 border-purple-300 ring-1 ring-purple-400/30 text-purple-950 font-medium'
+                    : 'bg-white border-slate-200/80 text-slate-700 hover:bg-slate-50/80 hover:border-slate-300'
+                }`}
+              >
+                <input
+                  id="carry-forward-yes"
+                  type="radio"
+                  name="carryForwardOption"
+                  value="yes"
+                  checked={carryForward}
+                  onChange={() => setCarryForward(true)}
+                  className="w-3.5 h-3.5 text-purple-600 focus:ring-purple-500 cursor-pointer mt-0.5 shrink-0"
+                />
+                <div className="min-w-0 flex-1">
+                  <div className="flex items-center gap-1.5">
+                    <span className="text-xs font-bold text-slate-900">
+                      Yes
+                    </span>
+                    <span className="text-[9px] font-semibold px-1.5 py-0.2 rounded bg-purple-100 text-purple-700 border border-purple-200">
+                      Organization-Wide
+                    </span>
+                  </div>
+                  <p className="text-[11px] text-slate-500 mt-0.5 leading-snug">
+                    Save this role for reuse in future projects within the organization.
+                  </p>
+                </div>
+              </label>
+            </div>
           </div>
         </form>
 
