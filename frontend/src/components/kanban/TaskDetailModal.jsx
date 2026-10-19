@@ -249,12 +249,16 @@ export default function TaskDetailModal({
         .then((members) => setProjectMembers(members || []))
         .catch((err) => console.error('Failed to load project members:', err));
 
-      sprintsService
-        .getSprints(liveTask.project_id)
-        .then((s) => setProjectSprints(s || []))
-        .catch((err) => console.error('Failed to load project sprints:', err));
+      if (!isKanbanProject) {
+        sprintsService
+          .getSprints(liveTask.project_id)
+          .then((s) => setProjectSprints(s || []))
+          .catch((err) => console.error('Failed to load project sprints:', err));
+      } else {
+        setProjectSprints([]);
+      }
     }
-  }, [isOpen, liveTask?.project_id]);
+  }, [isOpen, liveTask?.project_id, isKanbanProject]);
 
   useEffect(() => {
     if (!isOpen || !liveTask?.id) return;
@@ -769,8 +773,8 @@ export default function TaskDetailModal({
             </div>
           )}
 
-          {/* Status, Priority, Sprint/Cycle & Story Points Row */}
-          <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 p-3.5 bg-slate-50/80 rounded-xl border border-slate-200/70">
+          {/* Status, Priority, Sprint & Story Points Row */}
+          <div className={`grid grid-cols-2 ${!isKanbanProject ? 'sm:grid-cols-4' : 'sm:grid-cols-3'} gap-3 p-3.5 bg-slate-50/80 rounded-xl border border-slate-200/70`}>
             <div>
               <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1">
                 Status
@@ -817,10 +821,10 @@ export default function TaskDetailModal({
               )}
             </div>
 
-            {Boolean(liveTask.project_id) && liveTask.type !== 'EPIC' && (
+            {Boolean(liveTask.project_id) && liveTask.type !== 'EPIC' && !isKanbanProject && (
               <div>
                 <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1">
-                  {Term}
+                  Sprint
                 </label>
                 {canEditFields ? (
                   <select
@@ -828,7 +832,7 @@ export default function TaskDetailModal({
                     onChange={(e) => handleSprintChange(e.target.value)}
                     className="w-full px-2.5 py-1.5 rounded-lg border border-slate-200 bg-white text-slate-800 font-semibold focus:outline-none focus:border-purple-600 text-xs"
                   >
-                    <option value="backlog">Backlog (No {Term})</option>
+                    <option value="backlog">Backlog (No Sprint)</option>
                     {projectSprints.map((s) => (
                       <option key={s.id} value={s.id} disabled={s.status === 'COMPLETED' && liveTask.sprint_id !== s.id}>
                         {s.name} {s.status === 'COMPLETED' ? '(Completed)' : s.status === 'ACTIVE' ? '(Active)' : ''}
@@ -837,7 +841,7 @@ export default function TaskDetailModal({
                   </select>
                 ) : (
                   <div className="px-2.5 py-1.5 rounded-lg border border-slate-200 bg-slate-100 text-slate-700 font-semibold text-xs truncate">
-                    {liveTask.sprint?.name || projectSprints.find((s) => s.id === liveTask.sprint_id)?.name || `Backlog (No ${Term})`}
+                    {liveTask.sprint?.name || projectSprints.find((s) => s.id === liveTask.sprint_id)?.name || 'Backlog (No Sprint)'}
                   </div>
                 )}
               </div>

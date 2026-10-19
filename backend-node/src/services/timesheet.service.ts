@@ -118,6 +118,12 @@ export class TimesheetService {
         if (name === permissionName) return true;
       }
     }
+    if (Array.isArray(user?.user_permissions)) {
+      for (const up of user.user_permissions) {
+        const name = up?.permission?.name || up?.name;
+        if (name === permissionName) return true;
+      }
+    }
     return false;
   }
 
@@ -773,7 +779,7 @@ export class TimesheetService {
   }
 
   static async reviewTimeCorrection(user: any, requestId: string, decision: 'APPROVE' | 'REJECT', decisionNote?: string) {
-    if (!this.hasRole(user, ['MANAGER', 'ADMIN', 'SUPER_ADMIN', 'TECH_LEAD'])) {
+    if (!this.hasRole(user, ['MANAGER', 'ADMIN', 'SUPER_ADMIN', 'TECH_LEAD']) && !this.hasPermission(user, 'ATTENDANCE_UPDATE')) {
       throw new Error('Forbidden: only managers can review time correction requests');
     }
 
@@ -1860,7 +1866,7 @@ export class TimesheetService {
   }
 
   static async getManagerReport(user: any, dateValue?: Date | string) {
-    if (!this.hasRole(user, ['MANAGER', 'ADMIN', 'SUPER_ADMIN'])) {
+    if (!this.hasRole(user, ['MANAGER', 'ADMIN', 'SUPER_ADMIN']) && !this.hasPermission(user, 'ATTENDANCE_READ')) {
       throw new Error('Forbidden: managers can only view team reports');
     }
 
@@ -1899,7 +1905,7 @@ export class TimesheetService {
       limit?: number;
     } = {}
   ) {
-    if (!this.hasRole(user, ['MANAGER', 'ADMIN', 'SUPER_ADMIN', 'TECH_LEAD'])) {
+    if (!this.hasRole(user, ['MANAGER', 'ADMIN', 'SUPER_ADMIN', 'TECH_LEAD']) && !this.hasPermission(user, 'ATTENDANCE_READ')) {
       throw new Error('Forbidden: only managers and administrators can review timesheets');
     }
 

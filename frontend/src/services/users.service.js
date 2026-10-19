@@ -61,4 +61,18 @@ export const usersService = {
   async updateMember(userId, data) {
     return await api.patch(`/users/${encodeURIComponent(userId)}`, data);
   },
+
+  /**
+   * Manager fetches user's assigned and available permissions
+   */
+  async getUserPermissions(userId) {
+    return await api.get(`/users/${encodeURIComponent(userId)}/permissions`);
+  },
+
+  /**
+   * Manager updates an intern's explicitly granted permissions
+   */
+  async updateUserPermissions(userId, permissions) {
+    return await api.put(`/users/${encodeURIComponent(userId)}/permissions`, { permissions });
+  },
 };

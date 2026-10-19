@@ -228,19 +228,12 @@ describe('SprintService Unit Tests', () => {
       ).rejects.toThrow('Cannot start a sprint that is already completed');
     });
 
-    it('starts sprint in Kanban without acquiring row lock', async () => {
+    it('rejects startSprint for Kanban project with error', async () => {
       const kanbanProject = { ...mockProject, methodology: 'KANBAN' };
       mockPrisma.project.findFirst.mockResolvedValueOnce(kanbanProject);
-      mockPrisma.sprint.findFirst
-        .mockResolvedValueOnce({ id: 'cycle-1', status: SprintStatus.PLANNED }) // targetSprint
-        .mockResolvedValueOnce(null); // activeSprint check
-      mockPrisma.sprint.update.mockResolvedValueOnce({
-        id: 'cycle-1',
-        status: SprintStatus.ACTIVE,
-      });
-
-      const res = await SprintService.startSprint('proj-123', 'cycle-1', mockUser);
-      expect(res.status).toBe(SprintStatus.ACTIVE);
+      await expect(
+        SprintService.startSprint('proj-123', 'cycle-1', mockUser)
+      ).rejects.toThrow('Sprints and cycles are not supported for Kanban projects.');
     });
   });
 
@@ -439,6 +432,65 @@ describe('SprintService Unit Tests', () => {
       expect(list[0].total_items).toBe(1);
       expect(list[0].completed_items).toBe(1);
       expect(list[0].completion_percentage).toBe(100);
+    });
+  });
+
+  describe('Kanban methodology enforcement', () => {
+    const mockKanbanProject = {
+      id: 'proj-kanban',
+      organization_id: 'org-123',
+      name: 'Kanban Project',
+      status: 'ACTIVE',
+      methodology: 'KANBAN',
+    };
+
+    it('rejects createSprint on Kanban projects with error', async () => {
+      mockPrisma.project.findFirst.mockResolvedValueOnce(mockKanbanProject);
+      await expect(
+        SprintService.createSprint('proj-kanban', { name: 'Cycle 1' }, mockUser)
+      ).rejects.toThrow('Sprints and cycles are not supported for Kanban projects. Kanban uses continuous flow without sprints.');
+    });
+
+    it('returns empty array [] on listSprints for Kanban projects without querying sprints table', async () => {
+      mockPrisma.project.findFirst.mockResolvedValueOnce(mockKanbanProject);
+      const res = await SprintService.listSprints('proj-kanban', mockUser);
+      expect(res).toEqual([]);
+      expect(mockPrisma.sprint.findMany).not.toHaveBeenCalled();
+    });
+
+    it('rejects getSprintById on Kanban projects with error', async () => {
+      mockPrisma.project.findFirst.mockResolvedValueOnce(mockKanbanProject);
+      await expect(
+        SprintService.getSprintById('proj-kanban', 'sprint-1', mockUser)
+      ).rejects.toThrow('Sprints and cycles are not supported for Kanban projects.');
+    });
+
+    it('rejects updateSprint on Kanban projects with error', async () => {
+      mockPrisma.project.findFirst.mockResolvedValueOnce(mockKanbanProject);
+      await expect(
+        SprintService.updateSprint('proj-kanban', 'sprint-1', { goal: 'Goal' }, mockUser)
+      ).rejects.toThrow('Sprints and cycles are not supported for Kanban projects.');
+    });
+
+    it('rejects startSprint on Kanban projects with error', async () => {
+      mockPrisma.project.findFirst.mockResolvedValueOnce(mockKanbanProject);
+      await expect(
+        SprintService.startSprint('proj-kanban', 'sprint-1', mockUser)
+      ).rejects.toThrow('Sprints and cycles are not supported for Kanban projects.');
+    });
+
+    it('rejects completeSprint on Kanban projects with error', async () => {
+      mockPrisma.project.findFirst.mockResolvedValueOnce(mockKanbanProject);
+      await expect(
+        SprintService.completeSprint('proj-kanban', 'sprint-1', { unfinished_action: 'MOVE_TO_BACKLOG' }, mockUser)
+      ).rejects.toThrow('Sprints and cycles are not supported for Kanban projects.');
+    });
+
+    it('rejects deleteSprint on Kanban projects with error', async () => {
+      mockPrisma.project.findFirst.mockResolvedValueOnce(mockKanbanProject);
+      await expect(
+        SprintService.deleteSprint('proj-kanban', 'sprint-1', mockUser)
+      ).rejects.toThrow('Sprints and cycles are not supported for Kanban projects.');
     });
   });
 });

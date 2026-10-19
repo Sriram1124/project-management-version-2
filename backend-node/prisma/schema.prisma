@@ -86,6 +86,8 @@ model User {
   audit_logs             AuditLog[]
   requested_extensions   WorkItemExtensionRequest[] @relation("ExtensionRequester")
   reviewed_extensions    WorkItemExtensionRequest[] @relation("ExtensionReviewer")
+  user_permissions       UserPermission[]
+  project_ownerships     ProjectOwner[]          @relation("ProjectOwners")
 
   @@unique([organization_id, user_code])
   @@index([cohort_id])
@@ -189,9 +191,26 @@ model Permission {
   created_at  DateTime @default(now())
   updated_at  DateTime @updatedAt
 
-  roles RolePermission[]
+  roles            RolePermission[]
+  user_permissions UserPermission[]
 
   @@map("permissions")
+}
+
+model UserPermission {
+  id            String   @id @default(uuid())
+  user_id       String
+  permission_id String
+  created_at    DateTime @default(now())
+  updated_at    DateTime @updatedAt
+
+  user       User       @relation(fields: [user_id], references: [id], onDelete: Cascade)
+  permission Permission @relation(fields: [permission_id], references: [id], onDelete: Cascade)
+
+  @@unique([user_id, permission_id])
+  @@index([user_id])
+  @@index([permission_id])
+  @@map("user_permissions")
 }
 
 model UserRole {
@@ -260,6 +279,7 @@ model Project {
 
   organization Organization      @relation(fields: [organization_id], references: [id])
   owner        User              @relation("ProjectOwner", fields: [owner_id], references: [id])
+  owners       ProjectOwner[]
   members      ProjectMember[]
   documents    ProjectDocument[]
   work_items   WorkItem[]
@@ -271,6 +291,20 @@ model Project {
   extension_requests WorkItemExtensionRequest[]
 
   @@map("projects")
+}
+
+model ProjectOwner {
+  project_id String
+  user_id    String
+  created_at DateTime @default(now())
+
+  project Project @relation(fields: [project_id], references: [id], onDelete: Cascade)
+  user    User    @relation("ProjectOwners", fields: [user_id], references: [id], onDelete: Cascade)
+
+  @@id([project_id, user_id])
+  @@index([project_id])
+  @@index([user_id])
+  @@map("project_owners")
 }
 
 model ProjectMember {

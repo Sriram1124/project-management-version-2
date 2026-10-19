@@ -147,8 +147,8 @@ export default function ScopedProjectView({
   const isKanban = project?.methodology === 'KANBAN';
 
   useEffect(() => {
-    if (isKanban && activeTab === 'sprint') {
-      setActiveTab('cycles');
+    if (isKanban && (activeTab === 'sprint' || activeTab === 'cycles')) {
+      setActiveTab('kanban');
     } else if (!isKanban && activeTab === 'cycles') {
       setActiveTab('sprint');
     }
@@ -160,9 +160,7 @@ export default function ScopedProjectView({
     { id: 'work', label: `Work Items (${projectWorkItems.length})` },
     { id: 'action-items', label: 'Action Items' },
     { id: 'kanban', label: isKanban ? 'Kanban Board' : 'Scrum Board' },
-    ...(isKanban
-      ? [{ id: 'cycles', label: 'Planning & Cycles' }]
-      : [{ id: 'sprint', label: 'Sprint Workspace' }]),
+    ...(!isKanban ? [{ id: 'sprint', label: 'Sprint Workspace' }] : []),
   ];
 
   return (
@@ -649,15 +647,6 @@ export default function ScopedProjectView({
       {/* Tab 5: Sprint Workspace (Scrum) */}
       {activeTab === 'sprint' && !isKanban && (
         <ProjectSprintWorkspaceTab
-          projectId={project.id}
-          onToast={onToast}
-          readOnly={true}
-        />
-      )}
-
-      {/* Tab 5 (Kanban): Planning & Cycles Workspace */}
-      {activeTab === 'cycles' && isKanban && (
-        <ProjectCycleWorkspaceTab
           projectId={project.id}
           onToast={onToast}
           readOnly={true}

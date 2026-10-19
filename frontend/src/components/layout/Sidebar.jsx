@@ -39,18 +39,28 @@ export default function Sidebar({
   };
 
   const isProjectWorkspace = Boolean(activeProjectId);
+  const isManagerRole = ['MANAGER', 'ADMIN', 'SUPER_ADMIN'].includes(userRole);
+  const userPerms = new Set(currentUser?.permissions || []);
 
   const coreItems = [
     { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard },
     { id: 'projects', label: 'Projects', icon: FolderKanban },
     { id: 'my-tasks', label: 'My Tasks', icon: CheckSquare },
-    { id: 'interns', label: 'Interns', icon: Users, badge: internCount > 0 ? internCount : null },
-    { id: 'tech-leads', label: 'Tech Leads', icon: ShieldCheck },
+    ...(isManagerRole || userPerms.has('USER_READ') || userPerms.has('USER_CREATE') || userPerms.has('USER_UPDATE') || userPerms.has('USER_DELETE')
+      ? [{ id: 'interns', label: 'Interns', icon: Users, badge: internCount > 0 ? internCount : null }]
+      : []),
+    ...(isManagerRole || userPerms.has('USER_READ')
+      ? [{ id: 'tech-leads', label: 'Tech Leads', icon: ShieldCheck }]
+      : []),
   ];
 
   const analyticsItems = [
-    { id: 'timesheets', label: 'Timesheets', icon: Clock },
-    { id: 'reports', label: 'Reports', icon: BarChart3 },
+    ...(isManagerRole || userPerms.has('ATTENDANCE_READ') || userPerms.has('ATTENDANCE_UPDATE')
+      ? [{ id: 'timesheets', label: 'Timesheets', icon: Clock }]
+      : []),
+    ...(isManagerRole || userPerms.has('EVALUATION_READ') || userPerms.has('ANALYTICS_READ')
+      ? [{ id: 'reports', label: 'Reports', icon: BarChart3 }]
+      : []),
   ];
 
   return (

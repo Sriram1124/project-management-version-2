@@ -116,10 +116,18 @@ export class WorkItemService {
 
     const project = await prisma.project.findUnique({
       where: { id: projectId },
-      select: { owner_id: true, organization_id: true },
+      select: {
+        owner_id: true,
+        organization_id: true,
+        owners: { select: { user_id: true } },
+      },
     });
 
-    const isOwner = Boolean(project && project.owner_id === userId);
+    const isOwner = Boolean(
+      project &&
+        (project.owner_id === userId ||
+          (Array.isArray((project as any).owners) && (project as any).owners.some((po: any) => po.user_id === userId)))
+    );
 
     const membership = await prisma.projectMember.findFirst({
       where: {
@@ -574,8 +582,9 @@ export class WorkItemService {
     const parentId = data.parent_id ? data.parent_id.trim() : null;
 
     // Validate project access if this is a project work item
+    let project: any = null;
     if (projectId) {
-      const project = await prisma.project.findFirst({
+      project = await prisma.project.findFirst({
         where: { id: projectId, organization_id: orgId },
       });
       if (!project) {
@@ -670,6 +679,9 @@ export class WorkItemService {
     if (data.sprint_id) {
       if (!projectId) {
         throw new Error('Personal tasks cannot be assigned to a sprint');
+      }
+      if (project?.methodology === 'KANBAN') {
+        throw new Error('Cannot assign tasks to a sprint or cycle in a Kanban project. Kanban projects use continuous flow without sprints.');
       }
       const sprint = await prisma.sprint.findFirst({
         where: { id: data.sprint_id, organization_id: orgId },
@@ -1062,10 +1074,11 @@ export class WorkItemService {
     }
 
     // Access check
+    let project: { owner_id: string; status: any; methodology: string } | null = null;
     if (currentItem.project_id) {
-      const project = await prisma.project.findUnique({
+      project = await prisma.project.findUnique({
         where: { id: currentItem.project_id },
-        select: { owner_id: true, status: true },
+        select: { owner_id: true, status: true, methodology: true },
       });
       if (project?.status === ProjectStatus.ARCHIVED && !isMgr) {
         throw new Error('Cannot modify work items in an archived project');
@@ -1255,6 +1268,9 @@ export class WorkItemService {
       } else {
         if (!currentItem.project_id) {
           throw new Error('Personal tasks cannot be assigned to a sprint');
+        }
+        if (project?.methodology === 'KANBAN') {
+          throw new Error('Cannot assign tasks to a sprint or cycle in a Kanban project. Kanban projects use continuous flow without sprints.');
         }
         const sprint = await prisma.sprint.findFirst({
           where: { id: input.sprint_id, organization_id: orgId },
@@ -1816,7 +1832,7 @@ export class WorkItemService {
       const [projRecord, membershipRecord] = await Promise.all([
         prisma.project.findFirst({
           where: whereProject,
-          select: { id: true, name: true, owner_id: true, status: true, start_date: true, end_date: true },
+          select: { id: true, name: true, owner_id: true, status: true, start_date: true, end_date: true, methodology: true },
         }),
         isMgr
           ? Promise.resolve(null)
@@ -1896,7 +1912,7 @@ export class WorkItemService {
         { project: { members: { some: { user_id: user.id } } } },
       ];
     }
-    if (filters?.sprint_id && filters.sprint_id !== 'ALL' && filters.sprint_id !== 'null') {
+    if (project?.methodology !== 'KANBAN' && filters?.sprint_id && filters.sprint_id !== 'ALL' && filters.sprint_id !== 'null') {
       where.sprint_id = filters.sprint_id;
     }
 
@@ -1952,7 +1968,7 @@ export class WorkItemService {
           date: true,
         },
       }),
-      filters?.project_id
+      filters?.project_id && project?.methodology !== 'KANBAN'
         ? prisma.sprint.findMany({
             where: {
               organization_id: orgId,

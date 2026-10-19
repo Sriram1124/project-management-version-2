@@ -21,7 +21,9 @@ export class SprintController {
       msg.includes('Cannot') ||
       msg.includes('cannot') ||
       msg.includes('already active') ||
-      msg.includes('currently active')
+      msg.includes('currently active') ||
+      msg.includes('not supported') ||
+      msg.includes('Not supported')
     ) {
       res.status(400).json({ error: msg });
       return;

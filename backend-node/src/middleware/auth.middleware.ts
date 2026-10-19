@@ -97,6 +97,13 @@ export const authenticate = async (req: Request, res: Response, next: NextFuncti
                   }
                 }
               },
+              user_permissions: {
+                select: {
+                  permission: {
+                    select: { id: true, name: true }
+                  }
+                }
+              },
               project_memberships: {
                 where: { project_role: 'TECH_LEAD' },
                 select: { project_id: true }
@@ -242,6 +249,55 @@ export const requireRole = (allowedRoles: string[]) => {
   };
 };
 
+export const requireRoleOrPermission = (allowedRoles: string[], ...requiredPermissions: string[]) => {
+  return async (req: Request, res: Response, next: NextFunction): Promise<void> => {
+    const userRole = (req as any).user?.role;
+    const fullUser = (req as any).fullUser;
+
+    if (!fullUser) {
+      res.status(401).json({ error: 'Unauthorized' });
+      return;
+    }
+
+    const roles: string[] = [];
+    if (userRole) roles.push(userRole);
+    if (Array.isArray(fullUser?.roles)) {
+      for (const ur of fullUser.roles) {
+        const name = ur.role?.name || ur.name;
+        if (name && !roles.includes(name)) roles.push(name);
+      }
+    }
+
+    if (roles.includes('SUPER_ADMIN') || roles.some((r) => allowedRoles.includes(r))) {
+      return next();
+    }
+
+    if (requiredPermissions.length > 0) {
+      const userPerms = new Set<string>();
+      for (const ur of fullUser.roles || []) {
+        for (const rp of ur.role?.permissions || []) {
+          if (rp.permission?.name) userPerms.add(rp.permission.name);
+        }
+      }
+      for (const up of fullUser.user_permissions || []) {
+        if (up.permission?.name) userPerms.add(up.permission.name);
+      }
+
+      if (requiredPermissions.some((p) => userPerms.has(p))) {
+        return next();
+      }
+    }
+
+    res.status(403).json({
+      error: 'Forbidden: insufficient role or permissions',
+      message: 'You do not have permission to perform this action',
+      user: {},
+      project: {},
+      work_item: {},
+    });
+  };
+};
+
 const PROJECT_PERMISSIONS = [
   'PROJECT_READ',
   'PROJECT_UPDATE',
@@ -329,7 +385,11 @@ export async function checkProjectMemberPermission(
 
     const project = await prisma.project.findUnique({
       where: { id: projectId },
-      select: { owner_id: true, organization_id: true },
+      select: {
+        owner_id: true,
+        organization_id: true,
+        owners: { select: { user_id: true } },
+      },
     });
 
     if (!project) {
@@ -337,7 +397,10 @@ export async function checkProjectMemberPermission(
     }
 
     // Project owner always has full project permissions
-    if (project.owner_id === fullUser.id) {
+    const isProjectOwner =
+      project.owner_id === fullUser.id ||
+      (Array.isArray((project as any).owners) && (project as any).owners.some((po: any) => po.user_id === fullUser.id));
+    if (isProjectOwner) {
       return true;
     }
 
@@ -355,6 +418,21 @@ export async function checkProjectMemberPermission(
 
     if (isOrgManager && (!project.organization_id || project.organization_id === fullUser.organization_id)) {
       return true;
+    }
+
+    // Direct organization-level user_permissions check
+    if (Array.isArray(fullUser.user_permissions)) {
+      const directPerms = new Set(fullUser.user_permissions.map((up: any) => up.permission?.name));
+      if (directPerms.has(permissionToCheck)) {
+        if (!project.organization_id || project.organization_id === fullUser.organization_id) {
+          return true;
+        }
+      }
+      if (permissionToCheck === 'TASK_STATUS_TRANSITION' && directPerms.has('TASK_UPDATE')) {
+        if (!project.organization_id || project.organization_id === fullUser.organization_id) {
+          return true;
+        }
+      }
     }
 
     // Query Project Membership with custom role and associated permissions
@@ -522,6 +600,15 @@ export const requirePermission = (requiredPermission: string) => {
       if (hasPermission) break;
     }
 
+    if (!hasPermission && Array.isArray(fullUser.user_permissions)) {
+      for (const up of fullUser.user_permissions) {
+        if (up.permission?.name === requiredPermission) {
+          hasPermission = true;
+          break;
+        }
+      }
+    }
+
     if (!hasPermission) {
       hasPermission = await checkProjectLeadPermission(fullUser, req, requiredPermission);
     }
@@ -577,6 +664,15 @@ export const requireAnyPermission = (...requiredPermissions: string[]) => {
         }
       }
       if (hasPermission) break;
+    }
+
+    if (!hasPermission && Array.isArray(fullUser.user_permissions)) {
+      for (const up of fullUser.user_permissions) {
+        if (requiredPermissions.includes(up.permission?.name)) {
+          hasPermission = true;
+          break;
+        }
+      }
     }
 
     if (!hasPermission) {

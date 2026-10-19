@@ -424,4 +424,85 @@ export class UserController {
       res.status(statusCode).json({ error: error.message || 'Failed to update member details' });
     }
   }
+
+  /**
+   * GET /api/users/:id/permissions
+   * Manager fetches an intern's base and granted permissions
+   */
+  static async getUserPermissions(req: Request, res: Response): Promise<void> {
+    try {
+      const fullUser = (req as any).fullUser;
+      let managerOrgId = fullUser?.organization_id;
+
+      const targetUserId = req.params.id || (req.params as any).userId;
+      if (!targetUserId || targetUserId === 'undefined') {
+        res.status(404).json({ error: 'User not found' });
+        return;
+      }
+
+      if (!managerOrgId && (fullUser?.roles?.some((r: any) => (r.role?.name || r.name) === 'SUPER_ADMIN') || (req as any).user?.role === 'SUPER_ADMIN')) {
+        const target = await prisma.user.findUnique({
+          where: { id: targetUserId },
+          select: { organization_id: true }
+        });
+        managerOrgId = target?.organization_id || undefined;
+      }
+
+      if (!managerOrgId) {
+        res.status(403).json({ error: 'Manager organization context required' });
+        return;
+      }
+
+      const permissionsData = await UserService.getUserPermissions(managerOrgId, targetUserId, fullUser);
+      res.status(200).json(permissionsData);
+    } catch (error: any) {
+      const statusCode = error.statusCode || 500;
+      res.status(statusCode).json({ error: error.message || 'Failed to fetch user permissions' });
+    }
+  }
+
+  /**
+   * PUT /api/users/:id/permissions
+   * Manager updates an intern's explicitly granted permissions
+   */
+  static async updateUserPermissions(req: Request, res: Response): Promise<void> {
+    try {
+      const fullUser = (req as any).fullUser;
+      let managerOrgId = fullUser?.organization_id;
+
+      const targetUserId = req.params.id || (req.params as any).userId;
+      if (!targetUserId || targetUserId === 'undefined') {
+        res.status(404).json({ error: 'User not found' });
+        return;
+      }
+
+      if (!managerOrgId && (fullUser?.roles?.some((r: any) => (r.role?.name || r.name) === 'SUPER_ADMIN') || (req as any).user?.role === 'SUPER_ADMIN')) {
+        const target = await prisma.user.findUnique({
+          where: { id: targetUserId },
+          select: { organization_id: true }
+        });
+        managerOrgId = target?.organization_id || undefined;
+      }
+
+      if (!managerOrgId) {
+        res.status(403).json({ error: 'Manager organization context required' });
+        return;
+      }
+
+      const { permissions } = req.body;
+      if (!Array.isArray(permissions)) {
+        res.status(400).json({ error: 'Permissions field must be an array of permission names' });
+        return;
+      }
+
+      const updated = await UserService.updateUserPermissions(managerOrgId, targetUserId, permissions, fullUser);
+      res.status(200).json({
+        ...updated,
+        message: 'Permissions updated successfully',
+      });
+    } catch (error: any) {
+      const statusCode = error.statusCode || 500;
+      res.status(statusCode).json({ error: error.message || 'Failed to update user permissions' });
+    }
+  }
 }

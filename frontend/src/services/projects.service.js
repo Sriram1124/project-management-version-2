@@ -43,6 +43,11 @@ export const projectsService = {
     return res.project;
   },
 
+  async deleteProject(id) {
+    const res = await api.delete(`/projects/${id}`);
+    return res;
+  },
+
   async getMembers(id) {
     const res = await api.get(`/projects/${id}/members`);
     const members = res.members || [];

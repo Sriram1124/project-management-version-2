@@ -86,13 +86,14 @@ export class SprintService {
     if (!project) {
       throw new Error('Project not found');
     }
+    if (project.methodology === 'KANBAN') {
+      throw new Error('Sprints and cycles are not supported for Kanban projects. Kanban uses continuous flow without sprints.');
+    }
     if (project.status === 'ARCHIVED' && !this.isManagerOrAdmin(user)) {
       throw new Error('Cannot create sprints or cycles in an archived project');
     }
 
     const { startDate, endDate } = this.validateDates(data.start_date, data.end_date);
-
-    const isKanban = project.methodology === 'KANBAN';
 
     let status: SprintStatus = SprintStatus.PLANNED;
     if ((data as any).status) {
@@ -103,7 +104,7 @@ export class SprintService {
       else if (upper === 'PLANNED') status = SprintStatus.PLANNED;
     }
 
-    if (!isKanban && status === SprintStatus.ACTIVE) {
+    if (status === SprintStatus.ACTIVE) {
       const existingActive = await prisma.sprint.findFirst({
         where: { project_id: projectId, status: SprintStatus.ACTIVE },
       });
@@ -149,6 +150,10 @@ export class SprintService {
     });
     if (!project) {
       throw new Error('Project not found');
+    }
+
+    if (project.methodology === 'KANBAN') {
+      return [];
     }
 
     const sprints = await prisma.sprint.findMany({
@@ -296,6 +301,9 @@ export class SprintService {
     });
     if (!project) {
       throw new Error('Project not found');
+    }
+    if (project.methodology === 'KANBAN') {
+      throw new Error('Sprints and cycles are not supported for Kanban projects.');
     }
 
     const sprint = await prisma.sprint.findFirst({
@@ -457,15 +465,16 @@ export class SprintService {
     if (!project) {
       throw new Error('Project not found');
     }
+    if (project.methodology === 'KANBAN') {
+      throw new Error('Sprints and cycles are not supported for Kanban projects.');
+    }
     if (project.status === 'ARCHIVED' && !this.isManagerOrAdmin(user)) {
       throw new Error('Cannot update sprints or cycles in an archived project');
     }
 
-    const isKanban = project.methodology === 'KANBAN';
-
     return await prisma.$transaction(async (tx) => {
       // If activating a sprint, lock project row to serialize concurrent sprint lifecycle requests
-      if (!isKanban && data.status === SprintStatus.ACTIVE) {
+      if (data.status === SprintStatus.ACTIVE) {
         await tx.$executeRaw`SELECT id FROM "projects" WHERE id = ${projectId} FOR UPDATE;`;
       }
 
@@ -522,9 +531,7 @@ export class SprintService {
           });
           if (activeSprint) {
             throw new Error(
-              isKanban
-                ? `Cannot activate cycle: Cycle "${activeSprint.name}" is currently active. Please close or resolve it first.`
-                : `Cannot activate sprint: Sprint "${activeSprint.name}" is currently active. Please complete or resolve it first.`
+              `Cannot activate sprint: Sprint "${activeSprint.name}" is currently active. Please complete or resolve it first.`
             );
           }
           if (!existing.start_date && !updateData.start_date) {
@@ -576,17 +583,16 @@ export class SprintService {
     if (!project) {
       throw new Error('Project not found');
     }
+    if (project.methodology === 'KANBAN') {
+      throw new Error('Sprints and cycles are not supported for Kanban projects.');
+    }
     if (project.status === 'ARCHIVED' && !this.isManagerOrAdmin(user)) {
       throw new Error('Cannot start sprints or cycles in an archived project');
     }
 
-    const isKanban = project.methodology === 'KANBAN';
-
     return await prisma.$transaction(async (tx) => {
       // For Scrum: acquire exclusive lock on the project to serialize concurrent sprint activation requests
-      if (!isKanban) {
-        await tx.$executeRaw`SELECT id FROM "projects" WHERE id = ${projectId} FOR UPDATE;`;
-      }
+      await tx.$executeRaw`SELECT id FROM "projects" WHERE id = ${projectId} FOR UPDATE;`;
 
       const sprintWhere: any = { id: sprintId, project_id: projectId };
       if (project.organization_id) {
@@ -618,9 +624,7 @@ export class SprintService {
 
       if (activeSprint) {
         throw new Error(
-          isKanban
-            ? `Cannot activate cycle: Cycle "${activeSprint.name}" is currently active. Please close or resolve it before activating another cycle.`
-            : `Cannot start sprint: Sprint "${activeSprint.name}" is currently active. Please complete or resolve it first.`
+          `Cannot start sprint: Sprint "${activeSprint.name}" is currently active. Please complete or resolve it first.`
         );
       }
 
@@ -673,11 +677,12 @@ export class SprintService {
     if (!project) {
       throw new Error('Project not found');
     }
+    if (project.methodology === 'KANBAN') {
+      throw new Error('Sprints and cycles are not supported for Kanban projects.');
+    }
     if (project.status === 'ARCHIVED' && !this.isManagerOrAdmin(user)) {
       throw new Error('Cannot complete sprints or cycles in an archived project');
     }
-
-    const isKanban = project.methodology === 'KANBAN';
 
     return await prisma.$transaction(async (tx) => {
       const sprintWhere: any = { id: sprintId, project_id: projectId };
@@ -731,7 +736,7 @@ export class SprintService {
           destinationSprintId = newSprint.id;
         } else {
           const shouldMoveToSprint =
-            (options.unfinished_action === 'MOVE_TO_SPRINT' || (!options.unfinished_action && !isKanban)) &&
+            (options.unfinished_action === 'MOVE_TO_SPRINT' || !options.unfinished_action) &&
             Boolean(options.target_sprint_id);
 
           if (shouldMoveToSprint && options.target_sprint_id) {
@@ -826,6 +831,9 @@ export class SprintService {
     });
     if (!project) {
       throw new Error('Project not found');
+    }
+    if (project.methodology === 'KANBAN') {
+      throw new Error('Sprints and cycles are not supported for Kanban projects.');
     }
     if (project.status === 'ARCHIVED' && !this.isManagerOrAdmin(user)) {
       throw new Error('Cannot delete sprints or cycles in an archived project');

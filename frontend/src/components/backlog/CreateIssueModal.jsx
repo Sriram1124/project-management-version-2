@@ -293,7 +293,7 @@ export default function CreateIssueModal({
           description: description.trim(),
           status: status || 'TODO',
           parent_id: effectiveParentId || null,
-          sprint_id: sprintId === 'backlog' ? null : sprintId,
+          sprint_id: isKanban ? null : (sprintId === 'backlog' ? null : sprintId),
           assignee_ids: assigneeId ? [assigneeId] : [],
           priority: priority.toUpperCase(),
           story_points: isApplicableType ? sp : (sp >= 0 ? sp : 0),

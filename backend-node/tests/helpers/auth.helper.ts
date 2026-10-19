@@ -13,6 +13,7 @@ export interface TestUserOptions {
   is_active?: boolean;
   must_change_password?: boolean;
   permissions?: string[];
+  direct_permissions?: string[];
   project_lead_ids?: string[];
 }
 
@@ -36,6 +37,7 @@ export function setupAuthUser(options: TestUserOptions = {}) {
     is_active = true,
     must_change_password = false,
     permissions = [],
+    direct_permissions = [],
     project_lead_ids = [],
   } = options;
 
@@ -66,6 +68,9 @@ export function setupAuthUser(options: TestUserOptions = {}) {
         },
       },
     ],
+    user_permissions: (direct_permissions || []).map((p) => ({
+      permission: { id: `perm-${p}`, name: p },
+    })),
     project_memberships: project_lead_ids.map((pid) => ({
       project_id: pid,
     })),

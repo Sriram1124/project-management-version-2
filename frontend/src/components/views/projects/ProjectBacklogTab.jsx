@@ -69,7 +69,7 @@ export default function ProjectBacklogTab({ projectId, project = null, isKanbanP
         setLoading(true);
       }
       const [sprintsList, itemsList, membersList] = await Promise.all([
-        sprintsService.getSprints(projectId).catch(() => []),
+        isKanban ? Promise.resolve([]) : sprintsService.getSprints(projectId).catch(() => []),
         workItemsService.listWorkItems({ project_id: projectId }).catch(() => []),
         projectsService.getMembers(projectId).catch(() => []),
       ]);
@@ -688,7 +688,7 @@ export default function ProjectBacklogTab({ projectId, project = null, isKanbanP
           setCreateParentItem(null);
           setIsCreateModalOpen(true);
         }}
-        onCreateSprintClick={readOnly ? undefined : () => setIsCreateSprintOpen(true)}
+        onCreateSprintClick={readOnly || isKanban ? undefined : () => setIsCreateSprintOpen(true)}
         onExpandAll={handleExpandAll}
         onCollapseAll={handleCollapseAll}
         allExpanded={expandedIds.size > 0}
@@ -696,7 +696,7 @@ export default function ProjectBacklogTab({ projectId, project = null, isKanbanP
 
       {/* 2. MAIN WORKSPACE CONTENT */}
       {/* VIEW MODE A: HIERARCHICAL TREE (EPICS AT ROOT EXPANDING DOWN) */}
-      {groupBy === 'epic' && (
+      {(groupBy === 'epic' || (isKanban && groupBy !== 'none')) && (
         <HierarchicalIssueTable
           issues={filteredWorkItems}
           allWorkItems={workItems}
@@ -723,8 +723,8 @@ export default function ProjectBacklogTab({ projectId, project = null, isKanbanP
         />
       )}
 
-      {/* VIEW MODE B: ALL CYCLES GROUPED */}
-      {(groupBy === 'sprint' || groupBy === 'all_cycles') && (
+      {/* VIEW MODE B: ALL CYCLES GROUPED (Scrum only) */}
+      {!isKanban && (groupBy === 'sprint' || groupBy === 'all_cycles') && (
         <div className="space-y-3">
           {sprintSections.map((sprint) => {
             const sprintItems = sprint.isBacklog
@@ -780,14 +780,14 @@ export default function ProjectBacklogTab({ projectId, project = null, isKanbanP
         </div>
       )}
 
-      {/* VIEW MODE C: INDIVIDUAL CYCLE */}
-      {groupBy?.startsWith('cycle:') && (() => {
+      {/* VIEW MODE C: INDIVIDUAL CYCLE (Scrum only) */}
+      {!isKanban && groupBy?.startsWith('cycle:') && (() => {
         const targetCycleId = groupBy.replace('cycle:', '');
         const targetSprint = sprintSections.find((s) => s.id === targetCycleId) || sprints.find((s) => s.id === targetCycleId);
         if (!targetSprint) {
           return (
             <div className="rounded-md border border-slate-200 bg-white p-8 text-center text-slate-500 text-xs">
-              {isKanban ? 'Cycle' : 'Sprint'} not found or has been removed. Please select another view.
+              Sprint not found or has been removed. Please select another view.
             </div>
           );
         }
@@ -801,7 +801,7 @@ export default function ProjectBacklogTab({ projectId, project = null, isKanbanP
             sprints={sprints}
             members={members}
             selectedIssueId={selectedIssue?.id}
-            isKanban={isKanban}
+            isKanban={false}
             onSelectIssue={(issue) => setSelectedIssue(issue)}
             onUpdateStatus={handleUpdateStatus}
             onUpdatePriority={handleUpdatePriority}
@@ -830,8 +830,8 @@ export default function ProjectBacklogTab({ projectId, project = null, isKanbanP
         );
       })()}
 
-      {/* VIEW MODE D: BACKLOG (NO CYCLE) */}
-      {groupBy === 'no_cycle' && (() => {
+      {/* VIEW MODE D: BACKLOG (NO CYCLE) (Scrum only) */}
+      {!isKanban && groupBy === 'no_cycle' && (() => {
         const backlogSprint = sprintSections.find((s) => s.isBacklog) || {
           id: 'backlog',
           name: isKanban ? 'Backlog (No Cycle)' : 'Backlog (No Sprint)',
@@ -1000,7 +1000,7 @@ export default function ProjectBacklogTab({ projectId, project = null, isKanbanP
                 parent_id: parentIssueId,
                 type: childType,
                 title: subtaskTitle.trim(),
-                sprint_id: sprintId || null,
+                sprint_id: isKanban ? null : (sprintId || null),
                 story_points: spVal,
               });
               if (created) {
@@ -1037,19 +1037,21 @@ export default function ProjectBacklogTab({ projectId, project = null, isKanbanP
         onCreateEpic={handleCreateEpic}
       />
 
-      {/* 5. CREATE SPRINT MODAL */}
-      <CreateSprintModal
-        isOpen={isCreateSprintOpen}
-        onClose={() => setIsCreateSprintOpen(false)}
-        projectId={projectId}
-        projectName={currentProject?.name}
-        existingSprints={sprints}
-        isKanban={isKanban}
-        onSuccess={() => {
-          loadProjectData();
-          onToast?.(isKanban ? 'Cycle created successfully' : 'Sprint created successfully');
-        }}
-      />
+      {/* 5. CREATE SPRINT MODAL (Scrum only) */}
+      {!isKanban && (
+        <CreateSprintModal
+          isOpen={isCreateSprintOpen}
+          onClose={() => setIsCreateSprintOpen(false)}
+          projectId={projectId}
+          projectName={currentProject?.name}
+          existingSprints={sprints}
+          isKanban={false}
+          onSuccess={() => {
+            loadProjectData();
+            onToast?.('Sprint created successfully');
+          }}
+        />
+      )}
     </div>
   );
 }

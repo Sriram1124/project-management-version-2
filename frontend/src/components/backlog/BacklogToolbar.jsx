@@ -131,19 +131,19 @@ export default function BacklogToolbar({
             </button>
           )}
 
-          {/* + Sprint / Cycle Button */}
-          {!readOnly && onCreateSprintClick && (
+          {/* + Sprint / Cycle Button (Scrum only) */}
+          {!readOnly && !isKanban && onCreateSprintClick && (
             <button
               type="button"
               onClick={onCreateSprintClick}
               className="px-2.5 py-1.5 rounded-md bg-purple-50 hover:bg-purple-100 text-purple-700 border border-purple-200 font-semibold flex items-center gap-1 transition-colors shrink-0"
             >
               <Plus className="w-3.5 h-3.5" />
-              <span>{isKanban ? 'Cycle' : 'Sprint'}</span>
+              <span>Sprint</span>
             </button>
           )}
 
-          {!readOnly && (onCreateClick || onCreateSprintClick) && (
+          {!readOnly && (onCreateClick || (!isKanban && onCreateSprintClick)) && (
             <div className="h-4 w-[1px] bg-slate-200 mx-1 hidden sm:block" />
           )}
 
@@ -233,43 +233,47 @@ export default function BacklogToolbar({
                   {groupBy === 'epic' && <Check className="w-3.5 h-3.5 text-purple-600" />}
                 </button>
 
-                <div className="my-1 border-t border-slate-100" />
+                {!isKanban && (
+                  <>
+                    <div className="my-1 border-t border-slate-100" />
 
-                <button
-                  type="button"
-                  onClick={() => {
-                    onSelectGroupBy?.('all_cycles');
-                    setOpenDropdown(null);
-                  }}
-                  className={`w-full text-left px-3 py-1.5 text-xs hover:bg-slate-50 transition-colors flex items-center justify-between ${
-                    groupBy === 'all_cycles' || groupBy === 'sprint' ? 'text-purple-700 font-semibold bg-purple-50/50' : 'text-slate-700'
-                  }`}
-                >
-                  <span>{isKanban ? 'All Cycles' : 'All Sprints'}</span>
-                  {(groupBy === 'all_cycles' || groupBy === 'sprint') && <Check className="w-3.5 h-3.5 text-purple-600" />}
-                </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        onSelectGroupBy?.('all_cycles');
+                        setOpenDropdown(null);
+                      }}
+                      className={`w-full text-left px-3 py-1.5 text-xs hover:bg-slate-50 transition-colors flex items-center justify-between ${
+                        groupBy === 'all_cycles' || groupBy === 'sprint' ? 'text-purple-700 font-semibold bg-purple-50/50' : 'text-slate-700'
+                      }`}
+                    >
+                      <span>All Sprints</span>
+                      {(groupBy === 'all_cycles' || groupBy === 'sprint') && <Check className="w-3.5 h-3.5 text-purple-600" />}
+                    </button>
 
-                {sprints && sprints.length > 0 && (
-                  sprints.map((s) => {
-                    const cycleViewId = `cycle:${s.id}`;
-                    const isSelected = groupBy === cycleViewId;
-                    return (
-                      <button
-                        key={s.id}
-                        type="button"
-                        onClick={() => {
-                          onSelectGroupBy?.(cycleViewId);
-                          setOpenDropdown(null);
-                        }}
-                        className={`w-full text-left px-3 py-1.5 text-xs hover:bg-slate-50 transition-colors flex items-center justify-between pl-5 ${
-                          isSelected ? 'text-purple-700 font-semibold bg-purple-50/50' : 'text-slate-700'
-                        }`}
-                      >
-                        <span className="truncate pr-2">{s.name}</span>
-                        {isSelected && <Check className="w-3.5 h-3.5 text-purple-600 shrink-0" />}
-                      </button>
-                    );
-                  })
+                    {sprints && sprints.length > 0 && (
+                      sprints.map((s) => {
+                        const cycleViewId = `cycle:${s.id}`;
+                        const isSelected = groupBy === cycleViewId;
+                        return (
+                          <button
+                            key={s.id}
+                            type="button"
+                            onClick={() => {
+                              onSelectGroupBy?.(cycleViewId);
+                              setOpenDropdown(null);
+                            }}
+                            className={`w-full text-left px-3 py-1.5 text-xs hover:bg-slate-50 transition-colors flex items-center justify-between pl-5 ${
+                              isSelected ? 'text-purple-700 font-semibold bg-purple-50/50' : 'text-slate-700'
+                            }`}
+                          >
+                            <span className="truncate pr-2">{s.name}</span>
+                            {isSelected && <Check className="w-3.5 h-3.5 text-purple-600 shrink-0" />}
+                          </button>
+                        );
+                      })
+                    )}
+                  </>
                 )}
               </div>
             )}
@@ -478,76 +482,78 @@ export default function BacklogToolbar({
             )}
           </div>
 
-          {/* Sprint / Planning Cycle Dropdown (Supports Scrum sprints and Kanban planning cycles/continuous flow) */}
-          <div className="relative">
-            <button
-              type="button"
-              onClick={() => toggleDropdown('sprint')}
-              className={`px-2 py-1 rounded-md border font-medium flex items-center gap-1 transition-colors ${
-                selectedSprintId
-                  ? 'border-purple-300 bg-purple-50/70 text-purple-700 font-semibold'
-                  : 'border-slate-200 text-slate-600 bg-white hover:bg-slate-50'
-              }`}
-            >
-              <span>
-                {selectedSprintId
-                  ? selectedSprintId === 'backlog'
-                    ? (isKanban ? 'Backlog (No Cycle)' : 'Backlog (No Sprint)')
-                    : sprints.find((s) => s.id === selectedSprintId)?.name || (isKanban ? 'Cycle' : 'Sprint')
-                  : (isKanban ? 'Cycle' : 'Sprint')}
-              </span>
-              <ChevronDown className="w-3 h-3 text-slate-400" />
-            </button>
+          {/* Sprint Dropdown (Scrum only) */}
+          {!isKanban && (
+            <div className="relative">
+              <button
+                type="button"
+                onClick={() => toggleDropdown('sprint')}
+                className={`px-2 py-1 rounded-md border font-medium flex items-center gap-1 transition-colors ${
+                  selectedSprintId
+                    ? 'border-purple-300 bg-purple-50/70 text-purple-700 font-semibold'
+                    : 'border-slate-200 text-slate-600 bg-white hover:bg-slate-50'
+                }`}
+              >
+                <span>
+                  {selectedSprintId
+                    ? selectedSprintId === 'backlog'
+                      ? 'Backlog (No Sprint)'
+                      : sprints.find((s) => s.id === selectedSprintId)?.name || 'Sprint'
+                    : 'Sprint'}
+                </span>
+                <ChevronDown className="w-3 h-3 text-slate-400" />
+              </button>
 
-            {openDropdown === 'sprint' && (
-              <div className="absolute left-0 mt-1 w-52 bg-white rounded-md shadow-lg border border-slate-200 py-1 z-30">
-                <button
-                  type="button"
-                  onClick={() => {
-                    onSelectSprintId?.(null);
-                    setOpenDropdown(null);
-                  }}
-                  className={`w-full text-left px-3 py-1.5 text-xs hover:bg-slate-50 transition-colors flex items-center justify-between ${
-                    !selectedSprintId ? 'text-purple-700 font-semibold bg-purple-50/40' : 'text-slate-700'
-                  }`}
-                >
-                  <span>{isKanban ? 'All Cycles' : 'All Sprints'}</span>
-                  {!selectedSprintId && <Check className="w-3 h-3 text-purple-600" />}
-                </button>
-
-                <button
-                  type="button"
-                  onClick={() => {
-                    onSelectSprintId?.('backlog');
-                    setOpenDropdown(null);
-                  }}
-                  className={`w-full text-left px-3 py-1.5 text-xs hover:bg-slate-50 transition-colors flex items-center justify-between ${
-                    selectedSprintId === 'backlog' ? 'text-purple-700 font-semibold bg-purple-50/40' : 'text-slate-700'
-                  }`}
-                >
-                  <span>{isKanban ? 'Backlog (No Cycle)' : 'Backlog (No Sprint)'}</span>
-                  {selectedSprintId === 'backlog' && <Check className="w-3 h-3 text-purple-600" />}
-                </button>
-
-                {sprints.map((s) => (
+              {openDropdown === 'sprint' && (
+                <div className="absolute left-0 mt-1 w-52 bg-white rounded-md shadow-lg border border-slate-200 py-1 z-30">
                   <button
-                    key={s.id}
                     type="button"
                     onClick={() => {
-                      onSelectSprintId?.(s.id);
+                      onSelectSprintId?.(null);
                       setOpenDropdown(null);
                     }}
                     className={`w-full text-left px-3 py-1.5 text-xs hover:bg-slate-50 transition-colors flex items-center justify-between ${
-                      selectedSprintId === s.id ? 'text-purple-700 font-semibold bg-purple-50/40' : 'text-slate-700'
+                      !selectedSprintId ? 'text-purple-700 font-semibold bg-purple-50/40' : 'text-slate-700'
                     }`}
                   >
-                    <span className="truncate">{s.name}</span>
-                    {selectedSprintId === s.id && <Check className="w-3 h-3 text-purple-600" />}
+                    <span>All Sprints</span>
+                    {!selectedSprintId && <Check className="w-3 h-3 text-purple-600" />}
                   </button>
-                ))}
-              </div>
-            )}
-          </div>
+
+                  <button
+                    type="button"
+                    onClick={() => {
+                      onSelectSprintId?.('backlog');
+                      setOpenDropdown(null);
+                    }}
+                    className={`w-full text-left px-3 py-1.5 text-xs hover:bg-slate-50 transition-colors flex items-center justify-between ${
+                      selectedSprintId === 'backlog' ? 'text-purple-700 font-semibold bg-purple-50/40' : 'text-slate-700'
+                    }`}
+                  >
+                    <span>Backlog (No Sprint)</span>
+                    {selectedSprintId === 'backlog' && <Check className="w-3 h-3 text-purple-600" />}
+                  </button>
+
+                  {sprints.map((s) => (
+                    <button
+                      key={s.id}
+                      type="button"
+                      onClick={() => {
+                        onSelectSprintId?.(s.id);
+                        setOpenDropdown(null);
+                      }}
+                      className={`w-full text-left px-3 py-1.5 text-xs hover:bg-slate-50 transition-colors flex items-center justify-between ${
+                        selectedSprintId === s.id ? 'text-purple-700 font-semibold bg-purple-50/40' : 'text-slate-700'
+                      }`}
+                    >
+                      <span className="truncate">{s.name}</span>
+                      {selectedSprintId === s.id && <Check className="w-3 h-3 text-purple-600" />}
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
 
           <div className="h-4 w-[1px] bg-slate-200 mx-1 hidden sm:block" />
 

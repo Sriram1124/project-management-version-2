@@ -1,3 +1,5 @@
 node_modules
 .env
 dist
+.env.*
+.s3-local-data/

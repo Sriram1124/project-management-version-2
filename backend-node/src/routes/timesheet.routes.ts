@@ -1,6 +1,6 @@
 import { Router } from 'express';
 import { TimesheetController } from '../controllers/timesheet.controller';
-import { authenticate, requireRole } from '../middleware/auth.middleware';
+import { authenticate, requireRole, requireRoleOrPermission } from '../middleware/auth.middleware';
 
 const router = Router();
 router.use(authenticate);
@@ -20,9 +20,9 @@ router.get('/monthly', TimesheetController.getMonthlyTimesheet);
 router.get('/task-time', TimesheetController.getTaskTime);
 router.get('/intern-report', TimesheetController.getInternReport);
 router.get('/manager-report', TimesheetController.getManagerReport);
-router.get('/review', requireRole(['MANAGER', 'ADMIN', 'SUPER_ADMIN', 'TECH_LEAD']), TimesheetController.getManagerTimesheetsReview);
+router.get('/review', requireRoleOrPermission(['MANAGER', 'ADMIN', 'SUPER_ADMIN', 'TECH_LEAD'], 'ATTENDANCE_READ'), TimesheetController.getManagerTimesheetsReview);
 router.post('/corrections/request', TimesheetController.requestTimeCorrection);
 router.get('/corrections', TimesheetController.getTimeCorrections);
-router.post('/corrections/:requestId/review', requireRole(['MANAGER', 'ADMIN', 'SUPER_ADMIN', 'TECH_LEAD']), TimesheetController.reviewTimeCorrection);
+router.post('/corrections/:requestId/review', requireRoleOrPermission(['MANAGER', 'ADMIN', 'SUPER_ADMIN', 'TECH_LEAD'], 'ATTENDANCE_UPDATE'), TimesheetController.reviewTimeCorrection);
 
 export { router as timesheetRouter };

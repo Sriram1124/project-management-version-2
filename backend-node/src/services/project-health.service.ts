@@ -132,6 +132,7 @@ export class ProjectHealthService {
     id: string;
     name: string;
     status: string;
+    methodology?: string | null;
     start_date?: Date | null;
     end_date?: Date | null;
     work_items?: Array<{
@@ -389,9 +390,14 @@ export class ProjectHealthService {
         `${unestimated_blockers_count} blocked deliverable(s) with 0 estimated SP · Delivery impact unknown (estimation required)`
       );
     }
-    const hasExplicitSchedule = Boolean(project.end_date || activeSprint);
+    const isKanban = project.methodology === 'KANBAN';
+    const hasExplicitSchedule = isKanban ? Boolean(project.end_date) : Boolean(project.end_date || activeSprint);
     if (remaining_sp > 0 && !hasExplicitSchedule) {
-      warnings.push('Missing schedule data: No project deadline or active sprint scheduled');
+      warnings.push(
+        isKanban
+          ? 'Missing schedule data: No project deadline scheduled'
+          : 'Missing schedule data: No project deadline or active sprint scheduled'
+      );
     }
 
     // 5. Insufficient Data / Not Assessed check:

@@ -157,6 +157,22 @@ describe('Projects API (/api/projects)', () => {
       expect(res.body.status).toBe('ARCHIVED');
       expect(res.body.message).toContain('archived successfully');
     });
+
+    it('DELETE /api/projects/:id should delete project and cascade cleanup', async () => {
+      const { authHeader } = setupAuthUser({ role: 'MANAGER', organization_id: 'org-test-1', permissions: ['PROJECT_DELETE'] });
+      mockPrisma.project.findFirst.mockResolvedValueOnce({
+        ...mockProject,
+        owners: [{ user_id: 'user-manager-1' }],
+        documents: [],
+      });
+      mockPrisma.project.delete.mockResolvedValueOnce(mockProject);
+
+      const res = await request(app).delete('/api/projects/proj-1').set('Authorization', authHeader);
+
+      expect(res.status).toBe(200);
+      expect(res.body.success).toBe(true);
+      expect(res.body.message).toContain('deleted successfully');
+    });
   });
 
   describe('Project Members and Roles', () => {

@@ -1,6 +1,6 @@
 import { Router } from 'express';
 import { NotificationController } from '../controllers/notification.controller';
-import { authenticate, requireRole } from '../middleware/auth.middleware';
+import { authenticate, requireRoleOrPermission } from '../middleware/auth.middleware';
 
 const router = Router();
 
@@ -15,6 +15,6 @@ router.patch('/:id/read', NotificationController.markRead);
 router.patch('/:id', NotificationController.markRead);
 
 // Manager / Tech Lead / Admin: create and dispatch broadcast notification
-router.post('/', requireRole(['MANAGER', 'TECH_LEAD', 'ADMIN', 'SUPER_ADMIN']), NotificationController.create);
+router.post('/', requireRoleOrPermission(['MANAGER', 'TECH_LEAD', 'ADMIN', 'SUPER_ADMIN'], 'NOTIFICATION_CREATE'), NotificationController.create);
 
 export { router as notificationRouter };

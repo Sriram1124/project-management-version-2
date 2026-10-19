@@ -1,6 +1,7 @@
 import * as crypto from 'crypto';
 import * as argon2 from 'argon2';
 import { prisma } from '../lib/prisma';
+import { invalidateUserSessionCache } from '../middleware/auth.middleware';
 
 export interface CreateUserInput {
   name: string;
@@ -1731,4 +1732,349 @@ export class UserService {
       updated_at: updatedUser.updated_at,
     };
   }
+
+  /**
+   * Manager retrieves an intern's base, granted, and effective permissions
+   */
+  static async getUserPermissions(managerOrgId: string, targetUserId: string, requestingUser: any) {
+    if (!targetUserId || targetUserId === 'undefined') {
+      const err: any = new Error('Target user ID is required');
+      err.statusCode = 404;
+      throw err;
+    }
+
+    const targetUser = await prisma.user.findUnique({
+      where: { id: targetUserId },
+      include: {
+        roles: {
+          include: {
+            role: {
+              include: {
+                permissions: {
+                  include: {
+                    permission: true,
+                  },
+                },
+              },
+            },
+          },
+        },
+        user_permissions: {
+          include: {
+            permission: true,
+          },
+        },
+      },
+    });
+
+    if (!targetUser) {
+      const err: any = new Error('User not found');
+      err.statusCode = 404;
+      throw err;
+    }
+
+    const isSuperAdmin = requestingUser?.roles?.some((r: any) => (r.role?.name || r.name) === 'SUPER_ADMIN') || requestingUser?.role === 'SUPER_ADMIN';
+    if (!isSuperAdmin && targetUser.organization_id !== managerOrgId) {
+      const err: any = new Error('Forbidden: User does not belong to your organization');
+      err.statusCode = 403;
+      throw err;
+    }
+
+    // Base permissions from assigned roles
+    const basePermissionsSet = new Set<string>();
+    for (const ur of targetUser.roles || []) {
+      for (const rp of ur.role?.permissions || []) {
+        if (rp.permission?.name) basePermissionsSet.add(rp.permission.name);
+      }
+    }
+    const basePermissions = Array.from(basePermissionsSet);
+
+    // Explicitly granted direct permissions
+    const grantedPermissions = (targetUser.user_permissions || [])
+      .map((up) => up.permission?.name)
+      .filter(Boolean);
+
+    const effectivePermissions = Array.from(
+      new Set([...basePermissions, ...grantedPermissions])
+    );
+
+    const primaryRole = targetUser.roles?.[0]?.role?.name || 'INTERN';
+
+    return {
+      user: {
+        id: targetUser.id,
+        name: targetUser.name,
+        email: targetUser.email,
+        role: primaryRole,
+        user_code: targetUser.user_code,
+      },
+      basePermissions,
+      grantedPermissions,
+      effectivePermissions,
+      availablePermissions: DELEGABLE_MANAGER_PERMISSIONS,
+    };
+  }
+
+  /**
+   * Manager updates an intern's explicitly granted permissions
+   */
+  static async updateUserPermissions(
+    managerOrgId: string,
+    targetUserId: string,
+    requestedPermissions: string[],
+    requestingUser: any
+  ) {
+    if (!targetUserId || targetUserId === 'undefined') {
+      const err: any = new Error('Target user ID is required');
+      err.statusCode = 404;
+      throw err;
+    }
+
+    if (!Array.isArray(requestedPermissions)) {
+      const err: any = new Error('Permissions must be an array of permission names');
+      err.statusCode = 400;
+      throw err;
+    }
+
+    const targetUser = await prisma.user.findUnique({
+      where: { id: targetUserId },
+      include: {
+        roles: {
+          include: {
+            role: {
+              include: {
+                permissions: {
+                  include: {
+                    permission: true,
+                  },
+                },
+              },
+            },
+          },
+        },
+      },
+    });
+
+    if (!targetUser) {
+      const err: any = new Error('User not found');
+      err.statusCode = 404;
+      throw err;
+    }
+
+    const isSuperAdmin = requestingUser?.roles?.some((r: any) => (r.role?.name || r.name) === 'SUPER_ADMIN') || requestingUser?.role === 'SUPER_ADMIN';
+    if (!isSuperAdmin && targetUser.organization_id !== managerOrgId) {
+      const err: any = new Error('Forbidden: User does not belong to your organization');
+      err.statusCode = 403;
+      throw err;
+    }
+
+    // Prevention of self-grant or privilege escalation:
+    if (requestingUser.id === targetUserId) {
+      const err: any = new Error('Security violation: Users cannot modify their own permissions');
+      err.statusCode = 403;
+      throw err;
+    }
+
+    // Prevent non-managers / interns from granting permissions
+    const callerRoles = (requestingUser.roles || []).map((r: any) => r.role?.name || r.name);
+    if (requestingUser.role) callerRoles.push(requestingUser.role);
+    const isAuthorizedManager = callerRoles.some((r: string) => ['MANAGER', 'ADMIN', 'SUPER_ADMIN'].includes(r));
+    if (!isAuthorizedManager) {
+      const err: any = new Error('Forbidden: Only authorized managers or administrators can manage permissions');
+      err.statusCode = 403;
+      throw err;
+    }
+
+    // Allow only delegable permissions; reject forbidden / super-admin platform permissions
+    const delegableNames = new Set(DELEGABLE_MANAGER_PERMISSIONS.map((p) => p.name));
+    const validRequested = requestedPermissions.filter((p) => delegableNames.has(p));
+
+    // Resolve matching permission records from DB
+    const permissionRecords = await prisma.permission.findMany({
+      where: {
+        name: { in: validRequested },
+      },
+    });
+
+    // Execute atomic update in a transaction
+    await prisma.$transaction(async (tx) => {
+      // 1. Delete existing user permissions for this user
+      await tx.userPermission.deleteMany({
+        where: { user_id: targetUserId },
+      });
+
+      // 2. Create new granted permissions
+      if (permissionRecords.length > 0) {
+        await tx.userPermission.createMany({
+          data: permissionRecords.map((perm) => ({
+            user_id: targetUserId,
+            permission_id: perm.id,
+          })),
+        });
+      }
+
+      // 3. Record audit log
+      await tx.auditLog.create({
+        data: {
+          actor_id: requestingUser.id,
+          organization_id: targetUser.organization_id || managerOrgId,
+          action: 'USER_PERMISSIONS_UPDATE',
+          target_type: 'USER',
+          target_id: targetUserId,
+          metadata: {
+            targetUserEmail: targetUser.email,
+            grantedPermissions: permissionRecords.map((p) => p.name),
+            count: permissionRecords.length,
+          },
+        },
+      });
+    });
+
+    // Invalidate cached session for immediate effect
+    invalidateUserSessionCache(targetUserId);
+
+    // Return the updated permission summary
+    return this.getUserPermissions(managerOrgId, targetUserId, requestingUser);
+  }
 }
+
+export interface DelegablePermission {
+  name: string;
+  label: string;
+  description: string;
+  category: 'Dashboard & Analytics' | 'Projects' | 'Intern Management' | 'Timesheets' | 'Forms & Action Items';
+}
+
+export const DELEGABLE_MANAGER_PERMISSIONS: DelegablePermission[] = [
+  // Dashboard & Analytics
+  {
+    name: 'EVALUATION_READ',
+    label: 'View Reports & Analytics',
+    description: 'Access manager performance reports, analytics charts, and evaluation summaries',
+    category: 'Dashboard & Analytics',
+  },
+  {
+    name: 'EVALUATION_CREATE',
+    label: 'Create Evaluations & Ratings',
+    description: 'Record intern performance ratings, scores, and evaluation feedback',
+    category: 'Dashboard & Analytics',
+  },
+  // Projects
+  {
+    name: 'PROJECT_CREATE',
+    label: 'Create Projects',
+    description: 'Initiate and configure new team projects within the organization',
+    category: 'Projects',
+  },
+  {
+    name: 'PROJECT_UPDATE',
+    label: 'Edit Projects & Manage Project Members',
+    description: 'Modify project details, manage project members, cycles, sprints, and settings',
+    category: 'Projects',
+  },
+  {
+    name: 'PROJECT_DELETE',
+    label: 'Archive & Delete Projects',
+    description: 'Archive completed projects or remove projects from the active workspace',
+    category: 'Projects',
+  },
+  {
+    name: 'TASK_CREATE',
+    label: 'Create Tasks & Work Items',
+    description: 'Create tasks, epics, user stories, and bugs in project backlogs',
+    category: 'Projects',
+  },
+  {
+    name: 'TASK_UPDATE',
+    label: 'Update Tasks & Work Items',
+    description: 'Edit task descriptions, estimates, story points, and sprint status transitions',
+    category: 'Projects',
+  },
+  {
+    name: 'TASK_ASSIGN',
+    label: 'Assign & Reassign Tasks',
+    description: 'Allocate tasks, add assignees, or reassign work items to team members',
+    category: 'Projects',
+  },
+  {
+    name: 'TASK_DELETE',
+    label: 'Delete Tasks',
+    description: 'Permanently remove tasks or work items from project boards',
+    category: 'Projects',
+  },
+  {
+    name: 'DOCUMENT_UPLOAD',
+    label: 'Upload Project Documents',
+    description: 'Upload and manage project specifications, design docs, and attachments',
+    category: 'Projects',
+  },
+  // Intern Management
+  {
+    name: 'USER_READ',
+    label: 'View Interns Directory',
+    description: 'Browse full roster of organization interns, batches, and account profiles',
+    category: 'Intern Management',
+  },
+  {
+    name: 'USER_CREATE',
+    label: 'Create & Provision Interns',
+    description: 'Onboard new interns and generate initial credentials',
+    category: 'Intern Management',
+  },
+  {
+    name: 'USER_BULK_CREATE',
+    label: 'Bulk Import Interns via CSV',
+    description: 'Upload CSV spreadsheets to bulk validate and provision cohort interns',
+    category: 'Intern Management',
+  },
+  {
+    name: 'USER_UPDATE',
+    label: 'Edit Intern Details & Batches',
+    description: 'Modify intern names, cohort allocations, batch (A-D) and subbatch groupings',
+    category: 'Intern Management',
+  },
+  {
+    name: 'USER_DELETE',
+    label: 'Deactivate Accounts & Reset Passwords',
+    description: 'Deactivate intern access and issue temporary password resets',
+    category: 'Intern Management',
+  },
+  // Timesheets
+  {
+    name: 'ATTENDANCE_READ',
+    label: "View All Interns' Timesheets & Reports",
+    description: 'Inspect daily logs, clock-in records, weekly summaries, and time breakdowns',
+    category: 'Timesheets',
+  },
+  {
+    name: 'ATTENDANCE_UPDATE',
+    label: 'Review & Approve Timesheet Corrections',
+    description: 'Review time correction requests, approve manual adjustments, and audit hours',
+    category: 'Timesheets',
+  },
+  // Forms & Action Items
+  {
+    name: 'FORM_READ',
+    label: 'View Form Submissions & Overdue Reports',
+    description: 'Review all intern form submissions, overdue member rosters, and export reports',
+    category: 'Forms & Action Items',
+  },
+  {
+    name: 'FORM_CREATE',
+    label: 'Create Forms',
+    description: 'Design new feedback forms, questionnaires, and onboarding checklists',
+    category: 'Forms & Action Items',
+  },
+  {
+    name: 'FORM_UPDATE',
+    label: 'Edit Forms & Manage Deadlines',
+    description: 'Update form questions, deadlines, publish or archive status',
+    category: 'Forms & Action Items',
+  },
+  {
+    name: 'FORM_DELETE',
+    label: 'Delete Forms',
+    description: 'Remove outdated evaluation and feedback forms',
+    category: 'Forms & Action Items',
+  },
+];

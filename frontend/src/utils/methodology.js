@@ -69,7 +69,6 @@ export function getProjectTabs(projectOrMethodology, { isIntern = false } = {}) 
     ? [
         { id: 'overview', label: 'Overview' },
         { id: 'roadmap', label: 'Roadmap' },
-        { id: 'cycles', label: 'Planning & Cycles' },
         { id: 'backlog', label: 'Backlog' },
         { id: 'kanban', label: 'Kanban Board' },
         { id: 'action-items', label: 'Action Items' },

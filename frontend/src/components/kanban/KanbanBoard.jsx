@@ -56,11 +56,11 @@ export default function KanbanBoard({ projectId, project = null, isKanbanProject
         setLoading(true);
       }
       const [sprintsList, itemsList, membersList] = await Promise.all([
-        sprintsService.getSprints(projectId).catch(() => []),
+        isKanban ? Promise.resolve([]) : sprintsService.getSprints(projectId).catch(() => []),
         workItemsService.listWorkItems({ project_id: projectId }).catch(() => []),
         projectsService.getMembers(projectId).catch(() => []),
       ]);
-      setSprints(sprintsList || []);
+      setSprints(isKanban ? [] : (sprintsList || []));
       setWorkItems(itemsList || []);
       setMembers(membersList || []);
 
@@ -478,18 +478,22 @@ export default function KanbanBoard({ projectId, project = null, isKanbanProject
             <h2 className="text-base font-bold text-slate-900 tracking-tight">
               {isKanban ? 'Kanban Board' : 'Scrum Board'}
             </h2>
-            <span className="text-slate-300">·</span>
-            <span
-              className={`text-xs font-semibold ${
-                displaySprintHeader.isActive ? 'text-purple-700' : 'text-slate-700'
-              }`}
-            >
-              {displaySprintHeader.title}
-            </span>
-            {displaySprintHeader.sub && (
+            {!isKanban && (
               <>
                 <span className="text-slate-300">·</span>
-                <span className="text-xs text-slate-500">{displaySprintHeader.sub}</span>
+                <span
+                  className={`text-xs font-semibold ${
+                    displaySprintHeader.isActive ? 'text-purple-700' : 'text-slate-700'
+                  }`}
+                >
+                  {displaySprintHeader.title}
+                </span>
+                {displaySprintHeader.sub && (
+                  <>
+                    <span className="text-slate-300">·</span>
+                    <span className="text-xs text-slate-500">{displaySprintHeader.sub}</span>
+                  </>
+                )}
               </>
             )}
           </div>

@@ -1,9 +1,12 @@
 import fs from 'fs';
 import path from 'path';
+import crypto from 'crypto';
 import { ProjectStatus, ProjectMethodology } from '@prisma/client';
 import { prisma } from '../lib/prisma';
 import { StorageService } from './storage.service';
 import { ProjectHealthService } from './project-health.service';
+import { ProjectFile } from '../models/project-file.model';
+import { ObjectStorageService } from './object-storage.service';
 
 export interface CreateProjectInput {
   name: string;
@@ -81,35 +84,59 @@ export class ProjectService {
   }
 
   /**
-   * Format project with full owners list (primary owner + manager members)
+   * Format project with full owners list (primary owner + manager members + project_owners relation)
    */
   static formatProjectWithOwners(project: any) {
     if (!project) return project;
     const ownersMap = new Map<string, { id: string; name: string; email: string }>();
-    if (project.owner) {
-      ownersMap.set(project.owner.id, {
-        id: project.owner.id,
-        name: project.owner.name,
-        email: project.owner.email,
-      });
-    }
-    if (Array.isArray(project.members)) {
-      for (const m of project.members) {
-        const u = m.user;
-        if (m.project_role === 'MANAGER' && u) {
+
+    // 1. Direct project_owners relation
+    if (Array.isArray(project.owners)) {
+      for (const po of project.owners) {
+        const u = po.user || po;
+        if (u && u.id) {
           ownersMap.set(u.id, {
             id: u.id,
-            name: u.name,
-            email: u.email,
+            name: u.name || '',
+            email: u.email || '',
           });
         }
       }
     }
+
+    // 2. Primary owner relation
+    if (project.owner && project.owner.id) {
+      if (!ownersMap.has(project.owner.id)) {
+        ownersMap.set(project.owner.id, {
+          id: project.owner.id,
+          name: project.owner.name || '',
+          email: project.owner.email || '',
+        });
+      }
+    }
+
+    // 3. Fallback: project members with project_role === 'MANAGER'
+    if (Array.isArray(project.members)) {
+      for (const m of project.members) {
+        const u = m.user;
+        if (m.project_role === 'MANAGER' && u && u.id) {
+          if (!ownersMap.has(u.id)) {
+            ownersMap.set(u.id, {
+              id: u.id,
+              name: u.name || '',
+              email: u.email || '',
+            });
+          }
+        }
+      }
+    }
+
     const owners = Array.from(ownersMap.values());
     return {
       ...project,
       owners,
       owner_ids: owners.map((o) => o.id),
+      owner: project.owner || (owners.length > 0 ? owners[0] : null),
     };
   }
 
@@ -130,6 +157,7 @@ export class ProjectService {
     if (filters?.my) {
       where.OR = [
         { owner_id: user.id },
+        { owners: { some: { user_id: user.id } } },
         { members: { some: { user_id: user.id } } },
       ];
     }
@@ -142,6 +170,17 @@ export class ProjectService {
             id: true,
             name: true,
             email: true,
+          },
+        },
+        owners: {
+          include: {
+            user: {
+              select: {
+                id: true,
+                name: true,
+                email: true,
+              },
+            },
           },
         },
         members: {
@@ -207,6 +246,17 @@ export class ProjectService {
             email: true,
           },
         },
+        owners: {
+          include: {
+            user: {
+              select: {
+                id: true,
+                name: true,
+                email: true,
+              },
+            },
+          },
+        },
         members: {
           include: {
             user: {
@@ -235,10 +285,35 @@ export class ProjectService {
     }
 
     const isMgr = this.isManagerOrAdmin(user);
-    if (!isMgr && project.owner_id !== user.id) {
+    const isOwner =
+      project.owner_id === user.id ||
+      (Array.isArray((project as any).owners) &&
+        (project as any).owners.some((po: any) => (po.user_id || po.user?.id) === user.id));
+    if (!isMgr && !isOwner) {
       const isMember = project.members.some((m) => m.user_id === user.id);
       if (!isMember) {
         throw new Error('Forbidden: you are not a member of this project');
+      }
+    }
+
+    if (process.env.ENABLE_MONGODB_PROJECT_FILES === 'true') {
+      try {
+        const mongoDocs = await ProjectFile.find({
+          project_id: projectId,
+          is_archived: false,
+        })
+          .sort({ created_at: -1 })
+          .lean();
+
+        (project as any).documents = mongoDocs.map((doc: any) => ({
+          ...doc,
+          id: doc.file_id,
+        }));
+        if ((project as any)._count) {
+          (project as any)._count.documents = mongoDocs.length;
+        }
+      } catch (err) {
+        console.warn('[ProjectService] Failed to load documents from MongoDB in getProjectById (fallback active):', err);
       }
     }
 
@@ -404,6 +479,11 @@ export class ProjectService {
         status,
         owner_id: ownerId,
         organization_id: orgId,
+        owners: {
+          create: targetOwnerIds.map((userId) => ({
+            user_id: userId,
+          })),
+        },
         members: memberCreates.length > 0 ? {
           create: memberCreates as any,
         } : undefined,
@@ -414,6 +494,17 @@ export class ProjectService {
             id: true,
             name: true,
             email: true,
+          },
+        },
+        owners: {
+          include: {
+            user: {
+              select: {
+                id: true,
+                name: true,
+                email: true,
+              },
+            },
           },
         },
         members: {
@@ -594,6 +685,12 @@ export class ProjectService {
         primaryOwnerId = data.owner_id;
       }
       updateData.owner_id = primaryOwnerId;
+      updateData.owners = {
+        deleteMany: {},
+        create: targetOwnerIds.map((uId) => ({
+          user_id: uId,
+        })),
+      };
     } else if (data.owner_id !== undefined) {
       const ownerWhere: any = { id: data.owner_id };
       if (existing.organization_id) {
@@ -606,6 +703,10 @@ export class ProjectService {
         throw new Error('Project owner does not exist in your organization');
       }
       updateData.owner_id = data.owner_id;
+      updateData.owners = {
+        deleteMany: {},
+        create: [{ user_id: data.owner_id }],
+      };
     }
 
     const updated = await prisma.project.update({
@@ -617,6 +718,17 @@ export class ProjectService {
             id: true,
             name: true,
             email: true,
+          },
+        },
+        owners: {
+          include: {
+            user: {
+              select: {
+                id: true,
+                name: true,
+                email: true,
+              },
+            },
           },
         },
         members: {
@@ -724,6 +836,148 @@ export class ProjectService {
         documents: true,
       },
     });
+  }
+
+  /**
+   * Safely and completely delete a project and all associated cascading resources
+   */
+  static async deleteProject(projectId: string, user: any) {
+    if (!projectId || projectId === 'undefined') {
+      throw new Error('Project not found');
+    }
+
+    const orgId = user.organization_id;
+
+    let existing = orgId
+      ? await prisma.project.findFirst({
+          where: { id: projectId, organization_id: orgId },
+          include: {
+            owners: true,
+            documents: true,
+          },
+        })
+      : null;
+
+    if (!existing) {
+      existing = await prisma.project.findUnique({
+        where: { id: projectId },
+        include: {
+          owners: true,
+          documents: true,
+        },
+      });
+    }
+
+    if (!existing) {
+      throw new Error('Project not found');
+    }
+
+    // Permission / Authorization check:
+    // User must be MANAGER, ADMIN, SUPER_ADMIN, or a project owner / co-owner
+    const isOwner =
+      existing.owner_id === user.id ||
+      (Array.isArray(existing.owners) && existing.owners.some((o: any) => o.user_id === user.id));
+
+    if (!this.isManagerOrAdmin(user) && !isOwner) {
+      throw new Error('You do not have permission to delete this project');
+    }
+
+    // 1. Delete physical document files in storage
+    if (Array.isArray(existing.documents)) {
+      for (const doc of existing.documents) {
+        if (doc.storage_key) {
+          if (doc.storage_key.startsWith('projects/') && process.env.STORAGE_DRIVER === 's3') {
+            await ObjectStorageService.deleteObject(doc.storage_key).catch(() => {});
+          } else {
+            await StorageService.deleteFile(doc.storage_key).catch(() => {});
+          }
+        }
+      }
+    }
+
+    // 2. Clean up MongoDB project files if enabled
+    try {
+      if (process.env.ENABLE_MONGODB_PROJECT_FILES === 'true') {
+        const mongoFiles = await ProjectFile.find({ projectId }).select('storage_key _id');
+        for (const mf of mongoFiles) {
+          if (mf.storage_key) {
+            await ObjectStorageService.deleteObject(mf.storage_key).catch(() => {});
+          }
+        }
+        await ProjectFile.deleteMany({ projectId });
+      }
+    } catch (mongoErr) {
+      // Non-fatal if mongo is disabled or unavailable
+    }
+
+    // 3. PostgreSQL Transactional Cascade Deletion
+    await prisma.$transaction(async (tx) => {
+      // Break self-referential parent_id hierarchy on work_items to prevent FK restrict errors
+      await tx.workItem.updateMany({
+        where: { project_id: projectId },
+        data: { parent_id: null },
+      });
+
+      // Delete work items
+      await tx.workItem.deleteMany({
+        where: { project_id: projectId },
+      });
+
+      // Delete action items
+      await tx.actionItem.deleteMany({
+        where: { project_id: projectId },
+      });
+
+      // Delete extension requests
+      await tx.workItemExtensionRequest.deleteMany({
+        where: { project_id: projectId },
+      });
+
+      // Delete sprints
+      await tx.sprint.deleteMany({
+        where: { project_id: projectId },
+      });
+
+      // Delete documents
+      await tx.projectDocument.deleteMany({
+        where: { project_id: projectId },
+      });
+
+      // Delete project members & owners
+      await tx.projectMember.deleteMany({
+        where: { project_id: projectId },
+      });
+      await tx.projectOwner.deleteMany({
+        where: { project_id: projectId },
+      });
+
+      // Delete custom roles created specifically for this project
+      await tx.role.deleteMany({
+        where: { project_id: projectId },
+      });
+
+      // Unlink time entries and forms that referenced this project
+      await tx.timeEntry.updateMany({
+        where: { project_id: projectId },
+        data: { project_id: null },
+      });
+      await tx.form.updateMany({
+        where: { project_id: projectId },
+        data: { project_id: null },
+      });
+
+      // Delete the project
+      await tx.project.delete({
+        where: { id: projectId },
+      });
+    });
+
+    return {
+      message: 'Project deleted successfully',
+      success: true,
+      id: projectId,
+      name: existing.name,
+    };
   }
 
   /**
@@ -1813,6 +2067,20 @@ export class ProjectService {
       throw new Error('Project not found');
     }
 
+    if (process.env.ENABLE_MONGODB_PROJECT_FILES === 'true') {
+      const mongoDocs = await ProjectFile.find({
+        project_id: projectId,
+        is_archived: false,
+      })
+        .sort({ created_at: -1 })
+        .lean();
+
+      return mongoDocs.map((doc: any) => ({
+        ...doc,
+        id: doc.file_id,
+      }));
+    }
+
     return await prisma.projectDocument.findMany({
       where: { project_id: projectId },
       orderBy: { created_at: 'desc' },
@@ -1856,6 +2124,71 @@ export class ProjectService {
     const extMatch = file.originalname.split('.').pop();
     const ext = extMatch ? extMatch.toLowerCase() : 'bin';
     
+    if (process.env.ENABLE_MONGODB_PROJECT_FILES === 'true') {
+      const uploadResult = await ObjectStorageService.uploadBuffer(
+        projectId,
+        file.originalname,
+        file.buffer,
+        file.mimetype || 'application/octet-stream'
+      );
+
+      const fileId = crypto.randomUUID();
+
+      let createdMongoDoc;
+      try {
+        createdMongoDoc = await ProjectFile.create({
+          file_id: fileId,
+          project_id: projectId,
+          organization_id: project.organization_id,
+          name: uploadResult.sanitizedFilename,
+          original_name: file.originalname,
+          document_type: ext,
+          mime_type: uploadResult.mimeType,
+          file_size_bytes: uploadResult.byteLength,
+          storage_provider: 's3',
+          storage_key: uploadResult.storageKey,
+          checksum_sha256: uploadResult.checksumSha256,
+          uploaded_by: user.id || 'system',
+          is_archived: false,
+        });
+      } catch (dbErr) {
+        // Compensating action: clean up S3 object on MongoDB insert failure
+        await ObjectStorageService.deleteObject(uploadResult.storageKey).catch(() => {});
+        throw dbErr;
+      }
+
+      // Reverse-sync to PostgreSQL if enabled (for zero write-loss rollback)
+      if (process.env.REVERSE_SYNC_TO_POSTGRES === 'true') {
+        try {
+          await prisma.projectDocument.create({
+            data: {
+              id: fileId,
+              project_id: projectId,
+              name: uploadResult.sanitizedFilename,
+              document_type: ext,
+              storage_key: uploadResult.storageKey,
+            },
+          });
+        } catch (syncErr) {
+          console.warn('[ProjectService] Reverse sync to PostgreSQL failed (non-blocking):', syncErr);
+        }
+      }
+
+      return {
+        id: createdMongoDoc.file_id,
+        file_id: createdMongoDoc.file_id,
+        project_id: createdMongoDoc.project_id,
+        name: createdMongoDoc.name,
+        document_type: createdMongoDoc.document_type,
+        storage_key: createdMongoDoc.storage_key,
+        mime_type: createdMongoDoc.mime_type,
+        file_size_bytes: createdMongoDoc.file_size_bytes,
+        checksum_sha256: createdMongoDoc.checksum_sha256,
+        created_at: createdMongoDoc.created_at,
+        updated_at: createdMongoDoc.updated_at,
+      };
+    }
+
     // Save physical file to persistent storage
     const { storageKey } = await StorageService.saveProjectFile(
       projectId,
@@ -1877,6 +2210,29 @@ export class ProjectService {
       // Clean up orphaned file on DB error
       await StorageService.deleteFile(storageKey);
       throw err;
+    }
+
+    if (process.env.DUAL_WRITE_PROJECT_FILES === 'true') {
+      try {
+        const hash = crypto.createHash('sha256').update(file.buffer).digest('hex');
+        await ProjectFile.create({
+          file_id: createdDoc.id,
+          project_id: projectId,
+          organization_id: project.organization_id,
+          name: file.originalname.trim(),
+          original_name: file.originalname,
+          document_type: ext,
+          mime_type: file.mimetype || 'application/octet-stream',
+          file_size_bytes: file.buffer.length,
+          storage_provider: 'local',
+          storage_key: storageKey,
+          checksum_sha256: hash,
+          uploaded_by: user.id || 'system',
+          is_archived: false,
+        });
+      } catch (dualWriteErr) {
+        console.warn('[ProjectService] Dual-write to MongoDB failed (non-blocking):', dualWriteErr);
+      }
     }
 
     return createdDoc;
@@ -1949,6 +2305,41 @@ export class ProjectService {
       throw new Error('Project not found');
     }
 
+    if (process.env.ENABLE_MONGODB_PROJECT_FILES === 'true') {
+      let doc: any = null;
+      if (documentId && documentId !== 'undefined') {
+        doc = await ProjectFile.findOne({
+          file_id: documentId,
+          project_id: projectId,
+          is_archived: false,
+        }).lean();
+      }
+      if (!doc) {
+        doc = await ProjectFile.findOne({
+          project_id: projectId,
+          is_archived: false,
+        })
+          .sort({ created_at: -1 })
+          .lean();
+      }
+      if (!doc) {
+        throw new Error('Document not found in project');
+      }
+
+      const s3Read = await ObjectStorageService.getReadStream(doc.storage_key);
+      return {
+        s3Stream: s3Read.stream,
+        document: {
+          id: doc.file_id,
+          name: doc.name,
+          document_type: doc.document_type,
+          storage_key: doc.storage_key,
+        },
+        mimeType: doc.mime_type || s3Read.contentType || StorageService.getMimeType(doc.name),
+        contentLength: s3Read.contentLength,
+      };
+    }
+
     let document: any = null;
     if (documentId && documentId !== 'undefined') {
       document = await prisma.projectDocument.findFirst({
@@ -1964,6 +2355,24 @@ export class ProjectService {
     }
     if (!document) {
       throw new Error('Document not found in project');
+    }
+
+    // Check if storage_key exists in S3 (e.g. after migration or dual-write)
+    if (document.storage_key && (process.env.STORAGE_DRIVER === 's3' || document.storage_key.startsWith('projects/'))) {
+      try {
+        const head = await ObjectStorageService.headObject(document.storage_key);
+        if (head.exists) {
+          const s3Read = await ObjectStorageService.getReadStream(document.storage_key);
+          return {
+            s3Stream: s3Read.stream,
+            document,
+            mimeType: head.contentType || StorageService.getMimeType(document.name),
+            contentLength: head.size,
+          };
+        }
+      } catch (s3Err) {
+        // Fall back to local disk check
+      }
     }
 
     const storageRoot = StorageService.getStorageRoot();
@@ -2029,6 +2438,60 @@ export class ProjectService {
       throw new Error('Project not found');
     }
 
+    if (process.env.ENABLE_MONGODB_PROJECT_FILES === 'true') {
+      let doc: any = null;
+      if (documentId && documentId !== 'undefined') {
+        doc = await ProjectFile.findOne({
+          file_id: documentId,
+          project_id: projectId,
+          is_archived: false,
+        });
+      }
+      if (!doc) {
+        doc = await ProjectFile.findOne({
+          project_id: projectId,
+          is_archived: false,
+        }).sort({ created_at: -1 });
+      }
+
+      if (!doc) {
+        throw new Error('Document not found in project');
+      }
+
+      const anyData = (data || {}) as any;
+      const name = anyData.name !== undefined ? anyData.name : anyData.title;
+      if (name !== undefined) {
+        if (!name || !name.trim()) throw new Error('Document name cannot be empty');
+        doc.name = name.trim();
+      }
+      if (anyData.document_type) {
+        doc.document_type = anyData.document_type.trim();
+      }
+      await doc.save();
+
+      // Reverse-sync update to PostgreSQL
+      if (process.env.REVERSE_SYNC_TO_POSTGRES === 'true') {
+        await prisma.projectDocument.updateMany({
+          where: { id: doc.file_id, project_id: projectId },
+          data: {
+            name: doc.name,
+            document_type: doc.document_type,
+          },
+        }).catch(() => {});
+      }
+
+      return {
+        id: doc.file_id,
+        file_id: doc.file_id,
+        project_id: doc.project_id,
+        name: doc.name,
+        document_type: doc.document_type,
+        storage_key: doc.storage_key,
+        created_at: doc.created_at,
+        updated_at: doc.updated_at,
+      };
+    }
+
     let document: any = null;
     if (documentId && documentId !== 'undefined') {
       document = await prisma.projectDocument.findFirst({
@@ -2064,10 +2527,19 @@ export class ProjectService {
       updateData.storage_key = storageKey.trim();
     }
 
-    return await prisma.projectDocument.update({
+    const updated = await prisma.projectDocument.update({
       where: { id: document.id },
       data: updateData,
     });
+
+    if (process.env.DUAL_WRITE_PROJECT_FILES === 'true') {
+      await ProjectFile.updateOne(
+        { file_id: document.id },
+        { $set: updateData }
+      ).catch(() => {});
+    }
+
+    return updated;
   }
 
   /**
@@ -2096,6 +2568,40 @@ export class ProjectService {
       throw new Error('Project not found');
     }
 
+    if (process.env.ENABLE_MONGODB_PROJECT_FILES === 'true') {
+      let doc: any = null;
+      if (documentId && documentId !== 'undefined') {
+        doc = await ProjectFile.findOne({
+          file_id: documentId,
+          project_id: projectId,
+          is_archived: false,
+        });
+      }
+      if (!doc) {
+        throw new Error('Document not found in project');
+      }
+
+      // Two-phase deletion: mark archived first, delete S3 object, then delete MongoDB doc
+      doc.is_archived = true;
+      await doc.save();
+
+      await ObjectStorageService.deleteObject(doc.storage_key).catch(() => {});
+      await ProjectFile.deleteOne({ _id: doc._id });
+
+      if (process.env.REVERSE_SYNC_TO_POSTGRES === 'true') {
+        await prisma.projectDocument.deleteMany({
+          where: { id: doc.file_id, project_id: projectId },
+        }).catch(() => {});
+      }
+
+      return {
+        message: 'Document deleted successfully',
+        success: true,
+        id: doc.file_id,
+        name: doc.name,
+      };
+    }
+
     let document: any = null;
     if (documentId && documentId !== 'undefined') {
       document = await prisma.projectDocument.findFirst({
@@ -2111,9 +2617,17 @@ export class ProjectService {
       where: { id: document.id },
     });
 
-    // Delete physical file from storage
+    // Delete physical file from storage (S3 or local disk)
     if (document.storage_key) {
-      await StorageService.deleteFile(document.storage_key).catch(() => {});
+      if (document.storage_key.startsWith('projects/') && process.env.STORAGE_DRIVER === 's3') {
+        await ObjectStorageService.deleteObject(document.storage_key).catch(() => {});
+      } else {
+        await StorageService.deleteFile(document.storage_key).catch(() => {});
+      }
+    }
+
+    if (process.env.DUAL_WRITE_PROJECT_FILES === 'true') {
+      await ProjectFile.deleteOne({ file_id: document.id }).catch(() => {});
     }
 
     return {

@@ -169,10 +169,12 @@ export default function ProjectRoadmapTab({
           console.error('Failed to load work items:', err);
           return [];
         }),
-        sprintsService.getSprints(projectId).catch((err) => {
-          console.error('Failed to load sprints:', err);
-          return [];
-        }),
+        isKanban
+          ? Promise.resolve([])
+          : sprintsService.getSprints(projectId).catch((err) => {
+              console.error('Failed to load sprints:', err);
+              return [];
+            }),
         projectsService.getMembers(projectId).catch((err) => {
           console.error('Failed to load members:', err);
           return [];
@@ -1043,34 +1045,36 @@ export default function ProjectRoadmapTab({
 
           {/* View Mode Toggle, Zoom Switcher, and Primary Action */}
           <div className="flex items-center gap-2 flex-wrap sm:flex-nowrap shrink-0">
-            {/* View Mode Toggle: Deliverables vs Cycles */}
-            <div className="flex items-center p-0.5 rounded-xl bg-slate-100 border border-slate-200/80 text-xs">
-              <button
-                type="button"
-                onClick={() => setViewMode('deliverables')}
-                className={`px-3 py-1.5 rounded-lg font-semibold transition-all cursor-pointer ${
-                  viewMode === 'deliverables'
-                    ? 'bg-white text-purple-700 shadow-2xs'
-                    : 'text-slate-600 hover:text-slate-900'
-                }`}
-              >
-                Deliverables
-              </button>
-              <button
-                type="button"
-                onClick={() => setViewMode('cycles')}
-                className={`px-3 py-1.5 rounded-lg font-semibold transition-all cursor-pointer ${
-                  viewMode === 'cycles'
-                    ? 'bg-white text-purple-700 shadow-2xs'
-                    : 'text-slate-600 hover:text-slate-900'
-                }`}
-              >
-                {isKanban ? 'Cycle Schedule' : 'Sprint Schedule'}
-              </button>
-            </div>
+            {/* View Mode Toggle: Deliverables vs Cycles (Scrum only) */}
+            {!isKanban && (
+              <div className="flex items-center p-0.5 rounded-xl bg-slate-100 border border-slate-200/80 text-xs">
+                <button
+                  type="button"
+                  onClick={() => setViewMode('deliverables')}
+                  className={`px-3 py-1.5 rounded-lg font-semibold transition-all cursor-pointer ${
+                    viewMode === 'deliverables'
+                      ? 'bg-white text-purple-700 shadow-2xs'
+                      : 'text-slate-600 hover:text-slate-900'
+                  }`}
+                >
+                  Deliverables
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setViewMode('cycles')}
+                  className={`px-3 py-1.5 rounded-lg font-semibold transition-all cursor-pointer ${
+                    viewMode === 'cycles'
+                      ? 'bg-white text-purple-700 shadow-2xs'
+                      : 'text-slate-600 hover:text-slate-900'
+                  }`}
+                >
+                  Sprint Schedule
+                </button>
+              </div>
+            )}
 
             {/* Zoom Selector (Weeks vs Months) */}
-            {viewMode === 'deliverables' && (
+            {(isKanban || viewMode === 'deliverables') && (
               <div className="flex items-center p-0.5 rounded-xl bg-slate-100 border border-slate-200/80 text-xs">
                 <button
                   type="button"
@@ -1102,7 +1106,7 @@ export default function ProjectRoadmapTab({
               <button
                 type="button"
                 onClick={() => {
-                  if (viewMode === 'cycles') {
+                  if (!isKanban && viewMode === 'cycles') {
                     setIsCreateSprintOpen(true);
                   } else {
                     setCreateParentItem(null);
@@ -1116,8 +1120,8 @@ export default function ProjectRoadmapTab({
               >
                 <Plus className="w-3.5 h-3.5" />
                 <span>
-                  {viewMode === 'cycles'
-                    ? (isKanban ? 'Create Cycle' : 'Create Sprint')
+                  {!isKanban && viewMode === 'cycles'
+                    ? 'Create Sprint'
                     : 'New Deliverable'}
                 </span>
               </button>
@@ -1875,56 +1879,58 @@ export default function ProjectRoadmapTab({
         onCreateEpic={handleCreateEpic}
       />
 
-      {/* 3. Create Sprint / Cycle Modal */}
-      <CreateSprintModal
-        isOpen={isCreateSprintOpen}
-        onClose={() => setIsCreateSprintOpen(false)}
-        projectId={projectId}
-        projectName={project?.name || ''}
-        existingSprints={sprints}
-        isKanban={isKanban}
-        onSuccess={(created) => {
-          onToast?.(`${isKanban ? 'Cycle' : 'Sprint'} "${created?.name || 'New'}" created successfully`);
-          setIsCreateSprintOpen(false);
-          loadData(true);
-        }}
-      />
+      {/* SPRINT MODALS (Scrum only) */}
+      {!isKanban && (
+        <>
+          <CreateSprintModal
+            isOpen={isCreateSprintOpen}
+            onClose={() => setIsCreateSprintOpen(false)}
+            projectId={projectId}
+            projectName={project?.name || ''}
+            existingSprints={sprints}
+            isKanban={false}
+            onSuccess={(created) => {
+              onToast?.(`Sprint "${created?.name || 'New'}" created successfully`);
+              setIsCreateSprintOpen(false);
+              loadData(true);
+            }}
+          />
 
-      {/* 4. Sprint Details Modal */}
-      <SprintDetailsModal
-        isOpen={Boolean(selectedSprintDetails)}
-        onClose={() => setSelectedSprintDetails(null)}
-        sprint={selectedSprintDetails}
-        allSprints={sprints}
-        onEdit={(sprintToEdit) => {
-          setSelectedSprintDetails(null);
-          setEditingSprint(sprintToEdit);
-        }}
-        onOpenSprintBoard={(sprintId) => {
-          setSelectedSprintDetails(null);
-          onOpenSprintBoard?.(sprintId);
-        }}
-      />
+          <SprintDetailsModal
+            isOpen={Boolean(selectedSprintDetails)}
+            onClose={() => setSelectedSprintDetails(null)}
+            sprint={selectedSprintDetails}
+            allSprints={sprints}
+            onEdit={(sprintToEdit) => {
+              setSelectedSprintDetails(null);
+              setEditingSprint(sprintToEdit);
+            }}
+            onOpenSprintBoard={(sprintId) => {
+              setSelectedSprintDetails(null);
+              onOpenSprintBoard?.(sprintId);
+            }}
+          />
 
-      {/* 5. Edit Sprint Modal */}
-      <EditSprintModal
-        isOpen={Boolean(editingSprint)}
-        onClose={() => setEditingSprint(null)}
-        projectId={projectId}
-        projectName={project?.name || ''}
-        sprint={editingSprint}
-        allSprints={sprints}
-        onSuccess={(updated) => {
-          onToast?.(`Sprint "${updated?.name || 'Sprint'}" updated successfully`);
-          setEditingSprint(null);
-          loadData(true);
-        }}
-        onDelete={(deleted) => {
-          onToast?.(`Sprint "${deleted?.name || 'Sprint'}" deleted successfully`);
-          setEditingSprint(null);
-          loadData(true);
-        }}
-      />
+          <EditSprintModal
+            isOpen={Boolean(editingSprint)}
+            onClose={() => setEditingSprint(null)}
+            projectId={projectId}
+            projectName={project?.name || ''}
+            sprint={editingSprint}
+            allSprints={sprints}
+            onSuccess={(updated) => {
+              onToast?.(`Sprint "${updated?.name || 'Sprint'}" updated successfully`);
+              setEditingSprint(null);
+              loadData(true);
+            }}
+            onDelete={(deleted) => {
+              onToast?.(`Sprint "${deleted?.name || 'Sprint'}" deleted successfully`);
+              setEditingSprint(null);
+              loadData(true);
+            }}
+          />
+        </>
+      )}
     </div>
   );
 }

@@ -478,7 +478,7 @@ function HierarchicalRow({
         onDragStart={(e) => canDrag && onDragStart?.(e, item.id)}
         onDragEnd={onDragEnd}
         onClick={() => onSelectIssue?.(item)}
-        className={`grid grid-cols-[minmax(260px,2.5fr)_90px_120px_110px_minmax(140px,1.3fr)_60px_85px_95px_75px] items-center gap-2 px-3 py-2 text-xs transition-colors cursor-pointer select-none ${
+        className={`grid ${isKanban ? 'grid-cols-[minmax(260px,2.5fr)_90px_120px_110px_60px_85px_95px_75px]' : 'grid-cols-[minmax(260px,2.5fr)_90px_120px_110px_minmax(140px,1.3fr)_60px_85px_95px_75px]'} items-center gap-2 px-3 py-2 text-xs transition-colors cursor-pointer select-none ${
           isSelected
             ? 'bg-purple-50/90 border-l-2 border-l-purple-600'
             : isContextualParent && !isFlatView
@@ -713,105 +713,107 @@ function HierarchicalRow({
           )}
         </div>
 
-        {/* COL 5: SPRINT DROPDOWN / READ-ONLY SUMMARY */}
-        <div className="relative text-left shrink-0" onClick={(e) => e.stopPropagation()}>
-          {isEpic ? (
-            /* Derived read-only sprint summary for parent Epics */
-            <div className="relative">
-              <button
-                type="button"
-                onClick={() => {
-                  if (epicSprintSummary?.details?.length > 1) {
-                    setMenuOpen(menuOpen === 'epicSprint' ? null : 'epicSprint');
-                  }
-                }}
-                className={`px-1.5 py-0.5 rounded text-[11px] border truncate max-w-[200px] block select-none ${
-                  epicSprintSummary?.details?.length > 1 ? 'cursor-pointer hover:ring-1 hover:ring-purple-300' : 'cursor-default'
-                } ${epicSprintSummary?.badgeClass || 'bg-slate-50 text-slate-500 border-slate-200'}`}
-                title={epicSprintSummary?.title || `${Term} summary`}
-              >
-                {epicSprintSummary?.label || `Backlog (No ${Term})`}
-              </button>
+        {/* COL 5: SPRINT DROPDOWN / READ-ONLY SUMMARY (Scrum only) */}
+        {!isKanban && (
+          <div className="relative text-left shrink-0" onClick={(e) => e.stopPropagation()}>
+            {isEpic ? (
+              /* Derived read-only sprint summary for parent Epics */
+              <div className="relative">
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (epicSprintSummary?.details?.length > 1) {
+                      setMenuOpen(menuOpen === 'epicSprint' ? null : 'epicSprint');
+                    }
+                  }}
+                  className={`px-1.5 py-0.5 rounded text-[11px] border truncate max-w-[200px] block select-none ${
+                    epicSprintSummary?.details?.length > 1 ? 'cursor-pointer hover:ring-1 hover:ring-purple-300' : 'cursor-default'
+                  } ${epicSprintSummary?.badgeClass || 'bg-slate-50 text-slate-500 border-slate-200'}`}
+                  title={epicSprintSummary?.title || `${Term} summary`}
+                >
+                  {epicSprintSummary?.label || `Backlog (No ${Term})`}
+                </button>
 
-              {/* Expandable breakdown popover for multiple cycles / partial assignments */}
-              {menuOpen === 'epicSprint' && epicSprintSummary?.details?.length > 1 && (
-                <div className="absolute left-0 mt-1 w-56 bg-white rounded-xl shadow-xl border border-slate-200 p-2.5 z-40 text-slate-800 animate-in fade-in duration-100">
-                  <div className="text-[10px] font-bold text-slate-400 uppercase tracking-wider pb-1.5 mb-1.5 border-b border-slate-100 flex items-center justify-between">
-                    <span>{Term} Breakdown</span>
-                    <span className="text-purple-700 font-bold">{totalDescendantsCount} items</span>
+                {/* Expandable breakdown popover for multiple cycles / partial assignments */}
+                {menuOpen === 'epicSprint' && epicSprintSummary?.details?.length > 1 && (
+                  <div className="absolute left-0 mt-1 w-56 bg-white rounded-xl shadow-xl border border-slate-200 p-2.5 z-40 text-slate-800 animate-in fade-in duration-100">
+                    <div className="text-[10px] font-bold text-slate-400 uppercase tracking-wider pb-1.5 mb-1.5 border-b border-slate-100 flex items-center justify-between">
+                      <span>{Term} Breakdown</span>
+                      <span className="text-purple-700 font-bold">{totalDescendantsCount} items</span>
+                    </div>
+                    <div className="space-y-1">
+                      {epicSprintSummary.details.map((d) => (
+                        <div key={d.name} className="flex items-center justify-between text-xs py-0.5">
+                          <span className={`truncate max-w-[140px] ${d.isBacklog ? 'text-slate-500 italic' : 'text-slate-700 font-medium'}`}>
+                            {d.name}
+                          </span>
+                          <span className="font-mono font-bold text-purple-700 shrink-0 ml-2">
+                            {d.count} {d.count === 1 ? 'item' : 'items'}
+                          </span>
+                        </div>
+                      ))}
+                    </div>
                   </div>
-                  <div className="space-y-1">
-                    {epicSprintSummary.details.map((d) => (
-                      <div key={d.name} className="flex items-center justify-between text-xs py-0.5">
-                        <span className={`truncate max-w-[140px] ${d.isBacklog ? 'text-slate-500 italic' : 'text-slate-700 font-medium'}`}>
-                          {d.name}
-                        </span>
-                        <span className="font-mono font-bold text-purple-700 shrink-0 ml-2">
-                          {d.count} {d.count === 1 ? 'item' : 'items'}
-                        </span>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              )}
-            </div>
-          ) : (
-            /* Standard interactive cycle dropdown for stories, tasks, bugs */
-            <>
-              <button
-                type="button"
-                onClick={() => {
-                  if (canChangeSprint) {
-                    setMenuOpen(menuOpen === 'sprint' ? null : 'sprint');
-                  }
-                }}
-                className={`px-1.5 py-0.5 rounded text-[11px] font-medium border truncate max-w-[120px] block transition-colors ${
-                  item.sprint_id
-                    ? 'bg-purple-50 text-purple-700 border-purple-200'
-                    : 'bg-slate-50 text-slate-500 border-slate-200'
-                } ${canChangeSprint ? 'hover:bg-purple-100 cursor-pointer' : 'cursor-default'}`}
-                title={`${Term}: ${sprintLabel}`}
-              >
-                {sprintLabel}
-              </button>
+                )}
+              </div>
+            ) : (
+              /* Standard interactive cycle dropdown for stories, tasks, bugs */
+              <>
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (canChangeSprint) {
+                      setMenuOpen(menuOpen === 'sprint' ? null : 'sprint');
+                    }
+                  }}
+                  className={`px-1.5 py-0.5 rounded text-[11px] font-medium border truncate max-w-[120px] block transition-colors ${
+                    item.sprint_id
+                      ? 'bg-purple-50 text-purple-700 border-purple-200'
+                      : 'bg-slate-50 text-slate-500 border-slate-200'
+                  } ${canChangeSprint ? 'hover:bg-purple-100 cursor-pointer' : 'cursor-default'}`}
+                  title={`${Term}: ${sprintLabel}`}
+                >
+                  {sprintLabel}
+                </button>
 
-              {canChangeSprint && menuOpen === 'sprint' && (
-                <div className="absolute left-0 mt-1 w-44 bg-white rounded-md shadow-lg border border-slate-200 py-1 z-40 max-h-52 overflow-y-auto">
-                  <button
-                    type="button"
-                    onClick={() => {
-                      onUpdateSprint?.(item.id, null);
-                      setMenuOpen(null);
-                    }}
-                    className={`w-full text-left px-3 py-1.5 text-xs hover:bg-slate-50 flex items-center justify-between cursor-pointer ${
-                      !item.sprint_id ? 'bg-purple-50 text-purple-700 font-semibold' : 'text-slate-700'
-                    }`}
-                  >
-                    <span>Backlog (No {Term})</span>
-                    {!item.sprint_id && <Check className="w-3 h-3 text-purple-600" />}
-                  </button>
-
-                  {sprints.map((sprint) => (
+                {canChangeSprint && menuOpen === 'sprint' && (
+                  <div className="absolute left-0 mt-1 w-44 bg-white rounded-md shadow-lg border border-slate-200 py-1 z-40 max-h-52 overflow-y-auto">
                     <button
-                      key={sprint.id}
                       type="button"
                       onClick={() => {
-                        onUpdateSprint?.(item.id, sprint.id);
+                        onUpdateSprint?.(item.id, null);
                         setMenuOpen(null);
                       }}
                       className={`w-full text-left px-3 py-1.5 text-xs hover:bg-slate-50 flex items-center justify-between cursor-pointer ${
-                        item.sprint_id === sprint.id ? 'bg-purple-50 text-purple-700 font-semibold' : 'text-slate-700'
+                        !item.sprint_id ? 'bg-purple-50 text-purple-700 font-semibold' : 'text-slate-700'
                       }`}
                     >
-                      <span className="truncate">{sprint.name}</span>
-                      {item.sprint_id === sprint.id && <Check className="w-3 h-3 text-purple-600" />}
+                      <span>Backlog (No {Term})</span>
+                      {!item.sprint_id && <Check className="w-3 h-3 text-purple-600" />}
                     </button>
-                  ))}
-                </div>
-              )}
-            </>
-          )}
-        </div>
+
+                    {sprints.map((sprint) => (
+                      <button
+                        key={sprint.id}
+                        type="button"
+                        onClick={() => {
+                          onUpdateSprint?.(item.id, sprint.id);
+                          setMenuOpen(null);
+                        }}
+                        className={`w-full text-left px-3 py-1.5 text-xs hover:bg-slate-50 flex items-center justify-between cursor-pointer ${
+                          item.sprint_id === sprint.id ? 'bg-purple-50 text-purple-700 font-semibold' : 'text-slate-700'
+                        }`}
+                      >
+                        <span className="truncate">{sprint.name}</span>
+                        {item.sprint_id === sprint.id && <Check className="w-3 h-3 text-purple-600" />}
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </>
+            )}
+          </div>
+        )}
 
         {/* COL 6: STORY POINTS */}
         <div className="flex justify-center shrink-0" onClick={(e) => e.stopPropagation()}>
@@ -1224,12 +1226,12 @@ export default function HierarchicalIssueTable({
   return (
     <div className="rounded-md border border-slate-200 bg-white overflow-hidden shadow-xs">
       {/* Table Header: Precise columns matching Jira */}
-      <div className="grid grid-cols-[minmax(260px,2.5fr)_90px_120px_110px_minmax(140px,1.3fr)_60px_85px_95px_75px] items-center gap-2 px-3 py-2 bg-slate-50 border-b border-slate-200 text-[11px] font-bold text-slate-500 uppercase tracking-wider select-none">
+      <div className={`grid ${isKanban ? 'grid-cols-[minmax(260px,2.5fr)_90px_120px_110px_60px_85px_95px_75px]' : 'grid-cols-[minmax(260px,2.5fr)_90px_120px_110px_minmax(140px,1.3fr)_60px_85px_95px_75px]'} items-center gap-2 px-3 py-2 bg-slate-50 border-b border-slate-200 text-[11px] font-bold text-slate-500 uppercase tracking-wider select-none`}>
         <div>Key &amp; Summary</div>
         <div>Priority</div>
         <div>Assignee</div>
         <div>Status</div>
-        <div>{isKanban ? 'Cycle' : 'Sprint'}</div>
+        {!isKanban && <div>Sprint</div>}
         <div className="text-center">Points</div>
         <div>Due Date</div>
         <div>Progress</div>

@@ -40,8 +40,9 @@ export default function MyTasksTab({
   const [search, setSearch] = useState('');
   const [viewMode, setViewMode] = useState('board'); // 'list' | 'board' | 'hierarchy'
 
-  // Extract all cycles present across the intern's assigned work items
+  // Extract all cycles present across the intern's assigned work items (Scrum only)
   const availableCycles = useMemo(() => {
+    if (isKanbanProject) return [];
     const map = new Map();
     workItems.forEach((w) => {
       if (w.sprint?.id) {
@@ -51,7 +52,7 @@ export default function MyTasksTab({
       }
     });
     return Array.from(map.values());
-  }, [workItems, Term]);
+  }, [workItems, Term, isKanbanProject]);
 
   // Filtering
   const filteredItems = workItems.filter((item) => {
@@ -128,15 +129,15 @@ export default function MyTasksTab({
         </div>
 
         <div className="flex flex-wrap items-center gap-2.5">
-          {availableCycles.length > 0 && (
+          {!isKanbanProject && availableCycles.length > 0 && (
             <div className="flex items-center gap-1.5 text-xs text-slate-600 bg-slate-50 border border-slate-200 px-2.5 py-1.5 rounded-xl">
-              <span className="text-[10px] font-bold uppercase text-slate-400">{Term}:</span>
+              <span className="text-[10px] font-bold uppercase text-slate-400">Sprint:</span>
               <select
                 value={selectedCycleId}
                 onChange={(e) => setSelectedCycleId(e.target.value)}
                 className="bg-transparent text-xs font-semibold text-slate-800 focus:outline-none cursor-pointer"
               >
-                <option value="ALL">All {terms} ({workItems.length})</option>
+                <option value="ALL">All Sprints ({workItems.length})</option>
                 <option value="BACKLOG">Backlog / Unassigned ({workItems.filter(w => !w.sprint_id).length})</option>
                 {availableCycles.map((c) => (
                   <option key={c.id} value={c.id}>
@@ -378,7 +379,7 @@ export default function MyTasksTab({
                             <span className="text-slate-600 font-medium">
                               {projectName}
                             </span>
-                            {(item.sprint?.name || item.sprint_name) ? (
+                            {!isKanbanProject && ((item.sprint?.name || item.sprint_name) ? (
                               <>
                                 <span>•</span>
                                 <span className="text-purple-700 bg-purple-50 px-1.5 py-0.2 rounded font-semibold text-[10px] border border-purple-200">
@@ -392,7 +393,7 @@ export default function MyTasksTab({
                                   Backlog
                                 </span>
                               </>
-                            ) : null}
+                            ) : null)}
                             <span>•</span>
                             <span
                               className={

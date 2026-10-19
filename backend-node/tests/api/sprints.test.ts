@@ -212,4 +212,68 @@ describe('Project Sprints/Cycles API (/api/projects/:id/sprints)', () => {
       expect(res.body.message).toContain('Sprint deleted successfully');
     });
   });
+
+  describe('Kanban project restrictions', () => {
+    const mockKanbanProject = {
+      id: 'proj-kanban-1',
+      name: 'Kanban Continuous Flow',
+      owner_id: 'user-manager',
+      organization_id: 'org-test-1',
+      methodology: 'KANBAN',
+    };
+
+    it('should return empty sprints array [] when listing sprints for Kanban project', async () => {
+      const { authHeader } = setupAuthUser({ role: 'MANAGER', organization_id: 'org-test-1' });
+      mockPrisma.project.findFirst.mockResolvedValueOnce(mockKanbanProject);
+
+      const res = await request(app)
+        .get('/api/projects/proj-kanban-1/sprints')
+        .set('Authorization', authHeader);
+
+      expect(res.status).toBe(200);
+      expect(res.body.sprints).toEqual([]);
+    });
+
+    it('should return 400 when attempting to create a sprint on a Kanban project', async () => {
+      const { authHeader } = setupAuthUser({ role: 'MANAGER', organization_id: 'org-test-1', permissions: ['SPRINT_CREATE'] });
+      mockPrisma.project.findFirst.mockResolvedValueOnce(mockKanbanProject);
+
+      const res = await request(app)
+        .post('/api/projects/proj-kanban-1/sprints')
+        .set('Authorization', authHeader)
+        .send({
+          name: 'Sprint 1',
+          goal: 'Kanban sprint should fail',
+        });
+
+      expect(res.status).toBe(400);
+      expect(res.body.error).toContain('not supported for Kanban');
+    });
+
+    it('should return 400 when attempting to update a sprint on a Kanban project', async () => {
+      const { authHeader } = setupAuthUser({ role: 'MANAGER', organization_id: 'org-test-1', permissions: ['SPRINT_UPDATE'] });
+      mockPrisma.project.findFirst.mockResolvedValueOnce(mockKanbanProject);
+
+      const res = await request(app)
+        .patch('/api/projects/proj-kanban-1/sprints/sprint-1')
+        .set('Authorization', authHeader)
+        .send({ goal: 'Updated goal' });
+
+      expect(res.status).toBe(400);
+      expect(res.body.error).toContain('not supported for Kanban');
+    });
+
+    it('should return 400 when attempting to delete a sprint on a Kanban project', async () => {
+      const { authHeader } = setupAuthUser({ role: 'MANAGER', organization_id: 'org-test-1', permissions: ['PROJECT_UPDATE'] });
+      mockPrisma.project.findFirst.mockResolvedValueOnce(mockKanbanProject);
+
+      const res = await request(app)
+        .delete('/api/projects/proj-kanban-1/sprints/sprint-1')
+        .set('Authorization', authHeader);
+
+      expect(res.status).toBe(400);
+      expect(res.body.error).toContain('not supported for Kanban');
+    });
+  });
 });
+

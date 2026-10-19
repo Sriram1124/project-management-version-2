@@ -84,8 +84,8 @@ export default function ProjectWorkspaceView({
   // Adjust active tab when switching between Scrum and Kanban projects
   useEffect(() => {
     if (liveProject) {
-      if (isKanban && (currentTab === 'scrum' || currentTab === 'sprint')) {
-        const targetTab = currentTab === 'scrum' ? 'kanban' : 'cycles';
+      if (isKanban && (currentTab === 'scrum' || currentTab === 'sprint' || currentTab === 'cycles')) {
+        const targetTab = 'kanban';
         setCurrentTab(targetTab);
         onTabChange?.(targetTab);
       } else if (!isKanban && (currentTab === 'kanban' || currentTab === 'cycles')) {
@@ -106,12 +106,9 @@ export default function ProjectWorkspaceView({
   };
 
   const handleOpenSprintBoard = (sprintId) => {
+    if (isKanban) return;
     setSelectedSprintId(sprintId);
-    if (isKanban) {
-      handleTabClick('cycles');
-    } else {
-      handleTabClick('sprint');
-    }
+    handleTabClick('sprint');
   };
 
   const ownerNames = (Array.isArray(liveProject?.owners) && liveProject.owners.length > 0)
@@ -176,6 +173,7 @@ export default function ProjectWorkspaceView({
             projectId={projectId} 
             project={liveProject} 
             onToast={onToast}
+            onDeleted={onBackToDirectory}
             readOnly={effectiveReadOnly}
           />
         ) : currentTab === 'roadmap' ? (
@@ -186,23 +184,14 @@ export default function ProjectWorkspaceView({
             onToast={onToast}
             readOnly={effectiveReadOnly}
           />
-        ) : currentTab === 'sprint' || currentTab === 'cycles' ? (
-          isKanban ? (
-            <ProjectCycleWorkspaceTab
-              projectId={projectId}
-              selectedCycleId={selectedSprintId}
-              onToast={onToast}
-              readOnly={effectiveReadOnly}
-            />
-          ) : (
-            <ProjectSprintWorkspaceTab
-              projectId={projectId}
-              selectedSprintId={selectedSprintId}
-              onBackToRoadmap={() => handleTabClick('roadmap')}
-              onToast={onToast}
-              readOnly={effectiveReadOnly}
-            />
-          )
+        ) : (!isKanban && (currentTab === 'sprint' || currentTab === 'cycles')) ? (
+          <ProjectSprintWorkspaceTab
+            projectId={projectId}
+            selectedSprintId={selectedSprintId}
+            onBackToRoadmap={() => handleTabClick('roadmap')}
+            onToast={onToast}
+            readOnly={effectiveReadOnly}
+          />
         ) : currentTab === 'backlog' ? (
           <ProjectBacklogTab
             projectId={projectId}

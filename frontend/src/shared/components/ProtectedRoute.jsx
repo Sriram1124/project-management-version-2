@@ -13,7 +13,10 @@ export default function ProtectedRoute({ children, allowedRoles }) {
     return <Navigate to="/login" replace />;
   }
 
-  if (allowedRoles && !allowedRoles.includes(user.role)) {
+  const hasRole = !allowedRoles || allowedRoles.includes(user.role);
+  const hasManagerPermissions = allowedRoles?.includes('MANAGER') && Array.isArray(user.permissions) && user.permissions.length > 0;
+
+  if (!hasRole && !hasManagerPermissions) {
     return <Navigate to="/unauthorized" replace />;
   }
 

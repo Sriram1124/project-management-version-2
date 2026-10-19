@@ -189,6 +189,22 @@ describe('WorkItemService Unit Tests', () => {
         })
       );
     });
+
+    it('rejects task with sprint_id on Kanban projects', async () => {
+      mockPrisma.project.findFirst.mockResolvedValueOnce({
+        ...mockProject,
+        methodology: 'KANBAN',
+      });
+      await expect(
+        WorkItemService.createWorkItem(mockManager, {
+          title: 'Kanban Task with Sprint',
+          type: WorkItemType.STORY,
+          project_id: 'proj-123',
+          sprint_id: 'sprint-123',
+          story_points: 3,
+        })
+      ).rejects.toThrow('Cannot assign tasks to a sprint or cycle in a Kanban project. Kanban projects use continuous flow without sprints.');
+    });
   });
 
   describe('Assignee mutations and authorization', () => {
@@ -374,6 +390,23 @@ describe('WorkItemService Unit Tests', () => {
       await expect(
         WorkItemService.updateWorkItem('missing-wi', mockManager, { title: 'Test' })
       ).rejects.toThrow('Work item not found');
+    });
+
+    it('rejects updating work item with sprint_id on Kanban projects', async () => {
+      mockPrisma.workItem.findFirst.mockResolvedValueOnce({
+        id: 'wi-1',
+        project_id: 'proj-123',
+        assignees: [],
+      });
+      mockPrisma.project.findUnique.mockResolvedValueOnce({
+        ...mockProject,
+        methodology: 'KANBAN',
+      });
+      await expect(
+        WorkItemService.updateWorkItem('wi-1', mockManager, {
+          sprint_id: 'sprint-123',
+        })
+      ).rejects.toThrow('Cannot assign tasks to a sprint or cycle in a Kanban project. Kanban projects use continuous flow without sprints.');
     });
   });
 

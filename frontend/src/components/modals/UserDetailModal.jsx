@@ -19,6 +19,7 @@ import {
 import { usersService } from '../../services/users.service';
 import { cohortsService } from '../../services/cohorts.service';
 import { useAuth } from '../../context/AuthContext';
+import ManagePermissionsModal from './ManagePermissionsModal';
 
 const BATCH_OPTIONS = ['A', 'B', 'C', 'D'];
 const SUBBATCH_OPTIONS = {
@@ -42,6 +43,7 @@ export default function UserDetailModal({
 
   const [currentUser, setCurrentUser] = useState(user);
   const [isEditing, setIsEditing] = useState(false);
+  const [isPermissionsOpen, setIsPermissionsOpen] = useState(false);
   const [cohorts, setCohorts] = useState([]);
   const [formData, setFormData] = useState({
     name: '',
@@ -208,6 +210,17 @@ export default function UserDetailModal({
               >
                 <BarChart3 className="w-3.5 h-3.5 text-purple-600 shrink-0" />
                 <span>Performance Report</span>
+              </button>
+            )}
+            {canEdit && !isEditing && (
+              <button
+                type="button"
+                onClick={() => setIsPermissionsOpen(true)}
+                className="px-3 py-1.5 rounded-lg border border-purple-200 hover:bg-purple-50 text-purple-700 font-semibold text-xs flex items-center gap-1.5 transition-colors shadow-2xs cursor-pointer whitespace-nowrap"
+                title="Manage Permissions"
+              >
+                <Shield className="w-3.5 h-3.5 text-purple-600 shrink-0" />
+                <span>Manage Permissions</span>
               </button>
             )}
             {canEdit && !isEditing && (
@@ -519,6 +532,17 @@ export default function UserDetailModal({
         </div>
 
       </div>
+
+      {/* Floating Manage Permissions Dialog */}
+      <ManagePermissionsModal
+        isOpen={isPermissionsOpen}
+        user={currentUser}
+        onClose={() => setIsPermissionsOpen(false)}
+        onPermissionsUpdated={(updatedData) => {
+          setSuccessMsg('Permissions updated successfully.');
+          onSuccess?.(currentUser);
+        }}
+      />
     </div>
   );
 }

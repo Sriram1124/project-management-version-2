@@ -718,7 +718,7 @@ export default function IssueDetailDrawer({
         issue.id,
         newSubtaskTitle.trim(),
         childType,
-        childSprintId || null,
+        isKanban ? null : (childSprintId || null),
         isChildApplicable ? pointsVal : Math.max(0, pointsVal || 0)
       );
       setNewSubtaskTitle('');
@@ -968,45 +968,47 @@ export default function IssueDetailDrawer({
             </div>
           </div>
 
-          {/* Cycle / Sprint */}
-          <div className="flex items-center justify-between">
-            <span className="text-slate-500 font-medium flex items-center gap-1.5">
-              <span>{Term}</span>
-              {updatingField === 'sprint' && (
-                <Loader2 className="w-3 h-3 text-purple-600 animate-spin shrink-0" />
+          {/* Cycle / Sprint (Scrum only) */}
+          {!isKanban && (
+            <div className="flex items-center justify-between">
+              <span className="text-slate-500 font-medium flex items-center gap-1.5">
+                <span>{Term}</span>
+                {updatingField === 'sprint' && (
+                  <Loader2 className="w-3 h-3 text-purple-600 animate-spin shrink-0" />
+                )}
+              </span>
+              {isEpic ? (
+                <span
+                  className={`px-2 py-1 rounded border text-xs font-medium max-w-[180px] truncate select-none ${
+                    epicSprintSummary?.badgeClass || 'bg-slate-50 text-slate-600 border-slate-200'
+                  }`}
+                  title={epicSprintSummary?.title || 'Derived from child items'}
+                >
+                  {epicSprintSummary?.label 
+                    ? (isKanban ? epicSprintSummary.label.replace(/Sprint/g, 'Cycle') : epicSprintSummary.label.replace(/Cycle/g, 'Sprint')) 
+                    : `Backlog (No ${Term})`}
+                </span>
+              ) : canChangeSprint ? (
+                <select
+                  value={issue.sprint_id || issue.sprintId || 'backlog'}
+                  disabled={updatingField === 'sprint'}
+                  onChange={(e) => handleSprintChange(e.target.value)}
+                  className="px-2 py-1 rounded border border-slate-200 text-xs font-medium bg-white text-slate-800 focus:outline-none focus:border-purple-600 max-w-[180px] cursor-pointer disabled:opacity-60 disabled:cursor-not-allowed"
+                >
+                  <option value="backlog">Backlog (No {Term})</option>
+                  {sprints.map((s) => (
+                    <option key={s.id} value={s.id}>
+                      {s.name} ({s.status})
+                    </option>
+                  ))}
+                </select>
+              ) : (
+                <span className="px-2 py-1 rounded border text-xs font-medium bg-slate-50 text-slate-600 border-slate-200 select-none truncate max-w-[180px]">
+                  {currentSprint ? currentSprint.name : `Backlog (No ${Term})`}
+                </span>
               )}
-            </span>
-            {isEpic ? (
-              <span
-                className={`px-2 py-1 rounded border text-xs font-medium max-w-[180px] truncate select-none ${
-                  epicSprintSummary?.badgeClass || 'bg-slate-50 text-slate-600 border-slate-200'
-                }`}
-                title={epicSprintSummary?.title || 'Derived from child items'}
-              >
-                {epicSprintSummary?.label 
-                  ? (isKanban ? epicSprintSummary.label.replace(/Sprint/g, 'Cycle') : epicSprintSummary.label.replace(/Cycle/g, 'Sprint')) 
-                  : `Backlog (No ${Term})`}
-              </span>
-            ) : canChangeSprint ? (
-              <select
-                value={issue.sprint_id || issue.sprintId || 'backlog'}
-                disabled={updatingField === 'sprint'}
-                onChange={(e) => handleSprintChange(e.target.value)}
-                className="px-2 py-1 rounded border border-slate-200 text-xs font-medium bg-white text-slate-800 focus:outline-none focus:border-purple-600 max-w-[180px] cursor-pointer disabled:opacity-60 disabled:cursor-not-allowed"
-              >
-                <option value="backlog">Backlog (No {Term})</option>
-                {sprints.map((s) => (
-                  <option key={s.id} value={s.id}>
-                    {s.name} ({s.status})
-                  </option>
-                ))}
-              </select>
-            ) : (
-              <span className="px-2 py-1 rounded border text-xs font-medium bg-slate-50 text-slate-600 border-slate-200 select-none truncate max-w-[180px]">
-                {currentSprint ? currentSprint.name : `Backlog (No ${Term})`}
-              </span>
-            )}
-          </div>
+            </div>
+          )}
 
           {/* Parent Epic Hierarchy Display */}
           {!isEpic && currentEpic?.name && (
@@ -1268,10 +1270,12 @@ export default function IssueDetailDrawer({
                       {st.story_points} SP
                     </span>
                   )}
-                  {/* Sprint Badge */}
-                  <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded bg-purple-50 text-purple-700 border border-purple-200">
-                    {st.sprintName}
-                  </span>
+                  {/* Sprint Badge (Scrum only) */}
+                  {!isKanban && st.sprintName && (
+                    <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded bg-purple-50 text-purple-700 border border-purple-200">
+                      {st.sprintName}
+                    </span>
+                  )}
                 </div>
               </div>
             ))}
@@ -1322,8 +1326,8 @@ export default function IssueDetailDrawer({
                   </button>
                 </div>
 
-                {/* Sprint Selection */}
-                {sprints.length > 0 && (
+                {/* Sprint Selection (Scrum only) */}
+                {!isKanban && sprints.length > 0 && (
                   <div className="flex items-center gap-1.5 text-[11px] text-slate-500 pl-1">
                     <span>Assign to:</span>
                     <select
@@ -1331,7 +1335,7 @@ export default function IssueDetailDrawer({
                       onChange={(e) => setChildSprintId(e.target.value)}
                       className="px-1.5 py-0.5 text-[11px] rounded border border-slate-200 bg-white text-slate-700 focus:outline-none focus:border-purple-600"
                     >
-                      <option value="">Backlog (No {Term})</option>
+                      <option value="">Backlog (No Sprint)</option>
                       {sprints.map((s) => (
                         <option key={s.id} value={s.id}>{s.name} ({s.status})</option>
                       ))}

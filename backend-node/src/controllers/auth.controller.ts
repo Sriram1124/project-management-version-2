@@ -192,6 +192,13 @@ export class AuthController {
                 }
               }
             },
+            user_permissions: {
+              select: {
+                permission: {
+                  select: { name: true }
+                }
+              }
+            },
             project_memberships: {
               where: { project_role: 'TECH_LEAD' },
               select: { project_id: true }
@@ -209,10 +216,17 @@ export class AuthController {
       const roleName = primaryRole?.name || (req as any).user?.role || 'USER';
       const isInternOrEmployee = roleName === 'INTERN' || roleName === 'EMPLOYEE';
 
-      // Security requirement 13: Hide API permissions from intern profile endpoint
+      const directPermissions = (user.user_permissions || [])
+        .map((up: any) => up.permission?.name)
+        .filter(Boolean);
+
+      // Return role permissions plus any directly granted permissions
       const permissions = isInternOrEmployee
-        ? []
-        : (primaryRole?.permissions?.map((rp: any) => rp.permission?.name || rp.name) || []);
+        ? directPermissions
+        : Array.from(new Set([
+            ...(primaryRole?.permissions?.map((rp: any) => rp.permission?.name || rp.name) || []),
+            ...directPermissions
+          ]));
 
       // Determine Tech Lead status from memberships loaded in user object
       const leadProjectIds = Array.isArray(user.project_memberships)
