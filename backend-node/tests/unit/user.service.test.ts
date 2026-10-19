@@ -281,11 +281,91 @@ describe('UserService Unit Tests', () => {
       expect(res.errors[0]).toContain('Security Violation');
     });
 
-    it('should reject missing required columns', async () => {
-      const csv = 'name,cohort\nAlice,Cohort-1';
+    it('should reject missing required columns (Name and Email)', async () => {
+      const csv = 'batch,cohort\nA,Cohort-1';
       const res = await UserService.validateBulkCsv(csv, 'org-1');
       expect(res.isValid).toBe(false);
-      expect(res.errors[0]).toContain('Missing required columns: email, type');
+      expect(res.errors[0]).toContain('Missing required columns: Name, Email');
+    });
+
+    it('should accept master data format (Name,Batch,Subbatch,Email) and infer type INTERN with default cohort', async () => {
+      (prisma.cohort.findMany as jest.Mock).mockResolvedValue([
+        { id: 'c-active', code: 'Cohort-2026', name: 'Spring Cohort 2026', is_active: true },
+      ]);
+      (prisma.user.findMany as jest.Mock).mockResolvedValue([]);
+
+      const masterCsv = [
+        'Name,Batch,Subbatch,Email',
+        'Aditya Yadav,A,A1,aditya.yadav@dailoqa.com',
+        'Bhavna Sharma,B,B1,bhavna.sharma@dailoqa.com',
+        'Deepak Verma,D,D2,deepak.verma@dailoqa.com',
+      ].join('\n');
+
+      const res = await UserService.validateBulkCsv(masterCsv, 'org-1');
+      expect(res.isValid).toBe(true);
+      expect(res.summary.total).toBe(3);
+      expect(res.toCreateRows.length).toBe(3);
+
+      // Verify row 1: Aditya Yadav
+      const r1 = res.toCreateRows[0];
+      expect(r1.name).toBe('Aditya Yadav');
+      expect(r1.email).toBe('aditya.yadav@dailoqa.com');
+      expect(r1.type).toBe('INTERN');
+      expect(r1.batch).toBe('A');
+      expect(r1.subbatch).toBe('A1');
+      expect(r1.cohort_id).toBe('c-active');
+
+      // Verify row 2: Bhavna Sharma
+      const r2 = res.toCreateRows[1];
+      expect(r2.batch).toBe('B');
+      expect(r2.subbatch).toBe('B1');
+      expect(r2.type).toBe('INTERN');
+
+      // Verify row 3: Deepak Verma
+      const r3 = res.toCreateRows[2];
+      expect(r3.batch).toBe('D');
+      expect(r3.subbatch).toBe('D2');
+      expect(r3.type).toBe('INTERN');
+    });
+
+    it('should handle master data format with UTF-8 BOM, mixed header casing, and spaces', async () => {
+      (prisma.cohort.findMany as jest.Mock).mockResolvedValue([
+        { id: 'c-default', code: 'Cohort-1', name: 'Cohort 1', is_active: true },
+      ]);
+      (prisma.user.findMany as jest.Mock).mockResolvedValue([]);
+
+      const bomMasterCsv = '\uFEFF  NAME , BATCH , Sub_Batch ,  EMAIL  \nAditya Yadav,A,A1,aditya.yadav@dailoqa.com';
+      const res = await UserService.validateBulkCsv(bomMasterCsv, 'org-1');
+      expect(res.isValid).toBe(true);
+      expect(res.summary.total).toBe(1);
+      expect(res.toCreateRows[0].name).toBe('Aditya Yadav');
+      expect(res.toCreateRows[0].email).toBe('aditya.yadav@dailoqa.com');
+      expect(res.toCreateRows[0].type).toBe('INTERN');
+      expect(res.toCreateRows[0].batch).toBe('A');
+      expect(res.toCreateRows[0].subbatch).toBe('A1');
+      expect(res.toCreateRows[0].cohort_id).toBe('c-default');
+    });
+
+    it('should correctly flag invalid emails and bad batches in master data format', async () => {
+      (prisma.cohort.findMany as jest.Mock).mockResolvedValue([]);
+      (prisma.user.findMany as jest.Mock).mockResolvedValue([]);
+
+      const masterCsvWithErrors = [
+        'Name,Batch,Subbatch,Email',
+        'Valid User,A,A1,valid@example.com',
+        'Bad Email User,A,A1,not-an-email',
+        'Bad Batch User,Z,Z1,badbatch@example.com',
+      ].join('\n');
+
+      const res = await UserService.validateBulkCsv(masterCsvWithErrors, 'org-1');
+      expect(res.isValid).toBe(false);
+      expect(res.summary.total).toBe(3);
+      expect(res.summary.valid).toBe(1);
+      expect(res.summary.invalid).toBe(2);
+      expect(res.toCreateRows.length).toBe(1);
+      expect(res.invalidRows.length).toBe(2);
+      expect(res.invalidRows[0].reason).toContain('Invalid email format');
+      expect(res.invalidRows[1].reason).toContain('Invalid batch "Z"');
     });
 
     it('should handle UTF-8 BOM gracefully without misinterpreting headers', async () => {
@@ -550,6 +630,80 @@ describe('UserService Unit Tests', () => {
       expect(res.summary.created).toBe(1);
       expect(res.skipped_users[0].email).toBe('alice@example.com');
       expect(res.created_users[0].email).toBe('charlie@example.com');
+    });
+
+    it('should infer INTERN and assign active default cohort when type and cohort are omitted in bulk creation', async () => {
+      (prisma.role.findUnique as jest.Mock)
+        .mockResolvedValueOnce({ id: 'r-int', name: 'INTERN' })
+        .mockResolvedValueOnce({ id: 'r-emp', name: 'EMPLOYEE' });
+
+      (prisma.cohort.findMany as jest.Mock).mockResolvedValue([
+        { id: 'c-active-default', code: 'C-2026', name: 'Cohort 2026', is_active: true },
+      ]);
+      (prisma.user.findMany as jest.Mock)
+        .mockResolvedValueOnce([]) // existing candidate emails
+        .mockResolvedValueOnce([]); // existingOrgUsers for code reservation
+
+      (prisma.user.findFirst as jest.Mock).mockResolvedValue(null);
+
+      let createdData: any[] = [];
+      (prisma.$transaction as jest.Mock).mockImplementation(async (callback) => {
+        const tx = {
+          user: {
+            createMany: jest.fn().mockImplementation(({ data }) => {
+              createdData = data;
+            }),
+          },
+          userRole: { createMany: jest.fn() },
+        };
+        return await callback(tx);
+      });
+
+      // Master data candidate row without type or cohort
+      const masterRows: any[] = [
+        { rowNumber: 2, name: 'Aditya Yadav', email: 'aditya.yadav@dailoqa.com', batch: 'A', subbatch: 'A1' },
+      ];
+
+      const res = await UserService.createUsersBulk(masterRows, 'org-1');
+      expect(res.summary.created).toBe(1);
+      expect(res.created_users[0].name).toBe('Aditya Yadav');
+      expect(res.created_users[0].type).toBe('INTERN');
+      expect(createdData[0].batch).toBe('A');
+      expect(createdData[0].subbatch).toBe('A1');
+      expect(createdData[0].cohort_id).toBe('c-active-default');
+    });
+
+    it('should idempotently skip previously created master data on re-import', async () => {
+      (prisma.role.findUnique as jest.Mock)
+        .mockResolvedValueOnce({ id: 'r-int', name: 'INTERN' })
+        .mockResolvedValueOnce({ id: 'r-emp', name: 'EMPLOYEE' });
+
+      (prisma.cohort.findMany as jest.Mock).mockResolvedValue([
+        { id: 'c-active-default', code: 'C-2026', name: 'Cohort 2026', is_active: true },
+      ]);
+      // DB already contains Aditya Yadav with identical details
+      (prisma.user.findMany as jest.Mock).mockResolvedValueOnce([
+        {
+          id: 'u-aditya',
+          email: 'aditya.yadav@dailoqa.com',
+          name: 'Aditya Yadav',
+          user_code: 'INT-5001',
+          batch: 'A',
+          subbatch: 'A1',
+          cohort_id: 'c-active-default',
+          organization_id: 'org-1',
+          is_active: true,
+        },
+      ]);
+
+      const masterRows: any[] = [
+        { rowNumber: 2, name: 'Aditya Yadav', email: 'aditya.yadav@dailoqa.com', batch: 'A', subbatch: 'A1' },
+      ];
+
+      const res = await UserService.createUsersBulk(masterRows, 'org-1');
+      expect(res.summary.created).toBe(0);
+      expect(res.summary.skipped).toBe(1);
+      expect(res.skipped_users[0].reason).toContain('Identical member data');
     });
   });
 

@@ -42,7 +42,7 @@ export default function BulkImportModal({ isOpen, onClose, onSuccess }) {
     try {
       const templateContent = await usersService.getBulkTemplate();
       const contentStr = typeof templateContent === 'string' ? templateContent : (templateContent?.data || '');
-      const blob = new Blob([contentStr || 'name,email,type,batch,subbatch,cohort\nAlex Morgan,alex.morgan@example.com,INTERN,A,A1,Cohort-1\nJordan Lee,jordan.lee@example.com,EMPLOYEE,,,\n'], { type: 'text/csv;charset=utf-8;' });
+      const blob = new Blob([contentStr || 'Name,Batch,Subbatch,Email,Type,Cohort\nAditya Yadav,A,A1,aditya.yadav@example.com,,\nAlex Morgan,A,A1,alex.morgan@example.com,INTERN,Cohort-1\nJordan Lee,,,jordan.lee@example.com,EMPLOYEE,\n'], { type: 'text/csv;charset=utf-8;' });
       const url = URL.createObjectURL(blob);
       const link = document.createElement('a');
       link.href = url;
@@ -52,7 +52,7 @@ export default function BulkImportModal({ isOpen, onClose, onSuccess }) {
       document.body.removeChild(link);
       URL.revokeObjectURL(url);
     } catch {
-      const fallback = 'name,email,type,batch,subbatch,cohort\nAlex Morgan,alex.morgan@example.com,INTERN,A,A1,Cohort-1\nJordan Lee,jordan.lee@example.com,EMPLOYEE,,,\n';
+      const fallback = 'Name,Batch,Subbatch,Email,Type,Cohort\nAditya Yadav,A,A1,aditya.yadav@example.com,,\nAlex Morgan,A,A1,alex.morgan@example.com,INTERN,Cohort-1\nJordan Lee,,,jordan.lee@example.com,EMPLOYEE,\n';
       const blob = new Blob([fallback], { type: 'text/csv;charset=utf-8;' });
       const url = URL.createObjectURL(blob);
       const link = document.createElement('a');
@@ -123,7 +123,7 @@ export default function BulkImportModal({ isOpen, onClose, onSuccess }) {
       if (!result || totalRows === 0 || (!result.isValid && (!result.toCreateRows?.length && !result.toUpdateRows?.length && !result.toSkipRows?.length && !result.invalidRows?.length))) {
         const errorMsg = result?.errors?.length > 0
           ? result.errors.join(' ')
-          : 'The uploaded CSV file contains no recognizable member records or valid headers. Expected columns: name, email, type.';
+          : 'The uploaded CSV file contains no recognizable member records or valid headers. Expected at least: Name, Email.';
         setError(errorMsg);
         // Do not advance to preview with 0 rows
         return;
@@ -323,7 +323,7 @@ export default function BulkImportModal({ isOpen, onClose, onSuccess }) {
                     <span>Database-Aware CSV Template</span>
                   </h4>
                   <p className="text-[11px] text-purple-800/90 mt-0.5 leading-snug">
-                    Required: <span className="font-semibold text-purple-950">name, email, type</span> • Optional: <span className="font-semibold text-purple-950">batch, subbatch, cohort</span>
+                    Supports <span className="font-semibold text-purple-950">Name, Batch, Subbatch, Email</span> or full template • Required: <span className="font-semibold text-purple-950">Name, Email</span> (Type defaults to <span className="font-semibold text-purple-950">INTERN</span>)
                   </p>
                 </div>
                 <button
@@ -369,9 +369,9 @@ export default function BulkImportModal({ isOpen, onClose, onSuccess }) {
                   <span className="text-purple-600 font-bold">Idempotent</span>
                 </div>
                 <div className="grid grid-cols-2 gap-x-2 gap-y-0.5 pt-0.5 text-[10.5px]">
-                  <div><span className="font-semibold text-slate-700">Type:</span> INTERN or EMPLOYEE</div>
-                  <div><span className="font-semibold text-slate-700">Batch:</span> A, B, C, or D</div>
-                  <div><span className="font-semibold text-slate-700">Subbatch:</span> A1, A2, B1, B2, etc.</div>
+                  <div><span className="font-semibold text-slate-700">Formats:</span> Name,Batch,Subbatch,Email or Full</div>
+                  <div><span className="font-semibold text-slate-700">Type:</span> INTERN (default) or EMPLOYEE</div>
+                  <div><span className="font-semibold text-slate-700">Batch / Sub:</span> A (A1/A2), B (B1/B2), C, D</div>
                   <div><span className="font-semibold text-slate-700">Duplicates:</span> Safely skipped without error</div>
                 </div>
               </div>

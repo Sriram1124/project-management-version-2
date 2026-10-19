@@ -3,6 +3,13 @@ import * as argon2 from 'argon2';
 import { prisma } from '../lib/prisma';
 import { invalidateUserSessionCache } from '../middleware/auth.middleware';
 
+export const VALID_BATCH_SUBBATCH: Record<string, string[]> = {
+  A: ['A1', 'A2'],
+  B: ['B1', 'B2'],
+  C: ['C1', 'C2'],
+  D: ['D1', 'D2'],
+};
+
 export interface CreateUserInput {
   name: string;
   email: string;
@@ -507,18 +514,17 @@ export class UserService {
     );
 
     const requiredMissing: string[] = [];
-    if (nameIdx === -1) requiredMissing.push('name');
-    if (emailIdx === -1) requiredMissing.push('email');
-    if (typeIdx === -1) requiredMissing.push('type');
+    if (nameIdx === -1) requiredMissing.push('Name');
+    if (emailIdx === -1) requiredMissing.push('Email');
 
     const requiredPresent: string[] = [];
     if (nameIdx !== -1) requiredPresent.push(rawHeaders[nameIdx]);
     if (emailIdx !== -1) requiredPresent.push(rawHeaders[emailIdx]);
-    if (typeIdx !== -1) requiredPresent.push(rawHeaders[typeIdx]);
 
     const optionalPresent: string[] = [];
     if (batchIdx !== -1) optionalPresent.push('batch');
     if (subbatchIdx !== -1) optionalPresent.push('subbatch');
+    if (typeIdx !== -1) optionalPresent.push('type');
     if (cohortIdx !== -1) optionalPresent.push('cohort');
 
     const detectedColumns = {
@@ -539,26 +545,21 @@ export class UserService {
         toUpdateRows: [],
         duplicateInCsvRows: [],
         invalidRows: [],
-        errors: [`Invalid CSV headers. Missing required columns: ${requiredMissing.join(', ')}. Expected at least: name,email,type`],
+        errors: [`Invalid CSV headers. Missing required columns: ${requiredMissing.join(', ')}. Expected at least: Name, Email`],
       };
     }
-
-    const VALID_BATCH_SUBBATCH: Record<string, string[]> = {
-      A: ['A1', 'A2'],
-      B: ['B1', 'B2'],
-      C: ['C1', 'C2'],
-      D: ['D1', 'D2'],
-    };
 
     // Pre-fetch all cohorts belonging to manager's organization
     const orgCohorts = await prisma.cohort.findMany({
       where: { organization_id: managerOrgId },
-      select: { id: true, code: true, name: true },
+      select: { id: true, code: true, name: true, is_active: true },
+      orderBy: { code: 'asc' },
     });
-    const cohortMap = new Map<string, { id: string; name: string }>();
+    const defaultCohort = orgCohorts.find((c: any) => c.is_active !== false) || orgCohorts[0];
+    const cohortMap = new Map<string, { id: string; name: string; code: string }>();
     for (const c of orgCohorts) {
-      cohortMap.set(c.code.toLowerCase().trim(), { id: c.id, name: c.name });
-      cohortMap.set(c.name.toLowerCase().trim(), { id: c.id, name: c.name });
+      cohortMap.set(c.code.toLowerCase().trim(), { id: c.id, name: c.name, code: c.code });
+      cohortMap.set(c.name.toLowerCase().trim(), { id: c.id, name: c.name, code: c.code });
     }
 
     const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -586,14 +587,32 @@ export class UserService {
 
       const name = (cols[nameIdx] || '').trim();
       const email = (cols[emailIdx] || '').trim().toLowerCase();
-      const rawType = (cols[typeIdx] || '').trim().toUpperCase();
-      const rawBatch = batchIdx !== -1 ? (cols[batchIdx] || '').trim().toUpperCase() : '';
-      const rawSubbatch = subbatchIdx !== -1 ? (cols[subbatchIdx] || '').trim().toUpperCase() : '';
+      const rawType = typeIdx !== -1 ? (cols[typeIdx] || '').trim().toUpperCase() : '';
+      let rawBatch = batchIdx !== -1 ? (cols[batchIdx] || '').trim().toUpperCase() : '';
+      let rawSubbatch = subbatchIdx !== -1 ? (cols[subbatchIdx] || '').trim().toUpperCase() : '';
       const rawCohort = cohortIdx !== -1 ? (cols[cohortIdx] || '').trim() : '';
 
-      // Normalize type: support INTERN / EMPLOYEE
+      // Normalize batch: handle "Batch A" -> "A"
+      if (rawBatch.startsWith('BATCH')) {
+        const cleaned = rawBatch.replace(/^BATCH[\s\-_]*/i, '').trim();
+        if (['A', 'B', 'C', 'D'].includes(cleaned)) {
+          rawBatch = cleaned;
+        }
+      }
+
+      // Normalize subbatch: handle "A-1" or "A_1" -> "A1"
+      if (rawSubbatch.includes('-') || rawSubbatch.includes('_')) {
+        const cleanedSub = rawSubbatch.replace(/[\-_]/g, '').trim();
+        if (['A1', 'A2', 'B1', 'B2', 'C1', 'C2', 'D1', 'D2'].includes(cleanedSub)) {
+          rawSubbatch = cleanedSub;
+        }
+      }
+
+      // Infer type: when omitted or empty, default to INTERN (intended for intern master data)
       let type: 'INTERN' | 'EMPLOYEE' | undefined;
-      if (rawType === 'INTERN' || rawType === 'INTERNS' || rawType === 'INTERNSHIP') {
+      if (!rawType) {
+        type = 'INTERN';
+      } else if (rawType === 'INTERN' || rawType === 'INTERNS' || rawType === 'INTERNSHIP') {
         type = 'INTERN';
       } else if (rawType === 'EMPLOYEE' || rawType === 'EMPLOYEES' || rawType === 'STAFF' || rawType === 'MEMBER') {
         type = 'EMPLOYEE';
@@ -691,14 +710,27 @@ export class UserService {
         }
       }
 
+      // If batch is provided without subbatch for INTERN, auto-assign first allowed subbatch
+      if (!failureReason && rawBatch && !rawSubbatch && VALID_BATCH_SUBBATCH[rawBatch]) {
+        rawSubbatch = VALID_BATCH_SUBBATCH[rawBatch][0];
+      }
+
+      // Resolve cohort:
+      // If cohort column is specified, match against org cohorts.
+      // If absent, use application default cohort for INTERN. Never invent a new cohort.
       let resolvedCohortId: string | null = null;
+      let resolvedCohortName: string | null = null;
       if (!failureReason && rawCohort) {
         const cohortEntry = cohortMap.get(rawCohort.toLowerCase());
         if (!cohortEntry) {
           failureReason = `Cohort "${rawCohort}" does not exist in your organization.`;
         } else {
           resolvedCohortId = cohortEntry.id;
+          resolvedCohortName = cohortEntry.name || cohortEntry.code;
         }
+      } else if (!failureReason && !rawCohort && type === 'INTERN' && defaultCohort) {
+        resolvedCohortId = defaultCohort.id;
+        resolvedCohortName = defaultCohort.name || defaultCohort.code;
       }
 
       if (failureReason) {
@@ -741,7 +773,7 @@ export class UserService {
           batch: rawBatch || null,
           subbatch: rawSubbatch || null,
           cohort_id: resolvedCohortId,
-          cohort: rawCohort || null,
+          cohort: rawCohort || resolvedCohortName || null,
         };
         toCreateRows.push(candidateRow);
       } else if (existingUser.organization_id && existingUser.organization_id !== managerOrgId) {
@@ -802,7 +834,7 @@ export class UserService {
             batch: rawBatch || null,
             subbatch: rawSubbatch || null,
             cohort_id: resolvedCohortId,
-            cohort: rawCohort || null,
+            cohort: rawCohort || resolvedCohortName || null,
             existingId: existingUser.id,
             existingUserCode: existingUser.user_code,
             existingName: existingUser.name,
@@ -841,7 +873,8 @@ export class UserService {
   }
 
   /**
-   * Generates dynamic CSV template aligned with authoritative database schema and org cohorts
+   * Generates dynamic CSV template aligned with authoritative database schema and org cohorts.
+   * Supports both existing master data (Name,Batch,Subbatch,Email) and full format (name,email,type,batch,subbatch,cohort).
    */
   static async generateBulkCsvTemplate(managerOrgId: string): Promise<string> {
     const cohorts = await prisma.cohort.findMany({
@@ -853,8 +886,9 @@ export class UserService {
 
     const header = 'name,email,type,batch,subbatch,cohort\n';
     const sampleIntern = `Alex Morgan,alex.morgan@example.com,INTERN,A,A1,${sampleCohort}\n`;
+    const sampleMaster = `Aditya Yadav,aditya.yadav@example.com,,A,A1,\n`;
     const sampleEmployee = `Jordan Lee,jordan.lee@example.com,EMPLOYEE,,,\n`;
-    return header + sampleIntern + sampleEmployee;
+    return header + sampleIntern + sampleMaster + sampleEmployee;
   }
 
   /**
@@ -899,8 +933,10 @@ export class UserService {
     // Cohorts lookup for org
     const orgCohorts = await prisma.cohort.findMany({
       where: { organization_id: managerOrgId },
-      select: { id: true, code: true, name: true },
+      select: { id: true, code: true, name: true, is_active: true },
+      orderBy: { code: 'asc' },
     });
+    const defaultCohort = orgCohorts.find((c: any) => c.is_active !== false) || orgCohorts[0];
     const cohortIdSet = new Set(orgCohorts.map((c) => c.id));
     const cohortMap = new Map<string, string>();
     for (const c of orgCohorts) {
@@ -955,7 +991,15 @@ export class UserService {
       const rowNum = row.rowNumber || (idx + 1);
       const name = (row.name || '').trim();
       const email = (row.email || '').trim().toLowerCase();
-      const type = row.type ? (row.type.toUpperCase() as 'INTERN' | 'EMPLOYEE') : undefined;
+      let rawType = (row.type || '').trim().toUpperCase();
+
+      // Normalize type: default to INTERN if omitted or blank
+      let type: 'INTERN' | 'EMPLOYEE' | undefined;
+      if (!rawType || rawType === 'INTERN' || rawType === 'INTERNS' || rawType === 'INTERNSHIP') {
+        type = 'INTERN';
+      } else if (rawType === 'EMPLOYEE' || rawType === 'EMPLOYEES' || rawType === 'STAFF' || rawType === 'MEMBER') {
+        type = 'EMPLOYEE';
+      }
 
       if (!name) {
         failedRows.push({ rowNumber: rowNum, name: 'Unnamed', email, reason: 'Name is required' });
@@ -969,7 +1013,7 @@ export class UserService {
         failedRows.push({ rowNumber: rowNum, name, email: email || 'No email', reason: 'Invalid email format' });
         continue;
       }
-      if (!type || (type !== 'INTERN' && type !== 'EMPLOYEE')) {
+      if (!type) {
         failedRows.push({ rowNumber: rowNum, name, email, reason: `Invalid type "${row.type}". Must be INTERN or EMPLOYEE.` });
         continue;
       }
@@ -987,12 +1031,30 @@ export class UserService {
       }
       seenEmailsInBatch.set(email, rowNum);
 
-      // Resolve cohort
+      // Clean/normalize batch and subbatch
+      let batch = row.batch ? row.batch.trim().toUpperCase() : null;
+      let subbatch = row.subbatch ? row.subbatch.trim().toUpperCase() : null;
+      if (batch && batch.startsWith('BATCH')) {
+        const cleaned = batch.replace(/^BATCH[\s\-_]*/i, '').trim();
+        if (['A', 'B', 'C', 'D'].includes(cleaned)) batch = cleaned;
+      }
+      if (subbatch && (subbatch.includes('-') || subbatch.includes('_'))) {
+        const cleanedSub = subbatch.replace(/[\-_]/g, '').trim();
+        if (['A1', 'A2', 'B1', 'B2', 'C1', 'C2', 'D1', 'D2'].includes(cleanedSub)) subbatch = cleanedSub;
+      }
+      if (batch && !subbatch && VALID_BATCH_SUBBATCH[batch]) {
+        subbatch = VALID_BATCH_SUBBATCH[batch][0];
+      }
+
+      // Resolve cohort:
+      // If cohort_id/cohort is provided, match it; otherwise use active defaultCohort for INTERN
       let resolvedCohortId: string | null = null;
       if (row.cohort_id && cohortIdSet.has(row.cohort_id)) {
         resolvedCohortId = row.cohort_id;
       } else if (row.cohort) {
         resolvedCohortId = cohortMap.get(row.cohort.toLowerCase().trim()) || null;
+      } else if (type === 'INTERN' && defaultCohort) {
+        resolvedCohortId = defaultCohort.id;
       }
 
       sanitizedRows.push({
@@ -1001,6 +1063,10 @@ export class UserService {
         name,
         email,
         type,
+        batch,
+        subbatch,
+        cohort_id: resolvedCohortId,
+        cohort: row.cohort || (defaultCohort ? (defaultCohort.code || defaultCohort.name) : null),
         normalizedEmail: email,
         resolvedCohortId,
       });
