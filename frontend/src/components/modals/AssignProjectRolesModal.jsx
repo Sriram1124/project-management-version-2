@@ -69,6 +69,32 @@ export default function AssignProjectRolesModal({
       setSearchQuery('');
       setError('');
       fetchRoles();
+
+      // Ensure any custom roles currently assigned to members are retained
+      const memberCustomRoles = members
+        .map((m) => m.project_role)
+        .filter((r) => r && !PROJECT_ROLE_LABELS[r]);
+
+      if (memberCustomRoles.length > 0) {
+        setProjectRoles((prev) => {
+          const existing = new Set(prev.map((r) => r.name.toLowerCase()));
+          const toAdd = [];
+          for (const rName of memberCustomRoles) {
+            if (!existing.has(rName.toLowerCase())) {
+              existing.add(rName.toLowerCase());
+              toAdd.push({
+                id: `member-${rName}`,
+                name: rName,
+                label: rName,
+                is_custom: true,
+                is_template: false,
+                carry_forward: false,
+              });
+            }
+          }
+          return toAdd.length > 0 ? [...prev, ...toAdd] : prev;
+        });
+      }
     }
   }, [isOpen, members, fetchRoles]);
 
@@ -301,6 +327,14 @@ export default function AssignProjectRolesModal({
                         className="px-3 py-1.5 text-xs font-medium bg-white border border-slate-200 rounded-lg text-slate-800 focus:outline-hidden focus:ring-2 focus:ring-purple-500/20 focus:border-purple-500 transition-all cursor-pointer shadow-2xs"
                       >
                         <option value="">Not Assigned</option>
+                        {currentRoleValue &&
+                          !reusableRoles.some((r) => r.value.toLowerCase() === currentRoleValue.toLowerCase()) &&
+                          !projectOnlyRoles.some((r) => r.value.toLowerCase() === currentRoleValue.toLowerCase()) &&
+                          !standardRoles.some((r) => r.value.toLowerCase() === currentRoleValue.toLowerCase()) && (
+                            <option value={currentRoleValue}>
+                              {PROJECT_ROLE_LABELS[currentRoleValue] || currentRoleValue}
+                            </option>
+                          )}
                         {reusableRoles.length > 0 && (
                           <optgroup label="Organization Reusable Roles">
                             {reusableRoles.map((role) => (
@@ -380,6 +414,12 @@ export default function AssignProjectRolesModal({
           projectName={projectName}
           onRoleCreated={(newRole) => {
             fetchRoles();
+            if (newRole) {
+              setProjectRoles((prev) => {
+                const exists = prev.some((r) => r.name.toLowerCase() === newRole.name.toLowerCase());
+                return exists ? prev : [...prev, newRole];
+              });
+            }
             onToast?.({
               type: 'success',
               title: 'Custom Role Available',

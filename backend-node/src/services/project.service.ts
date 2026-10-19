@@ -811,10 +811,14 @@ export class ProjectService {
     };
   }
 
+  private static builtInRolesEnsured = false;
+
   /**
    * Ensure built-in project roles exist in Role table with default permissions
    */
   static async ensureBuiltInProjectRoles() {
+    if (this.builtInRolesEnsured) return;
+
     const BUILTIN_ROLES: Record<string, { label: string; perms: string[] }> = {
       DEVELOPER: {
         label: 'Developer',
@@ -846,11 +850,15 @@ export class ProjectService {
       },
     };
 
+    const roleNames = Object.keys(BUILTIN_ROLES);
+    const existingRoles = await prisma.role.findMany({
+      where: { name: { in: roleNames } },
+      select: { name: true },
+    });
+    const existingRoleSet = new Set(existingRoles.map((r) => r.name));
+
     for (const [roleName, config] of Object.entries(BUILTIN_ROLES)) {
-      const existing = await prisma.role.findFirst({
-        where: { name: roleName },
-      });
-      if (!existing) {
+      if (!existingRoleSet.has(roleName)) {
         try {
           const created = await prisma.role.create({
             data: {
@@ -889,16 +897,24 @@ export class ProjectService {
       'ACTION_ITEM_CREATE',
       'ACTION_ITEM_DELETE',
     ];
-    for (const permName of PROJECT_PERMISSIONS_TO_ENSURE) {
-      await prisma.permission.upsert({
-        where: { name: permName },
-        update: {},
-        create: {
+
+    const existingPerms = await prisma.permission.findMany({
+      where: { name: { in: PROJECT_PERMISSIONS_TO_ENSURE } },
+      select: { name: true },
+    });
+    const existingPermSet = new Set(existingPerms.map((p) => p.name));
+    const missingPerms = PROJECT_PERMISSIONS_TO_ENSURE.filter((p) => !existingPermSet.has(p));
+    if (missingPerms.length > 0) {
+      await prisma.permission.createMany({
+        data: missingPerms.map((permName) => ({
           name: permName,
           description: this.PERMISSION_METADATA[permName]?.description || permName,
-        },
+        })),
+        skipDuplicates: true,
       }).catch(() => {});
     }
+
+    this.builtInRolesEnsured = true;
   }
 
   /**
@@ -916,13 +932,17 @@ export class ProjectService {
       throw new Error('Project not found');
     }
 
+    const orConditions: any[] = [
+      { is_custom: false, organization_id: null }, // Global built-in roles
+      { project_id: projectId }, // Project-specific custom roles
+    ];
+    if (project.organization_id) {
+      orConditions.push({ organization_id: project.organization_id, project_id: null, is_custom: true });
+    }
+
     const roles = await prisma.role.findMany({
       where: {
-        OR: [
-          { is_custom: false, organization_id: null }, // Global built-in roles
-          { organization_id: project.organization_id, project_id: projectId }, // Project-specific custom roles
-          { organization_id: project.organization_id, project_id: null }, // Org-level custom roles
-        ],
+        OR: orConditions,
       },
       include: {
         permissions: {

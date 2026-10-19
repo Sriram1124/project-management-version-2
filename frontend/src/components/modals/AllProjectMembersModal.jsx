@@ -86,6 +86,31 @@ export default function AllProjectMembersModal({
 
   useEffect(() => {
     setLocalMembers(members);
+    if (Array.isArray(members) && members.length > 0) {
+      const memberCustomRoles = members
+        .map((m) => m.project_role)
+        .filter((r) => r && !PROJECT_ROLE_LABELS[r]);
+      if (memberCustomRoles.length > 0) {
+        setProjectRoles((prev) => {
+          const existing = new Set(prev.map((r) => r.name.toLowerCase()));
+          const toAdd = [];
+          for (const rName of memberCustomRoles) {
+            if (!existing.has(rName.toLowerCase())) {
+              existing.add(rName.toLowerCase());
+              toAdd.push({
+                id: `member-${rName}`,
+                name: rName,
+                label: rName,
+                is_custom: true,
+                is_template: false,
+                carry_forward: false,
+              });
+            }
+          }
+          return toAdd.length > 0 ? [...prev, ...toAdd] : prev;
+        });
+      }
+    }
   }, [members]);
 
   // Handle Escape key
@@ -820,7 +845,7 @@ export default function AllProjectMembersModal({
                       <span
                         className={`px-2.5 py-0.5 rounded-md text-[10px] font-bold border whitespace-nowrap ${
                           isSpecialRole
-                            ? matchingRole?.is_custom
+                            ? (matchingRole?.is_custom || !PROJECT_ROLE_LABELS[member.project_role])
                               ? 'bg-purple-100 text-purple-900 border-purple-300 ring-1 ring-purple-400/20'
                               : 'bg-purple-100 text-purple-800 border-purple-200'
                             : 'bg-slate-100 text-slate-600 border-slate-200'
