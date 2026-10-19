@@ -93,6 +93,7 @@ export default function TimesheetView({
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [actionLoading, setActionLoading] = useState(false);
+  const [timerActionTaskId, setTimerActionTaskId] = useState(null);
 
   // Active timer tracking
   const [activeSession, setActiveSession] = useState(null);
@@ -171,10 +172,13 @@ export default function TimesheetView({
   }, [timesheet]);
 
   // Load timesheet for the selected week
-  const loadTimesheet = useCallback(async () => {
+  const loadTimesheet = useCallback(async (options = {}) => {
+    const isBackground = options?.isBackground ?? false;
     try {
-      setLoading(true);
-      setError('');
+      if (!isBackground) {
+        setLoading(true);
+        setError('');
+      }
       const response = await timesheetService.getWeekly(targetUserId, selectedDate.toISOString());
       const data = response?.timesheet || null;
       setTimesheet(data);
@@ -193,9 +197,13 @@ export default function TimesheetView({
       }
     } catch (err) {
       console.error('Failed to load weekly timesheet:', err);
-      setError(err?.message || 'Unable to load timesheet data. Please check your connection.');
+      if (!isBackground) {
+        setError(err?.message || 'Unable to load timesheet data. Please check your connection.');
+      }
     } finally {
-      setLoading(false);
+      if (!isBackground) {
+        setLoading(false);
+      }
     }
   }, [selectedDate, targetUserId, readOnly]);
 
@@ -206,7 +214,7 @@ export default function TimesheetView({
   // Multi-tab and timer event synchronization
   useEffect(() => {
     const handleSync = () => {
-      loadTimesheet();
+      loadTimesheet({ isBackground: true });
     };
 
     window.addEventListener('timer-session-updated', handleSync);
@@ -234,7 +242,7 @@ export default function TimesheetView({
     const updateElapsed = () => {
       const cutoff = getSessionCutoffMs(activeSession.started_at);
       if (cutoff && Date.now() >= cutoff) {
-        loadTimesheet();
+        loadTimesheet({ isBackground: true });
         return;
       }
       setElapsedText(formatElapsed(activeSession.started_at));
@@ -272,30 +280,30 @@ export default function TimesheetView({
       return;
     }
     try {
-      setActionLoading(true);
+      setTimerActionTaskId(taskId);
       const res = await timesheetService.startSession({ task_id: taskId });
       setActiveSession(res?.session || null);
       onToast?.('Timer started successfully');
-      await loadTimesheet();
+      await loadTimesheet({ isBackground: true });
     } catch (err) {
       onToast?.(err.message || 'Unable to start timer');
     } finally {
-      setActionLoading(false);
+      setTimerActionTaskId(null);
     }
   };
 
   const handleStopTimer = async () => {
     try {
-      setActionLoading(true);
+      setTimerActionTaskId(activeSession?.task_id || 'STOPPING');
       const res = await timesheetService.endSession();
       setActiveSession(null);
       const duration = res?.session?.time_entry?.duration_minutes || 0;
       onToast?.(`Timer stopped: ${formatMinutes(duration)} logged!`);
-      await loadTimesheet();
+      await loadTimesheet({ isBackground: true });
     } catch (err) {
       onToast?.(err.message || 'Unable to stop timer');
     } finally {
-      setActionLoading(false);
+      setTimerActionTaskId(null);
     }
   };
 
@@ -683,15 +691,20 @@ export default function TimesheetView({
           {!readOnly && !isManager && !activeSession && (
             <button
               type="button"
+              disabled={Boolean(timerActionTaskId)}
               onClick={() => {
                 if (availableTasks.length > 0 && !startTimerTaskId) {
                   setStartTimerTaskId(availableTasks[0].id);
                 }
                 setIsStartTimerModalOpen(true);
               }}
-              className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-semibold transition-colors cursor-pointer shadow-xs"
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-semibold transition-colors cursor-pointer shadow-xs disabled:opacity-50"
             >
-              <Play className="w-3.5 h-3.5 fill-current" />
+              {timerActionTaskId ? (
+                <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+              ) : (
+                <Play className="w-3.5 h-3.5 fill-current" />
+              )}
               <span>Start Timer</span>
             </button>
           )}
@@ -782,7 +795,7 @@ export default function TimesheetView({
             )}
           </div>
           <div className="text-xl sm:text-2xl font-extrabold text-purple-700 mt-1">
-            {loading ? '...' : (isFiltered ? filteredTotals.totalFormatted : summaryStats.totalFormatted)}
+            {(loading && !timesheet) ? '...' : (isFiltered ? filteredTotals.totalFormatted : summaryStats.totalFormatted)}
           </div>
           <span className="text-[11px] text-slate-500 font-medium block mt-0.5">
             {isFiltered ? `Filtered total (${summaryStats.totalFormatted} overall)` : 'Recorded task effort'}
@@ -801,7 +814,7 @@ export default function TimesheetView({
             )}
           </div>
           <div className="text-xl sm:text-2xl font-extrabold text-slate-900 mt-1">
-            {loading ? '...' : (isFiltered ? filteredTotals.activeTasksCount : summaryStats.activeTasksCount)}
+            {(loading && !timesheet) ? '...' : (isFiltered ? filteredTotals.activeTasksCount : summaryStats.activeTasksCount)}
           </div>
           <span className="text-[11px] text-slate-500 font-medium block mt-0.5">
             {isFiltered
@@ -815,7 +828,7 @@ export default function TimesheetView({
             Daily Average
           </span>
           <div className="text-xl sm:text-2xl font-extrabold text-slate-900 mt-1">
-            {loading ? '...' : summaryStats.avgDailyFormatted}
+            {(loading && !timesheet) ? '...' : summaryStats.avgDailyFormatted}
           </div>
           <span className="text-[11px] text-slate-500 font-medium block mt-0.5">
             Across {summaryStats.activeDaysCount} active work days
@@ -937,7 +950,7 @@ export default function TimesheetView({
         </div>
 
         {/* Loading State */}
-        {loading ? (
+        {(loading && !timesheet) ? (
           <div className="p-12 text-center text-slate-400">
             <RefreshCw className="w-6 h-6 animate-spin mx-auto text-purple-600 mb-2" />
             <p className="text-xs font-semibold">Loading weekly timesheet...</p>
@@ -1094,22 +1107,30 @@ export default function TimesheetView({
                                 <button
                                   type="button"
                                   onClick={handleStopTimer}
-                                  disabled={actionLoading}
+                                  disabled={actionLoading || Boolean(timerActionTaskId)}
                                   title="Stop Timer"
-                                  className="p-1 rounded-md bg-rose-50 text-rose-600 hover:bg-rose-100 transition-colors cursor-pointer"
+                                  className="p-1 rounded-md bg-rose-50 text-rose-600 hover:bg-rose-100 transition-colors cursor-pointer disabled:opacity-50"
                                 >
-                                  <Square className="w-3 h-3 fill-current" />
+                                  {timerActionTaskId === task.id || timerActionTaskId === 'STOPPING' ? (
+                                    <RefreshCw className="w-3 h-3 animate-spin text-rose-600" />
+                                  ) : (
+                                    <Square className="w-3 h-3 fill-current" />
+                                  )}
                                 </button>
                               </div>
                             ) : !isManager ? (
                               <button
                                 type="button"
                                 onClick={() => handleStartTimer(task.id)}
-                                disabled={actionLoading}
+                                disabled={actionLoading || Boolean(timerActionTaskId)}
                                 title={activeSession ? `Switch timer to "${task.title}" (will stop current timer)` : 'Start Timer for this task'}
-                                className="p-1.5 rounded-lg bg-purple-50 text-purple-600 hover:bg-purple-100 transition-colors cursor-pointer opacity-80 group-hover:opacity-100"
+                                className="p-1.5 rounded-lg bg-purple-50 text-purple-600 hover:bg-purple-100 transition-colors cursor-pointer opacity-80 group-hover:opacity-100 disabled:opacity-50"
                               >
-                                <Play className="w-3.5 h-3.5 fill-current" />
+                                {timerActionTaskId === task.id ? (
+                                  <RefreshCw className="w-3.5 h-3.5 animate-spin text-purple-600" />
+                                ) : (
+                                  <Play className="w-3.5 h-3.5 fill-current" />
+                                )}
                               </button>
                             ) : null}
                           </div>
@@ -1719,7 +1740,7 @@ export default function TimesheetView({
                 </button>
                 <button
                   type="submit"
-                  disabled={actionLoading || !startTimerTaskId}
+                  disabled={actionLoading || Boolean(timerActionTaskId) || !startTimerTaskId}
                   className="flex items-center gap-1.5 px-4 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-semibold transition-colors disabled:opacity-50"
                 >
                   <Play className="w-3.5 h-3.5 fill-current" />
