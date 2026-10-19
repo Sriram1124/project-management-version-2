@@ -1,14 +1,43 @@
 import fs from 'fs';
 import path from 'path';
 import crypto from 'crypto';
+import os from 'os';
 
 export class StorageService {
   static getStorageRoot(): string {
-    const root = process.env.STORAGE_PATH || path.join(process.cwd(), 'storage');
-    if (!fs.existsSync(root)) {
-      fs.mkdirSync(root, { recursive: true });
+    if (process.env.STORAGE_PATH) {
+      const root = path.resolve(process.env.STORAGE_PATH);
+      if (!fs.existsSync(root)) {
+        fs.mkdirSync(root, { recursive: true });
+      }
+      return root;
     }
-    return path.resolve(root);
+
+    // In serverless environments (e.g. Vercel, AWS Lambda), process.cwd() (/var/task) is read-only.
+    // The only writable directory on the container is os.tmpdir() (/tmp).
+    const isServerless = Boolean(
+      process.env.VERCEL ||
+      process.env.AWS_LAMBDA_FUNCTION_NAME ||
+      process.env.LAMBDA_TASK_ROOT ||
+      (typeof process.cwd === 'function' && process.cwd().startsWith('/var/task'))
+    );
+
+    const preferredRoot = isServerless
+      ? path.join(os.tmpdir(), 'internhub-storage')
+      : path.join(process.cwd(), 'storage');
+
+    try {
+      if (!fs.existsSync(preferredRoot)) {
+        fs.mkdirSync(preferredRoot, { recursive: true });
+      }
+      return path.resolve(preferredRoot);
+    } catch {
+      const fallbackRoot = path.join(os.tmpdir(), 'internhub-storage');
+      if (!fs.existsSync(fallbackRoot)) {
+        fs.mkdirSync(fallbackRoot, { recursive: true });
+      }
+      return path.resolve(fallbackRoot);
+    }
   }
 
   /**
