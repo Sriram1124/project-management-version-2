@@ -7,12 +7,12 @@ export const METHODOLOGY_META = {
   SCRUM: {
     id: 'SCRUM',
     name: 'Scrum',
-    tagline: 'Cycle-based planning and delivery',
-    description: 'Cycle planning, time-boxed iterations, cycle backlogs, and burndown progress tracking.',
+    tagline: 'Sprint-based planning and delivery',
+    description: 'Sprint planning, time-boxed iterations, sprint backlogs, and burndown progress tracking.',
     bullets: [
-      'Cycle planning and time-boxed iterations',
-      'Product backlog and cycle backlog',
-      'Cycle-based progress tracking',
+      'Sprint planning and time-boxed iterations',
+      'Product backlog and sprint backlog',
+      'Sprint-based progress tracking',
     ],
     boardTabId: 'scrum',
     boardLabel: 'Scrum Board',
@@ -47,31 +47,48 @@ export function isKanbanProject(project) {
   return getProjectMethodology(project) === METHODOLOGY.KANBAN;
 }
 
-export function getProjectTabs(projectOrMethodology) {
+export function getIterationTerm(projectOrMethodology, { plural = false, lower = false } = {}) {
   const meth = typeof projectOrMethodology === 'string'
     ? (projectOrMethodology.toUpperCase().trim() === 'KANBAN' ? 'KANBAN' : 'SCRUM')
     : getProjectMethodology(projectOrMethodology);
 
-  if (meth === METHODOLOGY.KANBAN) {
-    return [
-      { id: 'overview', label: 'Overview' },
-      { id: 'roadmap', label: 'Roadmap' },
-      { id: 'cycles', label: 'Planning & Cycles' },
-      { id: 'backlog', label: 'Backlog' },
-      { id: 'kanban', label: 'Kanban Board' },
-      { id: 'action-items', label: 'Action Items' },
-      { id: 'approvals', label: 'Approvals' },
-    ];
+  const isKanban = meth === METHODOLOGY.KANBAN;
+  let term = isKanban
+    ? (plural ? 'Cycles' : 'Cycle')
+    : (plural ? 'Sprints' : 'Sprint');
+
+  return lower ? term.toLowerCase() : term;
+}
+
+export function getProjectTabs(projectOrMethodology, { isIntern = false } = {}) {
+  const meth = typeof projectOrMethodology === 'string'
+    ? (projectOrMethodology.toUpperCase().trim() === 'KANBAN' ? 'KANBAN' : 'SCRUM')
+    : getProjectMethodology(projectOrMethodology);
+
+  const tabs = meth === METHODOLOGY.KANBAN
+    ? [
+        { id: 'overview', label: 'Overview' },
+        { id: 'roadmap', label: 'Roadmap' },
+        { id: 'cycles', label: 'Planning & Cycles' },
+        { id: 'backlog', label: 'Backlog' },
+        { id: 'kanban', label: 'Kanban Board' },
+        { id: 'action-items', label: 'Action Items' },
+        { id: 'approvals', label: 'Approvals' },
+      ]
+    : [
+        { id: 'overview', label: 'Overview' },
+        { id: 'roadmap', label: 'Roadmap' },
+        { id: 'sprint', label: 'Sprint Workspace' },
+        { id: 'backlog', label: 'Backlog' },
+        { id: 'scrum', label: 'Scrum Board' },
+        { id: 'action-items', label: 'Action Items' },
+        { id: 'approvals', label: 'Approvals' },
+      ];
+
+  if (isIntern) {
+    return tabs.filter((t) => t.id !== 'approvals');
   }
 
-  return [
-    { id: 'overview', label: 'Overview' },
-    { id: 'roadmap', label: 'Roadmap' },
-    { id: 'sprint', label: 'Cycle Workspace' },
-    { id: 'backlog', label: 'Backlog' },
-    { id: 'scrum', label: 'Scrum Board' },
-    { id: 'action-items', label: 'Action Items' },
-    { id: 'approvals', label: 'Approvals' },
-  ];
+  return tabs;
 }
 

@@ -26,6 +26,7 @@ import { timesheetService } from '../../services/timesheet.service';
 import { workItemsService } from '../../services/workItems.service';
 import WorkItemComments from '../common/WorkItemComments';
 import { getSessionCutoffMs } from '../views/TimesheetView';
+import { formatHoursMinutes } from '../../utils/time';
 
 export default function IssueDetailDrawer({
   issue,
@@ -33,6 +34,7 @@ export default function IssueDetailDrawer({
   sprints = [],
   members = [],
   workItems = [],
+  isKanban = false,
   isOpen,
   onClose,
   onUpdateIssue,
@@ -40,8 +42,13 @@ export default function IssueDetailDrawer({
   onToggleSubtask,
   onAddSubtask,
 }) {
+  const Term = isKanban ? 'Cycle' : 'Sprint';
   const { user: authUser } = useAuth();
-  const isIntern = authUser?.role === 'INTERN';
+  const authRole = String(
+    authUser?.role?.name || authUser?.role || authUser?.type || authUser?.user_type || ''
+  ).toUpperCase();
+  const isManager = authRole === 'MANAGER';
+  const isIntern = authRole === 'INTERN';
   const currentUserId = authUser?.id || authUser?.user_id;
 
   const isAssignedToMe = useMemo(() => {
@@ -280,6 +287,28 @@ export default function IssueDetailDrawer({
   }, [isOpen, issue?.id, loadTaskTimeData]);
 
   useEffect(() => {
+    if (!isOpen || !issue?.id) return;
+    const handleSync = () => {
+      loadTaskTimeData();
+    };
+
+    window.addEventListener('timer-session-updated', handleSync);
+    window.addEventListener('focus', handleSync);
+    const handleVis = () => {
+      if (document.visibilityState === 'visible') {
+        handleSync();
+      }
+    };
+    document.addEventListener('visibilitychange', handleVis);
+
+    return () => {
+      window.removeEventListener('timer-session-updated', handleSync);
+      window.removeEventListener('focus', handleSync);
+      document.removeEventListener('visibilitychange', handleVis);
+    };
+  }, [isOpen, issue?.id, loadTaskTimeData]);
+
+  useEffect(() => {
     if (!activeSession?.started_at) {
       setElapsedText('00:00:00');
       return;
@@ -303,6 +332,10 @@ export default function IssueDetailDrawer({
   }, [activeSession, loadTaskTimeData]);
 
   const handleStartTaskTimer = async () => {
+    if (isManager) {
+      alert('Managers do not have permission to start timers on tasks');
+      return;
+    }
     try {
       setTimeActionLoading(true);
       const res = await timesheetService.startSession({ task_id: issue.id });
@@ -935,10 +968,10 @@ export default function IssueDetailDrawer({
             </div>
           </div>
 
-          {/* Cycle */}
+          {/* Cycle / Sprint */}
           <div className="flex items-center justify-between">
             <span className="text-slate-500 font-medium flex items-center gap-1.5">
-              <span>Cycle</span>
+              <span>{Term}</span>
               {updatingField === 'sprint' && (
                 <Loader2 className="w-3 h-3 text-purple-600 animate-spin shrink-0" />
               )}
@@ -950,7 +983,9 @@ export default function IssueDetailDrawer({
                 }`}
                 title={epicSprintSummary?.title || 'Derived from child items'}
               >
-                {epicSprintSummary?.label ? epicSprintSummary.label.replace(/Sprint/g, 'Cycle') : 'Backlog (No Cycle)'}
+                {epicSprintSummary?.label 
+                  ? (isKanban ? epicSprintSummary.label.replace(/Sprint/g, 'Cycle') : epicSprintSummary.label.replace(/Cycle/g, 'Sprint')) 
+                  : `Backlog (No ${Term})`}
               </span>
             ) : canChangeSprint ? (
               <select
@@ -959,7 +994,7 @@ export default function IssueDetailDrawer({
                 onChange={(e) => handleSprintChange(e.target.value)}
                 className="px-2 py-1 rounded border border-slate-200 text-xs font-medium bg-white text-slate-800 focus:outline-none focus:border-purple-600 max-w-[180px] cursor-pointer disabled:opacity-60 disabled:cursor-not-allowed"
               >
-                <option value="backlog">Backlog (No Cycle)</option>
+                <option value="backlog">Backlog (No {Term})</option>
                 {sprints.map((s) => (
                   <option key={s.id} value={s.id}>
                     {s.name} ({s.status})
@@ -968,7 +1003,7 @@ export default function IssueDetailDrawer({
               </select>
             ) : (
               <span className="px-2 py-1 rounded border text-xs font-medium bg-slate-50 text-slate-600 border-slate-200 select-none truncate max-w-[180px]">
-                {currentSprint ? currentSprint.name : 'Backlog (No Cycle)'}
+                {currentSprint ? currentSprint.name : `Backlog (No ${Term})`}
               </span>
             )}
           </div>
@@ -1095,38 +1130,51 @@ export default function IssueDetailDrawer({
           </div>
 
           {/* Time Tracking & Logged Hours */}
-          <div className="flex items-center justify-between pt-2 border-t border-slate-200/60">
-            <span className="text-slate-500 font-medium flex items-center gap-1.5">
-              <Clock className="w-3.5 h-3.5 text-slate-400" />
-              <span>Time Logged</span>
-            </span>
-            <div className="flex items-center gap-1.5">
-              <span className="px-2 py-0.5 rounded bg-purple-50 text-purple-700 font-mono font-bold text-xs border border-purple-200">
-                {Math.floor(totalLoggedMinutes / 60)}h {totalLoggedMinutes % 60}m
+          <div className="pt-2 border-t border-slate-200/60 space-y-2">
+            <div className="flex items-center justify-between">
+              <span className="text-slate-500 font-medium flex items-center gap-1.5">
+                <Clock className="w-3.5 h-3.5 text-slate-400" />
+                <span>Time Logged</span>
               </span>
-              {activeSession ? (
-                <button
-                  type="button"
-                  onClick={handleStopTaskTimer}
-                  disabled={timeActionLoading}
-                  className="flex items-center gap-1 px-2 py-0.5 rounded bg-rose-600 hover:bg-rose-700 text-white font-mono font-bold text-xs transition-colors cursor-pointer shadow-2xs"
-                  title="Stop active timer"
-                >
-                  <Square className="w-2.5 h-2.5 fill-current" />
-                  <span>{elapsedText}</span>
-                </button>
-              ) : (
-                <button
-                  type="button"
-                  onClick={handleStartTaskTimer}
-                  disabled={timeActionLoading}
-                  className="flex items-center gap-1 px-2 py-0.5 rounded bg-purple-600 hover:bg-purple-700 text-white font-bold text-xs transition-colors cursor-pointer shadow-2xs"
-                  title="Start timer for this task"
-                >
-                  <Play className="w-2.5 h-2.5 fill-current" />
-                  <span>Timer</span>
-                </button>
-              )}
+              <div className="flex items-center gap-1.5">
+                <span className="px-2 py-0.5 rounded bg-purple-50 text-purple-700 font-mono font-bold text-xs border border-purple-200">
+                  {formatHoursMinutes(totalLoggedMinutes)}
+                </span>
+                {activeSession ? (
+                  <button
+                    type="button"
+                    onClick={handleStopTaskTimer}
+                    disabled={timeActionLoading}
+                    className="flex items-center gap-1 px-2 py-0.5 rounded bg-rose-600 hover:bg-rose-700 text-white font-mono font-bold text-xs transition-colors cursor-pointer shadow-2xs"
+                    title="Stop active timer"
+                  >
+                    <Square className="w-2.5 h-2.5 fill-current" />
+                    <span>{elapsedText}</span>
+                  </button>
+                ) : !isManager ? (
+                  <button
+                    type="button"
+                    onClick={handleStartTaskTimer}
+                    disabled={timeActionLoading}
+                    className="flex items-center gap-1 px-2 py-0.5 rounded bg-purple-600 hover:bg-purple-700 text-white font-bold text-xs transition-colors cursor-pointer shadow-2xs"
+                    title="Start timer for this task"
+                  >
+                    <Play className="w-2.5 h-2.5 fill-current" />
+                    <span>Timer</span>
+                  </button>
+                ) : null}
+              </div>
+            </div>
+
+            {/* Hours Logged */}
+            <div className="flex items-center justify-between">
+              <span className="text-slate-500 font-medium flex items-center gap-1.5">
+                <Timer className="w-3.5 h-3.5 text-slate-400" />
+                <span>Hours Logged</span>
+              </span>
+              <span className="font-semibold text-slate-800 font-mono text-xs" data-testid="hours-logged-value">
+                {formatHoursMinutes(totalLoggedMinutes)}
+              </span>
             </div>
           </div>
         </div>
@@ -1283,7 +1331,7 @@ export default function IssueDetailDrawer({
                       onChange={(e) => setChildSprintId(e.target.value)}
                       className="px-1.5 py-0.5 text-[11px] rounded border border-slate-200 bg-white text-slate-700 focus:outline-none focus:border-purple-600"
                     >
-                      <option value="">Backlog (No Sprint)</option>
+                      <option value="">Backlog (No {Term})</option>
                       {sprints.map((s) => (
                         <option key={s.id} value={s.id}>{s.name} ({s.status})</option>
                       ))}

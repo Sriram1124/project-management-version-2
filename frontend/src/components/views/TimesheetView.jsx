@@ -68,39 +68,8 @@ const formatMinutes = (minutes = 0) => {
   return `${hours}h ${remainder}m`;
 };
 
-export const getSessionCutoffMs = (startedAt) => {
-  if (!startedAt) return null;
-  const started = new Date(startedAt);
-  if (isNaN(started.getTime())) return null;
-  const formatter = new Intl.DateTimeFormat('en-US', {
-    timeZone: 'Asia/Kolkata',
-    year: 'numeric',
-    month: 'numeric',
-    day: 'numeric',
-  });
-  const parts = Object.fromEntries(
-    formatter.formatToParts(started).filter((p) => p.type !== 'literal').map((p) => [p.type, Number(p.value)])
-  );
-  // 18:15 IST is UTC 12:45
-  const cutoffUtc = Date.UTC(parts.year, parts.month - 1, parts.day, 12, 45, 0, 0);
-  if (started.getTime() < cutoffUtc) {
-    return cutoffUtc;
-  }
-  return started.getTime() + 4 * 60 * 60 * 1000;
-};
-
-const formatElapsed = (startedAt) => {
-  if (!startedAt) return '00:00:00';
-  const start = new Date(startedAt).getTime();
-  const now = Date.now();
-  const cutoff = getSessionCutoffMs(startedAt);
-  const effectiveEnd = cutoff && now > cutoff ? cutoff : now;
-  const diffSecs = Math.max(0, Math.floor((effectiveEnd - start) / 1000));
-  const hrs = Math.floor(diffSecs / 3600);
-  const mins = Math.floor((diffSecs % 3600) / 60);
-  const secs = diffSecs % 60;
-  return `${String(hrs).padStart(2, '0')}:${String(mins).padStart(2, '0')}:${String(secs).padStart(2, '0')}`;
-};
+import { getSessionCutoffMs, formatElapsed } from '../../utils/time';
+export { getSessionCutoffMs, formatElapsed };
 
 export default function TimesheetView({
   onToast,
@@ -110,6 +79,10 @@ export default function TimesheetView({
   internInfo = null,
 }) {
   const { user: authUser } = useAuth();
+  const authRole = String(
+    authUser?.role?.name || authUser?.role || authUser?.type || authUser?.user_type || ''
+  ).toUpperCase();
+  const isManager = authRole === 'MANAGER';
 
   // Week navigation state
   const [selectedDate, setSelectedDate] = useState(() => new Date());
@@ -120,6 +93,7 @@ export default function TimesheetView({
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [actionLoading, setActionLoading] = useState(false);
+  const [timerActionTaskId, setTimerActionTaskId] = useState(null);
 
   // Active timer tracking
   const [activeSession, setActiveSession] = useState(null);
@@ -148,6 +122,14 @@ export default function TimesheetView({
   const [timeFilter, setTimeFilter] = useState('ALL'); // 'ALL' | 'LOGGED' | 'NO_LOGGED'
   const [taskSearchQuery, setTaskSearchQuery] = useState('');
 
+  // Time correction state
+  const [isCorrectionModalOpen, setIsCorrectionModalOpen] = useState(false);
+  const [correctionEntry, setCorrectionEntry] = useState(null); // { id, task_id, task_title, date_str, duration_minutes, notes }
+  const [correctionExcessMinutes, setCorrectionExcessMinutes] = useState(30);
+  const [correctionReason, setCorrectionReason] = useState('');
+  const [correctionSubmitting, setCorrectionSubmitting] = useState(false);
+  const [correctionError, setCorrectionError] = useState('');
+
   // Pagination & Compact Layout
   const [pageSize, setPageSize] = useState(15);
   const [currentPage, setCurrentPage] = useState(1);
@@ -167,11 +149,36 @@ export default function TimesheetView({
   // Effective intern metadata (from prop or backend response)
   const currentIntern = internInfo || timesheet?.user || null;
 
+  // Flattened entries for the selected week to allow quick correction requests
+  const allWeekEntries = useMemo(() => {
+    if (!timesheet?.tasks) return [];
+    const list = [];
+    for (const t of timesheet.tasks) {
+      if (!t.days) continue;
+      for (const [dateStr, dData] of Object.entries(t.days)) {
+        if (dData.entries && Array.isArray(dData.entries)) {
+          for (const ent of dData.entries) {
+            list.push({
+              ...ent,
+              task_id: t.id,
+              task_title: t.title,
+              date_str: dateStr,
+            });
+          }
+        }
+      }
+    }
+    return list;
+  }, [timesheet]);
+
   // Load timesheet for the selected week
-  const loadTimesheet = useCallback(async () => {
+  const loadTimesheet = useCallback(async (options = {}) => {
+    const isBackground = options?.isBackground ?? false;
     try {
-      setLoading(true);
-      setError('');
+      if (!isBackground) {
+        setLoading(true);
+        setError('');
+      }
       const response = await timesheetService.getWeekly(targetUserId, selectedDate.toISOString());
       const data = response?.timesheet || null;
       setTimesheet(data);
@@ -190,14 +197,40 @@ export default function TimesheetView({
       }
     } catch (err) {
       console.error('Failed to load weekly timesheet:', err);
-      setError(err?.message || 'Unable to load timesheet data. Please check your connection.');
+      if (!isBackground) {
+        setError(err?.message || 'Unable to load timesheet data. Please check your connection.');
+      }
     } finally {
-      setLoading(false);
+      if (!isBackground) {
+        setLoading(false);
+      }
     }
   }, [selectedDate, targetUserId, readOnly]);
 
   useEffect(() => {
     loadTimesheet();
+  }, [loadTimesheet]);
+
+  // Multi-tab and timer event synchronization
+  useEffect(() => {
+    const handleSync = () => {
+      loadTimesheet({ isBackground: true });
+    };
+
+    window.addEventListener('timer-session-updated', handleSync);
+    window.addEventListener('focus', handleSync);
+    const handleVisibility = () => {
+      if (document.visibilityState === 'visible') {
+        handleSync();
+      }
+    };
+    document.addEventListener('visibilitychange', handleVisibility);
+
+    return () => {
+      window.removeEventListener('timer-session-updated', handleSync);
+      window.removeEventListener('focus', handleSync);
+      document.removeEventListener('visibilitychange', handleVisibility);
+    };
   }, [loadTimesheet]);
 
   // Live timer interval
@@ -209,7 +242,7 @@ export default function TimesheetView({
     const updateElapsed = () => {
       const cutoff = getSessionCutoffMs(activeSession.started_at);
       if (cutoff && Date.now() >= cutoff) {
-        loadTimesheet();
+        loadTimesheet({ isBackground: true });
         return;
       }
       setElapsedText(formatElapsed(activeSession.started_at));
@@ -242,31 +275,91 @@ export default function TimesheetView({
 
   // Start / Stop timer
   const handleStartTimer = async (taskId) => {
+    if (isManager) {
+      onToast?.('Managers do not have permission to start timers on tasks');
+      return;
+    }
     try {
-      setActionLoading(true);
+      setTimerActionTaskId(taskId);
       const res = await timesheetService.startSession({ task_id: taskId });
       setActiveSession(res?.session || null);
       onToast?.('Timer started successfully');
-      await loadTimesheet();
+      await loadTimesheet({ isBackground: true });
     } catch (err) {
       onToast?.(err.message || 'Unable to start timer');
     } finally {
-      setActionLoading(false);
+      setTimerActionTaskId(null);
     }
   };
 
   const handleStopTimer = async () => {
     try {
-      setActionLoading(true);
+      setTimerActionTaskId(activeSession?.task_id || 'STOPPING');
       const res = await timesheetService.endSession();
       setActiveSession(null);
       const duration = res?.session?.time_entry?.duration_minutes || 0;
       onToast?.(`Timer stopped: ${formatMinutes(duration)} logged!`);
-      await loadTimesheet();
+      await loadTimesheet({ isBackground: true });
     } catch (err) {
       onToast?.(err.message || 'Unable to stop timer');
     } finally {
-      setActionLoading(false);
+      setTimerActionTaskId(null);
+    }
+  };
+
+  const handleOpenCorrectionModal = (entry, task = null) => {
+    const origMins = Number(entry?.duration_minutes) || 0;
+    setCorrectionEntry({
+      ...entry,
+      task_id: task?.id || entry?.task_id,
+      task_title: task?.title || entry?.task_title || 'Work Task',
+      date_str: entry?.date_str || (entry?.date ? new Date(entry.date).toISOString().slice(0, 10) : ''),
+      duration_minutes: origMins,
+    });
+    setCorrectionExcessMinutes(Math.min(30, Math.max(5, Math.floor(origMins / 2))));
+    setCorrectionReason('');
+    setCorrectionError('');
+    setIsCorrectionModalOpen(true);
+  };
+
+  const handleCorrectionSubmit = async (e) => {
+    e.preventDefault();
+    if (!correctionEntry) {
+      setCorrectionError('Please select a recorded time entry to correct.');
+      return;
+    }
+    const excess = Number(correctionExcessMinutes);
+    if (!excess || excess <= 0) {
+      setCorrectionError('Excess minutes to deduct must be greater than 0.');
+      return;
+    }
+    const orig = Number(correctionEntry.duration_minutes || 0);
+    if (excess >= orig) {
+      setCorrectionError(`Excess minutes must be less than original duration (${orig}m).`);
+      return;
+    }
+    if (!correctionReason.trim()) {
+      setCorrectionError('Please provide a mandatory reason for this time correction.');
+      return;
+    }
+
+    try {
+      setCorrectionSubmitting(true);
+      setCorrectionError('');
+      await timesheetService.requestTimeCorrection({
+        time_entry_id: correctionEntry.id,
+        excess_minutes: excess,
+        reason: correctionReason.trim(),
+      });
+      onToast?.('Time correction request submitted for manager review');
+      setIsCorrectionModalOpen(false);
+      setCorrectionEntry(null);
+      setCorrectionReason('');
+      await loadTimesheet();
+    } catch (err) {
+      setCorrectionError(err.message || 'Unable to submit correction request');
+    } finally {
+      setCorrectionSubmitting(false);
     }
   };
 
@@ -545,7 +638,7 @@ export default function TimesheetView({
               onClick={handleCurrentWeek}
               className="px-2.5 py-0.5 font-semibold text-xs rounded-lg hover:bg-white hover:text-purple-700 transition-colors cursor-pointer"
             >
-              Today
+              This Week
             </button>
             <button
               type="button"
@@ -595,19 +688,48 @@ export default function TimesheetView({
           </button>
 
           {/* Start Timer Button (Intern Only, when no timer is active) */}
-          {!readOnly && !activeSession && (
+          {!readOnly && !isManager && !activeSession && (
             <button
               type="button"
+              disabled={Boolean(timerActionTaskId)}
               onClick={() => {
                 if (availableTasks.length > 0 && !startTimerTaskId) {
                   setStartTimerTaskId(availableTasks[0].id);
                 }
                 setIsStartTimerModalOpen(true);
               }}
-              className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-semibold transition-colors cursor-pointer shadow-xs"
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-semibold transition-colors cursor-pointer shadow-xs disabled:opacity-50"
             >
-              <Play className="w-3.5 h-3.5 fill-current" />
+              {timerActionTaskId ? (
+                <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+              ) : (
+                <Play className="w-3.5 h-3.5 fill-current" />
+              )}
               <span>Start Timer</span>
+            </button>
+          )}
+
+          {/* Request Correction Button (Intern Only) */}
+          {!readOnly && (
+            <button
+              type="button"
+              onClick={() => {
+                if (allWeekEntries.length > 0) {
+                  const first = allWeekEntries[0];
+                  setCorrectionEntry(first);
+                  setCorrectionExcessMinutes(Math.min(30, Math.max(5, Math.floor((first.duration_minutes || 30) / 2))));
+                } else {
+                  setCorrectionEntry(null);
+                }
+                setCorrectionReason('');
+                setCorrectionError('');
+                setIsCorrectionModalOpen(true);
+              }}
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-amber-50 hover:bg-amber-100 text-amber-800 border border-amber-200 font-semibold transition-colors cursor-pointer shadow-xs"
+              title="Request Time Correction for accidentally recorded extra time"
+            >
+              <RotateCcw className="w-3.5 h-3.5 text-amber-700" />
+              <span>Request Correction</span>
             </button>
           )}
 
@@ -629,48 +751,6 @@ export default function TimesheetView({
           )}
         </div>
       </div>
-
-      {/* 2. ACTIVE RUNNING TIMER BANNER (Intern Only) */}
-      {!readOnly && activeSession && (
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 p-3.5 sm:px-5 bg-gradient-to-r from-purple-900 via-indigo-900 to-purple-950 text-white rounded-2xl shadow-md border border-purple-700/50 animate-in fade-in duration-200">
-          <div className="flex items-center gap-3 min-w-0">
-            <span className="relative flex h-3.5 w-3.5">
-              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
-              <span className="relative inline-flex rounded-full h-3.5 w-3.5 bg-emerald-500"></span>
-            </span>
-            <div className="min-w-0">
-              <div className="flex items-center gap-2">
-                <span className="text-[10px] font-bold uppercase tracking-wider text-purple-300">
-                  Timer Active
-                </span>
-                {activeSession.task?.id && (
-                  <span className="font-mono text-[10px] px-1.5 py-0.2 rounded bg-purple-800/80 text-purple-200 border border-purple-600/40">
-                    {activeSession.task.id.slice(0, 8)}
-                  </span>
-                )}
-              </div>
-              <p className="font-semibold text-sm text-white truncate mt-0.5">
-                {activeSession.task?.title || 'Active Work Session'}
-              </p>
-            </div>
-          </div>
-
-          <div className="flex items-center gap-3 shrink-0 self-end sm:self-auto">
-            <div className="font-mono text-lg sm:text-xl font-bold tracking-wider text-emerald-300 bg-purple-950/60 px-3 py-1 rounded-xl border border-purple-800/60 shadow-inner">
-              {elapsedText}
-            </div>
-            <button
-              type="button"
-              onClick={handleStopTimer}
-              disabled={actionLoading}
-              className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-rose-600 hover:bg-rose-700 text-white font-bold transition-colors cursor-pointer shadow-sm disabled:opacity-50"
-            >
-              <Square className="w-3.5 h-3.5 fill-current" />
-              <span>Stop Timer</span>
-            </button>
-          </div>
-        </div>
-      )}
 
       {/* Error Banner */}
       {error && (
@@ -715,7 +795,7 @@ export default function TimesheetView({
             )}
           </div>
           <div className="text-xl sm:text-2xl font-extrabold text-purple-700 mt-1">
-            {loading ? '...' : (isFiltered ? filteredTotals.totalFormatted : summaryStats.totalFormatted)}
+            {(loading && !timesheet) ? '...' : (isFiltered ? filteredTotals.totalFormatted : summaryStats.totalFormatted)}
           </div>
           <span className="text-[11px] text-slate-500 font-medium block mt-0.5">
             {isFiltered ? `Filtered total (${summaryStats.totalFormatted} overall)` : 'Recorded task effort'}
@@ -734,7 +814,7 @@ export default function TimesheetView({
             )}
           </div>
           <div className="text-xl sm:text-2xl font-extrabold text-slate-900 mt-1">
-            {loading ? '...' : (isFiltered ? filteredTotals.activeTasksCount : summaryStats.activeTasksCount)}
+            {(loading && !timesheet) ? '...' : (isFiltered ? filteredTotals.activeTasksCount : summaryStats.activeTasksCount)}
           </div>
           <span className="text-[11px] text-slate-500 font-medium block mt-0.5">
             {isFiltered
@@ -748,7 +828,7 @@ export default function TimesheetView({
             Daily Average
           </span>
           <div className="text-xl sm:text-2xl font-extrabold text-slate-900 mt-1">
-            {loading ? '...' : summaryStats.avgDailyFormatted}
+            {(loading && !timesheet) ? '...' : summaryStats.avgDailyFormatted}
           </div>
           <span className="text-[11px] text-slate-500 font-medium block mt-0.5">
             Across {summaryStats.activeDaysCount} active work days
@@ -870,7 +950,7 @@ export default function TimesheetView({
         </div>
 
         {/* Loading State */}
-        {loading ? (
+        {(loading && !timesheet) ? (
           <div className="p-12 text-center text-slate-400">
             <RefreshCw className="w-6 h-6 animate-spin mx-auto text-purple-600 mb-2" />
             <p className="text-xs font-semibold">Loading weekly timesheet...</p>
@@ -1014,28 +1094,45 @@ export default function TimesheetView({
                           </div>
 
                           {/* Quick Timer Start / Stop on Row */}
-                          <div className="shrink-0 self-center opacity-80 group-hover:opacity-100">
+                          <div className="shrink-0 self-center">
                             {isThisTaskRunning ? (
-                              <button
-                                type="button"
-                                onClick={handleStopTimer}
-                                disabled={actionLoading}
-                                title="Stop Timer"
-                                className="p-1 rounded-lg bg-rose-50 text-rose-600 hover:bg-rose-100 transition-colors cursor-pointer"
-                              >
-                                <Square className="w-3.5 h-3.5 fill-current" />
-                              </button>
-                            ) : (
+                              <div className="flex items-center gap-1.5 bg-emerald-50 border border-emerald-200/80 rounded-lg px-2 py-1 shadow-xs">
+                                <span className="relative flex h-2 w-2">
+                                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+                                  <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
+                                </span>
+                                <span className="font-mono text-[11px] font-bold text-emerald-700 tracking-wider">
+                                  {elapsedText}
+                                </span>
+                                <button
+                                  type="button"
+                                  onClick={handleStopTimer}
+                                  disabled={actionLoading || Boolean(timerActionTaskId)}
+                                  title="Stop Timer"
+                                  className="p-1 rounded-md bg-rose-50 text-rose-600 hover:bg-rose-100 transition-colors cursor-pointer disabled:opacity-50"
+                                >
+                                  {timerActionTaskId === task.id || timerActionTaskId === 'STOPPING' ? (
+                                    <RefreshCw className="w-3 h-3 animate-spin text-rose-600" />
+                                  ) : (
+                                    <Square className="w-3 h-3 fill-current" />
+                                  )}
+                                </button>
+                              </div>
+                            ) : !isManager ? (
                               <button
                                 type="button"
                                 onClick={() => handleStartTimer(task.id)}
-                                disabled={actionLoading || Boolean(activeSession)}
-                                title={activeSession ? 'Stop active timer first' : 'Start Timer for this task'}
-                                className="p-1 rounded-lg bg-purple-50 text-purple-600 hover:bg-purple-100 transition-colors cursor-pointer disabled:opacity-30"
+                                disabled={actionLoading || Boolean(timerActionTaskId)}
+                                title={activeSession ? `Switch timer to "${task.title}" (will stop current timer)` : 'Start Timer for this task'}
+                                className="p-1.5 rounded-lg bg-purple-50 text-purple-600 hover:bg-purple-100 transition-colors cursor-pointer opacity-80 group-hover:opacity-100 disabled:opacity-50"
                               >
-                                <Play className="w-3.5 h-3.5 fill-current" />
+                                {timerActionTaskId === task.id ? (
+                                  <RefreshCw className="w-3.5 h-3.5 animate-spin text-purple-600" />
+                                ) : (
+                                  <Play className="w-3.5 h-3.5 fill-current" />
+                                )}
                               </button>
-                            )}
+                            ) : null}
                           </div>
                         </div>
                       </td>
@@ -1314,15 +1411,28 @@ export default function TimesheetView({
                         </div>
 
                         {!readOnly && (
-                          <button
-                            type="button"
-                            onClick={() => handleDeleteEntry(entry.id)}
-                            disabled={actionLoading}
-                            title="Delete entry"
-                            className="p-1 rounded-lg text-slate-400 hover:text-rose-600 hover:bg-rose-50 transition-colors"
-                          >
-                            <Trash2 className="w-3.5 h-3.5" />
-                          </button>
+                          <div className="flex items-center gap-1.5 shrink-0">
+                            <button
+                              type="button"
+                              onClick={() => {
+                                handleOpenCorrectionModal(entry, cellModalData.task);
+                              }}
+                              title="Request correction for this entry"
+                              className="px-2 py-1 rounded-lg text-amber-700 bg-amber-50 hover:bg-amber-100 border border-amber-200/80 transition-colors flex items-center gap-1 text-[10px] font-bold cursor-pointer"
+                            >
+                              <RotateCcw className="w-3 h-3 text-amber-600" />
+                              <span>Correct</span>
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => handleDeleteEntry(entry.id)}
+                              disabled={actionLoading}
+                              title="Delete entry"
+                              className="p-1 rounded-lg text-slate-400 hover:text-rose-600 hover:bg-rose-50 transition-colors cursor-pointer"
+                            >
+                              <Trash2 className="w-3.5 h-3.5" />
+                            </button>
+                          </div>
                         )}
                       </div>
                     ))}
@@ -1630,11 +1740,186 @@ export default function TimesheetView({
                 </button>
                 <button
                   type="submit"
-                  disabled={actionLoading || !startTimerTaskId}
+                  disabled={actionLoading || Boolean(timerActionTaskId) || !startTimerTaskId}
                   className="flex items-center gap-1.5 px-4 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-semibold transition-colors disabled:opacity-50"
                 >
                   <Play className="w-3.5 h-3.5 fill-current" />
                   <span>Start Working</span>
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* 8. TIME CORRECTION REQUEST MODAL (Intern Only) */}
+      {!readOnly && isCorrectionModalOpen && (
+        <div className="fixed inset-0 z-50 bg-black/40 backdrop-blur-2xs flex items-center justify-center p-4 animate-in fade-in duration-150">
+          <div className="bg-white rounded-2xl shadow-2xl border border-slate-200 max-w-lg w-full overflow-hidden text-xs">
+            <div className="flex items-center justify-between p-4 border-b border-slate-100 bg-amber-50/70">
+              <div className="flex items-center gap-2">
+                <span className="p-1.5 rounded-lg bg-amber-100 text-amber-700">
+                  <RotateCcw className="w-4 h-4" />
+                </span>
+                <div>
+                  <h3 className="text-sm font-bold text-slate-900">
+                    Request Time Correction
+                  </h3>
+                  <p className="text-[11px] text-slate-500">
+                    Request removal of accidental or extra recorded time
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setIsCorrectionModalOpen(false)}
+                className="p-1 rounded-lg text-slate-400 hover:text-slate-700 hover:bg-slate-100 cursor-pointer"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <form onSubmit={handleCorrectionSubmit} className="p-5 space-y-4">
+              {correctionError && (
+                <div className="p-3 bg-rose-50 border border-rose-200 rounded-xl text-rose-700 flex items-center gap-2 text-xs">
+                  <AlertCircle className="w-4 h-4 shrink-0" />
+                  <span>{correctionError}</span>
+                </div>
+              )}
+
+              {/* Entry selector if choosing from multiple */}
+              <div>
+                <label className="block text-[11px] font-semibold text-slate-700 mb-1">
+                  Recorded Work Session / Entry *
+                </label>
+                {allWeekEntries.length > 0 ? (
+                  <select
+                    value={correctionEntry?.id || ''}
+                    onChange={(e) => {
+                      const found = allWeekEntries.find((ent) => ent.id === e.target.value);
+                      if (found) {
+                        setCorrectionEntry(found);
+                        setCorrectionExcessMinutes(Math.min(30, Math.max(5, Math.floor((found.duration_minutes || 30) / 2))));
+                      } else {
+                        setCorrectionEntry(null);
+                      }
+                    }}
+                    required
+                    className="w-full px-3 py-2 rounded-xl border border-slate-200 bg-white font-medium text-slate-900 focus:outline-none focus:border-amber-500"
+                  >
+                    <option value="">-- Choose a recorded entry to correct --</option>
+                    {allWeekEntries.map((ent) => (
+                      <option key={ent.id} value={ent.id}>
+                        {ent.date_str} · {ent.task_title} ({formatMinutes(ent.duration_minutes)})
+                      </option>
+                    ))}
+                  </select>
+                ) : (
+                  <p className="text-slate-500 italic py-1">No recorded time entries in this week to correct.</p>
+                )}
+              </div>
+
+              {correctionEntry && (
+                <>
+                  <div className="bg-slate-50 p-3.5 rounded-xl border border-slate-200/80 space-y-2">
+                    <div className="flex items-center justify-between text-slate-600">
+                      <span>Original Recorded Time:</span>
+                      <span className="font-bold text-slate-900 font-mono text-xs">
+                        {formatMinutes(correctionEntry.duration_minutes || 0)}
+                      </span>
+                    </div>
+
+                    <div className="flex items-center justify-between text-slate-600">
+                      <span>Requested Excess to Deduct:</span>
+                      <span className="font-bold text-rose-600 font-mono text-xs">
+                        -{formatMinutes(correctionExcessMinutes)}
+                      </span>
+                    </div>
+
+                    <div className="pt-2 border-t border-slate-200 flex items-center justify-between font-bold">
+                      <span className="text-slate-800">New Corrected Time:</span>
+                      <span className="text-emerald-700 font-mono text-sm">
+                        {formatMinutes(Math.max(0, (correctionEntry.duration_minutes || 0) - correctionExcessMinutes))}
+                      </span>
+                    </div>
+                  </div>
+
+                  <div>
+                    <div className="flex items-center justify-between mb-1">
+                      <label className="text-[11px] font-semibold text-slate-700">
+                        Excess Minutes to Remove (Deduct) *
+                      </label>
+                      <span className="text-[10px] text-slate-400">
+                        Max: {(correctionEntry.duration_minutes || 1) - 1}m
+                      </span>
+                    </div>
+                    <div className="flex items-center gap-3">
+                      <input
+                        type="number"
+                        min="1"
+                        max={(correctionEntry.duration_minutes || 1) - 1}
+                        value={correctionExcessMinutes}
+                        onChange={(e) => setCorrectionExcessMinutes(Number(e.target.value) || 0)}
+                        required
+                        className="w-28 px-3 py-1.5 rounded-xl border border-slate-200 text-slate-900 focus:outline-none focus:border-amber-500 font-mono text-xs"
+                      />
+                      <span className="text-slate-500 text-xs">mins</span>
+                      <div className="flex items-center gap-1.5 ml-auto flex-wrap">
+                        {[15, 30, 45, 60].map((mins) => (
+                          (correctionEntry.duration_minutes || 0) > mins && (
+                            <button
+                              key={mins}
+                              type="button"
+                              onClick={() => setCorrectionExcessMinutes(mins)}
+                              className={`px-2 py-0.5 rounded-lg border text-[10px] font-medium transition-colors cursor-pointer ${
+                                correctionExcessMinutes === mins
+                                  ? 'bg-amber-100 border-amber-300 text-amber-800 font-bold'
+                                  : 'bg-white border-slate-200 hover:bg-slate-100 text-slate-600'
+                              }`}
+                            >
+                              {mins}m
+                            </button>
+                          )
+                        ))}
+                      </div>
+                    </div>
+                  </div>
+
+                  <div>
+                    <label className="block text-[11px] font-semibold text-slate-700 mb-1">
+                      Reason for Correction *
+                    </label>
+                    <textarea
+                      rows={3}
+                      value={correctionReason}
+                      onChange={(e) => setCorrectionReason(e.target.value)}
+                      placeholder="e.g., Accidentally left timer running while stepped away from workstation"
+                      required
+                      minLength={5}
+                      className="w-full px-3 py-2 rounded-xl border border-slate-200 text-slate-900 focus:outline-none focus:border-amber-500 text-xs placeholder:text-slate-400"
+                    />
+                    <p className="text-[10px] text-slate-400 mt-1">
+                      Your manager will receive a notification to review and approve this correction.
+                    </p>
+                  </div>
+                </>
+              )}
+
+              <div className="flex items-center justify-end gap-2 pt-2 border-t border-slate-100">
+                <button
+                  type="button"
+                  onClick={() => setIsCorrectionModalOpen(false)}
+                  className="px-3 py-1.5 rounded-xl border border-slate-200 hover:bg-slate-50 font-semibold text-slate-600 cursor-pointer"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={correctionSubmitting || !correctionEntry || correctionExcessMinutes <= 0 || !correctionReason.trim()}
+                  className="flex items-center gap-1.5 px-4 py-1.5 rounded-xl bg-amber-600 hover:bg-amber-700 text-white font-semibold transition-colors disabled:opacity-50 cursor-pointer"
+                >
+                  <RotateCcw className="w-3.5 h-3.5" />
+                  <span>{correctionSubmitting ? 'Submitting...' : 'Submit Request'}</span>
                 </button>
               </div>
             </form>

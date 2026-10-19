@@ -1,3 +1,4 @@
+import React from 'react';
 import { 
   LayoutDashboard, 
   FolderKanban, 
@@ -7,7 +8,8 @@ import {
   BarChart3, 
   LogOut, 
   Hash,
-  Clock
+  Clock,
+  User
 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 
@@ -23,9 +25,18 @@ export default function Sidebar({
   user
 }) {
   const { user: authUser } = useAuth();
-  const userName = user?.name || authUser?.name || 'Program Manager';
-  const userRole = user?.role || authUser?.role || 'Program Manager';
-  const userAvatar = `https://ui-avatars.com/api/?name=${encodeURIComponent(userName)}&background=7C3AED&color=fff`;
+  const currentUser = user || authUser;
+  const userName = currentUser?.name || 'Postman Manager Profile';
+  const userRole = (currentUser?.role || 'MANAGER').toUpperCase();
+
+  const getInitials = (name) => {
+    if (!name) return 'PP';
+    const parts = name.trim().split(/\s+/);
+    if (parts.length >= 2) {
+      return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
+    }
+    return name.slice(0, 2).toUpperCase();
+  };
 
   const isProjectWorkspace = Boolean(activeProjectId);
 
@@ -43,33 +54,33 @@ export default function Sidebar({
   ];
 
   return (
-    <aside className="w-60 h-screen bg-[#4C1D95] text-slate-200 flex flex-col shrink-0 select-none sticky top-0 overflow-hidden border-r border-purple-900/40">
+    <aside className="w-60 sm:w-64 h-screen bg-[#4C1D95] text-slate-200 flex flex-col shrink-0 select-none sticky top-0 overflow-hidden border-r border-purple-900/40">
       <div className="flex flex-col flex-1 min-h-0">
         {/* Brand Header */}
-        <div className="h-14 flex items-center justify-between px-4 border-b border-purple-800/60 bg-purple-950/30">
-          <div className="flex items-center gap-2.5">
-            <div className="w-7 h-7 rounded-md bg-purple-500/20 border border-purple-400/30 flex items-center justify-center text-white font-bold text-xs tracking-wider">
+        <div className="h-16 flex items-center px-4 border-b border-purple-800/60 bg-purple-950/20 shrink-0">
+          <div className="flex items-center gap-3">
+            <div className="w-9 h-9 rounded-xl bg-purple-500/20 border border-purple-400/30 flex items-center justify-center text-white font-bold text-sm tracking-wider shadow-inner shrink-0">
               IH
             </div>
-            <div className="flex flex-col leading-tight">
-              <span className="font-bold text-sm tracking-tight text-white">
+            <div className="flex flex-col leading-tight min-w-0">
+              <span className="font-extrabold text-sm tracking-wider text-white truncate">
                 INTERN HUB
               </span>
-              <span className="text-[10px] font-mono tracking-wider text-purple-300/70">
+              <span className="text-[10px] font-mono tracking-wider text-purple-300/80 mt-0.5 truncate">
                 Workspace v1.0
               </span>
             </div>
           </div>
         </div>
 
-        {/* Navigation Groups */}
-        <div className="flex-1 min-h-0 px-2.5 py-3.5 space-y-4 overflow-y-auto">
+        {/* Navigation Groups (Scrollable) */}
+        <div className="flex-1 min-h-0 px-3 py-3 space-y-1 overflow-y-auto">
           {/* CORE */}
           <div>
-            <div className="px-2 text-[10px] font-semibold uppercase tracking-wider text-purple-300/50 mb-1">
+            <div className="px-3 text-[11px] font-bold uppercase tracking-wider text-purple-300/60 mb-2 mt-2">
               Core
             </div>
-            <nav className="space-y-0.5">
+            <nav className="space-y-1">
               {coreItems.map((item) => {
                 const Icon = item.icon;
                 const isActive = !isProjectWorkspace && currentView === item.id;
@@ -85,14 +96,14 @@ export default function Sidebar({
                         if (isProjectWorkspace) onExitProject?.();
                       }
                     }}
-                    className={`w-full flex items-center justify-between px-2.5 py-1.5 rounded-md text-xs font-medium transition-colors ${
+                    className={`w-full flex items-center justify-between px-3 py-2 rounded-xl text-xs font-semibold transition-colors cursor-pointer ${
                       isActive || isProjectParentActive
-                        ? 'bg-purple-900/80 text-white font-semibold shadow-2xs'
-                        : 'text-purple-200/80 hover:bg-purple-800/40 hover:text-white'
+                        ? 'bg-white/10 text-white font-bold shadow-2xs'
+                        : 'text-purple-200/80 hover:bg-white/5 hover:text-white'
                     }`}
                   >
-                    <div className="flex items-center gap-2">
-                      <Icon className="w-3.5 h-3.5 shrink-0 opacity-80" />
+                    <div className="flex items-center gap-2.5">
+                      <Icon className={`w-4 h-4 shrink-0 ${isActive || isProjectParentActive ? 'text-white' : 'text-purple-300/80'}`} />
                       <span>{item.label}</span>
                     </div>
 
@@ -109,10 +120,10 @@ export default function Sidebar({
 
           {/* ANALYTICS */}
           <div>
-            <div className="px-2 text-[10px] font-semibold uppercase tracking-wider text-purple-300/50 mb-1">
+            <div className="px-3 text-[11px] font-bold uppercase tracking-wider text-purple-300/60 mb-2 mt-5">
               Analytics
             </div>
-            <nav className="space-y-0.5">
+            <nav className="space-y-1">
               {analyticsItems.map((item) => {
                 const Icon = item.icon;
                 const isActive = !isProjectWorkspace && currentView === item.id;
@@ -123,14 +134,14 @@ export default function Sidebar({
                       setCurrentView(item.id);
                       if (isProjectWorkspace) onExitProject?.();
                     }}
-                    className={`w-full flex items-center justify-between px-2.5 py-1.5 rounded-md text-xs font-medium transition-colors ${
+                    className={`w-full flex items-center justify-between px-3 py-2 rounded-xl text-xs font-semibold transition-colors cursor-pointer ${
                       isActive
-                        ? 'bg-purple-900/80 text-white font-semibold shadow-2xs'
-                        : 'text-purple-200/80 hover:bg-purple-800/40 hover:text-white'
+                        ? 'bg-white/10 text-white font-bold shadow-2xs'
+                        : 'text-purple-200/80 hover:bg-white/5 hover:text-white'
                     }`}
                   >
-                    <div className="flex items-center gap-2">
-                      <Icon className="w-3.5 h-3.5 shrink-0 opacity-80" />
+                    <div className="flex items-center gap-2.5">
+                      <Icon className={`w-4 h-4 shrink-0 ${isActive ? 'text-white' : 'text-purple-300/80'}`} />
                       <span>{item.label}</span>
                     </div>
                   </button>
@@ -141,28 +152,56 @@ export default function Sidebar({
 
           {/* CHANNELS */}
           <div>
-            <div className="px-2 text-[10px] font-semibold uppercase tracking-wider text-purple-300/50 mb-1">
+            <div className="px-3 text-[11px] font-bold uppercase tracking-wider text-purple-300/60 mb-2 mt-5">
               Channels
             </div>
-            <nav className="space-y-0.5">
+            <nav className="space-y-1">
               <button
                 onClick={() => {
                   setCurrentView('channels');
                   if (isProjectWorkspace) onExitProject?.();
                 }}
-                className={`w-full flex items-center justify-between px-2.5 py-1.5 rounded-md text-xs font-medium transition-colors ${
+                className={`w-full flex items-center justify-between px-3 py-2 rounded-xl text-xs font-semibold transition-colors cursor-pointer ${
                   !isProjectWorkspace && currentView === 'channels'
-                    ? 'bg-purple-900/80 text-white font-semibold shadow-2xs'
-                    : 'text-purple-200/80 hover:bg-purple-800/40 hover:text-white'
+                    ? 'bg-white/10 text-white font-bold shadow-2xs'
+                    : 'text-purple-200/80 hover:bg-white/5 hover:text-white'
                 }`}
               >
-                <div className="flex items-center gap-2">
-                  <Hash className="w-3.5 h-3.5 shrink-0 opacity-80" />
+                <div className="flex items-center gap-2.5">
+                  <Hash className={`w-4 h-4 shrink-0 ${!isProjectWorkspace && currentView === 'channels' ? 'text-white' : 'text-purple-300/80'}`} />
                   <span>Teams Channel</span>
                 </div>
-                <span className="px-1.5 py-0.2 text-[10px] font-mono rounded bg-emerald-950/60 text-emerald-300 border border-emerald-700/40">
+                <span className="px-2 py-0.5 text-[10px] font-bold rounded-md bg-[#064e3b] text-[#34d399] border border-[#047857]/40 tracking-wide font-mono">
                   Forms
                 </span>
+              </button>
+            </nav>
+          </div>
+
+          {/* Divider between Channels and Profile */}
+          <div className="my-4 border-t border-purple-800/60 mx-1" />
+
+          {/* PROFILE */}
+          <div>
+            <div className="px-3 text-[11px] font-bold uppercase tracking-wider text-purple-300/60 mb-2">
+              Profile
+            </div>
+            <nav className="space-y-1">
+              <button
+                onClick={() => {
+                  setCurrentView('profile');
+                  if (isProjectWorkspace) onExitProject?.();
+                }}
+                className={`w-full flex items-center justify-between px-3 py-2 rounded-xl text-xs font-semibold transition-colors cursor-pointer ${
+                  !isProjectWorkspace && currentView === 'profile'
+                    ? 'bg-white/10 text-white font-bold shadow-2xs'
+                    : 'text-purple-200/80 hover:bg-white/5 hover:text-white'
+                }`}
+              >
+                <div className="flex items-center gap-2.5">
+                  <User className={`w-4 h-4 shrink-0 ${!isProjectWorkspace && currentView === 'profile' ? 'text-white' : 'text-purple-300/80'}`} />
+                  <span>Profile</span>
+                </div>
               </button>
             </nav>
           </div>
@@ -170,26 +209,38 @@ export default function Sidebar({
         </div>
       </div>
 
-      {/* User Footer */}
-      <div className="shrink-0 p-3 border-t border-purple-800/60 bg-purple-950/40">
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-2">
-            <img
-              src={userAvatar}
-              alt={userName}
-              className="w-7 h-7 rounded-md object-cover border border-purple-400/40"
-            />
-            <div className="flex flex-col leading-tight">
-              <span className="text-xs font-semibold text-white">{userName}</span>
-              <span className="text-[10px] text-purple-300/70">{userRole}</span>
+      {/* Bottom Account Area */}
+      <div className="shrink-0 p-3 bg-purple-950/40 border-t border-purple-800/60">
+        <div className="flex items-center justify-between gap-2.5">
+          <button
+            type="button"
+            onClick={() => {
+              setCurrentView('profile');
+              if (isProjectWorkspace) onExitProject?.();
+            }}
+            className="flex items-center gap-2.5 flex-1 min-w-0 text-left rounded-lg transition-colors group cursor-pointer"
+            title="View Profile (/manager/profile)"
+          >
+            <div className="w-9 h-9 rounded-xl bg-purple-600 border border-purple-400/30 flex items-center justify-center text-white font-bold text-xs tracking-wider shrink-0 shadow-2xs">
+              {getInitials(userName)}
             </div>
-          </div>
+            <div className="flex flex-col leading-tight min-w-0 flex-1">
+              <span className="text-xs font-bold text-white truncate block">
+                {userName}
+              </span>
+              <span className="text-[10px] font-semibold text-purple-300/70 tracking-wider uppercase block mt-0.5">
+                {userRole}
+              </span>
+            </div>
+          </button>
+
           <button 
+            type="button"
             onClick={onLogout}
             title="Log out"
-            className="p-1 rounded text-purple-300 hover:text-white hover:bg-purple-800/40 transition-colors"
+            className="p-1.5 rounded-lg text-purple-300/80 hover:text-white hover:bg-white/5 transition-colors shrink-0 cursor-pointer"
           >
-            <LogOut className="w-3.5 h-3.5" />
+            <LogOut className="w-4 h-4" />
           </button>
         </div>
       </div>

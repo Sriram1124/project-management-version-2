@@ -238,4 +238,37 @@ export class TimesheetController {
       TimesheetController.handleError(res, error);
     }
   }
+
+  static async requestTimeCorrection(req: Request, res: Response) {
+    try {
+      const user = (req as any).fullUser;
+      const result = await TimesheetService.requestTimeCorrection(user, req.body || {});
+      res.status(201).json(result);
+    } catch (error) {
+      TimesheetController.handleError(res, error);
+    }
+  }
+
+  static async getTimeCorrections(req: Request, res: Response) {
+    try {
+      const user = (req as any).fullUser;
+      const { status, user_id } = req.query as Record<string, string | undefined>;
+      const result = await TimesheetService.getTimeCorrections(user, { status, user_id });
+      res.status(200).json(result);
+    } catch (error) {
+      TimesheetController.handleError(res, error);
+    }
+  }
+
+  static async reviewTimeCorrection(req: Request, res: Response) {
+    try {
+      const user = (req as any).fullUser;
+      const { requestId } = req.params;
+      const { decision, decision_note } = req.body || {};
+      const result = await TimesheetService.reviewTimeCorrection(user, requestId, decision, decision_note);
+      res.status(200).json(result);
+    } catch (error) {
+      TimesheetController.handleError(res, error);
+    }
+  }
 }

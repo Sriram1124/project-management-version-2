@@ -11,6 +11,7 @@ import TasksView from './components/views/TasksView';
 import ManagerMyTasksView from './components/views/ManagerMyTasksView';
 import ReportsView from './components/views/ReportsView';
 import ManagerTimesheetsView from './components/views/ManagerTimesheetsView';
+import ManagerProfileView from './components/views/ManagerProfileView';
 import InternPortalView from './components/views/InternPortalView';
 import AlertModal from './components/modals/AlertModal';
 import QuickSearchModal from './components/modals/QuickSearchModal';
@@ -30,10 +31,10 @@ export default function ManagerApp() {
   const navigate = useNavigate();
 
   const getViewFromPath = (pathname) => {
-    const clean = pathname.replace(/^\/manager\/?/, '');
+    const clean = pathname.replace(/^\/manager\/?/, '').replace(/\/+$/, '');
     if (!clean || clean === 'dashboard') return 'dashboard';
     if (clean === 'timesheet') return 'timesheets';
-    if (['projects', 'my-tasks', 'tasks', 'interns', 'tech-leads', 'reports', 'timesheets', 'channels'].includes(clean)) {
+    if (['projects', 'my-tasks', 'tasks', 'interns', 'tech-leads', 'reports', 'timesheets', 'channels', 'profile'].includes(clean)) {
       return clean;
     }
     return 'dashboard';
@@ -303,6 +304,8 @@ export default function ManagerApp() {
     switch (currentView) {
       case 'dashboard':
         return `Welcome Back, ${authUser?.name || 'Manager'}`;
+      case 'profile':
+        return 'Manager Profile';
       case 'projects':
         return 'Projects Directory';
       case 'interns':
@@ -332,6 +335,7 @@ export default function ManagerApp() {
     const pageLabel =
       {
         dashboard: 'Manager Dashboard',
+        profile: 'Manager Profile',
         projects: 'Projects Directory',
         'my-tasks': 'My Tasks',
         interns: 'Interns',
@@ -442,6 +446,7 @@ export default function ManagerApp() {
                   onRebalanceLead={(lead) =>
                     triggerToast(`Opened review rebalance for ${lead.name}`)
                   }
+                  onSelectProject={handleSelectProject}
                 />
               )}
               {currentView === 'my-tasks' && <ManagerMyTasksView onToast={triggerToast} />}
@@ -468,6 +473,12 @@ export default function ManagerApp() {
                   selectedCohort={cohorts.find((c) => c.id === selectedCohortId) || cohorts[0]}
                   selectedCohortId={selectedCohortId}
                   cohorts={cohorts}
+                />
+              )}
+              {currentView === 'profile' && (
+                <ManagerProfileView
+                  onSelectProject={handleSelectProject}
+                  onToast={triggerToast}
                 />
               )}
             </>

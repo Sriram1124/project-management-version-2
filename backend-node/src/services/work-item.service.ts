@@ -52,6 +52,26 @@ export interface WorkItemAnalyticsFilter {
   cohort_id?: string;
   start_date?: string;
   end_date?: string;
+  fresh?: boolean | string;
+}
+
+interface AnalyticsCacheRecord {
+  data: any;
+  timestamp: number;
+}
+const analyticsMemoryCache = new Map<string, AnalyticsCacheRecord>();
+const ANALYTICS_CACHE_TTL_MS = 30_000; // 30 seconds TTL
+
+export function invalidateAnalyticsCache(projectId?: string) {
+  if (projectId) {
+    for (const key of analyticsMemoryCache.keys()) {
+      if (key.includes(projectId)) {
+        analyticsMemoryCache.delete(key);
+      }
+    }
+  } else {
+    analyticsMemoryCache.clear();
+  }
 }
 
 export class WorkItemService {
@@ -748,6 +768,10 @@ export class WorkItemService {
       },
     });
 
+    if (projectId) {
+      invalidateAnalyticsCache(projectId);
+    }
+
     return this.formatWorkItem(workItem);
   }
 
@@ -1420,6 +1444,12 @@ export class WorkItemService {
       },
     });
 
+    if (updated.project_id) {
+      invalidateAnalyticsCache(updated.project_id);
+    } else if (currentItem.project_id) {
+      invalidateAnalyticsCache(currentItem.project_id);
+    }
+
     return this.formatWorkItem(updated);
   }
 
@@ -1482,6 +1512,10 @@ export class WorkItemService {
     await prisma.workItem.delete({
       where: { id },
     });
+
+    if (item.project_id) {
+      invalidateAnalyticsCache(item.project_id);
+    }
 
     return { message: 'Work item deleted successfully' };
   }
@@ -1753,6 +1787,18 @@ export class WorkItemService {
       const firstOrg = await prisma.organization.findFirst({ where: { is_active: true } });
       orgId = firstOrg?.id;
     }
+
+    // High performance in-memory cache check (30s TTL, bypassed with fresh=true)
+    const cacheKey = `${user?.id || 'anon'}_${orgId || ''}_${filters?.project_id || 'all'}_${filters?.sprint_id || 'all'}_${filters?.user_id || 'all'}_${filters?.start_date || ''}_${filters?.end_date || ''}`;
+    const isFresh = (filters as any)?.fresh === true || (filters as any)?.fresh === 'true';
+
+    if (!isFresh) {
+      const cached = analyticsMemoryCache.get(cacheKey);
+      if (cached && Date.now() - cached.timestamp < ANALYTICS_CACHE_TTL_MS) {
+        return cached.data;
+      }
+    }
+
     const isMgr = this.isManagerOrAdmin(user);
     let authorizedLeadProjects: string[] = [];
     let isLeadAnyProject = false;
@@ -1765,10 +1811,22 @@ export class WorkItemService {
       if (orgId) {
         whereProject.organization_id = orgId;
       }
-      project = await prisma.project.findFirst({
-        where: whereProject,
-        select: { id: true, name: true, owner_id: true, status: true, start_date: true, end_date: true },
-      });
+
+      // Parallelize project metadata lookup and project membership validation
+      const [projRecord, membershipRecord] = await Promise.all([
+        prisma.project.findFirst({
+          where: whereProject,
+          select: { id: true, name: true, owner_id: true, status: true, start_date: true, end_date: true },
+        }),
+        isMgr
+          ? Promise.resolve(null)
+          : prisma.projectMember.findFirst({
+              where: { project_id: filters.project_id, user_id: user.id },
+              select: { project_role: true },
+            }),
+      ]);
+
+      project = projRecord;
       if (!project) {
         throw new Error('Project not found in your organization');
       }
@@ -1780,19 +1838,18 @@ export class WorkItemService {
           targetUserId = filters.user_id;
         }
       } else {
-        // Check project membership and project role for this specific project
-        const membership = await prisma.projectMember.findFirst({
-          where: { project_id: filters.project_id, user_id: user.id },
-          select: { project_role: true },
-        });
-
-        const isLead = membership?.project_role === 'TECH_LEAD' || membership?.project_role === 'MANAGER' || this.isOrgTechLead(user);
+        const isInternRole = !isMgr && !this.isOrgTechLead(user);
+        const isLead =
+          !isInternRole &&
+          (membershipRecord?.project_role === 'TECH_LEAD' ||
+            membershipRecord?.project_role === 'MANAGER' ||
+            this.isOrgTechLead(user));
         if (isLead) {
           isActingAsLead = true;
           if (filters?.user_id) {
             targetUserId = filters.user_id;
           }
-        } else if (membership) {
+        } else if (membershipRecord) {
           if (filters?.user_id && filters.user_id !== user.id) {
             throw new Error('Forbidden: interns can only view their own performance analytics');
           }
@@ -1805,6 +1862,7 @@ export class WorkItemService {
       // No specific project provided in filters
       authorizedLeadProjects = orgId ? await this.getAuthorizedLeadProjectIds(user, orgId) : [];
       isLeadAnyProject = authorizedLeadProjects.length > 0;
+      const isInternRole = !isMgr && !this.isOrgTechLead(user) && !isLeadAnyProject;
       if (isMgr || isLeadAnyProject) {
         isActingAsLead = true;
         if (filters?.user_id) {
@@ -1859,7 +1917,7 @@ export class WorkItemService {
 
     const targetProjectForMembers = filters?.project_id || (isLeadAnyProject && authorizedLeadProjects.length === 1 ? authorizedLeadProjects[0] : null);
 
-    // Parallel execution of all analytics data queries
+    // Parallel execution of all analytics data queries with lean selects and index optimizations
     const [items, timeEntries, accessibleSprints, accessibleProjects, pMembers, allExtensionRequests] = await Promise.all([
       prisma.workItem.findMany({
         where,
@@ -1876,8 +1934,6 @@ export class WorkItemService {
           parent_id: true,
           sprint_id: true,
           project_id: true,
-          project: { select: { id: true, name: true } },
-          sprint: { select: { id: true, name: true } },
           assignees: {
             select: {
               user_id: true,
@@ -1894,10 +1950,7 @@ export class WorkItemService {
           task_id: true,
           duration_minutes: true,
           date: true,
-          start_time: true,
-          end_time: true,
         },
-        orderBy: { start_time: 'desc' },
       }),
       filters?.project_id
         ? prisma.sprint.findMany({
@@ -1948,13 +2001,19 @@ export class WorkItemService {
           ...(orgId ? { organization_id: orgId } : {}),
           ...(filters?.project_id ? { project_id: filters.project_id } : {}),
         },
-        include: {
-          requester: { select: { id: true, name: true, email: true } },
-          reviewer: { select: { id: true, name: true, email: true } },
+        select: {
+          id: true,
+          task_id: true,
+          status: true,
+          original_due_date: true,
+          requested_due_date: true,
         },
         orderBy: { created_at: 'asc' },
       }),
     ]);
+
+    const projectNameMap = new Map((accessibleProjects || []).map((p: any) => [p.id, p.name]));
+    const sprintNameMap = new Map((accessibleSprints || []).map((s: any) => [s.id, s.name]));
 
     const now = new Date();
     const total = items.length;
@@ -2084,9 +2143,19 @@ export class WorkItemService {
     // Project Health & Schedule Risk Assessment (Requirement 3):
     // Use the authoritative ProjectHealthService rather than arbitrary frontend thresholds.
     // Work-item overdue status is kept strictly separate from project health.
-    let project_health: 'HEALTHY' | 'AT_RISK' | 'CRITICAL' | 'NOT_ASSESSED' = 'HEALTHY';
+    let project_health: 'HEALTHY' | 'NEEDS_ATTENTION' | 'AT_RISK' | 'CRITICAL' | 'NOT_ASSESSED' = 'HEALTHY';
+    let project_health_score: number | null = null;
+    let project_risk_level: string = 'LOW';
+    let project_schedule_health: string = 'NO_SCHEDULE';
     let project_health_reasons: string[] = [];
     let project_health_warnings: string[] = [];
+    let project_risk_factors: string[] = [];
+    let project_recommended_actions: string[] = [];
+    let project_overdue_sp = 0;
+    let project_overdue_sp_percentage = 0;
+    let project_blocked_sp = 0;
+    let project_blocked_sp_percentage = 0;
+    let project_delivery_progress_percentage: number | null = null;
 
     if (filters?.project_id && project) {
       const projRecord = {
@@ -2116,8 +2185,18 @@ export class WorkItemService {
 
       const classified = ProjectHealthService.classifyProjectHealth(projRecord);
       project_health = classified.health as any;
+      project_health_score = classified.health_score;
+      project_risk_level = classified.risk_level;
+      project_schedule_health = classified.schedule_health;
       project_health_reasons = classified.reasons || [];
       project_health_warnings = classified.warnings || [];
+      project_risk_factors = classified.risk_factors || [];
+      project_recommended_actions = classified.recommended_actions || [];
+      project_overdue_sp = classified.overdue_sp ?? 0;
+      project_overdue_sp_percentage = classified.overdue_sp_percentage ?? 0;
+      project_blocked_sp = classified.blocked_sp ?? 0;
+      project_blocked_sp_percentage = classified.blocked_sp_percentage ?? 0;
+      project_delivery_progress_percentage = classified.delivery_progress_percentage ?? classified.progress_percentage;
     } else if (filters?.project_id) {
       const projRecord = await prisma.project.findUnique({
         where: { id: filters.project_id },
@@ -2154,8 +2233,18 @@ export class WorkItemService {
       if (projRecord) {
         const classified = ProjectHealthService.classifyProjectHealth(projRecord);
         project_health = classified.health as any;
+        project_health_score = classified.health_score;
+        project_risk_level = classified.risk_level;
+        project_schedule_health = classified.schedule_health;
         project_health_reasons = classified.reasons || [];
         project_health_warnings = classified.warnings || [];
+        project_risk_factors = classified.risk_factors || [];
+        project_recommended_actions = classified.recommended_actions || [];
+        project_overdue_sp = classified.overdue_sp ?? 0;
+        project_overdue_sp_percentage = classified.overdue_sp_percentage ?? 0;
+        project_blocked_sp = classified.blocked_sp ?? 0;
+        project_blocked_sp_percentage = classified.blocked_sp_percentage ?? 0;
+        project_delivery_progress_percentage = classified.delivery_progress_percentage ?? classified.progress_percentage;
       }
     } else {
       // Portfolio scope (All Projects or Cohort)
@@ -2165,15 +2254,23 @@ export class WorkItemService {
         });
         if (portfolio.summary.critical > 0) {
           project_health = 'CRITICAL';
+          project_risk_level = 'CRITICAL';
           project_health_reasons.push(`${portfolio.summary.critical} project(s) in critical health`);
         } else if (portfolio.summary.at_risk > 0) {
           project_health = 'AT_RISK';
+          project_risk_level = 'HIGH';
           project_health_reasons.push(`${portfolio.summary.at_risk} project(s) at risk`);
+        } else if ((portfolio.summary.needs_attention || 0) > 0) {
+          project_health = 'NEEDS_ATTENTION';
+          project_risk_level = 'MODERATE';
+          project_health_reasons.push(`${portfolio.summary.needs_attention} project(s) need attention`);
         } else if (portfolio.summary.healthy > 0) {
           project_health = 'HEALTHY';
+          project_risk_level = 'LOW';
           project_health_reasons.push(`All ${portfolio.summary.healthy} active project(s) healthy`);
         } else {
           project_health = 'NOT_ASSESSED';
+          project_risk_level = 'INSUFFICIENT_DATA';
           project_health_reasons.push('No projects assessed with estimated work');
         }
       } catch {
@@ -2269,9 +2366,9 @@ export class WorkItemService {
         updated_at: w.updated_at,
         story_points: w.story_points || 0,
         project_id: w.project_id,
-        project_name: w.project?.name || null,
+        project_name: (project && project.id === w.project_id ? project.name : projectNameMap.get(w.project_id)) || null,
         sprint_id: w.sprint_id,
-        sprint_name: w.sprint?.name || null,
+        sprint_name: (w.sprint_id ? sprintNameMap.get(w.sprint_id) : null) || null,
         is_past_due,
         was_completed_on_time,
         was_completed_by_approved_deadline: was_completed_on_time,
@@ -2359,7 +2456,7 @@ export class WorkItemService {
       project_role: pm.project_role,
     }));
 
-    return {
+    const result = {
       is_tech_lead: isActingAsLead || isLeadAnyProject,
       lead_project_ids: authorizedLeadProjects,
       total,
@@ -2376,8 +2473,23 @@ export class WorkItemService {
       delivery_risk,
       delivery_risk_reasons,
       project_health,
+      project_health_score,
+      project_risk_level,
+      project_schedule_health,
       project_health_reasons,
       project_health_warnings,
+      project_risk_factors,
+      project_recommended_actions,
+      project_overdue_sp,
+      project_overdue_sp_percentage,
+      project_blocked_sp,
+      project_blocked_sp_percentage,
+      project_delivery_progress_percentage,
+      overdue_sp: project_overdue_sp,
+      overdue_sp_percentage: project_overdue_sp_percentage,
+      blocked_sp: project_blocked_sp,
+      blocked_sp_percentage: project_blocked_sp_percentage,
+      delivery_progress_percentage: project_delivery_progress_percentage,
       completed_on_time: completed_on_time_count,
       completed_on_time_count,
       completed_with_due_date_count,
@@ -2424,6 +2536,12 @@ export class WorkItemService {
         sprints: accessibleSprints,
       },
     };
+
+    if (cacheKey) {
+      analyticsMemoryCache.set(cacheKey, { data: result, timestamp: Date.now() });
+    }
+
+    return result;
   }
 
   /**
@@ -2831,6 +2949,10 @@ export class WorkItemService {
       console.warn('Failed to dispatch extension request notification:', notifErr);
     }
 
+    if (item.project_id) {
+      invalidateAnalyticsCache(item.project_id);
+    }
+
     return extRequest;
   }
 
@@ -3002,6 +3124,10 @@ export class WorkItemService {
       console.warn('Failed to notify requester of extension decision:', notifErr);
     }
 
+    if (item.project_id) {
+      invalidateAnalyticsCache(item.project_id);
+    }
+
     return {
       request: updatedReq,
       work_item: this.formatWorkItem(updatedWorkItem),
@@ -3025,10 +3151,27 @@ export class WorkItemService {
       throw err;
     }
 
+    // Interns are not permitted to view project approval requests
+    if (this.isIntern(user)) {
+      const err: any = new Error('Forbidden: interns do not have access to project approval requests');
+      err.statusCode = 403;
+      throw err;
+    }
+
     if (!isMgr && project.owner_id !== user.id) {
       const isMember = await this.verifyProjectMembership(projectId, user.id, orgId);
       if (!isMember) {
         const err: any = new Error('Forbidden: you are not authorized to view this project');
+        err.statusCode = 403;
+        throw err;
+      }
+
+      const membership = await prisma.projectMember.findFirst({
+        where: { project_id: projectId, user_id: user.id },
+        select: { project_role: true },
+      });
+      if (membership?.project_role !== 'TECH_LEAD' && membership?.project_role !== 'MANAGER' && !this.isOrgTechLead(user)) {
+        const err: any = new Error('Forbidden: you are not authorized to view project approval requests');
         err.statusCode = 403;
         throw err;
       }

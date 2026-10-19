@@ -42,12 +42,12 @@ export default function CreateSprintModal({
   const handleSubmit = async (e) => {
     e.preventDefault();
     if (!name.trim()) {
-      setError('Sprint name is required');
+      setError(isKanban ? 'Cycle name is required' : 'Sprint name is required');
       return;
     }
 
     if (startDate && endDate && new Date(startDate) > new Date(endDate)) {
-      setError('Sprint start date cannot be later than its end date');
+      setError(isKanban ? 'Cycle start date cannot be later than its end date' : 'Sprint start date cannot be later than its end date');
       return;
     }
 
@@ -69,8 +69,8 @@ export default function CreateSprintModal({
       onSuccess?.(created);
       onClose();
     } catch (err) {
-      console.error('Failed to create sprint:', err);
-      setError(err?.response?.data?.error || err.message || 'Failed to create sprint');
+      console.error(`Failed to create ${isKanban ? 'cycle' : 'sprint'}:`, err);
+      setError(err?.response?.data?.error || err.message || (isKanban ? 'Failed to create cycle' : 'Failed to create sprint'));
     } finally {
       setSubmitting(false);
     }
@@ -179,7 +179,7 @@ export default function CreateSprintModal({
                   Overlapping Schedule Notice
                 </div>
                 <div className="text-[11px] text-amber-700 leading-relaxed">
-                  Dates overlap with {overlappingSprints.map((s) => `"${s.name}"`).join(', ')}. Multiple planned sprints are allowed, but only one sprint can be active at a time.
+                  Dates overlap with {overlappingSprints.map((s) => `"${s.name}"`).join(', ')}. Multiple planned {isKanban ? 'cycles' : 'sprints'} are allowed, but only one {isKanban ? 'cycle' : 'sprint'} can be active at a time.
                 </div>
               </div>
             </div>

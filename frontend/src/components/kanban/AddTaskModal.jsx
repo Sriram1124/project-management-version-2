@@ -600,14 +600,16 @@ export default function AddTaskModal({
             {!isKanban && (
               <div>
                 <label className="block text-[11px] font-bold text-slate-700 uppercase tracking-wider mb-1">
-                  Cycle
+                  {isKanban ? 'Cycle' : 'Sprint'}
                 </label>
                 <select
                   value={sprintId}
                   onChange={(e) => setSprintId(e.target.value)}
                   className="w-full px-3 py-2 rounded-xl border border-slate-200 bg-white text-slate-800 focus:outline-none focus:border-purple-600"
                 >
-                  <option value="">Project Backlog (No Cycle)</option>
+                  <option value="">
+                    {isKanban ? 'Project Backlog (No Cycle)' : 'Project Backlog (No Sprint)'}
+                  </option>
                   {availableSprints.map((s) => (
                     <option key={s.id} value={s.id}>
                       {s.name} {s.status === 'ACTIVE' ? '• Active' : ''}

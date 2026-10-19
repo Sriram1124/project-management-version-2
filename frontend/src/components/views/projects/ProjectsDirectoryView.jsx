@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { 
   FolderKanban, 
   Plus, 
@@ -9,6 +9,7 @@ import {
   ChevronRight, 
   SlidersHorizontal,
   ChevronLeft,
+  ChevronDown,
   Loader2,
   AlertCircle,
   X,
@@ -20,6 +21,12 @@ import {
 import { projectsService } from '../../../services/projects.service';
 import { useAuth } from '../../../context/AuthContext';
 import ProjectMethodologyBadge from './ProjectMethodologyBadge';
+import { 
+  COHORT_OPTIONS, 
+  getInternCohort, 
+  filterInterns,
+  getPrimaryOwnerId 
+} from '../../../constants/cohorts';
 
 export default function ProjectsDirectoryView({ onSelectProject, isIntern = false }) {
   const { user: authUser } = useAuth();
@@ -45,7 +52,6 @@ export default function ProjectsDirectoryView({ onSelectProject, isIntern = fals
   });
   const [createSelectedOwners, setCreateSelectedOwners] = useState([]);
   const [createOwnerSearch, setCreateOwnerSearch] = useState('');
-  const [isOwnerDropdownOpen, setIsOwnerDropdownOpen] = useState(false);
   const [createSelectedMembers, setCreateSelectedMembers] = useState([]);
   const [createSubmitting, setCreateSubmitting] = useState(false);
   const [createError, setCreateError] = useState(null);
@@ -68,6 +74,33 @@ export default function ProjectsDirectoryView({ onSelectProject, isIntern = fals
   const [editError, setEditError] = useState(null);
   const [editMemberSearch, setEditMemberSearch] = useState('');
   const [createMemberSearch, setCreateMemberSearch] = useState('');
+
+  // Multi-Owner Edit State
+  const [editOwnerIds, setEditOwnerIds] = useState([]);
+  const [ownerSearch, setOwnerSearch] = useState('');
+  const [isOwnerDropdownOpen, setIsOwnerDropdownOpen] = useState(false);
+  const ownerDropdownRef = useRef(null);
+
+  // Cohort Filter State for Project Members
+  const [editSelectedCohorts, setEditSelectedCohorts] = useState([]);
+  const [isCohortDropdownOpen, setIsCohortDropdownOpen] = useState(false);
+  const cohortDropdownRef = useRef(null);
+
+  // Close dropdowns on outside click
+  useEffect(() => {
+    const handleClickOutside = (event) => {
+      if (cohortDropdownRef.current && !cohortDropdownRef.current.contains(event.target)) {
+        setIsCohortDropdownOpen(false);
+      }
+      if (ownerDropdownRef.current && !ownerDropdownRef.current.contains(event.target)) {
+        setIsOwnerDropdownOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+    };
+  }, []);
 
   // Archive Confirmation Modal State
   const [archiveTarget, setArchiveTarget] = useState(null);
@@ -180,12 +213,10 @@ export default function ProjectsDirectoryView({ onSelectProject, isIntern = fals
   // Backward-compatible intern filter for edit modal
   const internUsers = orgUsers.filter((u) => u.type === 'INTERN' || u.role === 'INTERN');
 
-  const filteredEditInterns = internUsers.filter((u) => {
-    if (!editMemberSearch.trim()) return true;
-    const term = editMemberSearch.toLowerCase().trim();
-    const matchesName = u.name && u.name.toLowerCase().includes(term);
-    const matchesEmail = u.email && u.email.toLowerCase().includes(term);
-    return matchesName || matchesEmail;
+  const filteredEditInterns = filterInterns({
+    interns: internUsers,
+    selectedCohorts: editSelectedCohorts,
+    searchQuery: editMemberSearch,
   });
 
   const toggleSelectOwner = (userId) => {
@@ -293,8 +324,24 @@ export default function ProjectsDirectoryView({ onSelectProject, isIntern = fals
       end_date: proj.end_date ? proj.end_date.slice(0, 10) : '',
       owner_id: proj.owner?.id || proj.owner_id || '',
     });
+
+    // Populate multiple owners
+    const initialOwnerIds = [];
+    if (Array.isArray(proj.owner_ids) && proj.owner_ids.length > 0) {
+      initialOwnerIds.push(...proj.owner_ids);
+    } else if (Array.isArray(proj.owners) && proj.owners.length > 0) {
+      initialOwnerIds.push(...proj.owners.map((o) => o.id));
+    } else if (proj.owner?.id || proj.owner_id) {
+      initialOwnerIds.push(proj.owner?.id || proj.owner_id);
+    }
+    setEditOwnerIds(Array.from(new Set(initialOwnerIds.filter(Boolean))));
+    setOwnerSearch('');
+    setIsOwnerDropdownOpen(false);
+
     setEditError(null);
     setEditMemberSearch('');
+    setEditSelectedCohorts([]);
+    setIsCohortDropdownOpen(false);
     // Clear selections initially so no stale or default members appear
     setEditInitialMembers([]);
     setEditSelectedMembers([]);
@@ -303,9 +350,26 @@ export default function ProjectsDirectoryView({ onSelectProject, isIntern = fals
 
     try {
       const members = await projectsService.getMembers(proj.id);
-      const memberIds = (members || []).map((m) => m.user_id || m.id).filter(Boolean);
-      setEditInitialMembers(memberIds);
-      setEditSelectedMembers(memberIds);
+      // Collect manager members and intern members separately
+      const managerIds = [];
+      const internIds = [];
+      for (const m of (members || [])) {
+        const uid = m.user_id || m.id;
+        if (!uid) continue;
+        if (m.project_role === 'MANAGER') {
+          managerIds.push(uid);
+        } else {
+          const u = orgUsers.find((ou) => ou.id === uid);
+          if (!u || u.type === 'INTERN' || u.role === 'INTERN') {
+            internIds.push(uid);
+          }
+        }
+      }
+      if (managerIds.length > 0) {
+        setEditOwnerIds((prev) => Array.from(new Set([...prev, ...managerIds])));
+      }
+      setEditInitialMembers(internIds);
+      setEditSelectedMembers(internIds);
     } catch (err) {
       console.error('Failed to load project members for editing:', err);
       setEditInitialMembers([]);
@@ -321,26 +385,32 @@ export default function ProjectsDirectoryView({ onSelectProject, isIntern = fals
       setEditError('Project name is required');
       return;
     }
-    if (!editForm.owner_id) {
-      setEditError('Project owner is required');
+    if (editOwnerIds.length === 0) {
+      setEditError('At least one project owner is required');
       return;
     }
     setEditSubmitting(true);
     setEditError(null);
     try {
+      const primaryOwnerId = getPrimaryOwnerId({
+        ownerIds: editOwnerIds,
+        existingPrimaryOwnerId: editingProject.owner_id,
+      });
+
       const payload = {
         name: editForm.name.trim(),
         description: editForm.description.trim() || undefined,
         status: editForm.status,
         start_date: editForm.start_date || undefined,
         end_date: editForm.end_date || undefined,
-        owner_id: editForm.owner_id,
+        owner_id: primaryOwnerId,
+        owner_ids: editOwnerIds,
       };
 
-      // 1. Update project core fields
+      // 1. Update project core fields and owners
       await projectsService.updateProject(editingProject.id, payload);
 
-      // 2. Reconcile members
+      // 2. Reconcile intern members
       const addedMembers = editSelectedMembers.filter((id) => !editInitialMembers.includes(id));
       const removedMembers = editInitialMembers.filter((id) => !editSelectedMembers.includes(id));
 
@@ -449,7 +519,7 @@ export default function ProjectsDirectoryView({ onSelectProject, isIntern = fals
       const q = searchQuery.toLowerCase();
       const matchName = p.name?.toLowerCase().includes(q);
       const matchId = p.id?.toLowerCase().includes(q);
-      const owners = (p.owners && p.owners.length > 0)
+      const owners = (Array.isArray(p.owners) && p.owners.length > 0)
         ? p.owners
         : (p.owner ? [p.owner] : []);
       const matchOwner = owners.some((o) =>
@@ -1285,24 +1355,151 @@ export default function ProjectsDirectoryView({ onSelectProject, isIntern = fals
                 />
               </div>
 
-              {/* Project Owner Selector */}
+              {/* Project Owners Multi-Select */}
               <div>
-                <label className="block text-xs font-semibold text-slate-700 mb-1">
-                  Project Owner <span className="text-rose-500">*</span>
-                </label>
-                <select
-                  required
-                  value={editForm.owner_id}
-                  onChange={(e) => setEditForm({ ...editForm, owner_id: e.target.value })}
-                  className="w-full px-3 py-2 border border-slate-300 rounded-xl text-xs text-slate-800 focus:outline-hidden focus:border-purple-600 focus:ring-1 focus:ring-purple-600 bg-white"
-                >
-                  <option value="" disabled>Select project owner...</option>
-                  {orgUsers.map((u) => (
-                    <option key={u.id} value={u.id}>
-                      {u.name} ({u.email})
-                    </option>
-                  ))}
-                </select>
+                <div className="flex items-center justify-between mb-1">
+                  <label className="block text-xs font-semibold text-slate-700">
+                    Project Owners <span className="text-rose-500">*</span>
+                  </label>
+                  {editOwnerIds.length > 0 && (
+                    <span className="text-[11px] font-semibold text-purple-600">
+                      {editOwnerIds.length} selected
+                    </span>
+                  )}
+                </div>
+
+                {/* Selected Owners Chips */}
+                {editOwnerIds.length > 0 && (
+                  <div className="flex flex-wrap gap-1.5 mb-2">
+                    {editOwnerIds.map((id) => {
+                      const owner = orgUsers.find((u) => u.id === id);
+                      if (!owner) return null;
+                      return (
+                        <span
+                          key={id}
+                          className="inline-flex items-center gap-1.5 pl-2.5 pr-1.5 py-1 rounded-lg text-xs font-medium bg-purple-50 text-purple-700 border border-purple-200"
+                        >
+                          <span className="truncate max-w-[160px]">{owner.name || owner.email}</span>
+                          <button
+                            type="button"
+                            onClick={() => setEditOwnerIds((prev) => prev.filter((oId) => oId !== id))}
+                            className="hover:bg-purple-200/60 rounded p-0.5 transition-colors cursor-pointer text-purple-600 hover:text-purple-900"
+                            title={`Remove ${owner.name || owner.email}`}
+                          >
+                            <X className="w-3 h-3" />
+                          </button>
+                        </span>
+                      );
+                    })}
+                  </div>
+                )}
+
+                {/* Searchable Multi-Select Dropdown Container */}
+                <div className="relative" ref={ownerDropdownRef}>
+                  <button
+                    type="button"
+                    onClick={() => setIsOwnerDropdownOpen((prev) => !prev)}
+                    className="w-full flex items-center justify-between px-3 py-2 border border-slate-300 rounded-xl text-xs text-slate-800 focus:outline-hidden focus:border-purple-600 focus:ring-1 focus:ring-purple-600 bg-white cursor-pointer shadow-2xs"
+                  >
+                    <span className={editOwnerIds.length === 0 ? 'text-slate-400' : 'text-slate-800 font-medium'}>
+                      {editOwnerIds.length === 0
+                        ? 'Select project owners...'
+                        : `${editOwnerIds.length} project owner(s) selected`}
+                    </span>
+                    <ChevronDown className={`w-3.5 h-3.5 text-slate-400 transition-transform ${isOwnerDropdownOpen ? 'rotate-180' : ''}`} />
+                  </button>
+
+                  {isOwnerDropdownOpen && (
+                    <div className="absolute left-0 right-0 top-full mt-1 bg-white rounded-xl shadow-lg border border-slate-200 z-50 p-2 animate-in fade-in duration-100">
+                      {/* Search Field inside dropdown */}
+                      <div className="relative mb-2">
+                        <Search className="w-3.5 h-3.5 text-slate-400 absolute left-2.5 top-1/2 -translate-y-1/2 pointer-events-none" />
+                        <input
+                          type="text"
+                          value={ownerSearch}
+                          onChange={(e) => setOwnerSearch(e.target.value)}
+                          placeholder="Search owners by name or email..."
+                          className="w-full pl-7 pr-7 py-1.5 text-xs rounded-lg border border-slate-200 text-slate-800 placeholder-slate-400 focus:outline-hidden focus:border-purple-600 focus:ring-1 focus:ring-purple-600 bg-white"
+                        />
+                        {ownerSearch && (
+                          <button
+                            type="button"
+                            onClick={() => setOwnerSearch('')}
+                            className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 cursor-pointer p-0.5"
+                          >
+                            <X className="w-3 h-3" />
+                          </button>
+                        )}
+                      </div>
+
+                      {/* Action Row */}
+                      <div className="flex items-center justify-between pb-1.5 mb-1.5 border-b border-slate-100 text-[11px]">
+                        <span className="text-slate-400">
+                          {filteredOwners.length} available
+                        </span>
+                        {editOwnerIds.length > 0 && (
+                          <button
+                            type="button"
+                            onClick={() => setEditOwnerIds([])}
+                            className="text-slate-400 hover:text-slate-600 cursor-pointer"
+                          >
+                            Clear Selection
+                          </button>
+                        )}
+                      </div>
+
+                      {/* Scrollable list of authorized owners */}
+                      <div className="max-h-48 overflow-y-auto space-y-0.5 divide-y divide-slate-100">
+                        {filteredOwners.length === 0 ? (
+                          <div className="p-3 text-center text-xs text-slate-400">
+                            No authorized owners found matching "{ownerSearch}".
+                          </div>
+                        ) : (
+                          filteredOwners.map((u) => {
+                            const isSelected = editOwnerIds.includes(u.id);
+                            return (
+                              <div
+                                key={u.id}
+                                onClick={() => {
+                                  setEditOwnerIds((prev) =>
+                                    prev.includes(u.id) ? prev.filter((id) => id !== u.id) : [...prev, u.id]
+                                  );
+                                }}
+                                className={`flex items-center justify-between p-2 rounded-lg cursor-pointer transition-colors ${
+                                  isSelected ? 'bg-purple-100/70 text-purple-900' : 'hover:bg-slate-50 text-slate-700'
+                                }`}
+                              >
+                                <div className="flex items-center gap-2.5 min-w-0">
+                                  <div className={`w-6 h-6 rounded-full flex items-center justify-center text-[10px] font-bold shrink-0 ${
+                                    isSelected ? 'bg-purple-600 text-white' : 'bg-purple-100 text-purple-700'
+                                  }`}>
+                                    {(u.name || u.email || 'U').slice(0, 2).toUpperCase()}
+                                  </div>
+                                  <div className="truncate">
+                                    <div className="text-xs font-semibold text-slate-900 truncate">
+                                      {u.name}
+                                    </div>
+                                    <div className="text-[11px] text-slate-500 font-mono truncate">
+                                      {u.email}
+                                    </div>
+                                  </div>
+                                </div>
+                                <div
+                                  className={`w-4 h-4 rounded border flex items-center justify-center shrink-0 ml-2 transition-colors ${
+                                    isSelected ? 'bg-purple-600 border-purple-600 text-white' : 'border-slate-300 bg-white'
+                                  }`}
+                                  data-testid={`owner-checkbox-${u.id}`}
+                                >
+                                  {isSelected && <Check className="w-3 h-3 stroke-[3]" />}
+                                </div>
+                              </div>
+                            );
+                          })
+                        )}
+                      </div>
+                    </div>
+                  )}
+                </div>
               </div>
 
               {/* Project Members Multi-Select Picker */}
@@ -1319,25 +1516,105 @@ export default function ProjectsDirectoryView({ onSelectProject, isIntern = fals
                   </div>
                 </div>
 
-                {/* Intern Search Field */}
-                <div className="relative mb-2">
-                  <Search className="w-3.5 h-3.5 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" />
-                  <input
-                    type="text"
-                    value={editMemberSearch}
-                    onChange={(e) => setEditMemberSearch(e.target.value)}
-                    placeholder="Search interns by name or email..."
-                    className="w-full pl-8 pr-8 py-1.5 text-xs rounded-lg border border-slate-200 text-slate-800 placeholder-slate-400 focus:outline-hidden focus:border-purple-600 focus:ring-1 focus:ring-purple-600 bg-white shadow-2xs"
-                  />
-                  {editMemberSearch && (
+                {/* Search & Cohort Filter Bar */}
+                <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2 mb-2">
+                  {/* Intern Search Field */}
+                  <div className="relative flex-1">
+                    <Search className="w-3.5 h-3.5 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" />
+                    <input
+                      type="text"
+                      value={editMemberSearch}
+                      onChange={(e) => setEditMemberSearch(e.target.value)}
+                      placeholder="Search interns by name or email..."
+                      className="w-full pl-8 pr-8 py-1.5 text-xs rounded-lg border border-slate-200 text-slate-800 placeholder-slate-400 focus:outline-hidden focus:border-purple-600 focus:ring-1 focus:ring-purple-600 bg-white shadow-2xs"
+                    />
+                    {editMemberSearch && (
+                      <button
+                        type="button"
+                        onClick={() => setEditMemberSearch('')}
+                        className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 cursor-pointer p-0.5"
+                      >
+                        <X className="w-3.5 h-3.5" />
+                      </button>
+                    )}
+                  </div>
+
+                  {/* Cohort Filter Dropdown */}
+                  <div className="relative w-full sm:w-44 shrink-0" ref={cohortDropdownRef}>
                     <button
                       type="button"
-                      onClick={() => setEditMemberSearch('')}
-                      className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 cursor-pointer p-0.5"
+                      onClick={() => setIsCohortDropdownOpen((prev) => !prev)}
+                      className="w-full flex items-center justify-between gap-1.5 px-3 py-1.5 text-xs rounded-lg border border-slate-200 bg-white text-slate-700 hover:border-purple-400 focus:outline-hidden focus:border-purple-600 focus:ring-1 focus:ring-purple-600 shadow-2xs font-medium cursor-pointer"
                     >
-                      <X className="w-3.5 h-3.5" />
+                      <div className="flex items-center gap-1.5 truncate">
+                        <Users className="w-3.5 h-3.5 text-slate-400 shrink-0" />
+                        <span className="truncate">
+                          {editSelectedCohorts.length === 0
+                            ? 'All Cohorts'
+                            : editSelectedCohorts.length <= 2
+                            ? editSelectedCohorts.join(', ')
+                            : `${editSelectedCohorts.slice(0, 2).join(', ')} +${editSelectedCohorts.length - 2}`}
+                        </span>
+                      </div>
+                      <div className="flex items-center gap-1 shrink-0">
+                        {editSelectedCohorts.length > 0 && (
+                          <span className="px-1.5 py-0.2 rounded-full text-[10px] font-bold bg-purple-100 text-purple-700">
+                            {editSelectedCohorts.length}
+                          </span>
+                        )}
+                        <ChevronDown className={`w-3.5 h-3.5 text-slate-400 transition-transform ${isCohortDropdownOpen ? 'rotate-180' : ''}`} />
+                      </div>
                     </button>
-                  )}
+
+                    {isCohortDropdownOpen && (
+                      <div className="absolute right-0 top-full mt-1 w-48 bg-white rounded-xl shadow-lg border border-slate-200 z-50 p-2 animate-in fade-in duration-100">
+                        <div className="flex items-center justify-between pb-1.5 mb-1.5 border-b border-slate-100 text-[11px]">
+                          <button
+                            type="button"
+                            onClick={() => setEditSelectedCohorts([...COHORT_OPTIONS])}
+                            className="text-purple-600 hover:text-purple-700 font-semibold cursor-pointer"
+                          >
+                            Select All
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setEditSelectedCohorts([])}
+                            className="text-slate-400 hover:text-slate-600 cursor-pointer"
+                          >
+                            Clear
+                          </button>
+                        </div>
+                        <div className="space-y-0.5">
+                          {COHORT_OPTIONS.map((cohort) => {
+                            const isSelected = editSelectedCohorts.includes(cohort);
+                            return (
+                              <div
+                                key={cohort}
+                                onClick={() => {
+                                  setEditSelectedCohorts((prev) =>
+                                    prev.includes(cohort) ? prev.filter((c) => c !== cohort) : [...prev, cohort]
+                                  );
+                                }}
+                                className={`flex items-center justify-between px-2 py-1.5 rounded-lg text-xs cursor-pointer transition-colors ${
+                                  isSelected ? 'bg-purple-50 text-purple-900 font-semibold' : 'hover:bg-slate-50 text-slate-700'
+                                }`}
+                              >
+                                <span className="font-mono">{cohort}</span>
+                                <div
+                                  className={`w-3.5 h-3.5 rounded border flex items-center justify-center shrink-0 transition-colors ${
+                                    isSelected ? 'bg-purple-600 border-purple-600 text-white' : 'border-slate-300 bg-white'
+                                  }`}
+                                  data-testid={`cohort-checkbox-${cohort}`}
+                                >
+                                  {isSelected && <Check className="w-2.5 h-2.5 stroke-[3]" />}
+                                </div>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    )}
+                  </div>
                 </div>
 
                 {/* Searchable Intern List */}

@@ -9,14 +9,19 @@ export default function MetricCards({
 }) {
   const summary = healthOverview?.summary || {};
   const healthyCount = Number(summary.healthy) || 0;
-  const atRiskCount = Number(summary.at_risk) || 0;
+  const needsAttentionCount = Number(summary.needs_attention) || 0;
+  const atRiskCount = typeof summary.at_risk_only === 'number'
+    ? summary.at_risk_only
+    : (Number(summary.at_risk) || 0) - needsAttentionCount >= 0
+    ? (Number(summary.at_risk) || 0) - needsAttentionCount
+    : Number(summary.at_risk) || 0;
   const criticalCount = Number(summary.critical) || 0;
   const notAssessedCount = Number(summary.not_assessed ?? summary.insufficient_data) || 0;
 
-  // Assessed Projects = Healthy + At Risk + Critical
+  // Assessed Projects = Healthy + Needs Attention + At Risk + Critical
   const assessedCount = typeof summary.assessed === 'number' 
     ? summary.assessed 
-    : (healthyCount + atRiskCount + criticalCount);
+    : (healthyCount + needsAttentionCount + atRiskCount + criticalCount);
   const totalCount = typeof summary.total === 'number'
     ? summary.total
     : (assessedCount + notAssessedCount);
@@ -33,10 +38,12 @@ export default function MetricCards({
   };
 
   const healthyPctNum = calcPct(healthyCount, assessedCount);
+  const needsAttentionPctNum = calcPct(needsAttentionCount, assessedCount);
   const atRiskPctNum = calcPct(atRiskCount, assessedCount);
   const criticalPctNum = calcPct(criticalCount, assessedCount);
 
   const healthyPctFormatted = formatPct(healthyPctNum);
+  const needsAttentionPctFormatted = formatPct(needsAttentionPctNum);
   const atRiskPctFormatted = formatPct(atRiskPctNum);
   const criticalPctFormatted = formatPct(criticalPctNum);
 
@@ -161,10 +168,17 @@ export default function MetricCards({
                       title={`Healthy: ${healthyCount} (${healthyPctFormatted})`}
                     />
                   )}
+                  {needsAttentionPctNum > 0 && (
+                    <div 
+                      style={{ width: `${needsAttentionPctNum}%` }} 
+                      className="bg-amber-500 h-full transition-all duration-300" 
+                      title={`Needs Attention: ${needsAttentionCount} (${needsAttentionPctFormatted})`}
+                    />
+                  )}
                   {atRiskPctNum > 0 && (
                     <div 
                       style={{ width: `${atRiskPctNum}%` }} 
-                      className="bg-amber-500 h-full transition-all duration-300" 
+                      className="bg-orange-500 h-full transition-all duration-300" 
                       title={`At Risk: ${atRiskCount} (${atRiskPctFormatted})`}
                     />
                   )}
@@ -181,67 +195,76 @@ export default function MetricCards({
               )}
             </div>
 
-            {/* Three Evenly Spaced Sections: Healthy, At Risk, Critical */}
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 pt-3 border-t border-slate-100">
+            {/* Four Evenly Spaced Sections: Healthy, Needs Attention, At Risk, Critical */}
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 sm:gap-4 pt-3 border-t border-slate-100">
               {/* Healthy */}
-              <div className="flex flex-col sm:border-r sm:border-slate-100 sm:pr-4">
-                <div className="flex items-center gap-2">
+              <div className="flex flex-col sm:border-r sm:border-slate-100 sm:pr-3">
+                <div className="flex items-center gap-1.5">
                   <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 shrink-0 shadow-2xs" />
-                  <span className="text-xs font-bold text-slate-600 uppercase tracking-wider">
+                  <span className="text-[11px] font-bold text-slate-600 uppercase tracking-wider truncate">
                     Healthy
                   </span>
                 </div>
-                <div className="mt-1 flex items-baseline gap-2">
+                <div className="mt-1 flex items-baseline gap-1.5 flex-wrap">
                   <span className="text-2xl font-extrabold text-slate-900 tracking-tight">
                     {healthyCount}
                   </span>
                   <span className="text-xs font-bold text-emerald-600">
                     {healthyPctFormatted}
                   </span>
-                  <span className="text-xs text-slate-400 font-normal">
-                    of assessed
+                </div>
+              </div>
+
+              {/* Needs Attention */}
+              <div className="flex flex-col sm:border-r sm:border-slate-100 sm:pr-3 sm:pl-2">
+                <div className="flex items-center gap-1.5">
+                  <span className="w-2.5 h-2.5 rounded-full bg-amber-500 shrink-0 shadow-2xs" />
+                  <span className="text-[11px] font-bold text-slate-600 uppercase tracking-wider truncate">
+                    Needs Attention
+                  </span>
+                </div>
+                <div className="mt-1 flex items-baseline gap-1.5 flex-wrap">
+                  <span className="text-2xl font-extrabold text-slate-900 tracking-tight">
+                    {needsAttentionCount}
+                  </span>
+                  <span className="text-xs font-bold text-amber-600">
+                    {needsAttentionPctFormatted}
                   </span>
                 </div>
               </div>
 
               {/* At Risk */}
-              <div className="flex flex-col sm:border-r sm:border-slate-100 sm:pr-4 sm:pl-2">
-                <div className="flex items-center gap-2">
-                  <span className="w-2.5 h-2.5 rounded-full bg-amber-500 shrink-0 shadow-2xs" />
-                  <span className="text-xs font-bold text-slate-600 uppercase tracking-wider">
+              <div className="flex flex-col sm:border-r sm:border-slate-100 sm:pr-3 sm:pl-2">
+                <div className="flex items-center gap-1.5">
+                  <span className="w-2.5 h-2.5 rounded-full bg-orange-500 shrink-0 shadow-2xs" />
+                  <span className="text-[11px] font-bold text-slate-600 uppercase tracking-wider truncate">
                     At Risk
                   </span>
                 </div>
-                <div className="mt-1 flex items-baseline gap-2">
+                <div className="mt-1 flex items-baseline gap-1.5 flex-wrap">
                   <span className="text-2xl font-extrabold text-slate-900 tracking-tight">
                     {atRiskCount}
                   </span>
-                  <span className="text-xs font-bold text-amber-600">
+                  <span className="text-xs font-bold text-orange-600">
                     {atRiskPctFormatted}
-                  </span>
-                  <span className="text-xs text-slate-400 font-normal">
-                    of assessed
                   </span>
                 </div>
               </div>
 
               {/* Critical */}
               <div className="flex flex-col sm:pl-2">
-                <div className="flex items-center gap-2">
+                <div className="flex items-center gap-1.5">
                   <span className="w-2.5 h-2.5 rounded-full bg-rose-500 shrink-0 shadow-2xs" />
-                  <span className="text-xs font-bold text-slate-600 uppercase tracking-wider">
+                  <span className="text-[11px] font-bold text-slate-600 uppercase tracking-wider truncate">
                     Critical
                   </span>
                 </div>
-                <div className="mt-1 flex items-baseline gap-2">
+                <div className="mt-1 flex items-baseline gap-1.5 flex-wrap">
                   <span className="text-2xl font-extrabold text-slate-900 tracking-tight">
                     {criticalCount}
                   </span>
                   <span className="text-xs font-bold text-rose-600">
                     {criticalPctFormatted}
-                  </span>
-                  <span className="text-xs text-slate-400 font-normal">
-                    of assessed
                   </span>
                 </div>
               </div>

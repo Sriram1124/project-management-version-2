@@ -427,25 +427,29 @@ export default function ReportsView({ onToast, selectedCohort, selectedCohortId 
       : (projectHealthData?.summary?.assessed ?? 0);
 
     const healthyCount = currentList.filter((p) => p.health === 'HEALTHY').length;
+    const needsAttentionCount = currentList.filter((p) => p.health === 'NEEDS_ATTENTION').length;
     const atRiskCount = currentList.filter((p) => p.health === 'AT_RISK').length;
     const criticalCount = currentList.filter((p) => p.health === 'CRITICAL').length;
     const notAssessedCount = currentList.filter((p) => p.health === 'NOT_ASSESSED' || p.health === 'INSUFFICIENT_DATA').length;
 
     const healthyPct = assessedProjects > 0 ? Math.round((healthyCount / assessedProjects) * 100) : 0;
+    const needsAttentionPct = assessedProjects > 0 ? Math.round((needsAttentionCount / assessedProjects) * 100) : 0;
     const atRiskPct = assessedProjects > 0 ? Math.round((atRiskCount / assessedProjects) * 100) : 0;
     const criticalPct = assessedProjects > 0 ? Math.round((criticalCount / assessedProjects) * 100) : 0;
 
-    const attentionProjects = currentList.filter((p) => p.health === 'AT_RISK' || p.health === 'CRITICAL');
+    const attentionProjects = currentList.filter((p) => p.health === 'AT_RISK' || p.health === 'CRITICAL' || p.health === 'NEEDS_ATTENTION');
     const attentionRate = assessedProjects > 0 ? Math.round((attentionProjects.length / assessedProjects) * 100) : 0;
 
     return {
       totalProjects,
       assessedProjects,
       healthyCount,
+      needsAttentionCount,
       atRiskCount,
       criticalCount,
       notAssessedCount,
       healthyPct,
+      needsAttentionPct,
       atRiskPct,
       criticalPct,
       attentionProjects,
@@ -866,7 +870,7 @@ export default function ReportsView({ onToast, selectedCohort, selectedCohortId 
                         title={
                           (analytics.project_health_reasons?.length ? analytics.project_health_reasons.join(' · ') : null) ||
                           (analytics.delivery_risk_reasons?.join(' · ')) ||
-                          'Project health classification based on story points, blockers, and cycle context'
+                          'Project health classification based on story points, blockers, and sprint/cycle context'
                         }
                       >
                         <Shield className="w-3.5 h-3.5" />
@@ -1031,9 +1035,9 @@ export default function ReportsView({ onToast, selectedCohort, selectedCohortId 
                 {/* TAB 1: Work Item Performance Content */}
                 {analyticsTab === 'WORK_ITEMS' && (
                   <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 animate-in fade-in duration-150">
-                    {/* Status Distribution */}
-                    <div className="lg:col-span-2 bg-white rounded-2xl p-5 sm:p-6 border border-slate-200/80 shadow-card">
-                      <div className="flex items-center justify-between mb-4">
+                    {/* Status Distribution Doughnut Chart */}
+                    <div className="lg:col-span-2 bg-white rounded-2xl p-5 sm:p-6 border border-slate-200/80 shadow-card flex flex-col justify-between">
+                      <div className="flex items-center justify-between mb-4 pb-2 border-b border-slate-100">
                         <div>
                           <h4 className="text-sm font-bold text-slate-900">Work Item Status Distribution</h4>
                           <p className="text-xs text-slate-500 mt-0.5">Workflow stages across assigned deliverables</p>
@@ -1043,87 +1047,100 @@ export default function ReportsView({ onToast, selectedCohort, selectedCohortId 
                         </span>
                       </div>
 
-                      {/* Segmented bar */}
-                      <div className="h-3 w-full bg-slate-100 rounded-full overflow-hidden flex mb-4">
-                        {analytics?.total > 0 && analytics.completed > 0 && (
-                          <div
-                            style={{ width: `${(analytics.completed / analytics.total) * 100}%` }}
-                            className="bg-emerald-500 transition-all duration-300"
-                            title={`Completed: ${analytics.completed}`}
-                          />
-                        )}
-                        {analytics?.total > 0 && analytics.in_progress > 0 && (
-                          <div
-                            style={{ width: `${(analytics.in_progress / analytics.total) * 100}%` }}
-                            className="bg-blue-500 transition-all duration-300"
-                            title={`In Progress: ${analytics.in_progress}`}
-                          />
-                        )}
-                        {analytics?.total > 0 && analytics.in_review > 0 && (
-                          <div
-                            style={{ width: `${(analytics.in_review / analytics.total) * 100}%` }}
-                            className="bg-purple-500 transition-all duration-300"
-                            title={`In Review: ${analytics.in_review}`}
-                          />
-                        )}
-                        {analytics?.total > 0 && analytics.blocked > 0 && (
-                          <div
-                            style={{ width: `${(analytics.blocked / analytics.total) * 100}%` }}
-                            className="bg-rose-500 transition-all duration-300"
-                            title={`Blocked: ${analytics.blocked}`}
-                          />
-                        )}
-                        {analytics?.total > 0 && analytics.todo > 0 && (
-                          <div
-                            style={{ width: `${(analytics.todo / analytics.total) * 100}%` }}
-                            className="bg-slate-300 transition-all duration-300"
-                            title={`To Do: ${analytics.todo}`}
-                          />
-                        )}
-                      </div>
+                      {(() => {
+                        const donutSize = 160;
+                        const strokeWidth = 22;
+                        const radius = (donutSize - strokeWidth) / 2;
+                        const circumference = 2 * Math.PI * radius;
+                        const totalItems = analytics?.total || 0;
 
-                      {/* Status Pills */}
-                      <div className="grid grid-cols-2 sm:grid-cols-5 gap-2 text-xs">
-                        <div className="p-2.5 rounded-xl bg-emerald-50 border border-emerald-100 text-emerald-900">
-                          <div className="text-[11px] font-medium text-emerald-700">Completed</div>
-                          <div className="text-base font-bold mt-0.5">{analytics?.completed || 0}</div>
-                          <div className="text-[10px] text-emerald-600">
-                            {analytics?.total > 0 ? Math.round((analytics.completed / analytics.total) * 100) : 0}%
-                          </div>
-                        </div>
+                        const statuses = [
+                          { key: 'TODO', label: 'To Do', count: analytics?.todo || 0, color: '#94A3B8' },
+                          { key: 'IN_PROGRESS', label: 'In Progress', count: analytics?.in_progress || 0, color: '#8B5CF6' },
+                          { key: 'IN_REVIEW', label: 'In Review', count: analytics?.in_review || 0, color: '#3B82F6' },
+                          { key: 'COMPLETED', label: 'Completed', count: analytics?.completed || 0, color: '#10B981' },
+                          { key: 'BLOCKED', label: 'Blocked', count: analytics?.blocked || 0, color: '#F43F5E' },
+                        ];
 
-                        <div className="p-2.5 rounded-xl bg-blue-50 border border-blue-100 text-blue-900">
-                          <div className="text-[11px] font-medium text-blue-700">In Progress</div>
-                          <div className="text-base font-bold mt-0.5">{analytics?.in_progress || 0}</div>
-                          <div className="text-[10px] text-blue-600">
-                            {analytics?.total > 0 ? Math.round((analytics.in_progress / analytics.total) * 100) : 0}%
-                          </div>
-                        </div>
+                        let accumulatedAngle = 0;
+                        const segments = totalItems > 0 ? statuses.map((st) => {
+                          const percentage = (st.count / totalItems) * 100;
+                          const dash = (percentage / 100) * circumference;
+                          const offset = -((accumulatedAngle / 100) * circumference);
+                          accumulatedAngle += percentage;
+                          return {
+                            ...st,
+                            percentage: Math.round(percentage),
+                            strokeDasharray: `${dash} ${circumference}`,
+                            strokeDashoffset: offset,
+                          };
+                        }).filter(seg => seg.count > 0) : [];
 
-                        <div className="p-2.5 rounded-xl bg-purple-50 border border-purple-100 text-purple-900">
-                          <div className="text-[11px] font-medium text-purple-700">In Review</div>
-                          <div className="text-base font-bold mt-0.5">{analytics?.in_review || 0}</div>
-                          <div className="text-[10px] text-purple-600">
-                            {analytics?.total > 0 ? Math.round((analytics.in_review / analytics.total) * 100) : 0}%
-                          </div>
-                        </div>
+                        return (
+                          <div className="my-auto py-3 flex flex-col sm:flex-row items-center justify-center gap-6 sm:gap-10">
+                            {/* Circular Donut Ring */}
+                            <div className="relative flex items-center justify-center shrink-0">
+                              <svg width={donutSize} height={donutSize} className="transform -rotate-90">
+                                <circle
+                                  cx={donutSize / 2}
+                                  cy={donutSize / 2}
+                                  r={radius}
+                                  stroke="#F1F5F9"
+                                  strokeWidth={strokeWidth}
+                                  fill="transparent"
+                                />
+                                {segments.map((seg) => (
+                                  <circle
+                                    key={seg.key}
+                                    cx={donutSize / 2}
+                                    cy={donutSize / 2}
+                                    r={radius}
+                                    stroke={seg.color}
+                                    strokeWidth={strokeWidth}
+                                    strokeDasharray={seg.strokeDasharray}
+                                    strokeDashoffset={seg.strokeDashoffset}
+                                    strokeLinecap="round"
+                                    fill="transparent"
+                                    className="transition-all duration-500 hover:opacity-85"
+                                  />
+                                ))}
+                              </svg>
 
-                        <div className="p-2.5 rounded-xl bg-rose-50 border border-rose-100 text-rose-900">
-                          <div className="text-[11px] font-medium text-rose-700">Blocked</div>
-                          <div className="text-base font-bold mt-0.5">{analytics?.blocked || 0}</div>
-                          <div className="text-[10px] text-rose-600">
-                            {analytics?.total > 0 ? Math.round((analytics.blocked / analytics.total) * 100) : 0}%
-                          </div>
-                        </div>
+                              {/* Center metric displaying total items and ITEMS label */}
+                              <div className="absolute inset-0 flex flex-col items-center justify-center text-center pointer-events-none">
+                                <span className="text-2xl font-extrabold text-slate-900 leading-none">
+                                  {totalItems}
+                                </span>
+                                <span className="text-[10px] text-slate-400 font-bold uppercase tracking-wider mt-1">
+                                  ITEMS
+                                </span>
+                              </div>
+                            </div>
 
-                        <div className="p-2.5 rounded-xl bg-slate-50 border border-slate-200 text-slate-800">
-                          <div className="text-[11px] font-medium text-slate-600">To Do</div>
-                          <div className="text-base font-bold mt-0.5">{analytics?.todo || 0}</div>
-                          <div className="text-[10px] text-slate-500">
-                            {analytics?.total > 0 ? Math.round((analytics.todo / analytics.total) * 100) : 0}%
+                            {/* Status Legend beside chart */}
+                            <div className="space-y-2.5 w-full max-w-[200px]">
+                              {statuses.map((st) => {
+                                const pct = totalItems > 0 ? Math.round((st.count / totalItems) * 100) : 0;
+                                return (
+                                  <div key={st.key} className="flex items-center justify-between text-xs">
+                                    <div className="flex items-center gap-2 min-w-0">
+                                      <span
+                                        className="w-2.5 h-2.5 rounded-full shrink-0"
+                                        style={{ backgroundColor: st.color }}
+                                      />
+                                      <span className="text-slate-600 truncate">{st.label}</span>
+                                    </div>
+                                    <div className="flex items-center gap-1.5 shrink-0 font-medium">
+                                      <span className="text-slate-800 font-bold">{st.count}</span>
+                                      <span className="text-slate-400 text-[10px]">({pct}%)</span>
+                                    </div>
+                                  </div>
+                                );
+                              })}
+                            </div>
                           </div>
-                        </div>
-                      </div>
+                        );
+                      })()}
                     </div>
 
                     {/* Priority Breakdown */}
@@ -1302,10 +1319,17 @@ export default function ReportsView({ onToast, selectedCohort, selectedCohortId 
                                     title={`Healthy: ${projectHealthMetrics.healthyCount} (${projectHealthMetrics.healthyPct}%)`}
                                   />
                                 )}
+                                {projectHealthMetrics.needsAttentionPct > 0 && (
+                                  <div
+                                    style={{ width: `${projectHealthMetrics.needsAttentionPct}%` }}
+                                    className="bg-amber-500 h-full transition-all duration-300"
+                                    title={`Needs Attention: ${projectHealthMetrics.needsAttentionCount} (${projectHealthMetrics.needsAttentionPct}%)`}
+                                  />
+                                )}
                                 {projectHealthMetrics.atRiskPct > 0 && (
                                   <div
                                     style={{ width: `${projectHealthMetrics.atRiskPct}%` }}
-                                    className="bg-amber-500 h-full transition-all duration-300"
+                                    className="bg-orange-500 h-full transition-all duration-300"
                                     title={`At Risk: ${projectHealthMetrics.atRiskCount} (${projectHealthMetrics.atRiskPct}%)`}
                                   />
                                 )}
@@ -1323,8 +1347,8 @@ export default function ReportsView({ onToast, selectedCohort, selectedCohortId 
                           </div>
                         </div>
 
-                        {/* Status Breakdown Pills (Healthy, At Risk, Critical, Not Assessed) */}
-                        <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-xs pt-2">
+                        {/* Status Breakdown Pills (Healthy, Needs Attention, At Risk, Critical, Not Assessed) */}
+                        <div className="grid grid-cols-2 sm:grid-cols-5 gap-2 text-xs pt-2">
                           <div className="p-2.5 rounded-xl bg-emerald-50 border border-emerald-100 text-emerald-900">
                             <div className="text-[11px] font-medium text-emerald-700 flex items-center gap-1">
                               <span className="w-2 h-2 rounded-full bg-emerald-500" />
@@ -1337,10 +1361,19 @@ export default function ReportsView({ onToast, selectedCohort, selectedCohortId 
                           <div className="p-2.5 rounded-xl bg-amber-50 border border-amber-100 text-amber-900">
                             <div className="text-[11px] font-medium text-amber-700 flex items-center gap-1">
                               <span className="w-2 h-2 rounded-full bg-amber-500" />
+                              <span>Needs Attention</span>
+                            </div>
+                            <div className="text-base font-bold mt-0.5">{projectHealthMetrics.needsAttentionCount}</div>
+                            <div className="text-[10px] text-amber-600 font-semibold">{projectHealthMetrics.needsAttentionPct}% of assessed</div>
+                          </div>
+
+                          <div className="p-2.5 rounded-xl bg-orange-50 border border-orange-100 text-orange-900">
+                            <div className="text-[11px] font-medium text-orange-700 flex items-center gap-1">
+                              <span className="w-2 h-2 rounded-full bg-orange-500" />
                               <span>At Risk</span>
                             </div>
                             <div className="text-base font-bold mt-0.5">{projectHealthMetrics.atRiskCount}</div>
-                            <div className="text-[10px] text-amber-600 font-semibold">{projectHealthMetrics.atRiskPct}% of assessed</div>
+                            <div className="text-[10px] text-orange-600 font-semibold">{projectHealthMetrics.atRiskPct}% of assessed</div>
                           </div>
 
                           <div className="p-2.5 rounded-xl bg-rose-50 border border-rose-100 text-rose-900">
@@ -1378,7 +1411,7 @@ export default function ReportsView({ onToast, selectedCohort, selectedCohortId 
                               {projectHealthMetrics.attentionProjects.length} {projectHealthMetrics.attentionProjects.length === 1 ? 'Project' : 'Projects'}
                             </span>
                           </div>
-                          <p className="text-xs text-slate-500 mb-3">Portfolio deliverables at risk or blocked</p>
+                          <p className="text-xs text-slate-500 mb-3">Portfolio deliverables at risk, critical, or needing attention</p>
 
                           {projectHealthMetrics.attentionProjects.length === 0 ? (
                             <div className="p-6 text-center bg-emerald-50/40 rounded-xl border border-emerald-100 my-auto">
@@ -1401,17 +1434,27 @@ export default function ReportsView({ onToast, selectedCohort, selectedCohortId 
                                       className={`text-[9px] font-extrabold px-1.5 py-0.5 rounded border uppercase shrink-0 ${
                                         proj.health === 'CRITICAL'
                                           ? 'bg-rose-100 text-rose-800 border-rose-200'
-                                          : 'bg-amber-100 text-amber-800 border-amber-200'
+                                          : proj.health === 'NEEDS_ATTENTION'
+                                          ? 'bg-amber-100 text-amber-800 border-amber-200'
+                                          : 'bg-orange-100 text-orange-800 border-orange-200'
                                       }`}
                                     >
-                                      {proj.health === 'CRITICAL' ? 'Critical' : 'At Risk'}
+                                      {proj.health === 'CRITICAL' ? 'Critical' : proj.health === 'NEEDS_ATTENTION' ? 'Needs Attention' : 'At Risk'}
                                     </span>
                                   </div>
                                   <div className="text-[11px] text-slate-600 font-medium mt-1 line-clamp-2">
                                     {proj.reasons?.[0] || 'Schedule risk detected'}
                                   </div>
-                                  <div className="flex items-center justify-between text-[10px] text-slate-400 mt-1.5 pt-1 border-t border-slate-200/60">
-                                    <span>{proj.completed_sp || 0}/{proj.total_sp || 0} SP</span>
+                                  <div className="flex items-center justify-between text-[10px] text-slate-400 mt-1.5 pt-1 border-t border-slate-200/60 flex-wrap gap-1">
+                                    <span>
+                                      {proj.completed_sp || 0}/{proj.total_sp || 0} SP ({proj.delivery_progress_percentage ?? proj.progress_percentage ?? 0}%)
+                                    </span>
+                                    {proj.remaining_sp !== undefined && (
+                                      <span>{proj.remaining_sp} SP remaining</span>
+                                    )}
+                                    {proj.overdue_sp > 0 && (
+                                      <span className="text-rose-600 font-semibold">{proj.overdue_sp} SP overdue</span>
+                                    )}
                                     {proj.blocked_sp > 0 && (
                                       <span className="text-amber-600 font-semibold">{proj.blocked_sp} SP blocked</span>
                                     )}

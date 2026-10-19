@@ -172,6 +172,10 @@ export class AuthController {
             is_active: true,
             must_change_password: true,
             organization_id: true,
+            organization: {
+              select: { id: true, name: true }
+            },
+            created_at: true,
             roles: {
               select: {
                 role: {
@@ -227,6 +231,9 @@ export class AuthController {
         user_code: isInternOrEmployee ? undefined : user.user_code,
         must_change_password: user.must_change_password,
         organization_id: user.organization_id,
+        organization: user.organization ? { id: user.organization.id, name: user.organization.name } : null,
+        organization_name: user.organization?.name || null,
+        created_at: user.created_at || null,
         role: roleName,
         is_tech_lead: isTechLead,
         lead_project_ids: leadProjectIds,

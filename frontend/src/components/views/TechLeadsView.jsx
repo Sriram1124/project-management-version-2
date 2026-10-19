@@ -7,21 +7,357 @@ import {
   CheckCircle2, 
   Clock, 
   AlertTriangle, 
+  AlertOctagon, 
   TrendingUp, 
   Search, 
   Filter, 
   Target,
   Layers,
   ChevronDown,
-  X
+  ChevronRight,
+  X,
+  Activity,
+  ArrowUpRight,
+  Info,
+  Calendar,
+  AlertCircle,
+  HelpCircle
 } from 'lucide-react';
 import { projectsService } from '../../services/projects.service';
 
-export default function TechLeadsView({ onRebalanceLead }) {
+/**
+ * Visual styling configurations based on Health Status
+ */
+const HEALTH_CONFIG = {
+  HEALTHY: {
+    label: 'Healthy',
+    badge: 'text-emerald-700 bg-emerald-50 border-emerald-200/90 shadow-2xs',
+    dot: 'bg-emerald-500',
+    bar: 'bg-emerald-500',
+    text: 'text-emerald-700',
+    riskText: 'text-emerald-700 font-semibold',
+  },
+  NEEDS_ATTENTION: {
+    label: 'Needs Attention',
+    badge: 'text-amber-700 bg-amber-50 border-amber-200/90 shadow-2xs',
+    dot: 'bg-amber-500',
+    bar: 'bg-amber-500',
+    text: 'text-amber-700',
+    riskText: 'text-amber-700 font-semibold',
+  },
+  AT_RISK: {
+    label: 'At Risk',
+    badge: 'text-orange-700 bg-orange-50 border-orange-200/90 shadow-2xs',
+    dot: 'bg-orange-500',
+    bar: 'bg-orange-500',
+    text: 'text-orange-700',
+    riskText: 'text-orange-700 font-semibold',
+  },
+  CRITICAL: {
+    label: 'Critical',
+    badge: 'text-rose-700 bg-rose-50 border-rose-200/90 shadow-2xs',
+    dot: 'bg-rose-500',
+    bar: 'bg-rose-500',
+    text: 'text-rose-700',
+    riskText: 'text-rose-700 font-bold',
+  },
+  INSUFFICIENT_DATA: {
+    label: 'Insufficient Data',
+    badge: 'text-slate-600 bg-slate-100 border-slate-200/80 shadow-2xs',
+    dot: 'bg-slate-400',
+    bar: 'bg-slate-300',
+    text: 'text-slate-500',
+    riskText: 'text-slate-500',
+  },
+};
+
+const getHealthMeta = (status) => {
+  if (status === 'NOT_ASSESSED' || status === 'INSUFFICIENT_DATA') {
+    return HEALTH_CONFIG.INSUFFICIENT_DATA;
+  }
+  return HEALTH_CONFIG[status] || HEALTH_CONFIG.INSUFFICIENT_DATA;
+};
+
+/**
+ * Health Details Modal component explaining reasons & recommendations
+ */
+function ProjectHealthDetailsModal({ project, leadName, onClose, onSelectProject }) {
+  if (!project) return null;
+
+  const meta = getHealthMeta(project.health);
+  const reasons = project.reasons && project.reasons.length > 0 ? project.reasons : [];
+  const riskFactors = project.risk_factors && project.risk_factors.length > 0 ? project.risk_factors : reasons;
+  const actions = project.recommended_actions && project.recommended_actions.length > 0 ? project.recommended_actions : [];
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/50 backdrop-blur-xs animate-in fade-in duration-200">
+      <div 
+        className="bg-white rounded-2xl border border-slate-200 shadow-2xl w-full max-w-xl max-h-[90vh] flex flex-col overflow-hidden"
+        onClick={(e) => e.stopPropagation()}
+      >
+        {/* Modal Header */}
+        <div className="px-6 py-4 border-b border-slate-100 flex items-center justify-between gap-3 bg-slate-50/60">
+          <div className="flex items-center gap-2.5 min-w-0">
+            <div className="w-8 h-8 rounded-lg bg-purple-100 text-purple-700 flex items-center justify-center shrink-0">
+              <Activity className="w-4 h-4" />
+            </div>
+            <div className="min-w-0">
+              <h3 className="text-sm font-bold text-slate-900 truncate">
+                {project.name}
+              </h3>
+              <p className="text-[11px] text-slate-500 truncate mt-0.5">
+                Tech Lead: <span className="font-semibold text-slate-700">{leadName}</span>
+                {project.status && ` · Status: ${project.status}`}
+              </p>
+            </div>
+          </div>
+          <button
+            type="button"
+            onClick={onClose}
+            className="p-1.5 rounded-lg text-slate-400 hover:text-slate-700 hover:bg-slate-100 transition-colors cursor-pointer"
+          >
+            <X className="w-4 h-4" />
+          </button>
+        </div>
+
+        {/* Modal Body */}
+        <div className="p-6 overflow-y-auto space-y-5">
+          {/* Main Health Banner */}
+          <div className="p-4 rounded-xl bg-slate-50 border border-slate-200/80 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+            <div>
+              <div className="text-[10px] font-bold uppercase tracking-wider text-slate-400">
+                Project Health Assessment
+              </div>
+              <div className="flex items-baseline gap-2 mt-1">
+                <span className="text-3xl font-extrabold text-slate-900">
+                  {project.health_score !== null ? `${project.health_score}/100` : '—'}
+                </span>
+                <span className={`inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-bold border ${meta.badge}`}>
+                  <span className={`w-1.5 h-1.5 rounded-full ${meta.dot}`} />
+                  <span>{project.health_label || meta.label}</span>
+                </span>
+              </div>
+              <div className="text-xs text-slate-500 mt-1">
+                Risk Level: <strong className={meta.riskText}>{project.risk_level || 'N/A'}</strong>
+              </div>
+            </div>
+
+            <div className="sm:text-right">
+              <div className="text-[10px] font-bold uppercase tracking-wider text-slate-400">
+                Schedule Status
+              </div>
+              <div className="mt-1">
+                <span className={`inline-block px-2.5 py-1 rounded-lg text-xs font-bold border ${
+                  project.schedule_health === 'ON_TRACK' ? 'bg-emerald-50 text-emerald-700 border-emerald-200' :
+                  project.schedule_health === 'BEHIND' ? 'bg-rose-50 text-rose-700 border-rose-200' :
+                  project.schedule_health === 'AHEAD' ? 'bg-blue-50 text-blue-700 border-blue-200' :
+                  'bg-slate-100 text-slate-600 border-slate-200'
+                }`}>
+                  {project.schedule_label || 'Schedule On Track'}
+                </span>
+              </div>
+              {project.schedule_variance_days !== null && project.schedule_variance_days !== undefined && (
+                <div className="text-[11px] text-slate-500 mt-1">
+                  {project.schedule_variance_days < 0 
+                    ? `${Math.abs(project.schedule_variance_days)} days behind schedule`
+                    : `${project.schedule_variance_days} days ahead of schedule`}
+                </div>
+              )}
+            </div>
+          </div>
+
+          {/* Health Score Bar */}
+          <div className="space-y-1.5">
+            <div className="flex items-center justify-between text-xs font-medium text-slate-600">
+              <span>Overall Delivery Health:</span>
+              <span className="font-bold text-slate-800">
+                {project.health_score !== null ? `${project.health_score}%` : 'Not Assessed'}
+              </span>
+            </div>
+            <div className="w-full bg-slate-100 rounded-full h-2 overflow-hidden shadow-inner">
+              <div
+                className={`h-full rounded-full transition-all duration-500 ${meta.bar}`}
+                style={{ width: `${project.health_score !== null ? Math.min(100, Math.max(0, project.health_score)) : 0}%` }}
+              />
+            </div>
+          </div>
+
+          {/* 4 Key Metrics Breakdown */}
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5">
+            <div className="p-3 rounded-xl bg-slate-50 border border-slate-200/70 text-center">
+              <div className="text-xs font-extrabold text-slate-900">
+                {(project.delivery_progress_percentage ?? project.progress_percentage ?? project.completion_rate) !== null
+                  ? `${project.delivery_progress_percentage ?? project.progress_percentage ?? project.completion_rate}%`
+                  : '—'}
+              </div>
+              <div className="text-[10px] text-slate-400 uppercase tracking-wider font-medium mt-0.5">
+                Delivery Progress
+              </div>
+              <div className="text-[10px] text-slate-500 mt-1 font-mono">
+                {(project.total_sp > 0 || project.total_points > 0)
+                  ? `${project.completed_sp ?? project.completed_points}/${project.total_sp ?? project.total_points} SP`
+                  : `${project.completed_tasks}/${project.total_tasks} done`}
+              </div>
+            </div>
+
+            <div className="p-3 rounded-xl bg-slate-50 border border-slate-200/70 text-center">
+              <div className={`text-xs font-extrabold ${(project.overdue_sp || project.overdue_tasks || 0) > 0 ? 'text-rose-600' : 'text-slate-900'}`}>
+                {project.total_sp > 0 ? `${project.overdue_sp ?? 0} SP` : (project.overdue_tasks || 0)}
+              </div>
+              <div className="text-[10px] text-slate-400 uppercase tracking-wider font-medium mt-0.5">
+                Overdue Work
+              </div>
+              <div className="text-[10px] text-slate-500 mt-1">
+                {project.total_sp > 0
+                  ? `${project.overdue_sp ?? 0}/${project.total_sp} SP (${project.overdue_sp_percentage ?? 0}%)`
+                  : `${project.overdue_tasks || 0} tasks (${project.overdue_percentage || 0}%)`}
+              </div>
+            </div>
+
+            <div className="p-3 rounded-xl bg-slate-50 border border-slate-200/70 text-center">
+              <div className={`text-xs font-extrabold ${(project.blocked_sp || project.blocked_tasks || 0) > 0 ? 'text-amber-600' : 'text-slate-900'}`}>
+                {project.total_sp > 0 ? `${project.blocked_sp ?? 0} SP` : (project.blocked_tasks || 0)}
+              </div>
+              <div className="text-[10px] text-slate-400 uppercase tracking-wider font-medium mt-0.5">
+                Blocked Work
+              </div>
+              <div className="text-[10px] text-slate-500 mt-1">
+                {project.total_sp > 0
+                  ? `${project.blocked_sp ?? 0}/${project.total_sp} SP (${project.blocked_sp_percentage ?? 0}%)`
+                  : `${project.blocked_tasks || 0} tasks (${project.blocked_percentage || 0}%)`}
+              </div>
+            </div>
+
+            <div className="p-3 rounded-xl bg-slate-50 border border-slate-200/70 text-center">
+              <div className={`text-xs font-extrabold ${
+                project.schedule_health === 'BEHIND' ? 'text-rose-600' :
+                project.schedule_health === 'AHEAD' ? 'text-blue-600' : 'text-emerald-600'
+              }`}>
+                {project.schedule_label || 'On Track'}
+              </div>
+              <div className="text-[10px] text-slate-400 uppercase tracking-wider font-medium mt-0.5">
+                Schedule
+              </div>
+              <div className="text-[10px] text-slate-500 mt-1 truncate">
+                {project.schedule_variance_percentage !== null && project.schedule_variance_percentage !== undefined
+                  ? `${project.schedule_variance_percentage > 0 ? '+' : ''}${project.schedule_variance_percentage}% var`
+                  : 'Dates aligned'}
+              </div>
+            </div>
+          </div>
+
+          {/* Deliverables & Story Points Breakdown */}
+          <div className="p-3 rounded-xl bg-purple-50/50 border border-purple-100 flex items-center justify-between text-xs flex-wrap gap-2">
+            <div className="flex items-center gap-2">
+              <span className="font-bold text-purple-900">Work Scope:</span>
+              <span className="font-semibold text-slate-700">
+                {(project.total_sp > 0 || project.total_points > 0)
+                  ? `${project.completed_sp ?? project.completed_points} / ${project.total_sp ?? project.total_points} SP (${(project.progress_percentage !== null && project.progress_percentage !== undefined) ? project.progress_percentage : Math.round(((project.completed_sp ?? project.completed_points) / (project.total_sp ?? project.total_points)) * 100)}%)`
+                  : `${project.completed_tasks} / ${project.total_tasks} tasks done`}
+              </span>
+            </div>
+            <div className="flex items-center gap-2 text-[11px] text-slate-600">
+              {(project.remaining_sp !== undefined || project.remaining_points !== undefined) && (
+                <span>{project.remaining_sp ?? project.remaining_points} SP remaining</span>
+              )}
+              {project.story_count > 0 && (
+                <>
+                  <span className="text-slate-300">•</span>
+                  <span>{project.story_count} {project.story_count === 1 ? 'story' : 'stories'}</span>
+                </>
+              )}
+              <span className="text-slate-300">•</span>
+              <span>{project.completed_tasks}/{project.total_tasks} tasks completed</span>
+            </div>
+          </div>
+
+          {/* Main Factors Lowering Score (Why this project is at risk) */}
+          <div className="space-y-2">
+            <h4 className="text-xs font-bold uppercase tracking-wider text-slate-700 flex items-center gap-1.5">
+              <AlertTriangle className="w-3.5 h-3.5 text-amber-500" />
+              <span>Factors Affecting Health Score</span>
+            </h4>
+            {riskFactors.length > 0 ? (
+              <div className="space-y-1.5">
+                {riskFactors.map((factor, idx) => (
+                  <div
+                    key={idx}
+                    className="p-2.5 rounded-lg bg-amber-50/60 border border-amber-200/70 text-xs text-amber-900 flex items-start gap-2"
+                  >
+                    <span className="text-amber-500 font-bold shrink-0 mt-0.5">•</span>
+                    <span className="leading-snug">{factor}</span>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <div className="p-3 rounded-lg bg-emerald-50 border border-emerald-200/80 text-xs text-emerald-800 flex items-center gap-2">
+                <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+                <span>All health metrics, task schedules, and deliverable workflows are operating within healthy thresholds.</span>
+              </div>
+            )}
+          </div>
+
+          {/* Recommended Actions */}
+          <div className="space-y-2">
+            <h4 className="text-xs font-bold uppercase tracking-wider text-slate-700 flex items-center gap-1.5">
+              <CheckCircle2 className="w-3.5 h-3.5 text-purple-600" />
+              <span>Recommended Actions</span>
+            </h4>
+            {actions.length > 0 ? (
+              <div className="space-y-1.5">
+                {actions.map((act, idx) => (
+                  <div
+                    key={idx}
+                    className="p-2.5 rounded-lg bg-purple-50/50 border border-purple-200/60 text-xs text-purple-950 flex items-start gap-2"
+                  >
+                    <span className="text-purple-600 font-bold shrink-0 mt-0.5">✓</span>
+                    <span className="leading-snug">{act}</span>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <div className="p-2.5 rounded-lg bg-slate-50 border border-slate-200 text-xs text-slate-500">
+                Maintain steady cadence and verify upcoming deliverables during routine standups.
+              </div>
+            )}
+          </div>
+        </div>
+
+        {/* Modal Footer */}
+        <div className="px-6 py-3.5 border-t border-slate-100 bg-slate-50 flex items-center justify-between gap-3">
+          <button
+            type="button"
+            onClick={onClose}
+            className="px-3.5 py-1.5 text-xs font-semibold text-slate-600 hover:text-slate-800 hover:bg-slate-200/60 rounded-lg transition-colors cursor-pointer"
+          >
+            Close
+          </button>
+
+          {onSelectProject && (
+            <button
+              type="button"
+              onClick={() => {
+                onClose();
+                onSelectProject(project.id, project.name);
+              }}
+              className="px-4 py-1.5 text-xs font-bold text-white bg-purple-600 hover:bg-purple-700 rounded-lg transition-colors flex items-center gap-1.5 shadow-2xs cursor-pointer"
+            >
+              <span>Open Project Workspace</span>
+              <ArrowUpRight className="w-3.5 h-3.5" />
+            </button>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+export default function TechLeadsView({ onRebalanceLead, onSelectProject }) {
   const [techLeads, setTechLeads] = useState([]);
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
-  const [statusFilter, setStatusFilter] = useState('ALL'); // 'ALL' | 'ACTIVE' | 'HIGH_PERFORMER' | 'AT_RISK'
+  const [statusFilter, setStatusFilter] = useState('ALL'); // 'ALL' | 'HEALTHY' | 'NEEDS_ATTENTION' | 'AT_RISK' | 'ACTIVE_PROJECTS'
+  const [selectedProjectForHealth, setSelectedProjectForHealth] = useState(null);
 
   useEffect(() => {
     loadTechLeads();
@@ -39,7 +375,7 @@ export default function TechLeadsView({ onRebalanceLead }) {
     }
   };
 
-  // Filtered tech leads based on search & rating filter
+  // Filtered tech leads based on search & health status filter
   const filteredTechLeads = useMemo(() => {
     return techLeads.filter((lead) => {
       if (searchQuery.trim()) {
@@ -50,10 +386,12 @@ export default function TechLeadsView({ onRebalanceLead }) {
         if (!matchName && !matchEmail && !matchProjects) return false;
       }
 
-      if (statusFilter === 'HIGH_PERFORMER') {
-        if ((lead.performance_score || 0) < 70) return false;
+      if (statusFilter === 'HEALTHY') {
+        if (lead.health_status !== 'HEALTHY') return false;
+      } else if (statusFilter === 'NEEDS_ATTENTION') {
+        if (lead.health_status !== 'NEEDS_ATTENTION') return false;
       } else if (statusFilter === 'AT_RISK') {
-        if ((lead.performance_score || 0) >= 50 || (lead.total_project_tasks || 0) === 0) return false;
+        if (lead.health_status !== 'AT_RISK' && lead.health_status !== 'CRITICAL') return false;
       } else if (statusFilter === 'ACTIVE_PROJECTS') {
         if (!lead.project_count || lead.project_count === 0) return false;
       }
@@ -62,23 +400,24 @@ export default function TechLeadsView({ onRebalanceLead }) {
     });
   }, [techLeads, searchQuery, statusFilter]);
 
-  // Overall metric counters
+  // Overall metrics across all leads and projects
   const totalLeadsCount = techLeads.length;
   const totalOverseenProjects = techLeads.reduce((acc, l) => acc + (l.project_count || 0), 0);
   const totalOverseenTasks = techLeads.reduce((acc, l) => acc + (l.total_project_tasks || 0), 0);
   const totalCompletedTasks = techLeads.reduce((acc, l) => acc + (l.completed_project_tasks || 0), 0);
-  const avgPerformance = totalLeadsCount > 0
-    ? Math.round(techLeads.reduce((acc, l) => acc + (l.performance_score || 0), 0) / totalLeadsCount)
-    : 0;
+
+  const healthyLeadsCount = techLeads.filter((l) => l.health_status === 'HEALTHY').length;
+  const attentionLeadsCount = techLeads.filter((l) => l.health_status === 'NEEDS_ATTENTION').length;
+  const atRiskLeadsCount = techLeads.filter((l) => l.health_status === 'AT_RISK' || l.health_status === 'CRITICAL').length;
 
   return (
     <div className="space-y-6">
       {/* ── HEADER & OVERVIEW METRICS ────────────────────────────────────────── */}
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>
-          <h2 className="text-xl font-bold text-slate-900 tracking-tight">Tech Leads & Oversight</h2>
+          <h2 className="text-xl font-bold text-slate-900 tracking-tight">Tech Leads & Project Health</h2>
           <p className="text-xs text-slate-500 mt-0.5">
-            Supervise project lead assignments, total project task execution, and real-time performance
+            Supervise project lead assignments, project delivery health, active blockers, and schedule risks
           </p>
         </div>
 
@@ -94,8 +433,20 @@ export default function TechLeadsView({ onRebalanceLead }) {
           </div>
           <div className="px-3 py-1.5 rounded-xl bg-emerald-50 border border-emerald-200 text-emerald-700 text-xs font-semibold flex items-center gap-1.5 shadow-2xs">
             <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
-            <span>{totalCompletedTasks}/{totalOverseenTasks} Tasks Completed</span>
+            <span>{healthyLeadsCount} Healthy Leads</span>
           </div>
+          {attentionLeadsCount > 0 && (
+            <div className="px-3 py-1.5 rounded-xl bg-amber-50 border border-amber-200 text-amber-700 text-xs font-semibold flex items-center gap-1.5 shadow-2xs">
+              <AlertTriangle className="w-3.5 h-3.5 text-amber-600" />
+              <span>{attentionLeadsCount} Needs Attention</span>
+            </div>
+          )}
+          {atRiskLeadsCount > 0 && (
+            <div className="px-3 py-1.5 rounded-xl bg-rose-50 border border-rose-200 text-rose-700 text-xs font-semibold flex items-center gap-1.5 shadow-2xs">
+              <AlertTriangle className="w-3.5 h-3.5 text-rose-600" />
+              <span>{atRiskLeadsCount} At Risk / Critical</span>
+            </div>
+          )}
         </div>
       </div>
 
@@ -127,9 +478,10 @@ export default function TechLeadsView({ onRebalanceLead }) {
           <div className="flex items-center gap-1 overflow-x-auto py-0.5">
             {[
               { id: 'ALL', label: 'All Leads' },
+              { id: 'HEALTHY', label: `Healthy (≥75)${healthyLeadsCount > 0 ? ` (${healthyLeadsCount})` : ''}` },
+              { id: 'NEEDS_ATTENTION', label: `Needs Attention (55–74)${attentionLeadsCount > 0 ? ` (${attentionLeadsCount})` : ''}` },
+              { id: 'AT_RISK', label: `At Risk / Critical (<55)${atRiskLeadsCount > 0 ? ` (${atRiskLeadsCount})` : ''}` },
               { id: 'ACTIVE_PROJECTS', label: 'With Projects' },
-              { id: 'HIGH_PERFORMER', label: 'Top Performers (≥70%)' },
-              { id: 'AT_RISK', label: 'Needs Attention (<50%)' },
             ].map((f) => (
               <button
                 key={f.id}
@@ -160,7 +512,7 @@ export default function TechLeadsView({ onRebalanceLead }) {
       {loading ? (
         <div className="p-16 text-center text-slate-400 flex flex-col items-center justify-center gap-3 bg-white rounded-2xl border border-slate-200 shadow-2xs">
           <Loader2 className="w-6 h-6 text-purple-600 animate-spin" />
-          <span className="text-xs font-semibold text-slate-600">Loading assigned Tech Leads & project metrics...</span>
+          <span className="text-xs font-semibold text-slate-600">Loading assigned Tech Leads & project health assessments...</span>
         </div>
       ) : filteredTechLeads.length === 0 ? (
         <div className="p-16 text-center bg-white rounded-2xl border border-slate-200 shadow-2xs space-y-3">
@@ -190,6 +542,7 @@ export default function TechLeadsView({ onRebalanceLead }) {
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
           {filteredTechLeads.map((lead) => {
             const avatar = `https://ui-avatars.com/api/?name=${encodeURIComponent(lead.name || 'Lead')}&background=7C3AED&color=fff`;
+            const leadMeta = getHealthMeta(lead.health_status);
 
             return (
               <div
@@ -197,7 +550,7 @@ export default function TechLeadsView({ onRebalanceLead }) {
                 className="bg-white rounded-2xl p-5 border border-slate-200 shadow-2xs hover:shadow-md transition-all flex flex-col justify-between group"
               >
                 <div>
-                  {/* Card Header: Avatar, Name, Email, Performance Badge */}
+                  {/* Card Header: Avatar, Name, Email, Project Health Assessment Badge */}
                   <div className="flex items-start justify-between gap-3">
                     <div className="flex items-center gap-3 min-w-0">
                       <img
@@ -222,74 +575,93 @@ export default function TechLeadsView({ onRebalanceLead }) {
                       </div>
                     </div>
 
-                    {/* Performance Rating Badge */}
+                    {/* Overall Project Health Assessment Badge */}
                     <div className="text-right shrink-0">
-                      <span
-                        className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-[10px] font-bold border uppercase tracking-wider ${
-                          lead.performance_color || 'text-purple-700 bg-purple-50 border-purple-200'
-                        }`}
-                      >
-                        <TrendingUp className="w-3 h-3" />
-                        <span>{lead.performance_label}</span>
-                      </span>
-                      <div className="text-[10px] font-bold text-slate-400 mt-1">
-                        Score: <span className="text-slate-800 font-extrabold">{lead.performance_score}%</span>
+                      <div className="flex flex-col items-end gap-1">
+                        <span
+                          className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-[10px] font-bold border uppercase tracking-wider ${
+                            leadMeta.badge
+                          }`}
+                        >
+                          <span className={`w-1.5 h-1.5 rounded-full ${leadMeta.dot}`} />
+                          <span>{lead.health_label || leadMeta.label}</span>
+                        </span>
+                        <div className="text-[11px] font-bold text-slate-700">
+                          Health Score: <span className="font-extrabold text-slate-900">{lead.health_score !== null ? `${lead.health_score}/100` : '—'}</span>
+                        </div>
+                        <div className="text-[10px] font-medium text-slate-400">
+                          Risk: <strong className={leadMeta.riskText}>{lead.risk_level || 'N/A'}</strong>
+                        </div>
                       </div>
                     </div>
                   </div>
 
-                  {/* High-level Task & Performance Overview Strip */}
-                  <div className="grid grid-cols-3 gap-2 mt-4 p-2.5 rounded-xl bg-slate-50/80 border border-slate-100 text-center">
+                  {/* High-level Task & Health Overview Strip */}
+                  <div className="grid grid-cols-4 gap-1.5 mt-4 p-2 rounded-xl bg-slate-50/80 border border-slate-100 text-center">
                     <div>
                       <div className="text-xs font-bold text-slate-900">
                         {lead.project_count || 0}
                       </div>
-                      <div className="text-[10px] text-slate-400 font-medium uppercase tracking-wider mt-0.5">
-                        {lead.project_count === 1 ? 'Project' : 'Projects'}
+                      <div className="text-[9px] text-slate-400 font-medium uppercase tracking-wider mt-0.5">
+                        Projects
                       </div>
                     </div>
                     <div>
-                      <div className="text-xs font-bold text-purple-700">
-                        {lead.total_project_tasks || 0}
+                      <div className={`text-xs font-bold ${(lead.total_project_sp > 0 ? (lead.overdue_project_sp || 0) : (lead.overdue_project_tasks || 0)) > 0 ? 'text-rose-600' : 'text-slate-700'}`}>
+                        {lead.total_project_sp > 0 ? `${lead.overdue_project_sp || 0} SP` : (lead.overdue_project_tasks || 0)}
                       </div>
-                      <div className="text-[10px] text-slate-400 font-medium uppercase tracking-wider mt-0.5">
-                        Total Tasks
+                      <div className="text-[9px] text-slate-400 font-medium uppercase tracking-wider mt-0.5">
+                        Overdue
+                      </div>
+                    </div>
+                    <div>
+                      <div className={`text-xs font-bold ${(lead.total_project_sp > 0 ? (lead.blocked_project_sp || 0) : (lead.blocked_project_tasks || 0)) > 0 ? 'text-amber-600' : 'text-slate-700'}`}>
+                        {lead.total_project_sp > 0 ? `${lead.blocked_project_sp || 0} SP` : (lead.blocked_project_tasks || 0)}
+                      </div>
+                      <div className="text-[9px] text-slate-400 font-medium uppercase tracking-wider mt-0.5">
+                        Blocked
                       </div>
                     </div>
                     <div>
                       <div className="text-xs font-bold text-emerald-700">
-                        {lead.project_completion_rate || 0}%
+                        {lead.project_sp_progress !== null && lead.project_sp_progress !== undefined
+                          ? `${lead.project_sp_progress}%`
+                          : `${lead.project_completion_rate || 0}%`}
                       </div>
-                      <div className="text-[10px] text-slate-400 font-medium uppercase tracking-wider mt-0.5">
-                        Completed
+                      <div className="text-[9px] text-slate-400 font-medium uppercase tracking-wider mt-0.5">
+                        Done
                       </div>
                     </div>
                   </div>
 
-                  {/* Progress Bar of Total Project Tasks */}
+                  {/* Execution Progress Bar */}
                   <div className="mt-3 space-y-1">
                     <div className="flex items-center justify-between text-[11px] font-medium text-slate-600">
-                      <span>Execution Progress:</span>
+                      <span>Delivery Progress:</span>
                       <span className="font-bold text-slate-900">
-                        {lead.completed_project_tasks || 0} / {lead.total_project_tasks || 0} done
+                        {lead.total_project_sp > 0 ? (
+                          <>{lead.completed_project_sp}/{lead.total_project_sp} SP ({lead.project_sp_progress ?? lead.project_completion_rate}%)</>
+                        ) : (
+                          <>{lead.completed_project_tasks || 0} / {lead.total_project_tasks || 0} done ({lead.project_completion_rate || 0}%)</>
+                        )}
                       </span>
                     </div>
                     <div className="w-full bg-slate-100 rounded-full h-1.5 overflow-hidden">
                       <div
                         className={`h-full rounded-full transition-all duration-300 ${
-                          lead.project_completion_rate >= 75
+                          (lead.project_sp_progress ?? lead.project_completion_rate) >= 75
                             ? 'bg-emerald-600'
-                            : lead.project_completion_rate >= 40
+                            : (lead.project_sp_progress ?? lead.project_completion_rate) >= 40
                             ? 'bg-purple-600'
                             : 'bg-amber-500'
                         }`}
-                        style={{ width: `${Math.min(100, Math.max(0, lead.project_completion_rate || 0))}%` }}
+                        style={{ width: `${Math.min(100, Math.max(0, lead.project_sp_progress ?? lead.project_completion_rate ?? 0))}%` }}
                       />
                     </div>
                   </div>
 
                   {/* ── ASSIGNED PROJECTS BREAKDOWN ────────────────────────── */}
-                  <div className="mt-4 pt-3.5 border-t border-slate-100 space-y-2">
+                  <div className="mt-4 pt-3.5 border-t border-slate-100 space-y-2.5">
                     <div className="flex items-center justify-between text-[11px] font-bold text-slate-700 uppercase tracking-wider">
                       <span className="flex items-center gap-1.5">
                         <FolderKanban className="w-3.5 h-3.5 text-purple-600" />
@@ -298,37 +670,124 @@ export default function TechLeadsView({ onRebalanceLead }) {
                     </div>
 
                     {lead.projects && lead.projects.length > 0 ? (
-                      <div className="space-y-1.5 max-h-36 overflow-y-auto pr-1">
-                        {lead.projects.map((proj) => (
-                          <div
-                            key={proj.id}
-                            className="p-2 rounded-lg bg-slate-50 border border-slate-200/70 hover:bg-purple-50/40 transition-colors flex items-center justify-between text-xs"
-                          >
-                            <div className="min-w-0 flex-1 mr-2">
-                              <span className="font-semibold text-slate-800 truncate block text-[11px]">
-                                {proj.name}
-                              </span>
-                              <div className="flex items-center gap-2 text-[10px] text-slate-400 mt-0.5">
-                                <span>{proj.completed_tasks}/{proj.total_tasks} tasks</span>
-                                {proj.total_points > 0 && (
-                                  <span>· {proj.completed_points}/{proj.total_points} SP</span>
-                                )}
+                      <div className="space-y-2.5 max-h-52 overflow-y-auto pr-1">
+                        {lead.projects.map((proj) => {
+                          const projMeta = getHealthMeta(proj.health);
+
+                          return (
+                            <div
+                              key={proj.id}
+                              className="p-3 rounded-xl bg-slate-50/90 border border-slate-200/80 hover:border-purple-300 transition-all space-y-2"
+                            >
+                              {/* Top Line: Project Name + Health Score Pill + Health Details Button */}
+                              <div className="flex items-start justify-between gap-2">
+                                <div className="min-w-0 flex-1">
+                                  <div className="flex items-center gap-1.5 flex-wrap">
+                                    <span className="font-bold text-slate-800 text-xs truncate">
+                                      {proj.name}
+                                    </span>
+                                    {proj.status && (
+                                      <span className="text-[9px] font-semibold text-slate-500 bg-slate-200/70 px-1.5 py-0.2 rounded uppercase">
+                                        {proj.status}
+                                      </span>
+                                    )}
+                                  </div>
+
+                                  {/* Health Score & Status & Schedule Pills */}
+                                  <div className="flex items-center gap-1.5 mt-1 flex-wrap text-[10px]">
+                                    <span className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded-md font-bold text-[10px] border ${projMeta.badge}`}>
+                                      <Activity className="w-2.5 h-2.5" />
+                                      <span>{proj.health_score !== null ? `${proj.health_score}/100` : '—'}</span>
+                                      <span className="opacity-90">· {proj.health_label || projMeta.label}</span>
+                                    </span>
+
+                                    <span className="text-slate-400 text-[10px]">
+                                      Risk: <strong className={projMeta.riskText}>{proj.risk_level || 'N/A'}</strong>
+                                    </span>
+
+                                    <span className={`px-1.5 py-0.5 rounded text-[9px] font-semibold border ${
+                                      proj.schedule_health === 'ON_TRACK' ? 'bg-emerald-50 text-emerald-700 border-emerald-200' :
+                                      proj.schedule_health === 'BEHIND' ? 'bg-rose-50 text-rose-700 border-rose-200' :
+                                      proj.schedule_health === 'AHEAD' ? 'bg-blue-50 text-blue-700 border-blue-200' :
+                                      'bg-slate-100 text-slate-500 border-slate-200'
+                                    }`}>
+                                      {proj.schedule_label || 'On Track'}
+                                    </span>
+                                  </div>
+                                </div>
+
+                                {/* View Health Details Action Button */}
+                                <button
+                                  type="button"
+                                  onClick={() => setSelectedProjectForHealth({ ...proj, leadName: lead.name })}
+                                  className="px-2 py-1 rounded-lg bg-white border border-purple-200 text-purple-700 hover:bg-purple-50 text-[10px] font-bold shrink-0 transition-colors cursor-pointer shadow-2xs flex items-center gap-1 group/btn"
+                                  title="View complete health metrics and recommendations"
+                                >
+                                  <span>Health Details</span>
+                                  <ChevronRight className="w-3 h-3 group-hover/btn:translate-x-0.5 transition-transform" />
+                                </button>
+                              </div>
+
+                              {/* Progress Bar of Completion */}
+                              <div className="space-y-1">
+                                <div className="flex items-center justify-between text-[10px] font-medium text-slate-600">
+                                  <span>
+                                    {(proj.total_sp > 0 || proj.total_points > 0) ? (
+                                      <>Progress: {proj.completed_sp ?? proj.completed_points}/{proj.total_sp ?? proj.total_points} SP</>
+                                    ) : (
+                                      <>Progress: {proj.completed_tasks}/{proj.total_tasks} tasks</>
+                                    )}
+                                  </span>
+                                  <span className="font-bold text-slate-800">
+                                    {(proj.progress_percentage !== null && proj.progress_percentage !== undefined)
+                                      ? `${proj.progress_percentage}%`
+                                      : (proj.total_sp > 0 || proj.total_points > 0)
+                                      ? `${Math.round(((proj.completed_sp ?? proj.completed_points) / (proj.total_sp ?? proj.total_points)) * 100)}%`
+                                      : `${proj.completion_rate}%`}
+                                  </span>
+                                </div>
+                                <div className="w-full bg-slate-200/80 rounded-full h-1.5 overflow-hidden">
+                                  <div
+                                    className={`h-full rounded-full transition-all duration-300 ${projMeta.bar}`}
+                                    style={{
+                                      width: `${Math.min(
+                                        100,
+                                        Math.max(
+                                          0,
+                                          proj.progress_percentage !== null && proj.progress_percentage !== undefined
+                                            ? proj.progress_percentage
+                                            : (proj.total_sp > 0 || proj.total_points > 0)
+                                            ? Math.round(((proj.completed_sp ?? proj.completed_points) / (proj.total_sp ?? proj.total_points)) * 100)
+                                            : (proj.completion_rate || 0)
+                                        )
+                                      )}%`
+                                    }}
+                                  />
+                                </div>
+                              </div>
+
+                              {/* Compact Metric Signals: Overdue & Blocked counts & Tasks done */}
+                              <div className="flex items-center justify-between text-[10px] pt-1 border-t border-slate-200/50">
+                                <div className="flex items-center gap-2">
+                                  <span className={`font-semibold ${(proj.overdue_sp || proj.overdue_tasks || 0) > 0 ? 'text-rose-600 font-bold' : 'text-slate-400'}`}>
+                                    {proj.total_sp > 0
+                                      ? `${proj.overdue_sp || 0}/${proj.total_sp} SP overdue`
+                                      : (proj.overdue_tasks || 0) > 0 ? `${proj.overdue_tasks} overdue` : '0 overdue'}
+                                  </span>
+                                  <span className="text-slate-300">·</span>
+                                  <span className={`font-semibold ${(proj.blocked_sp || proj.blocked_tasks || 0) > 0 ? 'text-amber-600 font-bold' : 'text-slate-400'}`}>
+                                    {proj.total_sp > 0
+                                      ? `${proj.blocked_sp || 0}/${proj.total_sp} SP blocked`
+                                      : (proj.blocked_tasks || 0) > 0 ? `${proj.blocked_tasks} blocked` : '0 blocked'}
+                                  </span>
+                                </div>
+                                <span className="text-slate-500 font-medium text-[10px]">
+                                  {proj.total_sp > 0 ? `${proj.remaining_sp ?? 0} SP remaining` : `${proj.completed_tasks}/${proj.total_tasks} tasks`}
+                                </span>
                               </div>
                             </div>
-
-                            <span
-                              className={`px-1.5 py-0.5 rounded text-[9px] font-bold uppercase tracking-wider shrink-0 ${
-                                proj.completion_rate >= 80
-                                  ? 'bg-emerald-100 text-emerald-700'
-                                  : proj.completion_rate >= 40
-                                  ? 'bg-purple-100 text-purple-700'
-                                  : 'bg-slate-200 text-slate-700'
-                              }`}
-                            >
-                              {proj.completion_rate}%
-                            </span>
-                          </div>
-                        ))}
+                          );
+                        })}
                       </div>
                     ) : (
                       <div className="p-2.5 rounded-lg bg-slate-50 border border-dashed border-slate-200 text-center text-xs text-slate-400">
@@ -348,6 +807,16 @@ export default function TechLeadsView({ onRebalanceLead }) {
             );
           })}
         </div>
+      )}
+
+      {/* ── HEALTH DETAILS MODAL ────────────────────────────────────────── */}
+      {selectedProjectForHealth && (
+        <ProjectHealthDetailsModal
+          project={selectedProjectForHealth}
+          leadName={selectedProjectForHealth.leadName}
+          onClose={() => setSelectedProjectForHealth(null)}
+          onSelectProject={onSelectProject}
+        />
       )}
     </div>
   );

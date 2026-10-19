@@ -49,8 +49,28 @@ export default function TaskDetailModal({
   onDeleteTask,
   onToast,
   hideAssignees = false,
+  isKanban = false,
+  projectId = null,
 }) {
   const { user: authUser } = useAuth();
+  const [projectMethodology, setProjectMethodology] = useState(null);
+
+  useEffect(() => {
+    const effectivePid = projectId || task?.project_id;
+    if (effectivePid && !isKanban) {
+      projectsService
+        .getProjectById(effectivePid)
+        .then((p) => {
+          if (p?.methodology) setProjectMethodology(p.methodology);
+        })
+        .catch(() => {});
+    }
+  }, [projectId, task?.project_id, isKanban]);
+
+  const isKanbanProject = isKanban || projectMethodology === 'KANBAN' || task?.project?.methodology === 'KANBAN';
+  const Term = isKanbanProject ? 'Cycle' : 'Sprint';
+  const term = isKanbanProject ? 'cycle' : 'sprint';
+
   const [liveTask, setLiveTask] = useState(task || {});
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -256,6 +276,31 @@ export default function TaskDetailModal({
     };
   }, [isOpen, liveTask?.id]);
 
+  useEffect(() => {
+    if (!isOpen || !liveTask?.id) return;
+    const handleSync = () => {
+      timesheetService
+        .getActiveTaskSession(liveTask.id)
+        .then((data) => setTaskSession(data?.session || null))
+        .catch(() => setTaskSession(null));
+    };
+
+    window.addEventListener('timer-session-updated', handleSync);
+    window.addEventListener('focus', handleSync);
+    const handleVis = () => {
+      if (document.visibilityState === 'visible') {
+        handleSync();
+      }
+    };
+    document.addEventListener('visibilitychange', handleVis);
+
+    return () => {
+      window.removeEventListener('timer-session-updated', handleSync);
+      window.removeEventListener('focus', handleSync);
+      document.removeEventListener('visibilitychange', handleVis);
+    };
+  }, [isOpen, liveTask?.id]);
+
   const handleStatusChange = async (newStatus) => {
     try {
       setStatus(newStatus);
@@ -311,11 +356,11 @@ export default function TaskDetailModal({
       const targetId = !newSprintId || newSprintId === 'backlog' ? null : newSprintId;
       const updated = await workItemsService.updateWorkItem(liveTask.id, { sprint_id: targetId });
       setLiveTask(updated);
-      const sName = targetId ? projectSprints.find((s) => s.id === targetId)?.name || 'Sprint' : 'Backlog';
+      const sName = targetId ? projectSprints.find((s) => s.id === targetId)?.name || Term : 'Backlog';
       onToast?.(`Assigned to ${sName}`);
       notifyTaskUpdated(updated);
     } catch (err) {
-      setError(err.message || 'Failed to update sprint assignment');
+      setError(err.message || `Failed to update ${term} assignment`);
     }
   };
 
@@ -470,6 +515,10 @@ export default function TaskDetailModal({
   const storyProgress = storyTotalSp > 0 ? Math.round((storyCompletedSp / storyTotalSp) * 100) : null;
 
   const handleStartWork = async () => {
+    if (authRole === 'MANAGER') {
+      setError('Managers do not have permission to start timers on tasks');
+      return;
+    }
     try {
       setTaskSessionLoading(true);
       setError('');
@@ -771,7 +820,7 @@ export default function TaskDetailModal({
             {Boolean(liveTask.project_id) && liveTask.type !== 'EPIC' && (
               <div>
                 <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1">
-                  Cycle
+                  {Term}
                 </label>
                 {canEditFields ? (
                   <select
@@ -779,7 +828,7 @@ export default function TaskDetailModal({
                     onChange={(e) => handleSprintChange(e.target.value)}
                     className="w-full px-2.5 py-1.5 rounded-lg border border-slate-200 bg-white text-slate-800 font-semibold focus:outline-none focus:border-purple-600 text-xs"
                   >
-                    <option value="backlog">Backlog (No Cycle)</option>
+                    <option value="backlog">Backlog (No {Term})</option>
                     {projectSprints.map((s) => (
                       <option key={s.id} value={s.id} disabled={s.status === 'COMPLETED' && liveTask.sprint_id !== s.id}>
                         {s.name} {s.status === 'COMPLETED' ? '(Completed)' : s.status === 'ACTIVE' ? '(Active)' : ''}
@@ -788,7 +837,7 @@ export default function TaskDetailModal({
                   </select>
                 ) : (
                   <div className="px-2.5 py-1.5 rounded-lg border border-slate-200 bg-slate-100 text-slate-700 font-semibold text-xs truncate">
-                    {liveTask.sprint?.name || projectSprints.find((s) => s.id === liveTask.sprint_id)?.name || 'Backlog (No Cycle)'}
+                    {liveTask.sprint?.name || projectSprints.find((s) => s.id === liveTask.sprint_id)?.name || `Backlog (No ${Term})`}
                   </div>
                 )}
               </div>

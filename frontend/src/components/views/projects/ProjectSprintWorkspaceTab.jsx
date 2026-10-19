@@ -334,7 +334,7 @@ export default function ProjectSprintWorkspaceTab({
     }
   };
 
-  // Complete Cycle Handler
+  // Complete Sprint Handler
   const handleConfirmCompleteSprint = async (optionsOrTarget) => {
     if (!currentSprint) return;
     try {
@@ -342,7 +342,7 @@ export default function ProjectSprintWorkspaceTab({
         ? optionsOrTarget
         : { target_sprint_id: optionsOrTarget };
       await sprintsService.completeSprint(projectId, currentSprint.id, payload);
-      onToast?.(payload.unfinished_action === 'CONTINUE' ? `Cycle "${currentSprint.name}" continued` : `Cycle "${currentSprint.name}" completed successfully`);
+      onToast?.(payload.unfinished_action === 'CONTINUE' ? `Sprint "${currentSprint.name}" continued` : `Sprint "${currentSprint.name}" completed successfully`);
       loadData();
     } catch (err) {
       console.error('Failed to complete sprint:', err);
@@ -387,13 +387,13 @@ export default function ProjectSprintWorkspaceTab({
     return (
       <div className="bg-white rounded-lg border border-slate-200 p-12 flex flex-col items-center justify-center min-h-[360px]">
         <Loader2 className="w-8 h-8 text-purple-600 animate-spin mb-3" />
-        <p className="text-xs font-semibold text-slate-700">Loading Cycle Workspace...</p>
-        <p className="text-[11px] text-slate-400 mt-1">Retrieving cycle commitments and status</p>
+        <p className="text-xs font-semibold text-slate-700">Loading Sprint Workspace...</p>
+        <p className="text-[11px] text-slate-400 mt-1">Retrieving sprint commitments and status</p>
       </div>
     );
   }
 
-  // If no cycles exist in the project
+  // If no sprints exist in the project
   if (sprints.length === 0) {
     return (
       <div className="space-y-6">
@@ -401,9 +401,9 @@ export default function ProjectSprintWorkspaceTab({
           <div className="w-12 h-12 rounded-2xl bg-purple-50 text-purple-600 flex items-center justify-center mx-auto mb-3">
             <Calendar className="w-6 h-6" />
           </div>
-          <h3 className="text-base font-bold text-slate-900 mb-1">No Cycles Configured</h3>
+          <h3 className="text-base font-bold text-slate-900 mb-1">No Sprints Configured</h3>
           <p className="text-xs text-slate-500 leading-relaxed max-w-md mx-auto mb-5">
-            This project does not have any cycles created yet. Plan your first cycle to start tracking iterations and burndown.
+            This project does not have any sprints created yet. Plan your first sprint to start tracking iterations and burndown.
           </p>
           {!readOnly && (
             <button
@@ -411,7 +411,7 @@ export default function ProjectSprintWorkspaceTab({
               className="px-4 py-2 rounded-xl bg-purple-700 hover:bg-purple-800 text-white text-xs font-semibold transition-colors inline-flex items-center gap-1.5 shadow-sm cursor-pointer"
             >
               <Plus className="w-4 h-4" />
-              <span>Create Cycle</span>
+              <span>Create Sprint</span>
             </button>
           )}
         </div>
@@ -422,7 +422,7 @@ export default function ProjectSprintWorkspaceTab({
           projectId={projectId}
           existingSprints={sprints}
           onSuccess={() => {
-            onToast?.('Cycle created successfully');
+            onToast?.('Sprint created successfully');
             loadData();
           }}
         />
@@ -440,12 +440,12 @@ export default function ProjectSprintWorkspaceTab({
   return (
     <div className="space-y-6">
 
-      {/* CYCLE WORKSPACE HEADER & SUMMARY */}
+      {/* SPRINT WORKSPACE HEADER & SUMMARY */}
       <div className="bg-white rounded-lg border border-slate-200 p-5">
         <div className="flex flex-col lg:flex-row lg:items-start justify-between gap-4">
-          {/* Cycle Details & Goal */}
+          {/* Sprint Details & Goal */}
           <div className="space-y-2 max-w-3xl">
-            {/* Cycle Selector & Status */}
+            {/* Sprint Selector & Status */}
             <div className="flex flex-wrap items-center gap-2">
               <span
                 className={`text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded ${
@@ -457,10 +457,10 @@ export default function ProjectSprintWorkspaceTab({
                 }`}
               >
                 {currentSprint?.status === 'ACTIVE'
-                  ? 'Active Cycle'
+                  ? 'Active Sprint'
                   : currentSprint?.status === 'COMPLETED'
-                  ? 'Completed Cycle'
-                  : 'Planned Cycle'}
+                  ? 'Completed Sprint'
+                  : 'Planned Sprint'}
               </span>
               <span className="text-slate-300">•</span>
 
@@ -488,7 +488,7 @@ export default function ProjectSprintWorkspaceTab({
             <div>
               <span className="text-xs font-semibold text-slate-700">Goal: </span>
               <span className="text-xs text-slate-600 leading-relaxed">
-                {currentSprint?.goal || 'No specific goal set for this cycle.'}
+                {currentSprint?.goal || 'No specific goal set for this sprint.'}
               </span>
             </div>
 
@@ -546,7 +546,7 @@ export default function ProjectSprintWorkspaceTab({
                   className="px-3 py-1.5 rounded-md bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-semibold transition-colors flex items-center gap-1.5 shadow-xs cursor-pointer disabled:opacity-50"
                 >
                   <Play className="w-3.5 h-3.5 fill-current" />
-                  <span>Start Cycle</span>
+                  <span>Start Sprint</span>
                 </button>
               )}
 
@@ -556,7 +556,7 @@ export default function ProjectSprintWorkspaceTab({
                   className="px-3 py-1.5 rounded-md border border-slate-200 hover:bg-slate-50 text-slate-700 text-xs font-medium transition-colors flex items-center gap-1.5 cursor-pointer"
                 >
                   <Check className="w-3.5 h-3.5 text-slate-500" />
-                  <span>Complete Cycle</span>
+                  <span>Complete Sprint</span>
                 </button>
               )}
 
@@ -564,20 +564,20 @@ export default function ProjectSprintWorkspaceTab({
                 <button
                   onClick={() => setEditingSprint(currentSprint)}
                   className="px-2.5 py-1.5 rounded-md border border-slate-200 hover:bg-slate-50 text-slate-700 text-xs font-medium transition-colors flex items-center gap-1.5 cursor-pointer"
-                  title="Edit or delete current cycle"
+                  title="Edit or delete current sprint"
                 >
                   <Edit3 className="w-3.5 h-3.5 text-slate-500" />
-                  <span>Edit Cycle</span>
+                  <span>Edit Sprint</span>
                 </button>
               )}
 
               <button
                 onClick={() => setIsCreateSprintOpen(true)}
                 className="px-2.5 py-1.5 rounded-md border border-slate-200 hover:bg-slate-50 text-slate-700 text-xs font-medium transition-colors flex items-center gap-1.5 cursor-pointer"
-                title="Plan next cycle"
+                title="Plan next sprint"
               >
                 <Plus className="w-3.5 h-3.5 text-slate-500" />
-                <span>New Cycle</span>
+                <span>New Sprint</span>
               </button>
             </div>
           )}
@@ -667,22 +667,22 @@ export default function ProjectSprintWorkspaceTab({
         </div>
       </div>
 
-      {/* CYCLE PERFORMANCE & SCHEDULE SUMMARY TABLE */}
+      {/* SPRINT PERFORMANCE & SCHEDULE SUMMARY TABLE */}
       <div className="bg-white rounded-lg border border-slate-200 overflow-hidden shadow-2xs">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 p-3.5 bg-slate-50/80 border-b border-slate-200">
           <div className="flex items-center gap-2">
             <span className="w-2.5 h-2.5 rounded-full bg-purple-600 shrink-0" />
             <h3 className="text-xs font-bold uppercase tracking-wider text-slate-800">
-              Cycle Schedule & Completion Summary
+              Sprint Schedule & Completion Summary
             </h3>
             <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-purple-100 text-purple-700 border border-purple-200/80">
-              {sprints.length} {sprints.length === 1 ? 'Cycle' : 'Cycles'}
+              {sprints.length} {sprints.length === 1 ? 'Sprint' : 'Sprints'}
             </span>
           </div>
 
           <div className="flex items-center gap-2 text-xs">
             <span className="text-slate-400 text-[11px] hidden sm:inline">
-              Track schedule adherence and whether cycles ended early, on-time, or late
+              Track schedule adherence and whether sprints ended early, on-time, or late
             </span>
             <button
               type="button"
@@ -700,7 +700,7 @@ export default function ProjectSprintWorkspaceTab({
             <table className="w-full text-left text-xs border-collapse">
               <thead className="bg-slate-50/60 border-b border-slate-200 text-slate-500 font-semibold uppercase tracking-wider text-[10px]">
                 <tr>
-                  <th className="py-2.5 px-3.5">Cycle</th>
+                  <th className="py-2.5 px-3.5">Sprint</th>
                   <th className="py-2.5 px-3.5">Status</th>
                   <th className="py-2.5 px-3.5">Planned Schedule</th>
                   <th className="py-2.5 px-3.5">Actual End / Updated</th>
@@ -1185,6 +1185,7 @@ export default function ProjectSprintWorkspaceTab({
         completedCount={completedCount}
         incompleteCount={incompleteCount}
         tasks={workItems.filter((w) => w.sprint_id === currentSprint?.id)}
+        isKanban={false}
         onConfirmComplete={handleConfirmCompleteSprint}
       />
 
@@ -1193,6 +1194,7 @@ export default function ProjectSprintWorkspaceTab({
         onClose={() => setIsCreateSprintOpen(false)}
         projectId={projectId}
         existingSprints={sprints}
+        isKanban={false}
         onSuccess={() => {
           onToast?.('Sprint created successfully');
           loadData();
@@ -1205,6 +1207,7 @@ export default function ProjectSprintWorkspaceTab({
         projectId={projectId}
         sprint={editingSprint}
         allSprints={sprints}
+        isKanban={false}
         onSuccess={(updated) => {
           onToast?.(`Sprint "${updated?.name || 'Sprint'}" updated successfully`);
           loadData();

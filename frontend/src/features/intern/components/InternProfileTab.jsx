@@ -1,270 +1,871 @@
-import React, { useState } from 'react';
-import { 
-  User, 
-  Mail, 
-  GraduationCap, 
-  ShieldCheck, 
-  CheckCircle2, 
-  Edit3,
-  Check, 
+import React, { useState, useEffect, useMemo, useCallback } from 'react';
+import {
+  User,
+  Mail,
+  Building2,
+  Shield,
+  KeyRound,
+  Lock,
+  Eye,
+  EyeOff,
+  FolderKanban,
+  Users,
+  Calendar,
+  ArrowRight,
+  CheckCircle2,
+  AlertCircle,
+  RefreshCw,
+  Loader2,
+  Hash,
+  Sparkles,
+  ExternalLink,
+  ShieldAlert,
   X,
-  Layers,
-  Save,
-  Loader2
+  Check
 } from 'lucide-react';
 import { useAuth } from '../../../context/AuthContext';
 import { authService } from '../../../services/auth.service';
+import { projectsService } from '../../../services/projects.service';
+import ProjectMethodologyBadge from '../../../components/views/projects/ProjectMethodologyBadge';
 
-export default function InternProfileTab({ onToast }) {
-  const { user: authUser, updateUser } = useAuth();
-  const [isEditing, setIsEditing] = useState(false);
-  const [editName, setEditName] = useState(authUser?.name || '');
-  const [isSaving, setIsSaving] = useState(false);
-  const [errorMsg, setErrorMsg] = useState('');
+export default function InternProfileTab({ onSelectProject, onToast }) {
+  const { user: authUser } = useAuth();
 
-  const displayName = authUser?.name || 'Intern';
-  const displayEmail = authUser?.email || 'intern@dailoqa.com';
-  const displayRole = authUser?.role || 'INTERN';
-  const displayBatch = authUser?.batch || 'Not Assigned';
-  const avatar = `https://ui-avatars.com/api/?name=${encodeURIComponent(displayName)}&background=7C3AED&color=fff`;
+  // Fresh user profile fetched directly from /api/auth/me
+  const [profile, setProfile] = useState(authUser || null);
+  const [loadingProfile, setLoadingProfile] = useState(false);
+  const [profileError, setProfileError] = useState(null);
 
-  const handleOpenEdit = () => {
-    setEditName(authUser?.name || '');
-    setErrorMsg('');
-    setIsEditing(true);
+  // Projects state (fetched via /api/projects?my=true)
+  const [projects, setProjects] = useState([]);
+  const [loadingProjects, setLoadingProjects] = useState(true);
+  const [projectsError, setProjectsError] = useState(null);
+  const [projectSearch, setProjectSearch] = useState('');
+  const [statusFilter, setStatusFilter] = useState('ALL');
+
+  // Change Password state
+  const [passwordForm, setPasswordForm] = useState({
+    currentPassword: '',
+    newPassword: '',
+    confirmPassword: '',
+  });
+  const [showPasswords, setShowPasswords] = useState({
+    current: false,
+    next: false,
+    confirm: false,
+  });
+  const [passwordSubmitting, setPasswordSubmitting] = useState(false);
+  const [passwordSuccess, setPasswordSuccess] = useState(null);
+  const [passwordError, setPasswordError] = useState(null);
+  const [isChangingPassword, setIsChangingPassword] = useState(false);
+  const [touched, setTouched] = useState({
+    current: false,
+    next: false,
+    confirm: false,
+  });
+
+  const handleCancelPasswordChange = () => {
+    setIsChangingPassword(false);
+    setPasswordForm({
+      currentPassword: '',
+      newPassword: '',
+      confirmPassword: '',
+    });
+    setTouched({ current: false, next: false, confirm: false });
+    setPasswordError(null);
   };
 
-  const handleSaveProfile = async (e) => {
+  // Fetch / refresh user profile from /api/auth/me
+  const fetchProfile = useCallback(async () => {
+    try {
+      setLoadingProfile(true);
+      setProfileError(null);
+      const data = await authService.getCurrentUser();
+      const userObj = data?.user || data;
+      if (userObj) {
+        setProfile(userObj);
+      }
+    } catch (err) {
+      console.error('Failed to load intern profile:', err);
+      setProfileError(err.message || 'Unable to load profile data.');
+    } finally {
+      setLoadingProfile(false);
+    }
+  }, []);
+
+  // Fetch projects assigned to / completed by this intern
+  const fetchProjects = useCallback(async () => {
+    try {
+      setLoadingProjects(true);
+      setProjectsError(null);
+      const list = await projectsService.getProjects({ my: true });
+      setProjects(Array.isArray(list) ? list : []);
+    } catch (err) {
+      console.error('Failed to load intern projects:', err);
+      setProjectsError(err.message || 'Unable to load projects.');
+    } finally {
+      setLoadingProjects(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    fetchProfile();
+    fetchProjects();
+  }, [fetchProfile, fetchProjects]);
+
+  // Computed display values
+  const displayName = profile?.name || authUser?.name || 'Intern';
+  const displayEmail = profile?.email || authUser?.email || '';
+  const displayRole = (profile?.role || authUser?.role || 'INTERN').toUpperCase();
+  const displayBatch = profile?.batch || authUser?.batch || null;
+  const orgName =
+    profile?.organization_name ||
+    profile?.organization?.name ||
+    authUser?.organization_name ||
+    authUser?.organization?.name ||
+    'InternHub Enterprise';
+  const userCode = profile?.user_code || authUser?.user_code || null;
+
+  const createdAtFormatted = useMemo(() => {
+    const raw = profile?.created_at || authUser?.created_at;
+    if (!raw) return null;
+    try {
+      const d = new Date(raw);
+      return d.toLocaleDateString('en-US', {
+        month: 'short',
+        day: 'numeric',
+        year: 'numeric',
+      });
+    } catch {
+      return null;
+    }
+  }, [profile?.created_at, authUser?.created_at]);
+
+  const avatarUrl = `https://ui-avatars.com/api/?name=${encodeURIComponent(
+    displayName
+  )}&background=7C3AED&color=fff&size=128&bold=true`;
+
+  // Status badge styling helper
+  const getStatusBadge = (status) => {
+    switch (status) {
+      case 'ACTIVE':
+        return {
+          label: 'Active',
+          badgeClass: 'bg-emerald-50 text-emerald-700 border-emerald-200',
+          dotClass: 'bg-emerald-500',
+        };
+      case 'PLANNED':
+        return {
+          label: 'Planned',
+          badgeClass: 'bg-blue-50 text-blue-700 border-blue-200',
+          dotClass: 'bg-blue-500',
+        };
+      case 'COMPLETED':
+        return {
+          label: 'Completed',
+          badgeClass: 'bg-purple-50 text-purple-700 border-purple-200',
+          dotClass: 'bg-purple-600',
+        };
+      case 'ARCHIVED':
+        return {
+          label: 'Archived',
+          badgeClass: 'bg-slate-100 text-slate-600 border-slate-200',
+          dotClass: 'bg-slate-400',
+        };
+      default:
+        return {
+          label: status || 'Active',
+          badgeClass: 'bg-emerald-50 text-emerald-700 border-emerald-200',
+          dotClass: 'bg-emerald-500',
+        };
+    }
+  };
+
+  // Filter projects based on search query and status filter
+  const filteredProjects = useMemo(() => {
+    return projects.filter((p) => {
+      if (statusFilter !== 'ALL' && p.status !== statusFilter) {
+        return false;
+      }
+      if (projectSearch.trim()) {
+        const q = projectSearch.toLowerCase();
+        const nameMatch = p.name?.toLowerCase().includes(q);
+        const descMatch = p.description?.toLowerCase().includes(q);
+        const methMatch = p.methodology?.toLowerCase().includes(q);
+        return nameMatch || descMatch || methMatch;
+      }
+      return true;
+    });
+  }, [projects, statusFilter, projectSearch]);
+
+  const totalProjects = projects.length;
+  const activeProjectsCount = useMemo(
+    () => projects.filter((p) => p.status === 'ACTIVE').length,
+    [projects]
+  );
+  const completedProjectsCount = useMemo(
+    () => projects.filter((p) => p.status === 'COMPLETED').length,
+    [projects]
+  );
+
+  // Validation rules for password
+  const passwordValidations = useMemo(() => {
+    const hasCurrent = Boolean(passwordForm.currentPassword.trim());
+    const lengthValid = passwordForm.newPassword.length >= 8;
+    const differentFromCurrent =
+      Boolean(passwordForm.newPassword) &&
+      passwordForm.newPassword !== passwordForm.currentPassword;
+    const matchesConfirm =
+      Boolean(passwordForm.newPassword) &&
+      passwordForm.newPassword === passwordForm.confirmPassword;
+    const isValid = hasCurrent && lengthValid && differentFromCurrent && matchesConfirm;
+
+    return {
+      hasCurrent,
+      lengthValid,
+      differentFromCurrent,
+      matchesConfirm,
+      isValid,
+    };
+  }, [passwordForm]);
+
+  const handlePasswordChange = (field, value) => {
+    setPasswordForm((prev) => ({ ...prev, [field]: value }));
+    setTouched((prev) => ({ ...prev, [field]: true }));
+    setPasswordError(null);
+  };
+
+  const handlePasswordSubmit = async (e) => {
     e.preventDefault();
-    if (!editName.trim()) {
-      setErrorMsg('Name cannot be empty');
+    setTouched({ current: true, next: true, confirm: true });
+
+    if (!passwordValidations.hasCurrent) {
+      setPasswordError('Please enter your current password.');
+      return;
+    }
+    if (!passwordValidations.lengthValid) {
+      setPasswordError('New password must be at least 8 characters long.');
+      return;
+    }
+    if (!passwordValidations.differentFromCurrent) {
+      setPasswordError('New password must be different from your current password.');
+      return;
+    }
+    if (!passwordValidations.matchesConfirm) {
+      setPasswordError('New password and confirmation do not match.');
       return;
     }
 
     try {
-      setIsSaving(true);
-      setErrorMsg('');
-      const res = await authService.updateProfile({ name: editName.trim() });
-      if (res?.user) {
-        updateUser(res.user);
-      } else {
-        updateUser({ name: editName.trim() });
-      }
-      setIsEditing(false);
-      onToast?.('Profile updated successfully!');
+      setPasswordSubmitting(true);
+      setPasswordError(null);
+      setPasswordSuccess(null);
+
+      const res = await authService.changePassword(
+        passwordForm.currentPassword,
+        passwordForm.newPassword
+      );
+
+      const msg = res?.message || 'Password changed successfully.';
+      setPasswordSuccess(msg);
+      onToast?.(msg);
+
+      // Reset form and close modal
+      setPasswordForm({
+        currentPassword: '',
+        newPassword: '',
+        confirmPassword: '',
+      });
+      setTouched({ current: false, next: false, confirm: false });
+      setPasswordError(null);
+      setIsChangingPassword(false);
     } catch (err) {
-      setErrorMsg(err.message || 'Failed to update profile');
+      console.error('Password change failed:', err);
+      const errMsg =
+        err?.response?.data?.error ||
+        err?.message ||
+        'Failed to change password. Please verify your current password.';
+      setPasswordError(errMsg);
     } finally {
-      setIsSaving(false);
+      setPasswordSubmitting(false);
     }
   };
 
   return (
-    <div className="space-y-6 max-w-4xl mx-auto w-full">
-      {/* Profile Header Card */}
-      <div className="bg-white rounded-2xl p-6 border border-slate-200 shadow-card flex flex-col sm:flex-row items-center sm:items-start justify-between gap-5">
-        <div className="flex flex-col sm:flex-row items-center sm:items-start gap-5">
-          <img
-            src={avatar}
-            alt={displayName}
-            className="w-20 h-20 rounded-2xl object-cover border-2 border-purple-200 shadow-sm"
-          />
+    <div className="max-w-7xl mx-auto space-y-6 pb-12 animate-in fade-in duration-200">
+      {/* Top Banner / Profile Header Card */}
+      <div className="bg-white rounded-xl border border-purple-100 shadow-2xs overflow-hidden">
+        {/* Decorative Top Accent Banner */}
+        <div className="h-20 bg-linear-to-r from-purple-700 via-purple-600 to-indigo-600 relative">
+          <div className="absolute inset-0 opacity-10 bg-[radial-gradient(#fff_1px,transparent_1px)] [background-size:16px_16px]" />
+        </div>
 
-          <div className="flex-1 text-center sm:text-left space-y-1">
-            <div className="flex flex-col sm:flex-row sm:items-center gap-2">
-              <h2 className="text-xl font-bold text-slate-900">{displayName}</h2>
-              <span className="px-2.5 py-0.5 rounded-full text-xs font-bold bg-purple-100 text-purple-800 w-fit mx-auto sm:mx-0">
-                {displayRole}
-              </span>
-              {authUser?.batch && (
-                <span className="px-2.5 py-0.5 rounded-full text-xs font-bold bg-emerald-100 text-emerald-800 w-fit mx-auto sm:mx-0">
-                  {authUser.batch}
+        {/* Profile Info Bar */}
+        <div className="px-6 pb-6 pt-0 relative flex flex-col md:flex-row md:items-end md:justify-between gap-4">
+          {/* Avatar and Primary Details */}
+          <div className="flex items-end gap-4 -mt-10">
+            <div className="relative">
+              <img
+                src={avatarUrl}
+                alt={displayName}
+                className="w-20 h-20 rounded-xl object-cover border-4 border-white shadow-md bg-purple-700 shrink-0"
+              />
+              <span
+                className="absolute bottom-1 right-1 w-3.5 h-3.5 rounded-full bg-emerald-500 border-2 border-white"
+                title="Account Active"
+              />
+            </div>
+
+            <div className="space-y-1 pb-1">
+              <div className="flex flex-wrap items-center gap-2">
+                <h1 className="text-xl font-bold text-slate-900 leading-tight">{displayName}</h1>
+                <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-md text-[11px] font-bold bg-purple-100 text-purple-700 border border-purple-200">
+                  <Shield className="w-3 h-3 text-purple-600" />
+                  {displayRole}
                 </span>
-              )}
+                {displayBatch && (
+                  <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-md text-[11px] font-bold bg-purple-50 text-purple-700 border border-purple-200">
+                    Cohort {displayBatch}
+                  </span>
+                )}
+                <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-md text-[11px] font-medium bg-emerald-50 text-emerald-700 border border-emerald-200">
+                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
+                  Active
+                </span>
+              </div>
+
+              <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-slate-500">
+                <span className="flex items-center gap-1.5">
+                  <Mail className="w-3.5 h-3.5 text-slate-400" />
+                  <span>{displayEmail}</span>
+                </span>
+                <span className="flex items-center gap-1.5">
+                  <Building2 className="w-3.5 h-3.5 text-purple-500" />
+                  <span className="font-medium text-slate-700">{orgName}</span>
+                </span>
+                {userCode && (
+                  <span className="flex items-center gap-1.5 font-mono text-slate-600">
+                    <Hash className="w-3.5 h-3.5 text-slate-400" />
+                    <span>{userCode}</span>
+                  </span>
+                )}
+                {createdAtFormatted && (
+                  <span className="flex items-center gap-1.5 text-slate-400">
+                    <Calendar className="w-3.5 h-3.5" />
+                    <span>Joined {createdAtFormatted}</span>
+                  </span>
+                )}
+              </div>
             </div>
-            <p className="text-xs text-slate-500 font-medium">
-              {displayRole === 'INTERN' ? 'Engineering Intern' : displayRole}
-            </p>
-            <div className="flex flex-wrap items-center justify-center sm:justify-start gap-4 text-xs text-slate-500 pt-2">
-              <span className="flex items-center gap-1.5">
-                <Mail className="w-3.5 h-3.5 text-slate-400" />
-                {displayEmail}
-              </span>
-              <span className="flex items-center gap-1.5">
-                <ShieldCheck className="w-3.5 h-3.5 text-slate-400" />
-                Role: {displayRole}
-              </span>
-              <span className="flex items-center gap-1.5">
-                <GraduationCap className="w-3.5 h-3.5 text-slate-400" />
-                Batch: {displayBatch}
-              </span>
-            </div>
+          </div>
+
+          {/* Change Password Action */}
+          <div className="flex items-center gap-2 pt-2 md:pt-0">
+            <button
+              type="button"
+              onClick={() => {
+                setIsChangingPassword(true);
+                setPasswordError(null);
+              }}
+              className="inline-flex items-center gap-1.5 px-3.5 py-1.5 text-xs font-semibold text-white bg-purple-700 hover:bg-purple-800 rounded-lg shadow-xs transition-colors cursor-pointer"
+              title="Change Account Password"
+            >
+              <KeyRound className="w-3.5 h-3.5" />
+              <span>Change Password</span>
+            </button>
           </div>
         </div>
 
-        {/* Edit Profile Button */}
-        <button
-          type="button"
-          onClick={handleOpenEdit}
-          className="flex items-center gap-2 px-3.5 py-2 text-xs font-semibold text-purple-700 bg-purple-50 hover:bg-purple-100 border border-purple-200 rounded-xl transition-colors self-center sm:self-start"
-        >
-          <Edit3 className="w-3.5 h-3.5" />
-          <span>Edit Profile</span>
-        </button>
+        {/* Quick KPI Counters */}
+        <div className="grid grid-cols-2 sm:grid-cols-4 border-t border-slate-100 bg-slate-50/50">
+          <div className="p-4 border-r border-slate-100">
+            <div className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider mb-0.5">
+              Role
+            </div>
+            <div className="text-sm font-bold text-slate-800 flex items-center gap-1.5">
+              <User className="w-4 h-4 text-purple-600" />
+              <span>Software Engineering Intern</span>
+            </div>
+          </div>
+
+          <div className="p-4 border-r border-slate-100">
+            <div className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider mb-0.5">
+              Organization
+            </div>
+            <div className="text-sm font-bold text-slate-800 truncate" title={orgName}>
+              {orgName}
+            </div>
+          </div>
+
+          <div className="p-4 border-r border-slate-100">
+            <div className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider mb-0.5">
+              Projects Done
+            </div>
+            <div className="text-sm font-bold text-purple-700 flex items-center gap-1.5">
+              <FolderKanban className="w-4 h-4" />
+              <span>{totalProjects}</span>
+              <span className="text-xs font-normal text-slate-500">
+                ({activeProjectsCount} active)
+              </span>
+            </div>
+          </div>
+
+          <div className="p-4">
+            <div className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider mb-0.5">
+              Account Status
+            </div>
+            <div className="text-sm font-bold text-emerald-700 flex items-center gap-1.5">
+              <CheckCircle2 className="w-4 h-4 text-emerald-500" />
+              <span>Verified & Active</span>
+            </div>
+          </div>
+        </div>
       </div>
 
-      {/* Account Details & Batch Information */}
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-        <div className="bg-white rounded-2xl p-5 border border-slate-200 shadow-card space-y-3">
-          <h3 className="text-xs font-bold text-slate-900 uppercase tracking-wider flex items-center gap-2">
-            <User className="w-4 h-4 text-purple-600" />
-            <span>Account Details</span>
-          </h3>
-          <div className="space-y-2 text-xs divide-y divide-slate-100">
-            <div className="flex justify-between py-1.5">
-              <span className="text-slate-400">Full Name:</span>
-              <span className="font-semibold text-slate-800">{displayName}</span>
-            </div>
-            <div className="flex justify-between py-1.5">
-              <span className="text-slate-400">Email Address:</span>
-              <span className="font-semibold text-slate-800">{displayEmail}</span>
-            </div>
-            <div className="flex justify-between py-1.5">
-              <span className="text-slate-400">Assigned Batch:</span>
-              <span className="font-semibold text-purple-700 bg-purple-50 px-2 py-0.5 rounded border border-purple-100">
-                {displayBatch}
-              </span>
-            </div>
-            <div className="flex justify-between py-1.5">
-              <span className="text-slate-400">Account Type:</span>
-              <span className="font-semibold text-slate-800">{displayRole}</span>
-            </div>
-            <div className="flex justify-between py-1.5">
-              <span className="text-slate-400">Session Status:</span>
-              <span className="font-semibold text-emerald-600">Active</span>
+      {/* Feedback Banner for Password Success */}
+      {passwordSuccess && (
+        <div className="p-4 rounded-xl bg-emerald-50 border border-emerald-200 flex items-center justify-between gap-3 text-xs text-emerald-800 shadow-xs animate-in fade-in duration-150">
+          <div className="flex items-center gap-2.5">
+            <CheckCircle2 className="w-5 h-5 text-emerald-600 shrink-0" />
+            <div>
+              <span className="font-bold text-emerald-900">Success: </span>
+              <span>{passwordSuccess}</span>
             </div>
           </div>
+          <button
+            type="button"
+            onClick={() => setPasswordSuccess(null)}
+            className="p-1 rounded text-emerald-600 hover:text-emerald-800 hover:bg-emerald-100 transition-colors cursor-pointer"
+            title="Dismiss"
+          >
+            <X className="w-4 h-4" />
+          </button>
         </div>
+      )}
 
-        {/* Workstation Overview */}
-        <div className="bg-white rounded-2xl p-5 border border-slate-200 shadow-card space-y-3 flex flex-col justify-between">
-          <div>
-            <div className="flex items-center justify-between">
-              <h3 className="text-xs font-bold text-slate-900 uppercase tracking-wider flex items-center gap-2">
-                <CheckCircle2 className="w-4 h-4 text-purple-600" />
-                <span>Intern Overview</span>
-              </h3>
-              <span className="text-[10px] font-bold text-emerald-700 bg-emerald-50 border border-emerald-200 px-2 py-0.5 rounded">
-                Active Cohort
-              </span>
-            </div>
-            <p className="text-xs text-slate-500 mt-2 leading-relaxed">
-              Your intern account is registered under cohort {displayBatch}. You can review your assigned projects, complete daily work items, and participate in scheduled team syncs through your workstation tabs.
-            </p>
-          </div>
-
-          <div className="p-3 bg-slate-50 rounded-xl border border-slate-200/60 flex items-center justify-between">
-            <span className="text-xs text-slate-600 font-medium">Cohort Status</span>
-            <span className="text-xs font-semibold text-emerald-700">Enrolled & Active</span>
-          </div>
-        </div>
-      </div>
-
-      {/* Edit Profile Modal */}
-      {isEditing && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/40 backdrop-blur-xs">
-          <div className="bg-white rounded-2xl max-w-md w-full p-6 shadow-2xl border border-slate-200 animate-in fade-in zoom-in-95 duration-150">
-            <div className="flex items-center justify-between pb-4 border-b border-slate-100">
+      {/* Projects Done Section (Full Width) */}
+      <div className="space-y-6">
+        <div className="bg-white rounded-xl border border-slate-200 shadow-2xs overflow-hidden">
+          {/* Header & Controls */}
+          <div className="p-4 sm:p-5 border-b border-slate-100">
+            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-3">
               <div className="flex items-center gap-2">
-                <div className="p-2 bg-purple-100 text-purple-700 rounded-lg">
-                  <Edit3 className="w-4 h-4" />
+                <div className="w-8 h-8 rounded-lg bg-purple-50 border border-purple-100 flex items-center justify-center text-purple-600">
+                  <FolderKanban className="w-4 h-4" />
                 </div>
-                <h3 className="text-sm font-bold text-slate-900">Edit Profile</h3>
+                <div>
+                  <h2 className="text-sm font-bold text-slate-900">Projects Done</h2>
+                  <p className="text-xs text-slate-500">
+                    Projects you own, contribute to, or participate in as an intern
+                  </p>
+                </div>
+              </div>
+
+              <div className="flex items-center gap-2">
+                <span className="px-2 py-0.5 rounded text-xs font-semibold bg-purple-50 text-purple-700 border border-purple-200">
+                  {filteredProjects.length} of {totalProjects}
+                </span>
+              </div>
+            </div>
+
+            {/* Search and Status Filters */}
+            <div className="flex flex-col sm:flex-row gap-2 pt-1">
+              <div className="relative flex-1">
+                <input
+                  type="text"
+                  value={projectSearch}
+                  onChange={(e) => setProjectSearch(e.target.value)}
+                  placeholder="Search projects..."
+                  className="w-full pl-8 pr-3 py-1.5 text-xs bg-slate-50 border border-slate-200 rounded-lg focus:outline-hidden focus:ring-2 focus:ring-purple-500/20 focus:border-purple-500 transition-all text-slate-800"
+                />
+                <FolderKanban className="w-3.5 h-3.5 text-slate-400 absolute left-2.5 top-2.5" />
+              </div>
+
+              <div className="flex items-center gap-1 shrink-0 overflow-x-auto pb-0.5">
+                {['ALL', 'ACTIVE', 'PLANNED', 'COMPLETED'].map((st) => (
+                  <button
+                    key={st}
+                    type="button"
+                    onClick={() => setStatusFilter(st)}
+                    className={`px-2.5 py-1 text-[11px] font-semibold rounded-md transition-colors cursor-pointer ${
+                      statusFilter === st
+                        ? 'bg-purple-900 text-white shadow-2xs'
+                        : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                    }`}
+                  >
+                    {st === 'ALL' ? 'All' : st.charAt(0) + st.slice(1).toLowerCase()}
+                  </button>
+                ))}
+              </div>
+            </div>
+          </div>
+
+          {/* Projects List / Empty States */}
+          <div className="divide-y divide-slate-100">
+            {loadingProjects ? (
+              <div className="py-12 flex flex-col items-center justify-center text-slate-400 space-y-2">
+                <Loader2 className="w-6 h-6 animate-spin text-purple-600" />
+                <span className="text-xs">Loading projects...</span>
+              </div>
+            ) : projectsError ? (
+              <div className="p-6 text-center space-y-2">
+                <AlertCircle className="w-6 h-6 text-rose-500 mx-auto" />
+                <p className="text-xs text-rose-600 font-medium">{projectsError}</p>
+                <button
+                  type="button"
+                  onClick={fetchProjects}
+                  className="text-xs text-purple-700 underline font-medium"
+                >
+                  Try again
+                </button>
+              </div>
+            ) : projects.length === 0 ? (
+              <div className="py-12 px-6 text-center space-y-3">
+                <div className="w-12 h-12 rounded-xl bg-purple-50 border border-purple-100 text-purple-500 mx-auto flex items-center justify-center">
+                  <FolderKanban className="w-6 h-6 opacity-80" />
+                </div>
+                <div className="space-y-1">
+                  <h3 className="text-sm font-bold text-slate-800">No Projects Assigned</h3>
+                  <p className="text-xs text-slate-500 max-w-sm mx-auto">
+                    You are not currently assigned to any projects. Projects will appear here once
+                    assigned to you by your manager or team lead.
+                  </p>
+                </div>
+              </div>
+            ) : filteredProjects.length === 0 ? (
+              <div className="py-10 px-6 text-center text-slate-400 space-y-2">
+                <p className="text-xs">No projects match your filter criteria.</p>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setProjectSearch('');
+                    setStatusFilter('ALL');
+                  }}
+                  className="text-xs text-purple-700 underline font-medium"
+                >
+                  Clear filters
+                </button>
+              </div>
+            ) : (
+              filteredProjects.map((proj) => {
+                const statusInfo = getStatusBadge(proj.status);
+                const memberCount =
+                  proj._count?.members ??
+                  (Array.isArray(proj.members) ? proj.members.length : 0);
+
+                const ownerName =
+                  proj.owner?.name ||
+                  proj.owner?.email ||
+                  (Array.isArray(proj.owners) && proj.owners.length > 0
+                    ? proj.owners[0].name || proj.owners[0].email
+                    : 'Team Lead');
+
+                return (
+                  <div
+                    key={proj.id}
+                    onClick={() => onSelectProject?.(proj.id, proj.name)}
+                    className="p-4 hover:bg-purple-50/40 transition-colors cursor-pointer group flex items-center justify-between gap-4"
+                    role="button"
+                    tabIndex={0}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter' || e.key === ' ') {
+                        e.preventDefault();
+                        onSelectProject?.(proj.id, proj.name);
+                      }
+                    }}
+                  >
+                    <div className="space-y-1 min-w-0 flex-1">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <span className="font-bold text-sm text-slate-800 group-hover:text-purple-700 transition-colors truncate">
+                          {proj.name}
+                        </span>
+                        <span
+                          className={`inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-bold border ${statusInfo.badgeClass}`}
+                        >
+                          <span className={`w-1.5 h-1.5 rounded-full ${statusInfo.dotClass}`} />
+                          {statusInfo.label}
+                        </span>
+                        <ProjectMethodologyBadge methodology={proj.methodology} size="sm" />
+                      </div>
+
+                      {proj.description && (
+                        <p className="text-xs text-slate-500 line-clamp-1">{proj.description}</p>
+                      )}
+
+                      <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-[11px] text-slate-400 pt-0.5">
+                        <span className="flex items-center gap-1 text-slate-600 font-medium">
+                          <Users className="w-3 h-3 text-purple-500" />
+                          <span>
+                            {memberCount} {memberCount === 1 ? 'member' : 'members'}
+                          </span>
+                        </span>
+                        {ownerName && (
+                          <span className="text-slate-500">
+                            Lead: <strong className="text-slate-700 font-semibold">{ownerName}</strong>
+                          </span>
+                        )}
+                        {proj.start_date && (
+                          <span className="flex items-center gap-1">
+                            <Calendar className="w-3 h-3" />
+                            <span>
+                              {new Date(proj.start_date).toLocaleDateString('en-US', {
+                                month: 'short',
+                                day: 'numeric',
+                              })}
+                              {proj.end_date &&
+                                ` - ${new Date(proj.end_date).toLocaleDateString('en-US', {
+                                  month: 'short',
+                                  day: 'numeric',
+                                })}`}
+                            </span>
+                          </span>
+                        )}
+                      </div>
+                    </div>
+
+                    <div className="flex items-center gap-2 shrink-0">
+                      <span className="text-xs font-semibold text-purple-600 opacity-0 group-hover:opacity-100 transition-opacity flex items-center gap-1">
+                        Open Workspace
+                        <ArrowRight className="w-3.5 h-3.5" />
+                      </span>
+                    </div>
+                  </div>
+                );
+              })
+            )}
+          </div>
+        </div>
+
+        {/* Account Security Info Card */}
+        <div className="bg-purple-50/60 rounded-xl border border-purple-100 p-4 space-y-2">
+          <div className="flex items-center gap-2 text-xs font-bold text-purple-900">
+            <Shield className="w-4 h-4 text-purple-600" />
+            <span>InternHub Security Policy</span>
+          </div>
+          <p className="text-[11px] text-purple-800/80 leading-relaxed">
+            Passwords are cryptographically hashed using Argon2id. Once changed, your current active
+            session is refreshed automatically.
+          </p>
+        </div>
+      </div>
+
+      {/* Change Password Modal */}
+      {isChangingPassword && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/50 backdrop-blur-xs animate-in fade-in duration-150">
+          <div 
+            className="bg-white rounded-2xl border border-slate-200 shadow-xl max-w-md w-full overflow-hidden animate-in zoom-in-95 duration-150"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="modal-change-password-title"
+          >
+            {/* Modal Header */}
+            <div className="p-4 sm:p-5 border-b border-slate-100 flex items-center justify-between gap-3 bg-purple-50/40">
+              <div className="flex items-center gap-2.5">
+                <div className="w-8 h-8 rounded-lg bg-purple-100 border border-purple-200 flex items-center justify-center text-purple-700">
+                  <KeyRound className="w-4 h-4" />
+                </div>
+                <div>
+                  <h2 id="modal-change-password-title" className="text-sm font-bold text-slate-900">Change Password</h2>
+                  <p className="text-xs text-slate-500">Update your account login credentials</p>
+                </div>
               </div>
               <button
                 type="button"
-                onClick={() => setIsEditing(false)}
-                className="text-slate-400 hover:text-slate-600 p-1 rounded-md"
+                onClick={handleCancelPasswordChange}
+                disabled={passwordSubmitting}
+                className="p-1.5 rounded-lg text-slate-400 hover:text-slate-600 hover:bg-slate-100 transition-colors cursor-pointer disabled:opacity-50"
+                title="Close"
               >
                 <X className="w-4 h-4" />
               </button>
             </div>
 
-            <form onSubmit={handleSaveProfile} className="mt-4 space-y-4">
-              {errorMsg && (
-                <div className="p-3 rounded-lg bg-rose-50 border border-rose-200 text-xs text-rose-700">
-                  {errorMsg}
+            {/* Modal Form Body */}
+            <form onSubmit={handlePasswordSubmit} className="p-5 space-y-4">
+              {/* Feedback Banners */}
+              {passwordError && (
+                <div className="p-3 rounded-lg bg-rose-50 border border-rose-200 flex items-start gap-2 text-xs text-rose-800 animate-in fade-in duration-150">
+                  <AlertCircle className="w-4 h-4 text-rose-600 shrink-0 mt-0.5" />
+                  <div className="font-medium">{passwordError}</div>
                 </div>
               )}
 
-              <div>
-                <label className="block text-xs font-semibold text-slate-700 mb-1">
-                  Full Name
+              {/* 1. Current Password Field */}
+              <div className="space-y-1">
+                <label className="block text-xs font-semibold text-slate-700">
+                  Current Password <span className="text-rose-500">*</span>
                 </label>
-                <input
-                  type="text"
-                  value={editName}
-                  onChange={(e) => setEditName(e.target.value)}
-                  className="w-full px-3 py-2 text-xs border border-slate-300 rounded-lg focus:outline-hidden focus:ring-2 focus:ring-purple-500 focus:border-purple-500"
-                  placeholder="Enter your name"
-                  required
-                />
+                <div className="relative">
+                  <input
+                    type={showPasswords.current ? 'text' : 'password'}
+                    value={passwordForm.currentPassword}
+                    onChange={(e) => handlePasswordChange('currentPassword', e.target.value)}
+                    placeholder="Enter current password"
+                    className="w-full pl-8 pr-9 py-2 text-xs bg-slate-50 border border-slate-200 rounded-lg focus:outline-hidden focus:ring-2 focus:ring-purple-500/20 focus:border-purple-500 transition-all text-slate-900"
+                    autoComplete="current-password"
+                    disabled={passwordSubmitting}
+                  />
+                  <Lock className="w-3.5 h-3.5 text-slate-400 absolute left-2.5 top-2.5" />
+                  <button
+                    type="button"
+                    onClick={() =>
+                      setShowPasswords((prev) => ({ ...prev, current: !prev.current }))
+                    }
+                    className="p-1 text-slate-400 hover:text-slate-600 absolute right-2 top-1.5 rounded transition-colors cursor-pointer"
+                    title={showPasswords.current ? 'Hide password' : 'Show password'}
+                  >
+                    {showPasswords.current ? (
+                      <EyeOff className="w-3.5 h-3.5" />
+                    ) : (
+                      <Eye className="w-3.5 h-3.5" />
+                    )}
+                  </button>
+                </div>
+                {touched.current && !passwordValidations.hasCurrent && (
+                  <p className="text-[11px] text-rose-600 flex items-center gap-1 mt-0.5">
+                    <AlertCircle className="w-3 h-3" />
+                    Current password is required.
+                  </p>
+                )}
               </div>
 
-              <div>
-                <label className="block text-xs font-semibold text-slate-700 mb-1">
-                  Email Address
+              {/* 2. New Password Field */}
+              <div className="space-y-1">
+                <label className="block text-xs font-semibold text-slate-700">
+                  New Password <span className="text-rose-500">*</span>
                 </label>
-                <input
-                  type="email"
-                  value={displayEmail}
-                  disabled
-                  className="w-full px-3 py-2 text-xs border border-slate-200 bg-slate-100 text-slate-500 rounded-lg cursor-not-allowed"
-                />
-                <p className="text-[11px] text-slate-400 mt-1">
-                  Email address is managed by your organization and cannot be changed.
-                </p>
+                <div className="relative">
+                  <input
+                    type={showPasswords.next ? 'text' : 'password'}
+                    value={passwordForm.newPassword}
+                    onChange={(e) => handlePasswordChange('newPassword', e.target.value)}
+                    placeholder="Minimum 8 characters"
+                    className="w-full pl-8 pr-9 py-2 text-xs bg-slate-50 border border-slate-200 rounded-lg focus:outline-hidden focus:ring-2 focus:ring-purple-500/20 focus:border-purple-500 transition-all text-slate-900"
+                    autoComplete="new-password"
+                    disabled={passwordSubmitting}
+                  />
+                  <KeyRound className="w-3.5 h-3.5 text-slate-400 absolute left-2.5 top-2.5" />
+                  <button
+                    type="button"
+                    onClick={() => setShowPasswords((prev) => ({ ...prev, next: !prev.next }))}
+                    className="p-1 text-slate-400 hover:text-slate-600 absolute right-2 top-1.5 rounded transition-colors cursor-pointer"
+                    title={showPasswords.next ? 'Hide password' : 'Show password'}
+                  >
+                    {showPasswords.next ? (
+                      <EyeOff className="w-3.5 h-3.5" />
+                    ) : (
+                      <Eye className="w-3.5 h-3.5" />
+                    )}
+                  </button>
+                </div>
+                {touched.next && !passwordValidations.lengthValid && (
+                  <p className="text-[11px] text-rose-600 flex items-center gap-1 mt-0.5">
+                    <AlertCircle className="w-3 h-3" />
+                    Must be at least 8 characters long.
+                  </p>
+                )}
               </div>
 
-              <div>
-                <label className="block text-xs font-semibold text-slate-700 mb-1">
-                  Assigned Batch
+              {/* 3. Confirm New Password Field */}
+              <div className="space-y-1">
+                <label className="block text-xs font-semibold text-slate-700">
+                  Confirm New Password <span className="text-rose-500">*</span>
                 </label>
-                <input
-                  type="text"
-                  value={displayBatch}
-                  disabled
-                  className="w-full px-3 py-2 text-xs border border-slate-200 bg-slate-100 text-slate-500 rounded-lg cursor-not-allowed"
-                />
-                <p className="text-[11px] text-slate-400 mt-1">
-                  Batch assignment is managed by program managers.
-                </p>
+                <div className="relative">
+                  <input
+                    type={showPasswords.confirm ? 'text' : 'password'}
+                    value={passwordForm.confirmPassword}
+                    onChange={(e) => handlePasswordChange('confirmPassword', e.target.value)}
+                    placeholder="Re-enter new password"
+                    className="w-full pl-8 pr-9 py-2 text-xs bg-slate-50 border border-slate-200 rounded-lg focus:outline-hidden focus:ring-2 focus:ring-purple-500/20 focus:border-purple-500 transition-all text-slate-900"
+                    autoComplete="new-password"
+                    disabled={passwordSubmitting}
+                  />
+                  <Lock className="w-3.5 h-3.5 text-slate-400 absolute left-2.5 top-2.5" />
+                  <button
+                    type="button"
+                    onClick={() =>
+                      setShowPasswords((prev) => ({ ...prev, confirm: !prev.confirm }))
+                    }
+                    className="p-1 text-slate-400 hover:text-slate-600 absolute right-2 top-1.5 rounded transition-colors cursor-pointer"
+                    title={showPasswords.confirm ? 'Hide password' : 'Show password'}
+                  >
+                    {showPasswords.confirm ? (
+                      <EyeOff className="w-3.5 h-3.5" />
+                    ) : (
+                      <Eye className="w-3.5 h-3.5" />
+                    )}
+                  </button>
+                </div>
+                {touched.confirm && !passwordValidations.matchesConfirm && (
+                  <p className="text-[11px] text-rose-600 flex items-center gap-1 mt-0.5">
+                    <AlertCircle className="w-3 h-3" />
+                    Passwords do not match.
+                  </p>
+                )}
               </div>
 
-              <div className="flex items-center justify-end gap-2 pt-3 border-t border-slate-100">
+              {/* Security Checklist */}
+              <div className="p-3 bg-slate-50 rounded-lg border border-slate-100 space-y-1.5 text-[11px] text-slate-600">
+                <div className="font-semibold text-slate-700 mb-1">Password Requirements:</div>
+                <div className="flex items-center gap-1.5">
+                  <span
+                    className={`w-1.5 h-1.5 rounded-full ${
+                      passwordValidations.lengthValid ? 'bg-emerald-500' : 'bg-slate-300'
+                    }`}
+                  />
+                  <span className={passwordValidations.lengthValid ? 'text-emerald-700 font-medium' : ''}>
+                    At least 8 characters
+                  </span>
+                </div>
+                <div className="flex items-center gap-1.5">
+                  <span
+                    className={`w-1.5 h-1.5 rounded-full ${
+                      passwordValidations.differentFromCurrent ? 'bg-emerald-500' : 'bg-slate-300'
+                    }`}
+                  />
+                  <span
+                    className={
+                      passwordValidations.differentFromCurrent ? 'text-emerald-700 font-medium' : ''
+                    }
+                  >
+                    Different from current password
+                  </span>
+                </div>
+                <div className="flex items-center gap-1.5">
+                  <span
+                    className={`w-1.5 h-1.5 rounded-full ${
+                      passwordValidations.matchesConfirm ? 'bg-emerald-500' : 'bg-slate-300'
+                    }`}
+                  />
+                  <span className={passwordValidations.matchesConfirm ? 'text-emerald-700 font-medium' : ''}>
+                    Passwords match
+                  </span>
+                </div>
+              </div>
+
+              {/* Form Actions */}
+              <div className="flex items-center justify-end gap-2 pt-2 border-t border-slate-100">
                 <button
                   type="button"
-                  onClick={() => setIsEditing(false)}
-                  disabled={isSaving}
-                  className="px-4 py-2 text-xs font-medium text-slate-600 hover:bg-slate-100 rounded-lg transition-colors"
+                  onClick={handleCancelPasswordChange}
+                  disabled={passwordSubmitting}
+                  className="px-3.5 py-1.5 text-xs font-semibold text-slate-600 hover:text-slate-800 hover:bg-slate-100 rounded-lg transition-colors cursor-pointer disabled:opacity-50"
                 >
                   Cancel
                 </button>
                 <button
                   type="submit"
-                  disabled={isSaving}
-                  className="flex items-center gap-1.5 px-4 py-2 text-xs font-semibold text-white bg-purple-600 hover:bg-purple-700 rounded-lg transition-colors disabled:opacity-50"
+                  disabled={passwordSubmitting || !passwordValidations.isValid}
+                  className="inline-flex items-center gap-1.5 px-4 py-1.5 text-xs font-semibold text-white bg-purple-700 hover:bg-purple-800 disabled:bg-slate-300 disabled:cursor-not-allowed rounded-lg shadow-xs transition-colors cursor-pointer"
                 >
-                  {isSaving ? (
+                  {passwordSubmitting ? (
                     <>
                       <Loader2 className="w-3.5 h-3.5 animate-spin" />
                       <span>Saving...</span>
                     </>
                   ) : (
-                    <>
-                      <Save className="w-3.5 h-3.5" />
-                      <span>Save Changes</span>
-                    </>
+                    <span>Update Password</span>
                   )}
                 </button>
               </div>

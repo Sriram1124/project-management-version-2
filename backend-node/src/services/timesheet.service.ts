@@ -1,4 +1,7 @@
 import { prisma } from '../lib/prisma';
+import crypto from 'crypto';
+import { AuditService } from './audit.service';
+import { NotificationService } from './notification.service';
 
 export interface OrganizationWorkPolicyInput {
   office_start_time?: string;
@@ -216,14 +219,21 @@ export class TimesheetService {
       return dayCutoff;
     }
 
-    // If session started after 18:15 (e.g. night shift), cap at 4 hours max duration or midnight
+    // If session started at or after 18:15, cutoff is next day's 18:15 (or 4 hours max duration)
+    const tomorrow = new Date(startedAt.getTime() + 24 * 60 * 60 * 1000);
+    const nextDayCutoff = buildLocalDateForTime(tomorrow, '18:15', timezone);
     const fourHoursLater = new Date(startedAt.getTime() + 4 * 60 * 60 * 1000);
-    const midnight = new Date(startedAt);
-    midnight.setUTCHours(23, 59, 59, 999);
-    return fourHoursLater.getTime() < midnight.getTime() ? fourHoursLater : midnight;
+    return fourHoursLater.getTime() < nextDayCutoff.getTime() ? fourHoursLater : nextDayCutoff;
   }
 
+  private static isAutoClocking = false;
+
   static async autoClockExpiredSessions(orgId?: string, userId?: string): Promise<number> {
+    if (this.isAutoClocking) {
+      return 0;
+    }
+    this.isAutoClocking = true;
+
     try {
       const now = Date.now();
       const openSessions = await prisma.workSession.findMany({
@@ -259,29 +269,50 @@ export class TimesheetService {
             : 'Auto-clocked at 18:15 (daily safety cutoff)';
 
           await prisma.$transaction(async (tx) => {
-            await tx.workSession.update({
-              where: { id: session.id },
+            // Atomic conditional update: only the first caller to transition ended_at from null proceeds
+            const updateResult = await tx.workSession.updateMany({
+              where: { id: session.id, ended_at: null },
               data: {
                 ended_at: cutoffTime,
                 notes: autoNotes,
               },
             });
 
+            if (updateResult.count === 0) {
+              // Session was already finalized concurrently by another worker or request
+              return;
+            }
+
             if (session.task_id) {
-              await tx.timeEntry.create({
-                data: {
-                  organization_id: session.organization_id,
-                  user_id: session.user_id,
-                  task_id: session.task_id,
-                  project_id: session.task?.project_id || null,
-                  work_session_id: session.id,
-                  date: session.started_at,
-                  start_time: session.started_at,
-                  end_time: cutoffTime,
-                  duration_minutes: durationMinutes,
-                  notes: autoNotes,
-                },
+              const existingEntry = await tx.timeEntry.findFirst({
+                where: { work_session_id: session.id },
               });
+
+              if (existingEntry) {
+                await tx.timeEntry.update({
+                  where: { id: existingEntry.id },
+                  data: {
+                    end_time: cutoffTime,
+                    duration_minutes: durationMinutes,
+                    notes: autoNotes,
+                  },
+                });
+              } else {
+                await tx.timeEntry.create({
+                  data: {
+                    organization_id: session.organization_id,
+                    user_id: session.user_id,
+                    task_id: session.task_id,
+                    project_id: session.task?.project_id || null,
+                    work_session_id: session.id,
+                    date: session.started_at,
+                    start_time: session.started_at,
+                    end_time: cutoffTime,
+                    duration_minutes: durationMinutes,
+                    notes: autoNotes,
+                  },
+                });
+              }
             }
           });
 
@@ -293,10 +324,16 @@ export class TimesheetService {
     } catch (err) {
       console.error('Failed to auto-clock expired sessions:', err);
       return 0;
+    } finally {
+      this.isAutoClocking = false;
     }
   }
 
   static async startSession(user: any, input: SessionInput = {}) {
+    if (this.hasRole(user, ['MANAGER'])) {
+      throw new Error('Forbidden: managers do not have permission to start timers on tasks');
+    }
+
     const orgId = this.resolveOrganizationId(user, user.organization_id) || await this.getDefaultOrganizationId();
     // Auto-clock any expired/stale sessions before starting a new one
     await this.autoClockExpiredSessions(orgId, user.id);
@@ -311,36 +348,34 @@ export class TimesheetService {
       if (!task) throw new Error('Task not found in your organization');
 
       const userIsAssignee = task.assignees.some((assignee) => assignee.user_id === user.id);
-      const canManageTask = this.hasRole(user, ['MANAGER', 'ADMIN', 'SUPER_ADMIN', 'TECH_LEAD']) || this.hasPermission(user, 'TASK_UPDATE');
+      const canManageTask = this.hasRole(user, ['ADMIN', 'SUPER_ADMIN', 'TECH_LEAD']) || this.hasPermission(user, 'TASK_UPDATE');
       if (!userIsAssignee && !canManageTask && task.created_by !== user.id) {
         throw new Error('Forbidden: you are not assigned to this task');
       }
+    }
 
-      const activeTaskSession = await prisma.workSession.findFirst({
-        where: { organization_id: orgId, user_id: user.id, ended_at: null },
-        include: {
-          task: {
-            select: { id: true, title: true }
-          }
+    // Enforce strictly one active task timer per user across the entire application
+    const existingActive = await prisma.workSession.findFirst({
+      where: {
+        organization_id: orgId,
+        user_id: user.id,
+        ended_at: null,
+      },
+      include: {
+        task: {
+          select: { id: true, title: true },
         },
-        orderBy: { started_at: 'desc' },
-      });
+      },
+      orderBy: { started_at: 'desc' },
+    });
 
-      if (activeTaskSession) {
-        if (activeTaskSession.task_id === taskId) return activeTaskSession;
-        const runningTitle = activeTaskSession.task?.title || activeTaskSession.task_id || 'another task';
-        throw new Error(`You already have an active timer running on "${runningTitle}". Please stop it before starting a new one.`);
+    if (existingActive) {
+      if ((existingActive.task_id ?? null) === taskId) {
+        // Idempotent: already running on this task, return without duplicate creation
+        return existingActive;
       }
-    } else {
-      const existingActive = await prisma.workSession.findFirst({
-        where: {
-          organization_id: orgId,
-          user_id: user.id,
-          ended_at: null,
-        },
-        orderBy: { started_at: 'desc' },
-      });
-      if (existingActive) return existingActive;
+      // Switching tasks: safely stop and record the previous session before starting the next one
+      await this.endSession(user, { task_id: existingActive.task_id });
     }
 
     const startedAt = toDate(input.started_at) || new Date();
@@ -414,14 +449,37 @@ export class TimesheetService {
     }
 
     return await prisma.$transaction(async (tx) => {
-      const session = await tx.workSession.update({
-        where: { id: activeSession.id },
+      // Atomic conditional update: only the first caller to transition ended_at from null proceeds
+      const updateResult = await tx.workSession.updateMany({
+        where: { id: activeSession.id, ended_at: null },
         data: {
           ended_at: effectiveEndedAt,
           break_minutes: breakMinutes,
           notes: effectiveNotes,
         },
       });
+
+      if (updateResult.count === 0) {
+        // Concurrently ended or auto-clocked
+        const ended = await tx.workSession.findUnique({
+          where: { id: activeSession.id },
+          include: {
+            time_entries: {
+              include: { task: true, project: true },
+              orderBy: { created_at: 'desc' },
+              take: 1,
+            },
+          },
+        });
+        return {
+          ...ended,
+          time_entry: ended?.time_entries?.[0] || null,
+        };
+      }
+
+      const session = (await tx.workSession.findUnique({
+        where: { id: activeSession.id },
+      })) || activeSession;
 
       if (activeSession.task_id) {
         const rawDiff = diffMinutes(activeSession.started_at, effectiveEndedAt);
@@ -431,6 +489,26 @@ export class TimesheetService {
           where: { id: activeSession.task_id },
           select: { project_id: true },
         });
+
+        const existingEntry = await tx.timeEntry.findFirst({
+          where: { work_session_id: activeSession.id },
+        });
+
+        if (existingEntry) {
+          const entry = await tx.timeEntry.update({
+            where: { id: existingEntry.id },
+            data: {
+              end_time: effectiveEndedAt,
+              duration_minutes: durationMinutes,
+              notes: effectiveNotes || null,
+            },
+            include: {
+              task: true,
+              project: true,
+            },
+          });
+          return { ...session, time_entry: entry };
+        }
 
         const entry = await tx.timeEntry.create({
           data: {
@@ -481,6 +559,328 @@ export class TimesheetService {
       },
       orderBy: { started_at: 'desc' },
     });
+  }
+
+  /**
+   * Request Time Correction (Intern Dashboard)
+   * Allows correcting accidentally recorded extra time with reason, difference calculation,
+   * audit logging, manager notification, and approval requirement.
+   */
+  static async requestTimeCorrection(user: any, input: {
+    time_entry_id: string;
+    corrected_duration_minutes?: number;
+    excess_minutes?: number;
+    reason: string;
+  }) {
+    const { time_entry_id, reason } = input;
+    if (!time_entry_id) {
+      throw new Error('Time entry ID is required');
+    }
+    if (!reason || !reason.trim()) {
+      throw new Error('Reason is mandatory for requesting a time correction');
+    }
+
+    const orgId = this.resolveOrganizationId(user, user.organization_id) || await this.getDefaultOrganizationId();
+
+    const timeEntry = await prisma.timeEntry.findUnique({
+      where: { id: time_entry_id },
+      include: {
+        task: { select: { id: true, title: true, project_id: true } },
+      },
+    });
+
+    if (!timeEntry) {
+      throw new Error('Time entry not found');
+    }
+
+    if (timeEntry.user_id !== user.id) {
+      throw new Error('Forbidden: you can only request corrections for your own time entries');
+    }
+
+    const originalDuration = Number(timeEntry.duration_minutes) || 0;
+    let correctedDuration: number;
+
+    if (typeof input.excess_minutes === 'number') {
+      if (input.excess_minutes <= 0) {
+        throw new Error('Excess minutes to remove must be greater than 0');
+      }
+      correctedDuration = originalDuration - Math.round(input.excess_minutes);
+    } else if (typeof input.corrected_duration_minutes === 'number') {
+      correctedDuration = Math.round(input.corrected_duration_minutes);
+    } else {
+      throw new Error('Either corrected_duration_minutes or excess_minutes must be provided');
+    }
+
+    if (correctedDuration < 0) {
+      throw new Error('Corrected duration cannot reduce a session below zero');
+    }
+    if (correctedDuration >= originalDuration) {
+      throw new Error('Corrected duration must be less than original duration to remove excess time');
+    }
+
+    const excessMinutes = originalDuration - correctedDuration;
+
+    // Check if an existing pending correction request already exists for this entry
+    const existingLogs = await prisma.auditLog.findMany({
+      where: {
+        target_type: 'TimeEntry',
+        target_id: time_entry_id,
+        action: 'TIME_CORRECTION_REQUESTED',
+      },
+      orderBy: { created_at: 'desc' },
+      take: 5,
+    });
+
+    for (const log of existingLogs) {
+      const meta = log.metadata as any;
+      if (meta && meta.status === 'PENDING') {
+        throw new Error('A pending correction request already exists for this time entry');
+      }
+    }
+
+    const requestId = `cor_${crypto.randomUUID().replace(/-/g, '').slice(0, 16)}`;
+
+    const metadata = {
+      request_id: requestId,
+      time_entry_id: timeEntry.id,
+      user_id: user.id,
+      user_name: user.name || user.email || 'Intern',
+      task_id: timeEntry.task_id,
+      task_title: timeEntry.task?.title || 'Task',
+      project_id: timeEntry.project_id || timeEntry.task?.project_id || null,
+      date: timeEntry.date,
+      original_duration_minutes: originalDuration,
+      corrected_duration_minutes: correctedDuration,
+      excess_minutes: excessMinutes,
+      reason: reason.trim(),
+      status: 'PENDING',
+      created_at: new Date().toISOString(),
+    };
+
+    await AuditService.record({
+      actorId: user.id,
+      organizationId: orgId,
+      action: 'TIME_CORRECTION_REQUESTED',
+      targetType: 'TimeEntry',
+      targetId: timeEntry.id,
+      metadata,
+    });
+
+    // Notify authorized managers
+    try {
+      const managers = await prisma.user.findMany({
+        where: {
+          organization_id: orgId,
+          is_active: true,
+          roles: {
+            some: {
+              role: {
+                name: { in: ['MANAGER', 'ADMIN', 'SUPER_ADMIN'] }
+              }
+            }
+          }
+        },
+        select: { id: true }
+      });
+      const managerIds = managers.map(m => m.id).filter(id => id !== user.id);
+
+      if (managerIds.length > 0) {
+        await NotificationService.createNotification({
+          organizationId: orgId,
+          senderId: user.id,
+          title: `Time Correction Request from ${user.name || 'Intern'}`,
+          message: `${user.name || 'Intern'} requested to reduce ${excessMinutes}m on task "${timeEntry.task?.title || 'Task'}". Reason: ${reason.trim()}`,
+          recipientIds: managerIds,
+          type: 'ALERT'
+        });
+      }
+    } catch (notifErr) {
+      console.error('[TimeCorrection] Failed to notify managers:', notifErr);
+    }
+
+    return {
+      message: 'Time correction requested successfully',
+      request: metadata,
+    };
+  }
+
+  static async getTimeCorrections(user: any, filters: { status?: string; user_id?: string } = {}) {
+    const orgId = this.resolveOrganizationId(user, user.organization_id) || await this.getDefaultOrganizationId();
+    const isManager = this.hasRole(user, ['MANAGER', 'ADMIN', 'SUPER_ADMIN', 'TECH_LEAD']) || this.hasPermission(user, 'TIMESHEET_VIEW');
+
+    const logs = await prisma.auditLog.findMany({
+      where: {
+        organization_id: orgId,
+        target_type: 'TimeEntry',
+        action: 'TIME_CORRECTION_REQUESTED',
+      },
+      orderBy: { created_at: 'desc' },
+      take: 100,
+    });
+
+    const resolutionLogs = await prisma.auditLog.findMany({
+      where: {
+        organization_id: orgId,
+        target_type: 'TimeEntry',
+        action: { in: ['TIME_CORRECTION_APPROVED', 'TIME_CORRECTION_REJECTED'] },
+      },
+      orderBy: { created_at: 'desc' },
+      take: 200,
+    });
+
+    const requests = [];
+    for (const log of logs) {
+      const meta = log.metadata as any;
+      if (!meta || !meta.request_id) continue;
+
+      if (!isManager && meta.user_id !== user.id) {
+        continue;
+      }
+      if (filters.user_id && meta.user_id !== filters.user_id) {
+        continue;
+      }
+
+      // Check for resolution log matching this request_id
+      const resolutionLog = resolutionLogs.find((l) => (l.metadata as any)?.request_id === meta.request_id);
+
+      let currentStatus = meta.status || 'PENDING';
+      let reviewedBy = meta.reviewed_by || null;
+      let reviewedAt = meta.reviewed_at || null;
+      let decisionNote = meta.decision_note || null;
+
+      if (resolutionLog) {
+        const resMeta = resolutionLog.metadata as any;
+        currentStatus = resolutionLog.action === 'TIME_CORRECTION_APPROVED' ? 'APPROVED' : 'REJECTED';
+        reviewedBy = resMeta?.reviewed_by_name || resMeta?.reviewed_by || resolutionLog.actor_id;
+        reviewedAt = resMeta?.reviewed_at || resolutionLog.created_at;
+        decisionNote = resMeta?.decision_note || null;
+      }
+
+      if (filters.status && filters.status !== 'ALL' && currentStatus !== filters.status) {
+        continue;
+      }
+
+      requests.push({
+        ...meta,
+        status: currentStatus,
+        reviewed_by: reviewedBy,
+        reviewed_at: reviewedAt,
+        decision_note: decisionNote,
+      });
+    }
+
+    return { requests };
+  }
+
+  static async reviewTimeCorrection(user: any, requestId: string, decision: 'APPROVE' | 'REJECT', decisionNote?: string) {
+    if (!this.hasRole(user, ['MANAGER', 'ADMIN', 'SUPER_ADMIN', 'TECH_LEAD'])) {
+      throw new Error('Forbidden: only managers can review time correction requests');
+    }
+
+    const orgId = this.resolveOrganizationId(user, user.organization_id) || await this.getDefaultOrganizationId();
+
+    const requestLogs = await prisma.auditLog.findMany({
+      where: {
+        organization_id: orgId,
+        target_type: 'TimeEntry',
+        action: 'TIME_CORRECTION_REQUESTED',
+      },
+      orderBy: { created_at: 'desc' },
+      take: 100,
+    });
+
+    const requestLog = requestLogs.find((l) => (l.metadata as any)?.request_id === requestId);
+
+    if (!requestLog) {
+      throw new Error('Time correction request not found');
+    }
+
+    const meta = requestLog.metadata as any;
+    if (!meta) throw new Error('Invalid request metadata');
+
+    // Check if already reviewed
+    const existingDecisionLogs = await prisma.auditLog.findMany({
+      where: {
+        organization_id: orgId,
+        target_type: 'TimeEntry',
+        action: { in: ['TIME_CORRECTION_APPROVED', 'TIME_CORRECTION_REJECTED'] },
+      },
+    });
+
+    const existingDecision = existingDecisionLogs.find((l) => (l.metadata as any)?.request_id === requestId);
+
+    if (existingDecision) {
+      throw new Error(`This request has already been ${existingDecision.action === 'TIME_CORRECTION_APPROVED' ? 'approved' : 'rejected'}`);
+    }
+
+    const isApprove = decision === 'APPROVE';
+    const actionName = isApprove ? 'TIME_CORRECTION_APPROVED' : 'TIME_CORRECTION_REJECTED';
+
+    if (isApprove) {
+      // Apply the correction to the actual TimeEntry
+      const timeEntry = await prisma.timeEntry.findUnique({
+        where: { id: meta.time_entry_id },
+      });
+
+      if (!timeEntry) {
+        throw new Error('Associated time entry not found');
+      }
+
+      const noteSuffix = `[Correction: -${meta.excess_minutes}m approved by ${user.name || 'Manager'}. Reason: ${meta.reason}]`;
+      const updatedNotes = timeEntry.notes ? `${timeEntry.notes} · ${noteSuffix}` : noteSuffix;
+
+      await prisma.timeEntry.update({
+        where: { id: meta.time_entry_id },
+        data: {
+          duration_minutes: meta.corrected_duration_minutes,
+          notes: updatedNotes,
+        },
+      });
+    }
+
+    // Record review in AuditLog
+    await AuditService.record({
+      actorId: user.id,
+      organizationId: orgId,
+      action: actionName,
+      targetType: 'TimeEntry',
+      targetId: meta.time_entry_id,
+      metadata: {
+        request_id: requestId,
+        time_entry_id: meta.time_entry_id,
+        user_id: meta.user_id,
+        status: isApprove ? 'APPROVED' : 'REJECTED',
+        reviewed_by: user.id,
+        reviewed_by_name: user.name || 'Manager',
+        reviewed_at: new Date().toISOString(),
+        decision_note: decisionNote ? decisionNote.trim() : null,
+        excess_minutes: meta.excess_minutes,
+        original_duration_minutes: meta.original_duration_minutes,
+        corrected_duration_minutes: meta.corrected_duration_minutes,
+      },
+    });
+
+    // Notify the intern
+    try {
+      await NotificationService.createNotification({
+        organizationId: orgId,
+        senderId: user.id,
+        title: `Time Correction ${isApprove ? 'Approved' : 'Rejected'}`,
+        message: isApprove
+          ? `Your request to remove ${meta.excess_minutes}m on "${meta.task_title || 'Task'}" was approved by ${user.name || 'Manager'}.`
+          : `Your request to remove ${meta.excess_minutes}m on "${meta.task_title || 'Task'}" was rejected. ${decisionNote ? `Note: ${decisionNote}` : ''}`,
+        recipientIds: [meta.user_id],
+        type: 'ALERT',
+      });
+    } catch (notifErr) {
+      console.error('[TimeCorrection] Failed to notify intern:', notifErr);
+    }
+
+    return {
+      message: `Time correction request ${isApprove ? 'approved' : 'rejected'} successfully`,
+      status: isApprove ? 'APPROVED' : 'REJECTED',
+      corrected_duration_minutes: isApprove ? meta.corrected_duration_minutes : meta.original_duration_minutes,
+    };
   }
 
   static async getTaskTimeEntries(user: any, taskId: string) {

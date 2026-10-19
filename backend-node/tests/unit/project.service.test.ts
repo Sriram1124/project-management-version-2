@@ -467,6 +467,63 @@ describe('ProjectService Unit Tests', () => {
 
       expect(updated.name).toBe('Renamed Project');
     });
+
+    it('should support updating multiple project owners and sync memberships', async () => {
+      (prisma.project.findFirst as jest.Mock).mockResolvedValue({
+        id: 'p-1',
+        owner_id: 'user-mgr-1',
+        organization_id: 'org-1',
+        methodology: ProjectMethodology.SCRUM,
+      });
+      (prisma.user.findMany as jest.Mock).mockResolvedValue([
+        { id: 'user-mgr-1', name: 'Manager 1', roles: [{ role: { name: 'MANAGER' } }] },
+        { id: 'user-mgr-2', name: 'Manager 2', roles: [{ role: { name: 'TECH_LEAD' } }] },
+      ]);
+      (prisma.project.update as jest.Mock).mockResolvedValue({
+        id: 'p-1',
+        name: 'Project 1',
+        owner_id: 'user-mgr-1',
+        owner: { id: 'user-mgr-1', name: 'Manager 1', email: 'm1@example.com' },
+        members: [
+          { project_role: 'MANAGER', user: { id: 'user-mgr-2', name: 'Manager 2', email: 'm2@example.com' } },
+        ],
+      });
+      (prisma.projectMember.findFirst as jest.Mock).mockResolvedValue(null);
+      (prisma.projectMember.findMany as jest.Mock).mockResolvedValue([]);
+
+      const updated = await ProjectService.updateProject(
+        'p-1',
+        { owner_ids: ['user-mgr-1', 'user-mgr-2'] },
+        mockOrgUser
+      );
+
+      expect(updated.owners).toHaveLength(2);
+      expect(updated.owner_ids).toEqual(['user-mgr-1', 'user-mgr-2']);
+      expect(prisma.projectMember.create).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({
+            project_id: 'p-1',
+            project_role: 'MANAGER',
+          }),
+        })
+      );
+    });
+
+    it('should reject assigning pure interns as project owners', async () => {
+      (prisma.project.findFirst as jest.Mock).mockResolvedValue({
+        id: 'p-1',
+        owner_id: 'user-mgr-1',
+        organization_id: 'org-1',
+        methodology: ProjectMethodology.SCRUM,
+      });
+      (prisma.user.findMany as jest.Mock).mockResolvedValue([
+        { id: 'user-intern-1', name: 'Intern Dave', roles: [{ role: { name: 'INTERN' } }] },
+      ]);
+
+      await expect(
+        ProjectService.updateProject('p-1', { owner_ids: ['user-intern-1'] }, mockOrgUser)
+      ).rejects.toThrow('User "Intern Dave" is an intern and cannot be assigned as a project owner');
+    });
   });
 
   describe('archiveProject', () => {
@@ -1054,9 +1111,17 @@ describe('ProjectService Unit Tests', () => {
       // Performance score: 50 * 0.6 + 100 * 0.4 = 70
       expect(overview[0].performance_score).toBe(70);
       expect(overview[0].performance_label).toBe('Strong');
+      // Project Health & Risk Assessment
+      expect(overview[0].health_score).toBeGreaterThanOrEqual(0);
+      expect(overview[0].health_status).toBeDefined();
+      expect(overview[0].risk_level).toBeDefined();
+      expect(overview[0].projects[0].health_score).toBeDefined();
+      expect(overview[0].projects[0].risk_level).toBeDefined();
+      expect(overview[0].projects[0].schedule_health).toBeDefined();
+      expect(overview[0].projects[0].recommended_actions).toBeDefined();
     });
 
-    it('should handle tech lead with 0 project tasks', async () => {
+    it('should handle tech lead with 0 project tasks as Insufficient Data', async () => {
       (prisma.projectMember.findMany as jest.Mock).mockResolvedValue([
         {
           project_role: 'TECH_LEAD',
@@ -1083,6 +1148,11 @@ describe('ProjectService Unit Tests', () => {
       expect(overview[0].total_project_tasks).toBe(0);
       expect(overview[0].performance_score).toBe(0);
       expect(overview[0].performance_label).toBe('No Tasks');
+      expect(overview[0].health_score).toBeNull();
+      expect(overview[0].health_status).toBe('INSUFFICIENT_DATA');
+      expect(overview[0].risk_level).toBe('Insufficient Data');
+      expect(overview[0].projects[0].health_score).toBeNull();
+      expect(overview[0].projects[0].risk_level).toBe('Insufficient Data');
     });
   });
 });

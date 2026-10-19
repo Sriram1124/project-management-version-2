@@ -27,8 +27,14 @@ export default function MyTasksTab({
   onOpenCreatePersonalTask,
   onToggleTask,
   onToast,
-  showViewSwitcher = true
+  showViewSwitcher = true,
+  project = null,
+  isKanban = false,
 }) {
+  const isKanbanProject = isKanban || project?.methodology === 'KANBAN';
+  const Term = isKanbanProject ? 'Cycle' : 'Sprint';
+  const terms = isKanbanProject ? 'Cycles' : 'Sprints';
+
   const [filterType, setFilterType] = useState('ALL'); // 'ALL' | 'DUE_TODAY' | 'OVERDUE' | 'IN_PROGRESS' | 'COMPLETED' | 'PERSONAL'
   const [selectedCycleId, setSelectedCycleId] = useState('ALL'); // 'ALL' | 'BACKLOG' | cycleId
   const [search, setSearch] = useState('');
@@ -41,11 +47,11 @@ export default function MyTasksTab({
       if (w.sprint?.id) {
         map.set(w.sprint.id, { id: w.sprint.id, name: w.sprint.name, status: w.sprint.status });
       } else if (w.sprint_id) {
-        map.set(w.sprint_id, { id: w.sprint_id, name: w.sprint_name || 'Cycle', status: null });
+        map.set(w.sprint_id, { id: w.sprint_id, name: w.sprint_name || Term, status: null });
       }
     });
     return Array.from(map.values());
-  }, [workItems]);
+  }, [workItems, Term]);
 
   // Filtering
   const filteredItems = workItems.filter((item) => {
@@ -124,13 +130,13 @@ export default function MyTasksTab({
         <div className="flex flex-wrap items-center gap-2.5">
           {availableCycles.length > 0 && (
             <div className="flex items-center gap-1.5 text-xs text-slate-600 bg-slate-50 border border-slate-200 px-2.5 py-1.5 rounded-xl">
-              <span className="text-[10px] font-bold uppercase text-slate-400">Cycle:</span>
+              <span className="text-[10px] font-bold uppercase text-slate-400">{Term}:</span>
               <select
                 value={selectedCycleId}
                 onChange={(e) => setSelectedCycleId(e.target.value)}
                 className="bg-transparent text-xs font-semibold text-slate-800 focus:outline-none cursor-pointer"
               >
-                <option value="ALL">All Cycles ({workItems.length})</option>
+                <option value="ALL">All {terms} ({workItems.length})</option>
                 <option value="BACKLOG">Backlog / Unassigned ({workItems.filter(w => !w.sprint_id).length})</option>
                 {availableCycles.map((c) => (
                   <option key={c.id} value={c.id}>

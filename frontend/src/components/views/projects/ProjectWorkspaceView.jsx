@@ -24,10 +24,12 @@ export default function ProjectWorkspaceView({
   onProjectLoaded,
   readOnly = false,
   userRole = null,
+  isIntern = false,
 }) {
   const { user: authUser } = useAuth();
   const currentUserId = authUser?.id || authUser?.user_id;
   const authRole = String(authUser?.role?.name || authUser?.role || authUser?.type || authUser?.user_type || '').toUpperCase();
+  const isInternUser = isIntern || authRole === 'INTERN';
 
   const [currentTab, setCurrentTab] = useState(activeTab);
   const [liveProject, setLiveProject] = useState(null);
@@ -41,11 +43,16 @@ export default function ProjectWorkspaceView({
       (m.project_role === 'TECH_LEAD' || m.role === 'TECH_LEAD')
     );
 
+  const isProjectOwner = 
+    authUser?.id === liveProject?.owner_id ||
+    (Array.isArray(liveProject?.owner_ids) && liveProject.owner_ids.includes(authUser?.id)) ||
+    (Array.isArray(liveProject?.owners) && liveProject.owners.some((o) => o.id === authUser?.id));
+
   const canManageProject = 
     authRole === 'MANAGER' || 
     authRole === 'ADMIN' || 
     authRole === 'SUPER_ADMIN' || 
-    authUser?.id === liveProject?.owner_id ||
+    isProjectOwner ||
     isTechLeadOnProject;
 
   const effectiveReadOnly = readOnly && !canManageProject;
@@ -63,8 +70,16 @@ export default function ProjectWorkspaceView({
 
   const isKanban = isKanbanProject(liveProject);
   const tabs = useMemo(() => {
-    return getProjectTabs(liveProject);
-  }, [liveProject]);
+    return getProjectTabs(liveProject, { isIntern: isInternUser });
+  }, [liveProject, isInternUser]);
+
+  // If intern is somehow on approvals tab, redirect to overview
+  useEffect(() => {
+    if (isInternUser && currentTab === 'approvals') {
+      setCurrentTab('overview');
+      onTabChange?.('overview');
+    }
+  }, [isInternUser, currentTab, onTabChange]);
 
   // Adjust active tab when switching between Scrum and Kanban projects
   useEffect(() => {
@@ -99,9 +114,9 @@ export default function ProjectWorkspaceView({
     }
   };
 
-  const ownerName = liveProject?.owner
-    ? (liveProject.owner.name || liveProject.owner.email)
-    : (liveProject ? 'Unassigned' : 'Loading...');
+  const ownerNames = (Array.isArray(liveProject?.owners) && liveProject.owners.length > 0)
+    ? liveProject.owners.map((o) => o.name || o.email).join(', ')
+    : (liveProject?.owner ? (liveProject.owner.name || liveProject.owner.email) : (liveProject ? 'Unassigned' : 'Loading...'));
 
   const memberCount = liveProject?._count?.members ?? (liveProject?.members?.length ?? 0);
   const statusStr = liveProject?.status || 'PLANNED';
@@ -120,7 +135,7 @@ export default function ProjectWorkspaceView({
                 <span className="text-slate-300 select-none">·</span>
               </>
             )}
-            <span>Project Owner: <strong className="text-slate-800 font-semibold">{ownerName}</strong></span>
+            <span>Project {Array.isArray(liveProject?.owners) && liveProject.owners.length > 1 ? 'Owners' : 'Owner'}: <strong className="text-slate-800 font-semibold">{ownerNames}</strong></span>
             <span className="text-slate-300 select-none">·</span>
             <span>Status: <strong className="text-purple-700 font-semibold">{statusStr}</strong></span>
             <span className="text-slate-300 select-none">·</span>
@@ -211,7 +226,7 @@ export default function ProjectWorkspaceView({
             onToast={onToast}
             readOnly={effectiveReadOnly}
           />
-        ) : currentTab === 'approvals' ? (
+        ) : (currentTab === 'approvals' && !isInternUser) ? (
           <ProjectApprovalsTab
             projectId={projectId}
             project={liveProject}

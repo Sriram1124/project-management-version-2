@@ -153,7 +153,11 @@ export function StatusBadge({ status }) {
  * - No descendants exist: Show "No child items"
  * - Counts each descendant once (including nested), never counting the epic itself.
  */
-export function getEpicSprintSummary(epic, allWorkItems = [], sprints = []) {
+export function getEpicSprintSummary(epic, allWorkItems = [], sprints = [], isKanban = false) {
+  const Term = isKanban ? 'Cycle' : 'Sprint';
+  const term = isKanban ? 'cycle' : 'sprint';
+  const terms = isKanban ? 'cycles' : 'sprints';
+
   if (!epic) {
     return {
       type: 'NO_CHILDREN',
@@ -217,7 +221,7 @@ export function getEpicSprintSummary(epic, allWorkItems = [], sprints = []) {
       unassignedCount++;
     } else {
       assignedCount++;
-      const sName = sprintNameMap.get(sid) || d.sprint?.name || 'Cycle';
+      const sName = sprintNameMap.get(sid) || d.sprint?.name || Term;
       if (!sprintCounts.has(sid)) {
         sprintCounts.set(sid, { id: sid, name: sName, count: 0 });
       }
@@ -227,24 +231,24 @@ export function getEpicSprintSummary(epic, allWorkItems = [], sprints = []) {
 
   const distinctSprints = Array.from(sprintCounts.values());
 
-  // 1. No descendants assigned to any cycle
+  // 1. No descendants assigned to any cycle/sprint
   if (assignedCount === 0) {
     return {
       type: 'BACKLOG',
-      label: 'Backlog (No Cycle)',
+      label: `Backlog (No ${Term})`,
       badgeClass: 'bg-slate-50 text-slate-500 border-slate-200',
       title: `All ${totalDescendants} child items are in Backlog (unscheduled)`,
-      details: [{ name: 'Backlog (No Cycle)', count: unassignedCount, isBacklog: true }],
+      details: [{ name: `Backlog (No ${Term})`, count: unassignedCount, isBacklog: true }],
     };
   }
 
-  // 2. All assigned descendants belong to ONE cycle
+  // 2. All assigned descendants belong to ONE cycle/sprint
   if (distinctSprints.length === 1) {
     const s = distinctSprints[0];
     const itemWord = s.count === 1 ? 'item' : 'items';
 
     if (unassignedCount === 0) {
-      // 100% of descendants in one cycle
+      // 100% of descendants in one cycle/sprint
       return {
         type: 'SINGLE_SPRINT',
         label: `${s.name} · ${s.count} ${itemWord}`,
@@ -253,7 +257,7 @@ export function getEpicSprintSummary(epic, allWorkItems = [], sprints = []) {
         details: [{ name: s.name, count: s.count, isBacklog: false }],
       };
     } else {
-      // Some assigned to one cycle, others unassigned
+      // Some assigned to one cycle/sprint, others unassigned
       const unassignedWord = unassignedCount === 1 ? 'item' : 'items';
       return {
         type: 'PARTIAL_SPRINT',
@@ -262,13 +266,13 @@ export function getEpicSprintSummary(epic, allWorkItems = [], sprints = []) {
         title: `${s.name}: ${s.count} ${itemWord} · Backlog: ${unassignedCount} ${unassignedWord}`,
         details: [
           { name: s.name, count: s.count, isBacklog: false },
-          { name: 'Backlog (No Cycle)', count: unassignedCount, isBacklog: true },
+          { name: `Backlog (No ${Term})`, count: unassignedCount, isBacklog: true },
         ],
       };
     }
   }
 
-  // 3. Descendants span MULTIPLE cycles
+  // 3. Descendants span MULTIPLE cycles/sprints
   const parts = distinctSprints.map((s) => `${s.name}: ${s.count} ${s.count === 1 ? 'item' : 'items'}`);
   if (unassignedCount > 0) {
     parts.push(`Backlog: ${unassignedCount} ${unassignedCount === 1 ? 'item' : 'items'}`);
@@ -277,14 +281,14 @@ export function getEpicSprintSummary(epic, allWorkItems = [], sprints = []) {
   const multiSuffix = unassignedCount > 0 ? ` · ${unassignedCount} in Backlog` : '';
   return {
     type: 'MULTIPLE_SPRINTS',
-    label: `Multiple cycles (${distinctSprints.length})${multiSuffix}`,
+    label: `Multiple ${terms} (${distinctSprints.length})${multiSuffix}`,
     badgeClass: unassignedCount > 0
       ? 'bg-amber-50 text-amber-800 border-amber-300 font-medium'
       : 'bg-indigo-50 text-indigo-700 border-indigo-200 font-medium',
-    title: `Descendants span multiple cycles:\n${parts.join('\n')}`,
+    title: `Descendants span multiple ${terms}:\n${parts.join('\n')}`,
     details: [
       ...distinctSprints.map((s) => ({ name: s.name, count: s.count, isBacklog: false })),
-      ...(unassignedCount > 0 ? [{ name: 'Backlog (No Cycle)', count: unassignedCount, isBacklog: true }] : []),
+      ...(unassignedCount > 0 ? [{ name: `Backlog (No ${Term})`, count: unassignedCount, isBacklog: true }] : []),
     ],
   };
 }
@@ -314,9 +318,12 @@ function HierarchicalRow({
   onUpdateDueDate,
   onDeleteIssue,
   onAddChild,
+  isKanban = false,
   onDragStart,
   onDragEnd,
 }) {
+  const Term = isKanban ? 'Cycle' : 'Sprint';
+  const term = isKanban ? 'cycle' : 'sprint';
   const { user: authUser } = useAuth();
   const isIntern = authUser?.role === 'INTERN';
   const currentUserId = authUser?.id || authUser?.user_id;
@@ -368,8 +375,8 @@ function HierarchicalRow({
   // Derived read-only sprint summary for parent epics based on descendants
   const epicSprintSummary = useMemo(() => {
     if (!isEpic) return null;
-    return getEpicSprintSummary(item, allWorkItems, sprints);
-  }, [isEpic, item, allWorkItems, sprints]);
+    return getEpicSprintSummary(item, allWorkItems, sprints, isKanban);
+  }, [isEpic, item, allWorkItems, sprints, isKanban]);
 
   // Eligible leaf descendants (excluding epics and items that have children among descendants)
   const descendantParentIds = new Set(allDescendants.map((d) => d.parent_id).filter(Boolean));
@@ -721,16 +728,16 @@ function HierarchicalRow({
                 className={`px-1.5 py-0.5 rounded text-[11px] border truncate max-w-[200px] block select-none ${
                   epicSprintSummary?.details?.length > 1 ? 'cursor-pointer hover:ring-1 hover:ring-purple-300' : 'cursor-default'
                 } ${epicSprintSummary?.badgeClass || 'bg-slate-50 text-slate-500 border-slate-200'}`}
-                title={epicSprintSummary?.title || 'Cycle summary'}
+                title={epicSprintSummary?.title || `${Term} summary`}
               >
-                {epicSprintSummary?.label || 'Backlog (No Cycle)'}
+                {epicSprintSummary?.label || `Backlog (No ${Term})`}
               </button>
 
               {/* Expandable breakdown popover for multiple cycles / partial assignments */}
               {menuOpen === 'epicSprint' && epicSprintSummary?.details?.length > 1 && (
                 <div className="absolute left-0 mt-1 w-56 bg-white rounded-xl shadow-xl border border-slate-200 p-2.5 z-40 text-slate-800 animate-in fade-in duration-100">
                   <div className="text-[10px] font-bold text-slate-400 uppercase tracking-wider pb-1.5 mb-1.5 border-b border-slate-100 flex items-center justify-between">
-                    <span>Cycle Breakdown</span>
+                    <span>{Term} Breakdown</span>
                     <span className="text-purple-700 font-bold">{totalDescendantsCount} items</span>
                   </div>
                   <div className="space-y-1">
@@ -763,7 +770,7 @@ function HierarchicalRow({
                     ? 'bg-purple-50 text-purple-700 border-purple-200'
                     : 'bg-slate-50 text-slate-500 border-slate-200'
                 } ${canChangeSprint ? 'hover:bg-purple-100 cursor-pointer' : 'cursor-default'}`}
-                title={`Cycle: ${sprintLabel}`}
+                title={`${Term}: ${sprintLabel}`}
               >
                 {sprintLabel}
               </button>
@@ -780,7 +787,7 @@ function HierarchicalRow({
                       !item.sprint_id ? 'bg-purple-50 text-purple-700 font-semibold' : 'text-slate-700'
                     }`}
                   >
-                    <span>Backlog (No Cycle)</span>
+                    <span>Backlog (No {Term})</span>
                     {!item.sprint_id && <Check className="w-3 h-3 text-purple-600" />}
                   </button>
 
@@ -1036,6 +1043,7 @@ function HierarchicalNode({
   onDragStart,
   onDragEnd,
   isFlatView = false,
+  isKanban = false,
 }) {
   const isExpanded = expandedIds.has(node.item.id);
 
@@ -1063,6 +1071,7 @@ function HierarchicalNode({
         onUpdateDueDate={onUpdateDueDate}
         onDeleteIssue={onDeleteIssue}
         onAddChild={onAddChild}
+        isKanban={isKanban}
         onDragStart={onDragStart}
         onDragEnd={onDragEnd}
       />
@@ -1092,6 +1101,7 @@ function HierarchicalNode({
               onDragStart={onDragStart}
               onDragEnd={onDragEnd}
               isFlatView={isFlatView}
+              isKanban={isKanban}
             />
           ))}
         </>
@@ -1125,6 +1135,7 @@ export default function HierarchicalIssueTable({
   onDragStart,
   onDragEnd,
   emptyMessage = "No issues found in this view.",
+  isKanban = false,
 }) {
   // Build tree nodes for hierarchical display
   const treeNodes = useMemo(() => {
@@ -1218,7 +1229,7 @@ export default function HierarchicalIssueTable({
         <div>Priority</div>
         <div>Assignee</div>
         <div>Status</div>
-        <div>Cycle</div>
+        <div>{isKanban ? 'Cycle' : 'Sprint'}</div>
         <div className="text-center">Points</div>
         <div>Due Date</div>
         <div>Progress</div>
@@ -1248,6 +1259,7 @@ export default function HierarchicalIssueTable({
               onUpdateDueDate={onUpdateDueDate}
               onDeleteIssue={onDeleteIssue}
               onAddChild={onAddChild}
+              isKanban={isKanban}
               onDragStart={onDragStart}
               onDragEnd={onDragEnd}
               isFlatView={!isHierarchical}

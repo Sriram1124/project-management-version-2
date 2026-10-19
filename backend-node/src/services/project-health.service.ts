@@ -1,7 +1,9 @@
 import { WorkItemType, WorkItemStatus, WorkItemPriority } from '@prisma/client';
 import { prisma } from '../lib/prisma';
 
-export type HealthStatus = 'HEALTHY' | 'AT_RISK' | 'CRITICAL' | 'NOT_ASSESSED' | 'INSUFFICIENT_DATA';
+export type HealthStatus = 'HEALTHY' | 'NEEDS_ATTENTION' | 'AT_RISK' | 'CRITICAL' | 'NOT_ASSESSED' | 'INSUFFICIENT_DATA';
+export type RiskLevel = 'LOW' | 'MODERATE' | 'HIGH' | 'CRITICAL' | 'INSUFFICIENT_DATA';
+export type ScheduleHealth = 'ON_TRACK' | 'BEHIND' | 'AHEAD' | 'NO_SCHEDULE';
 
 /**
  * Configurable thresholds for blocked-work percentage of remaining story points.
@@ -34,16 +36,38 @@ export interface ProjectHealthItem {
   name: string;
   status: string; // Project lifecycle status (e.g. ACTIVE, PLANNED, ARCHIVED)
   health: HealthStatus;
+  health_score: number | null;
+  risk_level: RiskLevel;
+  schedule_health: ScheduleHealth;
+  schedule_variance_days?: number | null;
+  schedule_variance_percentage?: number | null;
   reasons: string[];
+  risk_factors: string[];
+  recommended_actions: string[];
   warnings?: string[];
   completion_percentage: number | null; // Kept for backwards compatibility
   progress_percentage: number | null; // SP-based project progress percentage
+  delivery_progress_percentage?: number | null;
+  completion_rate: number;
+  overdue_percentage: number;
+  blocked_percentage: number;
   has_estimated_work: boolean;
   total_sp: number;
   completed_sp: number;
   remaining_sp: number;
+  overdue_sp?: number;
+  overdue_sp_percentage?: number;
   blocked_sp: number;
+  blocked_sp_percentage?: number;
   blocked_work_percentage: number | null;
+  totalSP?: number;
+  completedSP?: number;
+  remainingSP?: number;
+  deliveryProgressPercentage?: number | null;
+  overdueSP?: number;
+  overdueSPPercentage?: number;
+  blockedSP?: number;
+  blockedSPPercentage?: number;
   unestimated_blockers_count: number;
   story_count: number;
   completed_stories_count: number;
@@ -63,6 +87,8 @@ export interface PortfolioHealthSummary {
   total: number;
   assessed: number;
   healthy: number;
+  needs_attention?: number;
+  at_risk_only?: number;
   at_risk: number;
   critical: number;
   not_assessed: number;
@@ -73,6 +99,7 @@ export interface PortfolioHealthSummary {
 
 export interface PortfolioHealthDistribution {
   healthy: { count: number; percentage: number };
+  needs_attention?: { count: number; percentage: number };
   at_risk: { count: number; percentage: number };
   critical: { count: number; percentage: number };
   not_assessed: { count: number; percentage: number };
@@ -126,14 +153,36 @@ export class ProjectHealthService {
     }>;
   }): {
     health: HealthStatus;
+    health_score: number | null;
+    risk_level: RiskLevel;
+    schedule_health: ScheduleHealth;
+    schedule_variance_days?: number | null;
+    schedule_variance_percentage?: number | null;
+    completion_rate: number;
+    overdue_percentage: number;
+    blocked_percentage: number;
     reasons: string[];
+    risk_factors: string[];
+    recommended_actions: string[];
     warnings?: string[];
     has_estimated_work: boolean;
     total_sp: number;
     completed_sp: number;
     remaining_sp: number;
+    delivery_progress_percentage: number | null;
+    overdue_sp: number;
+    overdue_sp_percentage: number;
     blocked_sp: number;
+    blocked_sp_percentage: number;
     blocked_work_percentage: number | null;
+    totalSP?: number;
+    completedSP?: number;
+    remainingSP?: number;
+    deliveryProgressPercentage?: number | null;
+    overdueSP?: number;
+    overdueSPPercentage?: number;
+    blockedSP?: number;
+    blockedSPPercentage?: number;
     unestimated_blockers_count: number;
     progress_percentage: number | null;
     completion_percentage: number | null;
@@ -242,6 +291,7 @@ export class ProjectHealthService {
     const blockedLeaves = unfinishedLeaves.filter((t: any) => t.status === WorkItemStatus.BLOCKED);
     const blocked_tasks = blockedLeaves.length;
     const blocked_sp = blockedLeaves.reduce((sum: number, t: any) => sum + (Number(t.story_points) || 0), 0);
+    const blocked_sp_percentage = total_sp > 0 ? Number(((blocked_sp / total_sp) * 100).toFixed(1)) : 0;
 
     // Formula: blockedWorkPercentage = (blockedStoryPoints / remainingStoryPoints) * 100
     const blocked_work_percentage =
@@ -254,6 +304,8 @@ export class ProjectHealthService {
       (t: any) => t.due_date && new Date(t.due_date) < now
     );
     const overdue_tasks = overdueTasksList.length;
+    const overdue_sp = overdueTasksList.reduce((sum: number, t: any) => sum + (Number(t.story_points) || 0), 0);
+    const overdue_sp_percentage = total_sp > 0 ? Number(((overdue_sp / total_sp) * 100).toFixed(1)) : 0;
 
     const completed_stories_count = storyItems.filter(
       (s) => s.status === WorkItemStatus.COMPLETED || (s.total_sp > 0 && s.completed_sp === s.total_sp)
@@ -343,18 +395,42 @@ export class ProjectHealthService {
     }
 
     // 5. Insufficient Data / Not Assessed check:
-    // If no eligible estimated work defined, return NOT_ASSESSED with null progress percentage
+    // If no eligible estimated work defined or 0 tasks, return NOT_ASSESSED / INSUFFICIENT_DATA with null progress percentage
     if (!has_estimated_work || total_tasks === 0) {
+      const completion_rate = total_tasks > 0 ? Math.round((completed_tasks / total_tasks) * 100) : 0;
+      const overdue_percentage = total_tasks > 0 ? Math.round((overdue_tasks / total_tasks) * 100) : 0;
       return {
         health: 'NOT_ASSESSED',
+        health_score: null,
+        risk_level: 'INSUFFICIENT_DATA',
+        schedule_health: 'NO_SCHEDULE',
+        schedule_variance_days: null,
+        schedule_variance_percentage: null,
+        completion_rate,
+        overdue_percentage,
+        blocked_percentage: 0,
         reasons: ['No estimated work defined for this project'],
+        risk_factors: ['No estimated deliverables or tasks defined for this project'],
+        recommended_actions: ['Define project tasks, story points, and schedule dates to enable delivery health tracking'],
         warnings,
         has_estimated_work: false,
         total_sp: 0,
         completed_sp: 0,
         remaining_sp: 0,
+        delivery_progress_percentage: null,
+        overdue_sp: 0,
+        overdue_sp_percentage: 0,
         blocked_sp: 0,
+        blocked_sp_percentage: 0,
         blocked_work_percentage: null,
+        totalSP: 0,
+        completedSP: 0,
+        remainingSP: 0,
+        deliveryProgressPercentage: null,
+        overdueSP: 0,
+        overdueSPPercentage: 0,
+        blockedSP: 0,
+        blockedSPPercentage: 0,
         unestimated_blockers_count,
         progress_percentage: null,
         completion_percentage: null,
@@ -379,17 +455,29 @@ export class ProjectHealthService {
 
     // --- CRITICAL THRESHOLDS ---
 
-    // Rule 1: High/Urgent priority deliverable overdue
+    // Rule 1: High-impact overdue deliverable volume
+    // Only classify as CRITICAL if the overdue work represents a severe portion of project scope or substantial delay:
     const critOverdueTasks = overdueTasksList.filter(
       (t) => t.priority === WorkItemPriority.URGENT || t.priority === WorkItemPriority.HIGH
     );
     const critOverdueStories = storyItems.filter(
       (s) => (s.priority === WorkItemPriority.URGENT || s.priority === WorkItemPriority.HIGH) && s.is_overdue
     );
-    if (critOverdueTasks.length > 0 || critOverdueStories.length > 0) {
-      const count = Math.max(critOverdueStories.length, critOverdueTasks.length);
+    const hasSevereOverdueImpact =
+      overdue_sp_percentage >= 35 ||
+      (critOverdueTasks.length > 0 && overdue_sp_percentage >= 20 && maxTaskOverdueDays >= 7) ||
+      (overdue_tasks >= 4 && maxTaskOverdueDays >= 7);
+
+    if (hasSevereOverdueImpact) {
+      const count = Math.max(critOverdueStories.length, critOverdueTasks.length, overdue_tasks);
       criticalReasons.push(
-        `${count} high-priority deliverable(s) overdue (${maxTaskOverdueDays}d delay)`
+        `${count} high-impact deliverable(s) overdue (${overdue_sp} SP · ${maxTaskOverdueDays}d delay)`
+      );
+    } else if (critOverdueTasks.length > 0 || critOverdueStories.length > 0) {
+      // Moderate/single high-priority overdue task affects score as AT_RISK or NEEDS_ATTENTION rather than forcing CRITICAL
+      const count = Math.max(critOverdueStories.length, critOverdueTasks.length);
+      atRiskReasons.push(
+        `${count} high-priority deliverable(s) overdue (${overdue_sp} SP · ${maxTaskOverdueDays}d delay)`
       );
     }
 
@@ -460,35 +548,6 @@ export class ProjectHealthService {
     // Rule 5: Critical volume of overdue work
     if (overdue_tasks >= 4 || (overdue_tasks >= 3 && overdue_tasks / total_tasks >= 0.4)) {
       criticalReasons.push(`${overdue_tasks} deliverables overdue · Significant delivery risk`);
-    }
-
-    if (criticalReasons.length > 0) {
-      return {
-        health: 'CRITICAL',
-        reasons: criticalReasons,
-        warnings,
-        has_estimated_work: true,
-        total_sp,
-        completed_sp,
-        remaining_sp,
-        blocked_sp,
-        blocked_work_percentage,
-        unestimated_blockers_count,
-        progress_percentage,
-        completion_percentage: progress_percentage,
-        story_count: stories.length,
-        completed_stories_count,
-        blocked_stories_count,
-        overdue_stories_count,
-        total_tasks,
-        completed_tasks,
-        overdue_tasks,
-        blocked_tasks,
-        critical_tasks: critOverdueTasks.length + severeBlockedDeliverables.length,
-        project_overdue_days: projectOverdueDays,
-        max_task_overdue_days: maxTaskOverdueDays,
-        stories: storyItems,
-      };
     }
 
     // --- AT_RISK THRESHOLDS ---
@@ -569,36 +628,7 @@ export class ProjectHealthService {
       atRiskReasons.push(`Upcoming deadline in ${daysUntilDeadline}d with ${remaining_sp} SP remaining`);
     }
 
-    if (atRiskReasons.length > 0) {
-      return {
-        health: 'AT_RISK',
-        reasons: atRiskReasons,
-        warnings,
-        has_estimated_work: true,
-        total_sp,
-        completed_sp,
-        remaining_sp,
-        blocked_sp,
-        blocked_work_percentage,
-        unestimated_blockers_count,
-        progress_percentage,
-        completion_percentage: progress_percentage,
-        story_count: stories.length,
-        completed_stories_count,
-        blocked_stories_count,
-        overdue_stories_count,
-        total_tasks,
-        completed_tasks,
-        overdue_tasks,
-        blocked_tasks,
-        critical_tasks: critOverdueTasks.length + severeBlockedDeliverables.length,
-        project_overdue_days: projectOverdueDays,
-        max_task_overdue_days: maxTaskOverdueDays,
-        stories: storyItems,
-      };
-    }
-
-    // --- HEALTHY ---
+    // --- HEALTHY REASON ---
     let healthyReason = 'On schedule · 0 overdue · 0 active blockers';
     if (remaining_sp === 0) {
       healthyReason = 'All deliverables completed';
@@ -612,30 +642,242 @@ export class ProjectHealthService {
       healthyReason = `On track · Low blocker exposure (${blocked_sp} of ${remaining_sp} SP blocked)`;
     }
 
+    // --- SCHEDULE HEALTH & VARIANCE ---
+    let schedule_health: ScheduleHealth = 'ON_TRACK';
+    let schedule_variance_days: number | null = null;
+    let schedule_variance_percentage: number | null = null;
+    let schedulePoints = 35;
+
+    if (projectOverdueDays > 0) {
+      schedule_health = 'BEHIND';
+      schedule_variance_days = -projectOverdueDays;
+      if (projectOverdueDays >= 14) {
+        schedulePoints = 0;
+      } else if (projectOverdueDays >= 7) {
+        schedulePoints = 8;
+      } else {
+        schedulePoints = 16;
+      }
+    } else if (project.start_date && project.end_date) {
+      const startMs = new Date(project.start_date).getTime();
+      const endMs = new Date(project.end_date).getTime();
+      const nowMs = now.getTime();
+      const totalDurationDays = Math.max(1, (endMs - startMs) / (1000 * 60 * 60 * 24));
+      const elapsedDays = (nowMs - startMs) / (1000 * 60 * 60 * 24);
+      const elapsedPct = Math.min(100, Math.max(0, Math.round((elapsedDays / totalDurationDays) * 100)));
+      const workPct = progress_percentage ?? (total_tasks > 0 ? Math.round((completed_tasks / total_tasks) * 100) : 0);
+      schedule_variance_percentage = workPct - elapsedPct;
+      schedule_variance_days = daysUntilDeadline;
+
+      if (nowMs > endMs) {
+        schedule_health = 'BEHIND';
+        schedulePoints = 12;
+      } else if (schedule_variance_percentage >= 10) {
+        schedule_health = 'AHEAD';
+        schedulePoints = 35;
+      } else if (schedule_variance_percentage < -15) {
+        schedule_health = 'BEHIND';
+        schedulePoints = Math.max(10, 30 - Math.round(Math.abs(schedule_variance_percentage) * 0.5));
+      } else {
+        schedule_health = 'ON_TRACK';
+        schedulePoints = 35;
+      }
+    } else if (activeSprint?.end_date) {
+      const sEnd = new Date(activeSprint.end_date);
+      if (sEnd < now) {
+        schedule_health = 'BEHIND';
+        schedulePoints = 16;
+        schedule_variance_days = -Math.max(1, Math.floor((now.getTime() - sEnd.getTime()) / (1000 * 60 * 60 * 24)));
+      } else {
+        schedule_health = 'ON_TRACK';
+        schedulePoints = 35;
+        schedule_variance_days = Math.floor((sEnd.getTime() - now.getTime()) / (1000 * 60 * 60 * 24));
+      }
+    } else if (overdue_tasks > 0) {
+      schedule_health = 'BEHIND';
+      schedule_variance_days = -maxTaskOverdueDays;
+      schedulePoints = 20;
+    } else if (completed_tasks === total_tasks && total_tasks > 0) {
+      schedule_health = 'ON_TRACK';
+      schedulePoints = 35;
+    } else {
+      schedule_health = 'NO_SCHEDULE';
+      schedulePoints = 25;
+    }
+
+    // Task overdue penalty inside schedule score
+    if (overdue_tasks >= 4 || (total_tasks > 0 && overdue_tasks / total_tasks >= 0.4)) {
+      schedulePoints = Math.min(schedulePoints, 5);
+      schedule_health = 'BEHIND';
+    } else if (overdue_tasks >= 2 || (total_tasks > 0 && overdue_tasks / total_tasks >= 0.2)) {
+      schedulePoints = Math.min(schedulePoints, 15);
+      schedule_health = 'BEHIND';
+    } else if (overdue_tasks === 1) {
+      schedulePoints = Math.min(schedulePoints, 25);
+    }
+
+    // --- BLOCKERS COMPONENT (0-35 points) ---
+    let blockersPoints = 35;
+    const effectiveBlockedRatio = remaining_sp > 0
+      ? (blocked_sp / remaining_sp)
+      : (total_tasks > 0 ? (blocked_tasks / Math.max(1, total_tasks - completed_tasks)) : 0);
+    const effectiveBlockedPct = effectiveBlockedRatio * 100;
+
+    if (blocked_tasks > 0) {
+      if (effectiveBlockedPct >= BLOCKED_RISK_THRESHOLDS.HIGH_RISK_MIN) {
+        blockersPoints = 6;
+      } else if (effectiveBlockedPct >= BLOCKED_RISK_THRESHOLDS.POTENTIAL_RISK_MIN) {
+        blockersPoints = 18;
+      } else {
+        blockersPoints = 26;
+      }
+      if (severeBlockedDeliverables.length > 0) {
+        blockersPoints = Math.max(0, blockersPoints - 8);
+      }
+    }
+
+    // --- PROGRESS COMPONENT (0-20 points) ---
+    const completion_rate = total_tasks > 0 ? Math.round((completed_tasks / total_tasks) * 100) : 0;
+    const overdue_percentage = total_tasks > 0 ? Math.round((overdue_tasks / total_tasks) * 100) : 0;
+    const blocked_percentage = total_tasks > 0 ? Math.round((blocked_tasks / total_tasks) * 100) : 0;
+    const effectiveProgress = (has_estimated_work && progress_percentage !== null)
+      ? progress_percentage
+      : completion_rate;
+    let progressPoints = Math.round((effectiveProgress / 100) * 20);
+    if (remaining_sp === 0 && has_estimated_work) {
+      progressPoints = 20;
+    }
+
+    // --- ACTIVE RISKS & STABILITY COMPONENT (0-10 points) ---
+    let stabilityPoints = 10;
+    if (critOverdueTasks.length > 0) stabilityPoints -= 4;
+    if (sprintOverdue) stabilityPoints -= 3;
+    if (unestimated_blockers_count > 0) stabilityPoints -= 3;
+    stabilityPoints = Math.max(0, stabilityPoints);
+
+    const rawScore = schedulePoints + blockersPoints + progressPoints + stabilityPoints;
+
+    let finalHealth: HealthStatus;
+    let finalScore: number | null;
+    let finalRisk: RiskLevel;
+    let finalReasons: string[];
+
+    if (criticalReasons.length > 0) {
+      finalHealth = 'CRITICAL';
+      finalRisk = 'CRITICAL';
+      finalScore = Math.min(34, Math.max(5, rawScore));
+      finalReasons = criticalReasons;
+    } else if (atRiskReasons.length > 0) {
+      finalReasons = atRiskReasons;
+      if (rawScore >= 55) {
+        finalHealth = 'NEEDS_ATTENTION';
+        finalRisk = 'MODERATE';
+        finalScore = Math.min(74, Math.max(55, rawScore));
+      } else {
+        finalHealth = 'AT_RISK';
+        finalRisk = 'HIGH';
+        finalScore = Math.min(54, Math.max(35, rawScore));
+      }
+    } else if (!hasExplicitSchedule && remaining_sp > 0 && overdue_tasks === 0 && blocked_tasks === 0 && !project.start_date && !project.end_date && !activeSprint) {
+      finalHealth = 'INSUFFICIENT_DATA';
+      finalRisk = 'INSUFFICIENT_DATA';
+      finalScore = null;
+      finalReasons = ['Schedule dates not set: Project lacks start date, end date, and sprint milestones'];
+    } else {
+      finalHealth = 'HEALTHY';
+      finalRisk = 'LOW';
+      finalScore = remaining_sp === 0 ? 100 : Math.min(100, Math.max(75, rawScore));
+      finalReasons = [healthyReason];
+    }
+
+    // Risk factors lowering the score
+    const risk_factors: string[] = [];
+    if (finalReasons.length > 0 && finalHealth !== 'HEALTHY') {
+      risk_factors.push(...finalReasons);
+    }
+    if (overdue_tasks > 0 && !risk_factors.some((r) => r.includes('overdue'))) {
+      risk_factors.push(`${overdue_tasks} overdue task(s) (${overdue_percentage}% of total work)`);
+    }
+    if (blocked_tasks > 0 && !risk_factors.some((r) => r.includes('blocked'))) {
+      risk_factors.push(`${blocked_tasks} blocked deliverable(s) (${blocked_percentage}% of total work)`);
+    }
+    if (schedule_health === 'BEHIND' && !risk_factors.some((r) => r.includes('schedule') || r.includes('deadline'))) {
+      risk_factors.push('Execution progress is lagging behind planned schedule');
+    }
+    if (risk_factors.length === 0) {
+      risk_factors.push('All health metrics within optimal thresholds');
+    }
+
+    // Recommended actions
+    const recommended_actions: string[] = [];
+    if (blocked_tasks > 0) {
+      recommended_actions.push(`Resolve ${blocked_tasks} blocked deliverable(s) to unblock active sprint work`);
+    }
+    if (overdue_tasks > 0) {
+      recommended_actions.push(`Review and expedite or reschedule ${overdue_tasks} overdue task(s)`);
+    }
+    if (projectOverdueDays > 0) {
+      recommended_actions.push(`Project deadline passed ${projectOverdueDays} days ago — re-baseline scope or delivery dates`);
+    }
+    if (schedule_health === 'BEHIND') {
+      recommended_actions.push('Velocity is lagging behind schedule — rebalance assignments or work item scope');
+    }
+    if (unestimated_blockers_count > 0) {
+      recommended_actions.push(`Estimate story points on ${unestimated_blockers_count} blocked deliverable(s)`);
+    }
+    if (finalHealth === 'HEALTHY') {
+      recommended_actions.push('Maintain current delivery cadence and monitor upcoming milestones');
+    }
+    if (finalScore === null) {
+      recommended_actions.push('Set project start/end dates and assign story points to enable health tracking');
+    }
+
     return {
-      health: 'HEALTHY',
-      reasons: [healthyReason],
+      health: finalHealth,
+      health_score: finalScore,
+      risk_level: finalRisk,
+      schedule_health,
+      schedule_variance_days,
+      schedule_variance_percentage,
+      completion_rate,
+      overdue_percentage,
+      blocked_percentage,
+      reasons: finalReasons,
+      risk_factors: Array.from(new Set(risk_factors)),
+      recommended_actions: Array.from(new Set(recommended_actions)),
       warnings,
       has_estimated_work: true,
       total_sp,
       completed_sp,
       remaining_sp,
+      delivery_progress_percentage: progress_percentage,
+      overdue_sp,
+      overdue_sp_percentage,
       blocked_sp,
+      blocked_sp_percentage,
       blocked_work_percentage,
+      totalSP: total_sp,
+      completedSP: completed_sp,
+      remainingSP: remaining_sp,
+      deliveryProgressPercentage: progress_percentage,
+      overdueSP: overdue_sp,
+      overdueSPPercentage: overdue_sp_percentage,
+      blockedSP: blocked_sp,
+      blockedSPPercentage: blocked_sp_percentage,
       unestimated_blockers_count,
       progress_percentage,
       completion_percentage: progress_percentage,
       story_count: stories.length,
       completed_stories_count,
-      blocked_stories_count: 0,
-      overdue_stories_count: 0,
+      blocked_stories_count,
+      overdue_stories_count,
       total_tasks,
       completed_tasks,
-      overdue_tasks: 0,
+      overdue_tasks,
       blocked_tasks,
-      critical_tasks: 0,
-      project_overdue_days: 0,
-      max_task_overdue_days: 0,
+      critical_tasks: critOverdueTasks.length + severeBlockedDeliverables.length,
+      project_overdue_days: projectOverdueDays,
+      max_task_overdue_days: maxTaskOverdueDays,
       stories: storyItems,
     };
   }
@@ -650,9 +892,10 @@ export class ProjectHealthService {
     const orgId = await this.getEffectiveOrgId(user);
     if (!orgId) {
       return {
-        summary: { total: 0, assessed: 0, healthy: 0, at_risk: 0, critical: 0, not_assessed: 0, insufficient_data: 0, attention_required: 0, attention_rate: 0 },
+        summary: { total: 0, assessed: 0, healthy: 0, needs_attention: 0, at_risk_only: 0, at_risk: 0, critical: 0, not_assessed: 0, insufficient_data: 0, attention_required: 0, attention_rate: 0 },
         distribution: {
           healthy: { count: 0, percentage: 0 },
+          needs_attention: { count: 0, percentage: 0 },
           at_risk: { count: 0, percentage: 0 },
           critical: { count: 0, percentage: 0 },
           not_assessed: { count: 0, percentage: 0 },
@@ -716,16 +959,38 @@ export class ProjectHealthService {
         name: p.name,
         status: p.status,
         health: evaluation.health,
+        health_score: evaluation.health_score,
+        risk_level: evaluation.risk_level,
+        schedule_health: evaluation.schedule_health,
+        schedule_variance_days: evaluation.schedule_variance_days,
+        schedule_variance_percentage: evaluation.schedule_variance_percentage,
+        completion_rate: evaluation.completion_rate,
+        overdue_percentage: evaluation.overdue_percentage,
+        blocked_percentage: evaluation.blocked_percentage,
         reasons: evaluation.reasons,
+        risk_factors: evaluation.risk_factors,
+        recommended_actions: evaluation.recommended_actions,
         warnings: evaluation.warnings,
         completion_percentage: evaluation.completion_percentage,
         progress_percentage: evaluation.progress_percentage,
+        delivery_progress_percentage: evaluation.delivery_progress_percentage ?? evaluation.progress_percentage,
         has_estimated_work: evaluation.has_estimated_work,
         total_sp: evaluation.total_sp,
         completed_sp: evaluation.completed_sp,
         remaining_sp: evaluation.remaining_sp,
+        overdue_sp: evaluation.overdue_sp,
+        overdue_sp_percentage: evaluation.overdue_sp_percentage,
         blocked_sp: evaluation.blocked_sp,
+        blocked_sp_percentage: evaluation.blocked_sp_percentage,
         blocked_work_percentage: evaluation.blocked_work_percentage,
+        totalSP: evaluation.total_sp,
+        completedSP: evaluation.completed_sp,
+        remainingSP: evaluation.remaining_sp,
+        deliveryProgressPercentage: evaluation.delivery_progress_percentage ?? evaluation.progress_percentage,
+        overdueSP: evaluation.overdue_sp,
+        overdueSPPercentage: evaluation.overdue_sp_percentage,
+        blockedSP: evaluation.blocked_sp,
+        blockedSPPercentage: evaluation.blocked_sp_percentage,
         unestimated_blockers_count: evaluation.unestimated_blockers_count,
         story_count: evaluation.story_count,
         completed_stories_count: evaluation.completed_stories_count,
@@ -744,7 +1009,9 @@ export class ProjectHealthService {
 
     const total = classifiedProjects.length;
     const healthyCount = classifiedProjects.filter((p) => p.health === 'HEALTHY').length;
-    const atRiskCount = classifiedProjects.filter((p) => p.health === 'AT_RISK').length;
+    const needsAttentionCount = classifiedProjects.filter((p) => p.health === 'NEEDS_ATTENTION').length;
+    const atRiskOnlyCount = classifiedProjects.filter((p) => p.health === 'AT_RISK').length;
+    const atRiskCount = classifiedProjects.filter((p) => p.health === 'AT_RISK' || p.health === 'NEEDS_ATTENTION').length;
     const criticalCount = classifiedProjects.filter((p) => p.health === 'CRITICAL').length;
     const notAssessedCount = classifiedProjects.filter(
       (p) => p.health === 'NOT_ASSESSED' || (p.health as any) === 'INSUFFICIENT_DATA'
@@ -762,6 +1029,8 @@ export class ProjectHealthService {
       total,
       assessed: assessedCount,
       healthy: healthyCount,
+      needs_attention: needsAttentionCount,
+      at_risk_only: atRiskOnlyCount,
       at_risk: atRiskCount,
       critical: criticalCount,
       not_assessed: notAssessedCount,
@@ -774,6 +1043,10 @@ export class ProjectHealthService {
       healthy: {
         count: healthyCount,
         percentage: roundPct(healthyCount, assessedCount),
+      },
+      needs_attention: {
+        count: needsAttentionCount,
+        percentage: roundPct(needsAttentionCount, assessedCount),
       },
       at_risk: {
         count: atRiskCount,
