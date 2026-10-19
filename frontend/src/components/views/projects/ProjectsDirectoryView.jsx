@@ -73,6 +73,11 @@ export default function ProjectsDirectoryView({ onSelectProject, isIntern = fals
   const [archiveTarget, setArchiveTarget] = useState(null);
   const [archiveSubmitting, setArchiveSubmitting] = useState(false);
 
+  // Delete Confirmation Modal State
+  const [deleteTarget, setDeleteTarget] = useState(null);
+  const [deleteSubmitting, setDeleteSubmitting] = useState(false);
+  const [deleteError, setDeleteError] = useState(null);
+
   // Success Feedback
   const [toastMessage, setToastMessage] = useState(null);
 
@@ -397,6 +402,28 @@ export default function ProjectsDirectoryView({ onSelectProject, isIntern = fals
     }
   };
 
+  const handleOpenDelete = (proj, e) => {
+    e?.stopPropagation();
+    setDeleteTarget(proj);
+    setDeleteError(null);
+  };
+
+  const handleConfirmDelete = async () => {
+    if (!deleteTarget) return;
+    setDeleteSubmitting(true);
+    setDeleteError(null);
+    try {
+      await projectsService.deleteProject(deleteTarget.id);
+      setProjects((prev) => prev.filter((p) => p.id !== deleteTarget.id));
+      showToast(`Project "${deleteTarget.name}" permanently deleted`);
+      setDeleteTarget(null);
+    } catch (err) {
+      setDeleteError(err?.message || 'Failed to delete project');
+    } finally {
+      setDeleteSubmitting(false);
+    }
+  };
+
   // Helper for Status Badges
   const getStatusBadgeStyle = (status) => {
     switch (status) {
@@ -543,14 +570,14 @@ export default function ProjectsDirectoryView({ onSelectProject, isIntern = fals
               <table className="w-full text-left text-xs">
                 <thead className="bg-slate-50/70 border-b border-slate-200/80 text-slate-400 font-semibold uppercase tracking-wider text-[10px]">
                   <tr>
-                    <th className="py-3.5 px-6 min-w-[220px]">Project Details</th>
-                    <th className="py-3.5 px-6 w-[130px] min-w-[130px]">Methodology</th>
-                    <th className="py-3.5 px-6 min-w-[180px]">Project Owner</th>
-                    <th className="py-3.5 px-6 min-w-[150px]">Members</th>
-                    <th className="py-3.5 px-6 min-w-[180px]">Timeline</th>
-                    <th className="py-3.5 px-6 min-w-[130px]">Progress</th>
-                    <th className="py-3.5 px-6 min-w-[110px]">Status</th>
-                    <th className="py-3.5 px-6 text-right min-w-[90px]">Actions</th>
+                    <th className="py-3 px-3 xl:px-4 min-w-[170px]">Project Details</th>
+                    <th className="py-3 px-3 xl:px-4 w-[100px] min-w-[95px]">Methodology</th>
+                    <th className="py-3 px-3 xl:px-4 min-w-[130px]">Project Owner</th>
+                    <th className="py-3 px-3 xl:px-4 min-w-[85px] w-[95px]">Members</th>
+                    <th className="py-3 px-3 xl:px-4 min-w-[125px]">Timeline</th>
+                    <th className="py-3 px-3 xl:px-4 min-w-[85px] w-[100px]">Progress</th>
+                    <th className="py-3 px-3 xl:px-4 min-w-[80px]">Status</th>
+                    <th className="py-3 px-3 xl:px-4 text-right min-w-[105px] w-[110px]">Actions</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100">
@@ -576,9 +603,9 @@ export default function ProjectsDirectoryView({ onSelectProject, isIntern = fals
                         className="hover:bg-purple-50/40 transition-colors cursor-pointer group"
                       >
                         {/* Project Details */}
-                        <td className="py-4 px-6 min-w-[220px] max-w-[280px]">
-                          <div className="flex items-center gap-3 min-w-0">
-                            <div className="w-9 h-9 rounded-xl bg-purple-50 text-purple-600 flex items-center justify-center border border-purple-100/80 shrink-0 group-hover:scale-105 transition-transform">
+                        <td className="py-3.5 px-3 xl:px-4 min-w-[170px] max-w-[240px]">
+                          <div className="flex items-center gap-2.5 min-w-0">
+                            <div className="w-8 h-8 rounded-xl bg-purple-50 text-purple-600 flex items-center justify-center border border-purple-100/80 shrink-0 group-hover:scale-105 transition-transform">
                               <FolderKanban className="w-4 h-4" />
                             </div>
                             <div className="min-w-0 flex-1">
@@ -596,18 +623,18 @@ export default function ProjectsDirectoryView({ onSelectProject, isIntern = fals
                         </td>
 
                         {/* Methodology */}
-                        <td className="py-4 px-6 w-[130px] min-w-[130px] whitespace-nowrap">
+                        <td className="py-3.5 px-3 xl:px-4 w-[100px] min-w-[95px] whitespace-nowrap">
                           <ProjectMethodologyBadge methodology={proj.methodology} />
                         </td>
 
                         {/* Project Owner */}
-                        <td className="py-4 px-6">
-                          <div className="flex items-center gap-2.5">
+                        <td className="py-3.5 px-3 xl:px-4 min-w-[130px]">
+                          <div className="flex items-center gap-2">
                             <div className="relative shrink-0">
                               <img
                                 src={ownerAvatar}
                                 alt={ownerName}
-                                className="w-7 h-7 rounded-full object-cover ring-1 ring-purple-200"
+                                className="w-6 h-6 rounded-full object-cover ring-1 ring-purple-200"
                               />
                               {owners.length > 1 && (
                                 <span
@@ -619,8 +646,8 @@ export default function ProjectsDirectoryView({ onSelectProject, isIntern = fals
                               )}
                             </div>
                             <div className="min-w-0">
-                              <div className="flex items-center gap-1.5">
-                                <span className="font-semibold text-slate-800 text-xs block leading-tight truncate max-w-[120px]">
+                              <div className="flex items-center gap-1">
+                                <span className="font-semibold text-slate-800 text-xs block leading-tight truncate max-w-[110px]">
                                   {ownerName}
                                 </span>
                                 {owners.length > 1 && (
@@ -632,7 +659,7 @@ export default function ProjectsDirectoryView({ onSelectProject, isIntern = fals
                                   </span>
                                 )}
                               </div>
-                              <span className="text-[10px] text-slate-400 block leading-tight truncate max-w-[130px]">
+                              <span className="text-[10px] text-slate-400 block leading-tight truncate max-w-[110px]">
                                 {primaryOwner?.email || 'Owner'}
                               </span>
                             </div>
@@ -640,31 +667,31 @@ export default function ProjectsDirectoryView({ onSelectProject, isIntern = fals
                         </td>
 
                         {/* Members */}
-                        <td className="py-4 px-6">
-                          <div className="flex items-center gap-2">
-                            <span className="px-2 py-0.5 text-[11px] font-bold rounded bg-purple-100 text-purple-700 border border-purple-200/60">
+                        <td className="py-3.5 px-3 xl:px-4 min-w-[85px] w-[95px]">
+                          <div className="flex items-center gap-1.5 whitespace-nowrap">
+                            <span className="px-1.5 py-0.5 text-[10px] font-bold rounded bg-purple-100 text-purple-700 border border-purple-200/60">
                               {memberCount}
                             </span>
                             <span className="text-slate-500 font-medium text-xs">
-                              {memberCount === 1 ? 'member assigned' : 'members assigned'}
+                              {memberCount === 1 ? 'member' : 'members'}
                             </span>
                           </div>
                         </td>
 
                         {/* Timeline */}
-                        <td className="py-4 px-6">
-                          <div className="text-slate-800 font-medium text-xs">
+                        <td className="py-3.5 px-3 xl:px-4 min-w-[125px]">
+                          <div className="text-slate-800 font-medium text-[11px] whitespace-nowrap">
                             {startDateStr} — {endDateStr}
                           </div>
-                          <div className="text-[11px] text-slate-400 mt-0.5 flex items-center gap-1">
-                            <Calendar className="w-3 h-3 text-slate-400" />
-                            <span>{proj.status === 'ARCHIVED' ? 'Archived' : 'Active Timeline'}</span>
+                          <div className="text-[10px] text-slate-400 mt-0.5 flex items-center gap-1">
+                            <Calendar className="w-3 h-3 text-slate-400 shrink-0" />
+                            <span className="truncate">{proj.status === 'ARCHIVED' ? 'Archived' : 'Active Timeline'}</span>
                           </div>
                         </td>
 
                         {/* Progress */}
-                        <td className="py-4 px-6">
-                          <div className="flex items-center gap-3 max-w-[120px]">
+                        <td className="py-3.5 px-3 xl:px-4 min-w-[85px] w-[100px]">
+                          <div className="flex items-center gap-2 max-w-[110px]">
                             <div className="w-full bg-slate-100 rounded-full h-1.5 overflow-hidden">
                               <div
                                 className={`h-full rounded-full ${
@@ -673,22 +700,22 @@ export default function ProjectsDirectoryView({ onSelectProject, isIntern = fals
                                 style={{ width: `${progressVal}%` }}
                               />
                             </div>
-                            <span className="text-xs font-bold text-slate-700 w-8 text-right">
+                            <span className="text-[11px] font-bold text-slate-700 shrink-0">
                               {progressVal}%
                             </span>
                           </div>
                         </td>
 
                         {/* Status */}
-                        <td className="py-4 px-6">
-                          <span className={`px-2.5 py-0.5 rounded-full text-[11px] font-semibold border ${getStatusBadgeStyle(proj.status)}`}>
+                        <td className="py-3.5 px-3 xl:px-4 min-w-[80px]">
+                          <span className={`px-2 py-0.5 rounded-full text-[10px] font-semibold border ${getStatusBadgeStyle(proj.status)}`}>
                             {proj.status}
                           </span>
                         </td>
 
                         {/* Actions */}
-                        <td className="py-4 px-6 text-right">
-                          <div className="flex items-center justify-end gap-2" onClick={(e) => e.stopPropagation()}>
+                        <td className="py-3.5 px-3 xl:px-4 text-right min-w-[105px] w-[110px]">
+                          <div className="flex items-center justify-end gap-1" onClick={(e) => e.stopPropagation()}>
                             {isIntern ? (
                               <button
                                 title="Open Workspace"
@@ -724,6 +751,13 @@ export default function ProjectsDirectoryView({ onSelectProject, isIntern = fals
                                     <Archive className="w-4 h-4" />
                                   </button>
                                 )}
+                                <button 
+                                  title="Delete Project"
+                                  onClick={(e) => handleOpenDelete(proj, e)}
+                                  className="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-colors cursor-pointer"
+                                >
+                                  <Trash2 className="w-4 h-4" />
+                                </button>
                               </>
                             )}
                           </div>
@@ -1461,6 +1495,71 @@ export default function ProjectsDirectoryView({ onSelectProject, isIntern = fals
               >
                 {archiveSubmitting && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
                 <span>Confirm Archive</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* DELETE CONFIRMATION MODAL */}
+      {deleteTarget && (
+        <div 
+          className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/50 backdrop-blur-xs animate-in fade-in duration-100"
+          onClick={() => {
+            if (!deleteSubmitting) setDeleteTarget(null);
+          }}
+        >
+          <div 
+            className="bg-white rounded-2xl shadow-xl border border-slate-200 p-6 w-full max-w-md animate-in zoom-in-95 duration-150"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center gap-3 text-rose-600 mb-3">
+              <div className="w-10 h-10 rounded-xl bg-rose-50 text-rose-600 flex items-center justify-center border border-rose-100 shrink-0">
+                <Trash2 className="w-5 h-5" />
+              </div>
+              <div>
+                <h3 className="text-sm font-bold text-slate-900">Delete Project Permanently</h3>
+                <p className="text-[11px] text-slate-400 font-normal">This action cannot be undone</p>
+              </div>
+            </div>
+
+            {deleteError && (
+              <div className="mb-4 p-3 bg-rose-50 border border-rose-200 rounded-xl text-rose-700 text-xs flex items-center gap-2">
+                <AlertCircle className="w-4 h-4 shrink-0" />
+                <span>{deleteError}</span>
+              </div>
+            )}
+
+            <p className="text-xs text-slate-600 leading-relaxed">
+              Are you sure you want to completely delete <strong className="text-slate-900 font-semibold">{deleteTarget.name}</strong> from the database? All associated tasks, sprints, documents, and project roles will be permanently removed.
+            </p>
+
+            <div className="flex items-center justify-end gap-2 mt-6">
+              <button
+                type="button"
+                onClick={() => setDeleteTarget(null)}
+                disabled={deleteSubmitting}
+                className="px-3.5 py-1.5 text-xs font-semibold text-slate-600 hover:text-slate-800 rounded-lg hover:bg-slate-100 cursor-pointer disabled:opacity-50"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={handleConfirmDelete}
+                disabled={deleteSubmitting}
+                className="px-4 py-1.5 text-xs font-semibold text-white bg-rose-600 hover:bg-rose-700 rounded-lg transition-colors disabled:opacity-50 flex items-center gap-1.5 cursor-pointer shadow-xs"
+              >
+                {deleteSubmitting ? (
+                  <>
+                    <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                    <span>Deleting...</span>
+                  </>
+                ) : (
+                  <>
+                    <Trash2 className="w-3.5 h-3.5" />
+                    <span>Delete Project</span>
+                  </>
+                )}
               </button>
             </div>
           </div>

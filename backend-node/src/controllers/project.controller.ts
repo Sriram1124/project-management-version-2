@@ -159,6 +159,21 @@ export class ProjectController {
     }
   }
 
+  static async delete(req: Request, res: Response): Promise<void> {
+    try {
+      const user = (req as any).fullUser;
+      const id = req.params.projectId || req.params.id;
+
+      const result = await ProjectService.deleteProject(id, user);
+      res.status(200).json({
+        ...result,
+        message: 'Project deleted completely from database',
+      });
+    } catch (error) {
+      ProjectController.handleError(res, error);
+    }
+  }
+
   static async getMembers(req: Request, res: Response): Promise<void> {
     try {
       const user = (req as any).fullUser;

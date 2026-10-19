@@ -488,6 +488,79 @@ describe('ProjectService Unit Tests', () => {
     });
   });
 
+  describe('deleteProject', () => {
+    it('should throw if project not found', async () => {
+      (prisma.project.findFirst as jest.Mock).mockResolvedValue(null);
+      (prisma.project.findUnique as jest.Mock).mockResolvedValue(null);
+
+      await expect(ProjectService.deleteProject('p-missing', mockOrgUser)).rejects.toThrow(
+        'Project not found'
+      );
+    });
+
+    it('should forbid non-manager non-owner from deleting project', async () => {
+      (prisma.project.findFirst as jest.Mock).mockResolvedValue({
+        id: 'p-1',
+        name: 'Secret Project',
+        owner_id: 'other-mgr',
+        owners: [],
+        organization_id: 'org-1',
+      });
+
+      await expect(ProjectService.deleteProject('p-1', mockInternUser)).rejects.toThrow(
+        'Forbidden: only managers or project owners can delete this project'
+      );
+    });
+
+    it('should delete project completely from database including child relations', async () => {
+      (prisma.project.findFirst as jest.Mock).mockResolvedValue({
+        id: 'p-1',
+        name: 'Project to Delete',
+        owner_id: mockOrgUser.id,
+        owners: [{ user_id: mockOrgUser.id }],
+        organization_id: 'org-1',
+      });
+
+      (prisma.$transaction as jest.Mock).mockImplementation(async (callback) => {
+        const tx = {
+          workItem: {
+            findMany: jest.fn().mockResolvedValue([{ id: 'wi-1' }]),
+            updateMany: jest.fn().mockResolvedValue({ count: 1 }),
+            deleteMany: jest.fn().mockResolvedValue({ count: 1 }),
+          },
+          workItemAssignee: { deleteMany: jest.fn().mockResolvedValue({ count: 1 }) },
+          workItemComment: { deleteMany: jest.fn().mockResolvedValue({ count: 1 }) },
+          workItemAttachment: { deleteMany: jest.fn().mockResolvedValue({ count: 1 }) },
+          workItemExtensionRequest: { deleteMany: jest.fn().mockResolvedValue({ count: 1 }) },
+          timeEntry: {
+            updateMany: jest.fn().mockResolvedValue({ count: 1 }),
+            deleteMany: jest.fn().mockResolvedValue({ count: 1 }),
+          },
+          workSession: { updateMany: jest.fn().mockResolvedValue({ count: 1 }) },
+          projectOwner: { deleteMany: jest.fn().mockResolvedValue({ count: 1 }) },
+          projectMember: { deleteMany: jest.fn().mockResolvedValue({ count: 1 }) },
+          projectDocument: { deleteMany: jest.fn().mockResolvedValue({ count: 1 }) },
+          actionItem: { deleteMany: jest.fn().mockResolvedValue({ count: 1 }) },
+          sprint: { deleteMany: jest.fn().mockResolvedValue({ count: 1 }) },
+          role: {
+            findMany: jest.fn().mockResolvedValue([]),
+            deleteMany: jest.fn().mockResolvedValue({ count: 0 }),
+          },
+          rolePermission: { deleteMany: jest.fn().mockResolvedValue({ count: 0 }) },
+          userRole: { deleteMany: jest.fn().mockResolvedValue({ count: 0 }) },
+          form: { updateMany: jest.fn().mockResolvedValue({ count: 0 }) },
+          project: { delete: jest.fn().mockResolvedValue({ id: 'p-1' }) },
+        };
+        return callback(tx);
+      });
+
+      const res = await ProjectService.deleteProject('p-1', mockOrgUser);
+      expect(res.success).toBe(true);
+      expect(res.id).toBe('p-1');
+      expect(res.name).toBe('Project to Delete');
+    });
+  });
+
   describe('getProjectMembers', () => {
     it('should return sorted project members with TECH_LEAD first', async () => {
       (prisma.project.findFirst as jest.Mock).mockResolvedValue({ id: 'p-1', organization_id: 'org-1' });

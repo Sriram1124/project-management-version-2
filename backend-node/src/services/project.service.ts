@@ -711,6 +711,140 @@ export class ProjectService {
   }
 
   /**
+   * Permanently delete a project and all associated records from the database
+   */
+  static async deleteProject(projectId: string, user: any) {
+    if (!projectId || projectId === 'undefined') {
+      throw new Error('Project not found');
+    }
+
+    const orgId = user.organization_id;
+
+    let existing = orgId
+      ? await prisma.project.findFirst({
+          where: { id: projectId, organization_id: orgId },
+          include: {
+            owners: true,
+          },
+        })
+      : null;
+
+    if (!existing) {
+      existing = await prisma.project.findUnique({
+        where: { id: projectId },
+        include: {
+          owners: true,
+        },
+      });
+    }
+
+    if (!existing) {
+      throw new Error('Project not found');
+    }
+
+    const isMgr = this.isManagerOrAdmin(user);
+    const isOwner =
+      existing.owner_id === user.id ||
+      existing.owners?.some((o: any) => o.user_id === user.id);
+
+    if (!isMgr && !isOwner) {
+      throw new Error('Forbidden: only managers or project owners can delete this project');
+    }
+
+    // Purge project files in MongoDB if enabled
+    if (process.env.ENABLE_MONGODB_PROJECT_FILES === 'true') {
+      try {
+        await ProjectFile.deleteMany({ project_id: projectId });
+      } catch (e) {
+        console.warn('[ProjectService] Failed to clean up MongoDB project files on deletion:', e);
+      }
+    }
+
+    await prisma.$transaction(async (tx) => {
+      // 1. Fetch work items to clean up child relations
+      const workItems = await tx.workItem.findMany({
+        where: { project_id: projectId },
+        select: { id: true },
+      });
+      const workItemIds = workItems.map((w) => w.id);
+
+      if (workItemIds.length > 0) {
+        // Disconnect parent hierarchy to avoid Restrict constraints
+        await tx.workItem.updateMany({
+          where: { id: { in: workItemIds } },
+          data: { parent_id: null },
+        });
+
+        await tx.workItemAssignee.deleteMany({
+          where: { work_item_id: { in: workItemIds } },
+        });
+        await tx.workItemComment.deleteMany({
+          where: { work_item_id: { in: workItemIds } },
+        });
+        await tx.workItemAttachment.deleteMany({
+          where: { work_item_id: { in: workItemIds } },
+        });
+        await tx.workItemExtensionRequest.deleteMany({
+          where: { task_id: { in: workItemIds } },
+        });
+        await tx.timeEntry.deleteMany({
+          where: { task_id: { in: workItemIds } },
+        });
+        await tx.workSession.updateMany({
+          where: { task_id: { in: workItemIds } },
+          data: { task_id: null },
+        });
+
+        await tx.workItem.deleteMany({
+          where: { id: { in: workItemIds } },
+        });
+      }
+
+      // 2. Delete child relations
+      await tx.projectOwner.deleteMany({ where: { project_id: projectId } });
+      await tx.projectMember.deleteMany({ where: { project_id: projectId } });
+      await tx.projectDocument.deleteMany({ where: { project_id: projectId } });
+      await tx.actionItem.deleteMany({ where: { project_id: projectId } });
+      await tx.workItemExtensionRequest.deleteMany({ where: { project_id: projectId } });
+      await tx.sprint.deleteMany({ where: { project_id: projectId } });
+
+      // Clean up roles and permissions
+      const projectRoles = await tx.role.findMany({
+        where: { project_id: projectId },
+        select: { id: true },
+      });
+      if (projectRoles.length > 0) {
+        const roleIds = projectRoles.map((r) => r.id);
+        await tx.rolePermission.deleteMany({ where: { role_id: { in: roleIds } } });
+        await tx.userRole.deleteMany({ where: { role_id: { in: roleIds } } });
+        await tx.role.deleteMany({ where: { id: { in: roleIds } } });
+      }
+
+      // Nullify references in forms and time entries
+      await tx.timeEntry.updateMany({
+        where: { project_id: projectId },
+        data: { project_id: null },
+      });
+      await tx.form.updateMany({
+        where: { project_id: projectId },
+        data: { project_id: null },
+      });
+
+      // 3. Delete project record
+      await tx.project.delete({
+        where: { id: projectId },
+      });
+    });
+
+    return {
+      success: true,
+      id: projectId,
+      name: existing.name,
+      message: 'Project permanently deleted from database',
+    };
+  }
+
+  /**
    * List project members with optional search filtering
    */
   static async getProjectMembers(projectId: string, user: any, searchQuery?: string) {

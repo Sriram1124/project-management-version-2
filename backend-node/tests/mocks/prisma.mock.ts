@@ -34,6 +34,7 @@ export const mockPrisma: any = {
   workItem: createModelMock(),
   workItemAssignee: createModelMock(),
   workItemComment: createModelMock(),
+  workItemAttachment: createModelMock(),
   timeEntry: createModelMock(),
   workSession: createModelMock(),
   form: createModelMock(),
