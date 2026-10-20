@@ -297,12 +297,13 @@ export default function KanbanBoard({ projectId, project = null, isKanbanProject
       }
 
       if (selectedAssignee) {
-        const targetAssigneeId = selectedAssignee.user_id || selectedAssignee.id;
+        const targetAssigneeId = String(selectedAssignee.user_id || selectedAssignee.id || '');
         if (!targetAssigneeId) return false;
+        const taskAssignees = task.assignees || (task.assignee ? [task.assignee] : []);
         const hasAssignee = Boolean(
-          task.assignees?.some((a) => {
-            const aId = a.user_id || a.id;
-            return Boolean(aId) && aId === targetAssigneeId;
+          taskAssignees.some((a) => {
+            const aId = String(a.user_id || a.id || '');
+            return aId === targetAssigneeId;
           })
         );
         if (!hasAssignee) return false;
@@ -611,7 +612,13 @@ export default function KanbanBoard({ projectId, project = null, isKanbanProject
         projectId={projectId}
         isKanban={isKanban}
         initialStatus={addTaskColumnId}
-        initialSprintId={isKanban ? null : (activeSprint?.id || null)}
+        initialSprintId={
+          isKanban
+            ? null
+            : selectedSprint !== 'All Sprints' && selectedSprint !== 'Backlog Only'
+            ? sprints.find((s) => s.name === selectedSprint || s.id === selectedSprint)?.id || activeSprint?.id || null
+            : activeSprint?.id || null
+        }
         sprints={sprints}
         onTaskCreated={handleSaveTask}
         onToast={onToast}

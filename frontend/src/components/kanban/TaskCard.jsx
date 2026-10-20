@@ -102,10 +102,19 @@ export default function TaskCard({
         {task.title}
       </h4>
 
-      {/* Parent or Category */}
+      {/* Description preview */}
+      {task.description && (
+        <p className="text-[11px] text-slate-500 mt-1 line-clamp-2 leading-relaxed">
+          {task.description}
+        </p>
+      )}
+
+      {/* Parent Epic or Category */}
       {parentTitle && (
-        <div className="flex items-center text-[11px] text-slate-500 mt-1">
-          <span className="truncate max-w-[170px]">{parentTitle}</span>
+        <div className="flex items-center text-[10px] text-slate-500 mt-1.5">
+          <span className="truncate max-w-[180px] bg-slate-100 px-1.5 py-0.5 rounded text-[10px] font-medium text-slate-600 border border-slate-200/60">
+            {parentTitle}
+          </span>
         </div>
       )}
 

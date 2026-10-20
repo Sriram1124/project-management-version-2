@@ -135,15 +135,13 @@ export default function ProjectMomTab({ projectId, projectName, onToast, readOnl
 
   const filteredMoMs = moms.filter((mom) => {
     const q = searchQuery.toLowerCase().trim();
-    const matchesSearch = 
-      !q ||
+    if (!q) return true;
+    return (
       mom.title.toLowerCase().includes(q) ||
       mom.agenda.toLowerCase().includes(q) ||
       mom.organizer.toLowerCase().includes(q) ||
-      mom.keyDecisions.some((d) => d.toLowerCase().includes(q));
-    
-    const matchesType = selectedType === 'All' || mom.type === selectedType;
-    return matchesSearch && matchesType;
+      mom.keyDecisions.some((d) => d.toLowerCase().includes(q))
+    );
   });
 
   const handleConfirmDeleteActionItem = () => {
@@ -225,7 +223,7 @@ export default function ProjectMomTab({ projectId, projectName, onToast, readOnl
       <div className="bg-white rounded-xl border border-slate-200/80 p-3 shadow-2xs flex flex-col md:flex-row md:items-center justify-between gap-3">
         <div className="flex flex-wrap items-center gap-2.5 flex-1 min-w-0">
           {/* Search Box - Dedicated responsive width, never crushed */}
-          <div className="relative w-full sm:w-64 md:w-80 shrink-0">
+          <div className="relative w-full sm:w-80 md:w-96 flex-1 max-w-lg">
             <Search className="w-3.5 h-3.5 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
             <input
               type="text"
@@ -246,23 +244,7 @@ export default function ProjectMomTab({ projectId, projectName, onToast, readOnl
             )}
           </div>
 
-          {/* Type Filter Buttons */}
-          <div className="flex items-center gap-1 overflow-x-auto py-0.5">
-            {meetingTypes.map((type) => (
-              <button
-                key={type}
-                type="button"
-                onClick={() => setSelectedType(type)}
-                className={`px-2.5 py-1 text-xs font-medium rounded-lg whitespace-nowrap transition-colors cursor-pointer ${
-                  selectedType === type
-                    ? 'bg-purple-100 text-purple-700 font-semibold border border-purple-200/80'
-                    : 'text-slate-600 hover:bg-slate-100 hover:text-slate-900 border border-transparent'
-                }`}
-              >
-                {type}
-              </button>
-            ))}
-          </div>
+
         </div>
 
         {/* Right CTA */}
@@ -299,7 +281,7 @@ export default function ProjectMomTab({ projectId, projectName, onToast, readOnl
             return (
               <div
                 key={mom.id}
-                className="bg-white rounded-xl p-4 sm:p-5 border border-slate-200 hover:border-slate-300 transition-all shadow-2xs"
+                className="bg-white rounded-2xl p-5 sm:p-6 border border-slate-200/90 hover:border-slate-300 transition-all shadow-2xs"
               >
                 {/* Header Row */}
                 <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-2 pb-3 border-b border-slate-100">
@@ -308,9 +290,7 @@ export default function ProjectMomTab({ projectId, projectName, onToast, readOnl
                       <span className="font-mono text-[11px] font-semibold text-slate-500 bg-slate-100 px-1.5 py-0.5 rounded border border-slate-200">
                         {mom.id}
                       </span>
-                      <span className={`px-2 py-0.5 rounded text-[10px] font-semibold border ${mom.typeColor}`}>
-                        {mom.type}
-                      </span>
+
                     </div>
                     <h3 className="text-sm font-bold text-slate-900 tracking-tight">
                       {mom.title}

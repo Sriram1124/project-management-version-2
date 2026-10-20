@@ -197,7 +197,7 @@ export default function ProjectOverviewTab({ projectId, project, onToast, onDele
   return (
     <div className="space-y-6 min-w-0 max-w-full">
       {/* 1. Project Overview Executive Summary */}
-      <div className="bg-white rounded-xl p-5 border border-slate-200/80 shadow-xs">
+      <div className="bg-white rounded-2xl p-6 border border-slate-200/90 shadow-2xs">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
           <div className="flex items-center gap-3">
             <h2 className="text-base font-bold text-slate-900 tracking-tight">
@@ -232,7 +232,7 @@ export default function ProjectOverviewTab({ projectId, project, onToast, onDele
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-3.5 mt-5 pt-4 border-t border-slate-100">
           {/* Owner */}
           <div 
-            className="flex items-center gap-3 p-3 bg-slate-50/70 border border-slate-200/60 rounded-xl"
+            className="flex items-center gap-3.5 p-3.5 sm:p-4 bg-slate-50/80 border border-slate-200/80 rounded-xl"
             title={projectOwners.length > 0 ? projectOwners.map((o) => `${o.name || o.email} (${o.email || ''})`).join(', ') : undefined}
           >
             <div className="relative shrink-0">
@@ -249,7 +249,7 @@ export default function ProjectOverviewTab({ projectId, project, onToast, onDele
             </div>
             <div className="min-w-0">
               <div className="flex items-center gap-1.5">
-                <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">
+                <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider block">
                   {additionalOwnersCount > 0 ? 'Project Owners' : 'Project Owner'}
                 </span>
                 {additionalOwnersCount > 0 && (
@@ -275,12 +275,12 @@ export default function ProjectOverviewTab({ projectId, project, onToast, onDele
           </div>
 
           {/* Timeline */}
-          <div className="flex items-center gap-3 p-3 bg-slate-50/70 border border-slate-200/60 rounded-xl">
+          <div className="flex items-center gap-3.5 p-3.5 sm:p-4 bg-slate-50/80 border border-slate-200/80 rounded-xl">
             <div className="w-9 h-9 rounded-xl bg-purple-50 text-purple-600 flex items-center justify-center border border-purple-100/80 shrink-0">
               <Calendar className="w-4 h-4" />
             </div>
             <div className="min-w-0">
-              <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">
+              <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider block">
                 Timeline
               </span>
               <div className="text-xs font-bold text-slate-900">
@@ -303,7 +303,7 @@ export default function ProjectOverviewTab({ projectId, project, onToast, onDele
                 handleOpenAllMembers();
               }
             }}
-            className="flex items-center justify-between gap-3 p-3 bg-slate-50/70 hover:bg-blue-50/60 border border-slate-200/60 hover:border-blue-300 rounded-xl transition-all cursor-pointer shadow-2xs hover:shadow-xs group select-none"
+            className="flex items-center justify-between gap-3.5 p-3.5 sm:p-4 bg-slate-50/80 hover:bg-blue-50/60 border border-slate-200/80 hover:border-blue-300 rounded-xl transition-all cursor-pointer shadow-2xs hover:shadow-xs group select-none"
             title="Click to view all members, add members, or assign roles"
           >
             <div className="flex items-center gap-3 min-w-0">

@@ -127,6 +127,20 @@ export default function ProjectTaskCharts({ projectId = null, members = [], read
   const [selectedSprintId, setSelectedSprintId] = useState('ALL');
   const [dateRangeFilter, setDateRangeFilter] = useState('ALL'); // 'ALL' | '7D' | '14D' | '30D' | 'THIS_MONTH'
 
+  // Default values for this Project Overview component
+  const defaultProjectId = projectId || '';
+  const defaultSprintId = 'ALL';
+  const defaultDateRange = 'ALL';
+
+  // Check if any filter on this Project Overview page differs from its default value
+  const isFiltersChanged = useMemo(() => {
+    return (
+      (selectedProjectId !== defaultProjectId) ||
+      (selectedSprintId !== defaultSprintId) ||
+      (dateRangeFilter !== defaultDateRange)
+    );
+  }, [selectedProjectId, defaultProjectId, selectedSprintId, defaultSprintId, dateRangeFilter, defaultDateRange]);
+
   // Server Analytics & Raw Items
   const [analyticsData, setAnalyticsData] = useState(null);
   const [workItems, setWorkItems] = useState([]);
@@ -775,18 +789,19 @@ export default function ProjectTaskCharts({ projectId = null, members = [], read
               </select>
             </div>
 
-            {/* Clear Filters Button if any active */}
-            {(selectedSprintId !== 'ALL' || dateRangeFilter !== 'ALL' || selectedProjectId) && (
+            {/* Clear Filters Button: Shown ONLY on Manager Project Overview and only when at least one filter differs from default */}
+            {Boolean(projectId) && !isInternUser && isFiltersChanged && (
               <button
                 type="button"
                 onClick={() => {
-                  setSelectedProjectId(projectId || '');
-                  setSelectedSprintId('ALL');
-                  setDateRangeFilter('ALL');
+                  setSelectedProjectId(defaultProjectId);
+                  setSelectedSprintId(defaultSprintId);
+                  setDateRangeFilter(defaultDateRange);
                 }}
-                className="inline-flex items-center gap-1 text-[11px] font-semibold text-purple-600 hover:text-purple-800 transition-colors cursor-pointer ml-1"
+                className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs font-semibold text-purple-700 bg-purple-50 hover:bg-purple-100 border border-purple-200 transition-colors cursor-pointer shadow-2xs ml-1"
+                title="Reset filters to defaults"
               >
-                <X className="w-3 h-3" />
+                <X className="w-3.5 h-3.5" />
                 <span>Reset Filters</span>
               </button>
             )}
@@ -823,39 +838,39 @@ export default function ProjectTaskCharts({ projectId = null, members = [], read
           <div>
             {/* KPI Row: 6 individual statistics metric blocks */}
             <div className="p-4 sm:p-5">
-              <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
+              <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3.5 sm:gap-4">
                 {/* 1. Tasks Assigned */}
-                <div className="p-3.5 rounded-xl bg-slate-50/70 border border-slate-100 flex flex-col justify-between">
+                <div className="p-4 rounded-xl bg-white border border-slate-200/90 shadow-2xs hover:shadow-xs hover:border-purple-200/80 transition-all flex flex-col justify-between min-h-[116px]">
                   <div className="flex items-center justify-between">
-                    <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">Tasks Assigned</span>
+                    <span className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider">Tasks Assigned</span>
                     <div className="w-7 h-7 rounded-lg bg-purple-100/80 text-purple-600 flex items-center justify-center">
                       <Layers className="w-3.5 h-3.5" />
                     </div>
                   </div>
                   <div className="text-2xl font-bold text-slate-900 mt-2">{analytics.total}</div>
-                  <div className="text-[11px] text-slate-500 mt-0.5 truncate" title={`${analytics.inProgress} in progress · ${analytics.inReview} in review`}>
+                  <div className="text-xs text-slate-600 font-medium mt-1 truncate" title={`${analytics.inProgress} in progress · ${analytics.inReview} in review`}>
                     {analytics.inProgress} in progress · {analytics.inReview} in review
                   </div>
                 </div>
 
                 {/* 2. Completed */}
-                <div className="p-3.5 rounded-xl bg-slate-50/70 border border-slate-100 flex flex-col justify-between">
+                <div className="p-4 rounded-xl bg-white border border-slate-200/90 shadow-2xs hover:shadow-xs hover:border-purple-200/80 transition-all flex flex-col justify-between min-h-[116px]">
                   <div className="flex items-center justify-between">
-                    <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">Completed</span>
+                    <span className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider">Completed</span>
                     <div className="w-7 h-7 rounded-lg bg-emerald-100/80 text-emerald-600 flex items-center justify-center">
                       <CheckCircle2 className="w-3.5 h-3.5" />
                     </div>
                   </div>
                   <div className="text-2xl font-bold text-emerald-600 mt-2">{analytics.completed}</div>
-                  <div className="text-[11px] text-slate-500 mt-0.5 truncate">
+                  <div className="text-xs text-slate-600 font-medium mt-1 truncate">
                     {analytics.completionRate}% completion rate
                   </div>
                 </div>
 
                 {/* 3. Completed On-Time Rate */}
-                <div className="p-3.5 rounded-xl bg-slate-50/70 border border-slate-100 flex flex-col justify-between">
+                <div className="p-4 rounded-xl bg-white border border-slate-200/90 shadow-2xs hover:shadow-xs hover:border-purple-200/80 transition-all flex flex-col justify-between min-h-[116px]">
                   <div className="flex items-center justify-between">
-                    <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">On-Time Rate</span>
+                    <span className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider">On-Time Rate</span>
                     <div className="w-7 h-7 rounded-lg bg-blue-100/80 text-blue-600 flex items-center justify-center">
                       <CalendarCheck className="w-3.5 h-3.5" />
                     </div>
@@ -865,7 +880,7 @@ export default function ProjectTaskCharts({ projectId = null, members = [], read
                       ? `${analytics.completedOnTimeRate}%`
                       : (analytics.onTimeRate !== null && analytics.onTimeRate !== undefined ? `${analytics.onTimeRate}%` : 'N/A')}
                   </div>
-                  <div className="text-[11px] text-slate-500 mt-0.5 truncate">
+                  <div className="text-xs text-slate-600 font-medium mt-1 truncate">
                     {analytics.completedWithDueDateCount > 0
                       ? `${analytics.completedOnTime} of ${analytics.completedWithDueDateCount} on time`
                       : 'No items with deadlines'}
@@ -873,9 +888,9 @@ export default function ProjectTaskCharts({ projectId = null, members = [], read
                 </div>
 
                 {/* 4. Overdue Items */}
-                <div className="p-3.5 rounded-xl bg-slate-50/70 border border-slate-100 flex flex-col justify-between">
+                <div className="p-4 rounded-xl bg-white border border-slate-200/90 shadow-2xs hover:shadow-xs hover:border-purple-200/80 transition-all flex flex-col justify-between min-h-[116px]">
                   <div className="flex items-center justify-between">
-                    <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">Overdue Items</span>
+                    <span className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider">Overdue Items</span>
                     <div className="w-7 h-7 rounded-lg bg-rose-100/80 text-rose-600 flex items-center justify-center">
                       <AlertTriangle className="w-3.5 h-3.5" />
                     </div>
@@ -883,7 +898,7 @@ export default function ProjectTaskCharts({ projectId = null, members = [], read
                   <div className={`text-2xl font-bold mt-2 ${analytics.pastDue > 0 ? 'text-rose-600' : 'text-slate-800'}`}>
                     {analytics.pastDue}
                   </div>
-                  <div className="text-[11px] text-slate-500 mt-0.5 truncate">
+                  <div className="text-xs text-slate-600 font-medium mt-1 truncate">
                     {analytics.pastDue > 0
                       ? `${analytics.pastDue} overdue of ${analytics.scheduledItemsCount || 0}`
                       : '0 overdue items'}
@@ -891,9 +906,9 @@ export default function ProjectTaskCharts({ projectId = null, members = [], read
                 </div>
 
                 {/* 5. Story Points */}
-                <div className="p-3.5 rounded-xl bg-slate-50/70 border border-slate-100 flex flex-col justify-between">
+                <div className="p-4 rounded-xl bg-white border border-slate-200/90 shadow-2xs hover:shadow-xs hover:border-purple-200/80 transition-all flex flex-col justify-between min-h-[116px]">
                   <div className="flex items-center justify-between">
-                    <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">Story Points</span>
+                    <span className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider">Story Points</span>
                     <div className="w-7 h-7 rounded-lg bg-indigo-100/80 text-indigo-600 flex items-center justify-center">
                       <CheckSquare className="w-3.5 h-3.5" />
                     </div>
@@ -902,7 +917,7 @@ export default function ProjectTaskCharts({ projectId = null, members = [], read
                     {analytics.storyPointsCompleted || 0}
                     <span className="text-xs font-semibold text-slate-400 ml-1">/ {analytics.storyPointsTotal || 0} pts</span>
                   </div>
-                  <div className="text-[11px] text-slate-500 mt-0.5 truncate">
+                  <div className="text-xs text-slate-600 font-medium mt-1 truncate">
                     {analytics.storyPointsTotal > 0
                       ? `${Math.round(((analytics.storyPointsCompleted || 0) / analytics.storyPointsTotal) * 100)}% completed`
                       : 'No points estimated'}
@@ -910,9 +925,9 @@ export default function ProjectTaskCharts({ projectId = null, members = [], read
                 </div>
 
                 {/* 6. Logged Effort */}
-                <div className="p-3.5 rounded-xl bg-slate-50/70 border border-slate-100 flex flex-col justify-between">
+                <div className="p-4 rounded-xl bg-white border border-slate-200/90 shadow-2xs hover:shadow-xs hover:border-purple-200/80 transition-all flex flex-col justify-between min-h-[116px]">
                   <div className="flex items-center justify-between">
-                    <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">Logged Effort</span>
+                    <span className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider">Logged Effort</span>
                     <div className="w-7 h-7 rounded-lg bg-amber-100/80 text-amber-600 flex items-center justify-center">
                       <Clock className="w-3.5 h-3.5" />
                     </div>
@@ -921,7 +936,7 @@ export default function ProjectTaskCharts({ projectId = null, members = [], read
                     {analytics.totalLoggedHours || 0}
                     <span className="text-xs font-semibold text-slate-400 ml-1">hrs</span>
                   </div>
-                  <div className="text-[11px] text-slate-500 mt-0.5 truncate">
+                  <div className="text-xs text-slate-600 font-medium mt-1 truncate">
                     {analytics.totalLoggedMinutes || 0}m actual effort
                   </div>
                 </div>
@@ -1076,7 +1091,7 @@ export default function ProjectTaskCharts({ projectId = null, members = [], read
 
                   {/* Priority Breakdown Bars */}
                   <div className="mt-4 space-y-3">
-                    <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider block">
+                    <span className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider block">
                       Priority Volume
                     </span>
                     {Object.entries(PRIORITY_CONFIG).map(([key, config]) => {
@@ -1104,7 +1119,7 @@ export default function ProjectTaskCharts({ projectId = null, members = [], read
 
                   {/* Work-Item Types Grid */}
                   <div className="mt-5 pt-4 border-t border-slate-100">
-                    <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider block mb-2.5">
+                    <span className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider block mb-2.5">
                       Work-Item Types
                     </span>
                     <div className="grid grid-cols-2 sm:grid-cols-5 gap-2">
@@ -1130,10 +1145,6 @@ export default function ProjectTaskCharts({ projectId = null, members = [], read
                     <span>
                       Scope: <strong>{isInternUser ? 'Your Personal Workload (Private)' : selectedPerformanceFilter === 'ALL' ? `All Members (${members.length})` : selectedPerformanceFilter === 'TECH_LEADS' ? `Tech Leads (${techLeadUserIds.size})` : (memberPerformanceMap.get(selectedPerformanceFilter)?.name || 'Selected User')}</strong>
                     </span>
-                  </span>
-                  <span className="text-purple-600 font-semibold flex items-center gap-1">
-                    <Sparkles className="w-3 h-3" />
-                    <span>Live Supabase Database Sync</span>
                   </span>
                 </div>
               </div>
