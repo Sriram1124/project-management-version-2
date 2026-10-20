@@ -32,12 +32,15 @@ describe('Multiple Project Owners API & Authorization', () => {
         organization_id: 'org-test-1',
       });
 
-      mockPrisma.user.findFirst.mockResolvedValueOnce({
-        id: managerUser.id,
-        name: managerUser.name,
-        email: managerUser.email,
-        organization_id: 'org-test-1',
-      });
+      mockPrisma.user.findMany.mockResolvedValueOnce([
+        {
+          id: managerUser.id,
+          name: managerUser.name,
+          email: managerUser.email,
+          organization_id: 'org-test-1',
+          roles: [{ role: { name: 'MANAGER' } }],
+        },
+      ]);
 
       mockPrisma.project.create.mockResolvedValueOnce({
         id: 'proj-single-owner',
@@ -57,6 +60,7 @@ describe('Multiple Project Owners API & Authorization', () => {
         .set('Authorization', authHeader)
         .send({
           name: 'Single Owner Project',
+          description: 'A valid description for single owner project',
           methodology: 'SCRUM',
           owner_id: managerUser.id,
         });
@@ -121,6 +125,7 @@ describe('Multiple Project Owners API & Authorization', () => {
         .set('Authorization', authHeader)
         .send({
           name: 'Multi Owner Project',
+          description: 'A valid description for multi owner project',
           methodology: 'SCRUM',
           owner_ids: [managerUser.id, coOwnerUser.id],
         });
@@ -164,6 +169,7 @@ describe('Multiple Project Owners API & Authorization', () => {
         .set('Authorization', authHeader)
         .send({
           name: 'Invalid Project',
+          description: 'A valid description',
           methodology: 'SCRUM',
           owner_ids: ['intern-sole'],
         });
@@ -195,6 +201,7 @@ describe('Multiple Project Owners API & Authorization', () => {
         .set('Authorization', authHeader)
         .send({
           name: 'Cross Org Project',
+          description: 'A valid description',
           methodology: 'SCRUM',
           owner_ids: [managerUser.id, 'foreign-user-id'],
         });

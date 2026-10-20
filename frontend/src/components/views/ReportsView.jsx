@@ -145,7 +145,10 @@ export default function ReportsView({ onToast, selectedCohort, selectedCohortId 
   // Fetch initial entities and report
   const fetchEntitiesAndReport = useCallback(async () => {
     try {
-      const userParams = selectedCohortId ? { cohort_id: selectedCohortId } : {};
+      const userParams = {
+        ...(selectedCohortId ? { cohort_id: selectedCohortId } : {}),
+        type: 'INTERN',
+      };
       const [projData, userData] = await Promise.all([
         projectsService.getProjects().catch(() => []),
         projectsService.getUsers(userParams).catch(() => []),
@@ -291,6 +294,10 @@ export default function ReportsView({ onToast, selectedCohort, selectedCohortId 
     members.forEach((m) => {
       const uid = m.id || m.userId || m.user_id;
       if (!uid) return;
+      const isIntern = m.role === 'INTERN' || m.type === 'INTERN' || Boolean(m.isIntern) || (Array.isArray(m.roles) && m.roles.some((r) => (typeof r === 'string' ? r === 'INTERN' : r?.name === 'INTERN')));
+      // Exclude manager and dedicated non-intern tech lead from inflating the intern cohort performance directory
+      if (!isIntern || m.email === 'manager@dailoqa.com' || m.email === 'lead@dailoqa.com' || m.role === 'MANAGER' || m.type === 'MANAGER') return;
+
       const isLead = m.role === 'TECH_LEAD' || m.type === 'TECH_LEAD' || m.project_role === 'TECH_LEAD' || Boolean(m.is_tech_lead);
       const extStats = userExtensionsLookup.get(uid) || m.extension_stats || { total: m.extensions_count || 0, pending: 0, approved: 0, rejected: 0 };
       map.set(uid, {
@@ -299,6 +306,7 @@ export default function ReportsView({ onToast, selectedCohort, selectedCohortId 
         email: m.email || '',
         role: isLead ? 'TECH_LEAD' : (m.role || m.type || 'INTERN'),
         roleLabel: isLead ? 'Tech Lead' : (m.role || m.type || 'Intern'),
+        isIntern: true,
         isTechLead: isLead,
         extensionsCount: extStats.total || 0,
         extensionStats: extStats,
@@ -320,6 +328,9 @@ export default function ReportsView({ onToast, selectedCohort, selectedCohortId 
       analytics.members.forEach((m) => {
         const uid = m.id || m.userId || m.user_id;
         if (!uid) return;
+        const isIntern = m.role === 'INTERN' || m.type === 'INTERN' || Boolean(m.isIntern) || (Array.isArray(m.roles) && m.roles.some((r) => (typeof r === 'string' ? r === 'INTERN' : r?.name === 'INTERN')));
+        if (!isIntern || m.email === 'manager@dailoqa.com' || m.email === 'lead@dailoqa.com' || m.role === 'MANAGER' || m.type === 'MANAGER') return;
+
         const isLead = m.role === 'TECH_LEAD' || m.type === 'TECH_LEAD' || m.project_role === 'TECH_LEAD' || Boolean(m.is_tech_lead);
         const extStats = userExtensionsLookup.get(uid) || m.extension_stats || { total: m.extensions_count || 0, pending: 0, approved: 0, rejected: 0 };
         if (!map.has(uid)) {
@@ -329,6 +340,7 @@ export default function ReportsView({ onToast, selectedCohort, selectedCohortId 
             email: m.email || '',
             role: isLead ? 'TECH_LEAD' : (m.role || m.type || 'INTERN'),
             roleLabel: isLead ? 'Tech Lead' : (m.role || m.type || 'Intern'),
+            isIntern: true,
             isTechLead: isLead,
             extensionsCount: extStats.total || 0,
             extensionStats: extStats,
@@ -356,7 +368,8 @@ export default function ReportsView({ onToast, selectedCohort, selectedCohortId 
     if (analytics?.target_user) {
       const tu = analytics.target_user;
       const uid = tu.id || tu.userId || tu.user_id;
-      if (uid && !map.has(uid)) {
+      const isIntern = tu.role === 'INTERN' || tu.type === 'INTERN' || Boolean(tu.isIntern) || (Array.isArray(tu.roles) && tu.roles.some((r) => (typeof r === 'string' ? r === 'INTERN' : r?.name === 'INTERN')));
+      if (uid && isIntern && tu.email !== 'manager@dailoqa.com' && tu.email !== 'lead@dailoqa.com' && !map.has(uid)) {
         const isLead = tu.role === 'TECH_LEAD' || tu.type === 'TECH_LEAD' || tu.project_role === 'TECH_LEAD' || Boolean(tu.is_tech_lead);
         const tuExtStats = userExtensionsLookup.get(uid) || tu.extension_stats || (analytics.extension_metrics?.total_requests ? {
           total: analytics.extension_metrics.total_requests,
@@ -370,6 +383,7 @@ export default function ReportsView({ onToast, selectedCohort, selectedCohortId 
           email: tu.email || '',
           role: isLead ? 'TECH_LEAD' : 'INTERN',
           roleLabel: isLead ? 'Tech Lead' : 'Intern',
+          isIntern: true,
           isTechLead: isLead,
           extensionsCount: tuExtStats.total || 0,
           extensionStats: tuExtStats,
@@ -395,7 +409,7 @@ export default function ReportsView({ onToast, selectedCohort, selectedCohortId 
       const assignees = Array.isArray(t.assignees) && t.assignees.length > 0 ? t.assignees : [];
       assignees.forEach((a) => {
         const uid = a.user_id || a.id;
-        if (!uid) return;
+        if (!uid || a.email === 'manager@dailoqa.com' || a.email === 'lead@dailoqa.com') return;
 
         let entry = map.get(uid);
         if (!entry) {
@@ -405,6 +419,7 @@ export default function ReportsView({ onToast, selectedCohort, selectedCohortId 
             email: a.email || '',
             role: 'INTERN',
             roleLabel: 'Intern',
+            isIntern: true,
             isTechLead: false,
             totalAssigned: 0,
             completed: 0,
@@ -452,7 +467,7 @@ export default function ReportsView({ onToast, selectedCohort, selectedCohortId 
 
   // Performance rows filtered by selected scope
   const performanceRows = useMemo(() => {
-    const list = Array.from(memberPerformanceMap.values());
+    const list = Array.from(memberPerformanceMap.values()).filter((m) => m.isIntern !== false);
     if (selectedScope === 'ALL') {
       return list.sort((a, b) => {
         if (a.isTechLead && !b.isTechLead) return -1;
@@ -517,7 +532,7 @@ export default function ReportsView({ onToast, selectedCohort, selectedCohortId 
   // Filtered members in scope dropdown search
   const filteredScopeMembers = useMemo(() => {
     const q = scopeSearchQuery.trim().toLowerCase();
-    const list = Array.from(memberPerformanceMap.values());
+    const list = Array.from(memberPerformanceMap.values()).filter((m) => m.isIntern !== false);
     if (!q) return list;
     return list.filter(
       (m) =>
@@ -746,24 +761,6 @@ export default function ReportsView({ onToast, selectedCohort, selectedCohortId 
                       <div className="text-left">
                         <span className="block leading-none">Tech Leads Only</span>
                         <span className="text-[10px] text-slate-400 font-normal">Filter by tech lead contributors</span>
-                      </div>
-                    </div>
-                  </button>
-
-                  <button
-                    type="button"
-                    onClick={() => handleSelectScope('INTERNS')}
-                    className={`w-full flex items-center justify-between px-2.5 py-2 rounded-lg text-xs font-semibold transition-colors cursor-pointer ${
-                      selectedScope === 'INTERNS'
-                        ? 'bg-purple-100 text-purple-900 font-bold'
-                        : 'hover:bg-slate-50 text-slate-700'
-                    }`}
-                  >
-                    <div className="flex items-center gap-2">
-                      <Users className="w-4 h-4 text-purple-600" />
-                      <div className="text-left">
-                        <span className="block leading-none">Interns Only</span>
-                        <span className="text-[10px] text-slate-400 font-normal">Filter by intern contributors</span>
                       </div>
                     </div>
                   </button>
@@ -1027,14 +1024,16 @@ export default function ReportsView({ onToast, selectedCohort, selectedCohortId 
                       </span>
                     </div>
 
-                    {/* Completion Rate Pill */}
-                    <div className="px-3 py-1.5 rounded-xl bg-emerald-50 border border-emerald-200 text-xs font-semibold text-emerald-800 flex items-center gap-1.5">
-                      <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
-                      <span>{analytics?.completion_rate || 0}% Completion</span>
-                    </div>
+                    {/* Completion Rate Pill - hidden when All Projects is selected */}
+                    {selectedProjectId !== 'ALL' && (
+                      <div className="px-3 py-1.5 rounded-xl bg-emerald-50 border border-emerald-200 text-xs font-semibold text-emerald-800 flex items-center gap-1.5">
+                        <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
+                        <span>{analytics?.completion_rate || 0}% Completion</span>
+                      </div>
+                    )}
 
-                    {/* Project Health / Schedule Risk Pill - only shown when viewing overall project scope */}
-                    {!isIndividualScope && (analytics?.project_health || analytics?.delivery_risk) && (
+                    {/* Project Health / Schedule Risk Pill - hidden when All Projects is selected */}
+                    {selectedProjectId !== 'ALL' && !isIndividualScope && (analytics?.project_health || analytics?.delivery_risk) && (
                       <div
                         className={`px-3 py-1.5 rounded-xl border text-xs font-semibold flex items-center gap-1.5 ${
                           (analytics.project_health === 'CRITICAL' || analytics.delivery_risk === 'CRITICAL' || analytics.delivery_risk === 'HIGH')

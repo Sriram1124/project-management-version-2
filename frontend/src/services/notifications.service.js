@@ -7,6 +7,7 @@ export const notificationsService = {
   async getNotifications(params = {}) {
     const query = new URLSearchParams();
     if (params.unread_only) query.append('unread_only', 'true');
+    if (params.archived !== undefined) query.append('archived', String(params.archived));
     if (params.limit) query.append('limit', String(params.limit));
     const qs = query.toString();
     const res = await api.get(qs ? `/notifications?${qs}` : '/notifications');
@@ -26,6 +27,22 @@ export const notificationsService = {
    */
   async markAsRead(notificationId) {
     const res = await api.patch(`/notifications/${encodeURIComponent(notificationId)}/read`);
+    return res;
+  },
+
+  /**
+   * Archive a single notification
+   */
+  async archiveNotification(notificationId) {
+    const res = await api.patch(`/notifications/${encodeURIComponent(notificationId)}/archive`);
+    return res;
+  },
+
+  /**
+   * Unarchive a single notification
+   */
+  async unarchiveNotification(notificationId) {
+    const res = await api.patch(`/notifications/${encodeURIComponent(notificationId)}/unarchive`);
     return res;
   },
 

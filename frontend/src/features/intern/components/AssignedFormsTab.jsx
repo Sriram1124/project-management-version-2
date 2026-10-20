@@ -11,6 +11,7 @@ import {
   Pin
 } from 'lucide-react';
 import { useAuth } from '../../../context/AuthContext';
+import { formatFormDeadline } from '../../../services/forms.service';
 
 export default function AssignedFormsTab({
   forms = [],
@@ -190,11 +191,7 @@ export default function AssignedFormsTab({
                 : form.postedAt || 'Recently';
 
               const formattedDeadline = form.deadline
-                ? new Date(form.deadline).toLocaleDateString('en-US', {
-                    month: 'short',
-                    day: 'numeric',
-                    year: 'numeric',
-                  })
+                ? formatFormDeadline(form.deadline)
                 : form.dueDate || 'No deadline';
 
               const category = form.category || 'General Form';

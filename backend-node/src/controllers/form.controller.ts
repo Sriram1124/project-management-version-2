@@ -125,7 +125,7 @@ export class FormController {
     try {
       const formId = req.params.formId || req.params.id;
       const orgId = (req as any).fullUser?.organization_id || (req as any).user?.organization_id;
-      const form = await FormService.updateStatus(formId, 'DRAFT' as any, orgId);
+      const form = await FormService.revertForm(formId, orgId);
       res.status(200).json({
         ...form,
         form,
@@ -266,11 +266,20 @@ export class FormController {
       const orgId = fullUser.organization_id || user.organization_id;
       const cohortId = (req.query.cohort_id as string) || (req.query.cohortId as string) || undefined;
       const formId = (req.query.form_id as string) || (req.query.formId as string) || undefined;
+      const format = (req.query.format as string)?.toLowerCase();
 
-      const result = await FormService.generateOverdueCsv(orgId, cohortId, formId);
-      res.setHeader('Content-Type', 'text/csv; charset=utf-8');
+      if (format === 'csv') {
+        const result = await FormService.generateOverdueCsv(orgId, cohortId, formId);
+        res.setHeader('Content-Type', 'text/csv; charset=utf-8');
+        res.setHeader('Content-Disposition', `attachment; filename="${result.filename}"`);
+        res.status(200).send(result.csv);
+        return;
+      }
+
+      const result = await FormService.generateOverdueExcel(orgId, cohortId, formId);
+      res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
       res.setHeader('Content-Disposition', `attachment; filename="${result.filename}"`);
-      res.status(200).send(result.csv);
+      res.status(200).send(result.buffer);
     } catch (err: any) {
       FormController.handleError(res, err);
     }

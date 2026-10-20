@@ -169,11 +169,55 @@ export const workItemsService = {
   /**
    * Helper: check if task is overdue using backend derived field or calculation
    */
+  getEndOfDueDate(dueDateVal, timeZone = 'Asia/Kolkata') {
+    if (!dueDateVal) return null;
+    let year, month, day;
+    if (typeof dueDateVal === 'string' && /^\d{4}-\d{2}-\d{2}/.test(dueDateVal)) {
+      const parts = dueDateVal.slice(0, 10).split('-');
+      year = Number(parts[0]);
+      month = Number(parts[1]);
+      day = Number(parts[2]);
+    } else {
+      const d = new Date(dueDateVal);
+      if (isNaN(d.getTime())) return null;
+      const formatter = new Intl.DateTimeFormat('en-US', {
+        timeZone,
+        year: 'numeric',
+        month: 'numeric',
+        day: 'numeric',
+      });
+      const p = Object.fromEntries(
+        formatter.formatToParts(d).filter((x) => x.type !== 'literal').map((x) => [x.type, Number(x.value)])
+      );
+      year = p.year;
+      month = p.month;
+      day = p.day;
+    }
+    const approxUtc = Date.UTC(year, month - 1, day, 12, 0, 0);
+    const tf = new Intl.DateTimeFormat('en-US', {
+      timeZone,
+      hour: 'numeric',
+      minute: 'numeric',
+      second: 'numeric',
+      hour12: false,
+    });
+    const parts = Object.fromEntries(
+      tf.formatToParts(new Date(approxUtc)).filter((x) => x.type !== 'literal').map((x) => [x.type, Number(x.value)])
+    );
+    const offsetMs = (parts.hour * 3600 + parts.minute * 60 + parts.second - 12 * 3600) * 1000;
+    const endOfDayUtcMs = Date.UTC(year, month - 1, day, 23, 59, 59, 999) - offsetMs;
+    return new Date(endOfDayUtcMs);
+  },
+
   isOverdue(item) {
     if (!item) return false;
-    if (item.is_overdue !== undefined) return Boolean(item.is_overdue);
-    if (!item.due_date || item.status === 'COMPLETED') return false;
-    return new Date(item.due_date) < new Date();
+    const status = String(item.status || '').toUpperCase();
+    if (status === 'COMPLETED' || status === 'DONE' || status === 'CANCELLED') return false;
+    const dueDate = item.due_date || item.dueDate;
+    if (!dueDate) return false;
+    const eod = this.getEndOfDueDate(dueDate);
+    if (!eod) return false;
+    return new Date() > eod;
   },
 
   /**

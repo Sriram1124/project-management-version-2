@@ -33,6 +33,7 @@ import PersonalKanbanBoard from './PersonalKanbanBoard';
 import HierarchyTreeView from './HierarchyTreeView';
 import ProjectSprintWorkspaceTab from '../../../components/views/projects/ProjectSprintWorkspaceTab';
 import ProjectCycleWorkspaceTab from '../../../components/views/projects/ProjectCycleWorkspaceTab';
+import ProjectMomTab from '../../../components/views/projects/ProjectMomTab';
 import ProjectMethodologyBadge from '../../../components/views/projects/ProjectMethodologyBadge';
 
 export default function ScopedProjectView({
@@ -653,20 +654,14 @@ export default function ScopedProjectView({
         />
       )}
 
-      {/* Tab 6: Action Items Placeholder (Planned for V2) */}
+      {/* Tab 6: Action Items */}
       {activeTab === 'action-items' && (
-        <div className="bg-white rounded-2xl p-12 border border-slate-200 shadow-card text-center max-w-lg mx-auto my-8 space-y-3">
-          <div className="w-12 h-12 rounded-2xl bg-purple-50 text-purple-600 flex items-center justify-center mx-auto mb-1">
-            <MessageSquare className="w-6 h-6" />
-          </div>
-          <h3 className="text-base font-bold text-slate-900">Action Items</h3>
-          <p className="text-xs text-slate-500 leading-relaxed max-w-md mx-auto">
-            Action Items module will be available in V2.
-          </p>
-          <span className="inline-flex items-center px-3 py-1 rounded-full text-[11px] font-semibold bg-purple-50 text-purple-700 border border-purple-200">
-            Planned for V2
-          </span>
-        </div>
+        <ProjectMomTab
+          projectId={project.id}
+          projectName={project.name}
+          onToast={onToast}
+          readOnly={true}
+        />
       )}
     </div>
   );

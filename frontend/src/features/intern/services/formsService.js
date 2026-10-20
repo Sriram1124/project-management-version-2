@@ -1,4 +1,6 @@
-import { formsService as centralFormsService } from '../../../services/forms.service';
+import { formsService as centralFormsService, formatFormDeadline } from '../../../services/forms.service';
+
+export { formatFormDeadline };
 
 export const formsService = {
   ...centralFormsService,

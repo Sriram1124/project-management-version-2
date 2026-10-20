@@ -335,6 +335,24 @@ export default function ProjectSprintWorkspaceTab({
   };
 
   // Complete Sprint Handler
+  const handleReopenSprint = async (sprintId) => {
+    const activeSprint = sprints.find((s) => s.status === 'ACTIVE' && s.id !== sprintId);
+    if (activeSprint) {
+      onToast?.(
+        `Cannot reopen sprint: Sprint "${activeSprint.name}" is currently active. Only one active sprint is allowed per project.`
+      );
+      return;
+    }
+    try {
+      await sprintsService.reopenSprint(projectId, sprintId);
+      onToast?.('Sprint reopened successfully');
+      loadData();
+    } catch (err) {
+      console.error('Failed to reopen sprint:', err);
+      onToast?.(err?.response?.data?.error || err.message || 'Failed to reopen sprint');
+    }
+  };
+
   const handleConfirmCompleteSprint = async (optionsOrTarget) => {
     if (!currentSprint) return;
     try {
@@ -557,6 +575,17 @@ export default function ProjectSprintWorkspaceTab({
                 >
                   <Check className="w-3.5 h-3.5 text-slate-500" />
                   <span>Complete Sprint</span>
+                </button>
+              )}
+
+              {currentSprint?.status === 'COMPLETED' && (
+                <button
+                  onClick={() => handleReopenSprint(currentSprint.id)}
+                  className="px-3 py-1.5 rounded-md border border-slate-200 hover:bg-slate-50 text-slate-700 text-xs font-medium transition-colors flex items-center gap-1.5 cursor-pointer"
+                  title="Reopen completed sprint"
+                >
+                  <RotateCcw className="w-3.5 h-3.5 text-amber-600" />
+                  <span>Reopen Sprint</span>
                 </button>
               )}
 

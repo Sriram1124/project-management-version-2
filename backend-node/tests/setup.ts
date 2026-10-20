@@ -2,6 +2,7 @@ process.env.NODE_ENV = 'test';
 process.env.JWT_ACCESS_SECRET = 'test-jwt-access-secret';
 process.env.JWT_REFRESH_SECRET = 'test-jwt-refresh-secret';
 process.env.ENABLE_MONGODB_PROJECT_FILES = 'false';
+process.env.DUAL_WRITE_PROJECT_FILES = 'false';
 
 import { mockPrisma, resetPrismaMock } from './mocks/prisma.mock';
 import { invalidateUserSessionCache } from '../src/middleware/auth.middleware';

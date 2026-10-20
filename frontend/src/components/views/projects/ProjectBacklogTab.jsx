@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import BacklogToolbar from '../../backlog/BacklogToolbar';
 import SprintSection from '../../backlog/SprintSection';
+import CompleteSprintModal from '../../kanban/CompleteSprintModal';
 import HierarchicalIssueTable from '../../backlog/HierarchicalIssueTable';
 import IssueDetailDrawer from '../../backlog/IssueDetailDrawer';
 import CreateIssueModal from '../../backlog/CreateIssueModal';
@@ -54,6 +55,8 @@ export default function ProjectBacklogTab({ projectId, project = null, isKanbanP
 
   // Drawer & Modal States
   const [selectedIssue, setSelectedIssue] = useState(null);
+  const [completingSprint, setCompletingSprint] = useState(null);
+  const [isCompleteSprintOpen, setIsCompleteSprintOpen] = useState(false);
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
   const [isCreateSprintOpen, setIsCreateSprintOpen] = useState(false);
   const [createInitialSprintId, setCreateInitialSprintId] = useState('backlog');
@@ -388,7 +391,7 @@ export default function ProjectBacklogTab({ projectId, project = null, isKanbanP
       allowedTypes = ['Story', 'Bug'];
     } else if (pType === 'STORY') {
       initialType = 'Task';
-      allowedTypes = ['Task', 'Bug'];
+      allowedTypes = ['Task'];
     } else if (pType === 'TASK') {
       initialType = 'Subtask';
       allowedTypes = ['Subtask'];
@@ -412,6 +415,28 @@ export default function ProjectBacklogTab({ projectId, project = null, isKanbanP
     await handleUpdateSprint(issueId, targetSprintId);
   };
 
+  const currentMember = useMemo(() => {
+    if (!authUser || !members?.length) return null;
+    const uid = authUser.id || authUser.user_id;
+    return members.find((m) => (m.user_id || m.id) === uid) || null;
+  }, [authUser, members]);
+
+  const authRole = authUser?.role || authUser?.user_metadata?.role || '';
+  const isManagerOrAdmin =
+    authRole === 'MANAGER' ||
+    authRole === 'ADMIN' ||
+    authRole === 'SUPER_ADMIN' ||
+    Boolean(authUser?.is_admin) ||
+    Boolean(authUser?.is_super_admin);
+
+  const isTechLead =
+    authRole === 'TECH_LEAD' ||
+    Boolean(authUser?.is_tech_lead) ||
+    currentMember?.project_role === 'TECH_LEAD' ||
+    currentMember?.role === 'TECH_LEAD';
+
+  const canManageSprint = isManagerOrAdmin || isTechLead;
+
   // Sprint lifecycle
   const handleStartSprint = async (sprintId) => {
     const activeSprint = sprints.find((s) => s.status === 'ACTIVE');
@@ -432,16 +457,44 @@ export default function ProjectBacklogTab({ projectId, project = null, isKanbanP
     }
   };
 
-  const handleCompleteSprint = async (sprintId) => {
+  const handleCompleteSprint = (sprintId) => {
+    const target = sprints.find((s) => s.id === sprintId);
+    if (target) {
+      setCompletingSprint(target);
+      setIsCompleteSprintOpen(true);
+    }
+  };
+
+  const handleConfirmCompleteSprint = async (options) => {
+    if (!completingSprint) return;
     try {
-      await sprintsService.completeSprint(projectId, sprintId, {
-        unfinished_action: 'MOVE_TO_BACKLOG',
-      });
+      await sprintsService.completeSprint(projectId, completingSprint.id, options);
+      setIsCompleteSprintOpen(false);
+      setCompletingSprint(null);
       loadProjectData();
-      onToast?.('Sprint completed successfully');
+      onToast?.(`Sprint "${completingSprint.name}" completed successfully`);
     } catch (err) {
       console.error('Failed to complete sprint:', err);
       onToast?.(err?.response?.data?.error || err.message || 'Failed to complete sprint');
+      throw err;
+    }
+  };
+
+  const handleReopenSprint = async (sprintId) => {
+    const activeSprint = sprints.find((s) => s.status === 'ACTIVE' && s.id !== sprintId);
+    if (activeSprint) {
+      onToast?.(
+        `Cannot reopen sprint: Sprint "${activeSprint.name}" is currently active. Only one active sprint is allowed per project.`
+      );
+      return;
+    }
+    try {
+      await sprintsService.reopenSprint(projectId, sprintId);
+      loadProjectData();
+      onToast?.('Sprint reopened successfully');
+    } catch (err) {
+      console.error('Failed to reopen sprint:', err);
+      onToast?.(err?.response?.data?.error || err.message || 'Failed to reopen sprint');
     }
   };
 
@@ -561,12 +614,7 @@ export default function ProjectBacklogTab({ projectId, project = null, isKanbanP
       }
 
       if (quickFilterOverdue) {
-        const isOverdue = Boolean(
-          item.due_date &&
-            new Date(item.due_date) < new Date() &&
-            item.status !== 'COMPLETED'
-        );
-        if (!isOverdue) return false;
+        if (!workItemsService.isOverdue(item)) return false;
       }
 
       return true;
@@ -787,6 +835,8 @@ export default function ProjectBacklogTab({ projectId, project = null, isKanbanP
                 }}
                 onStartSprint={handleStartSprint}
                 onCompleteSprint={handleCompleteSprint}
+                onReopenSprint={handleReopenSprint}
+                canManageSprint={canManageSprint}
               />
             );
           })}
@@ -839,6 +889,8 @@ export default function ProjectBacklogTab({ projectId, project = null, isKanbanP
             }}
             onStartSprint={handleStartSprint}
             onCompleteSprint={handleCompleteSprint}
+                onReopenSprint={handleReopenSprint}
+                canManageSprint={canManageSprint}
           />
         );
       })()}
@@ -893,6 +945,8 @@ export default function ProjectBacklogTab({ projectId, project = null, isKanbanP
             }}
             onStartSprint={handleStartSprint}
             onCompleteSprint={handleCompleteSprint}
+                onReopenSprint={handleReopenSprint}
+                canManageSprint={canManageSprint}
           />
         );
       })()}

@@ -72,5 +72,44 @@ export const notificationsService = {
     notificationsData = notificationsData.map((n) => ({ ...n, is_read: true }));
     notifyListeners();
   },
+
+  loadArchivedNotifications: async () => {
+    try {
+      const data = await apiNotifications.getNotifications({ archived: true });
+      return (data || []).map((n) => ({
+        id: n.id,
+        title: n.title,
+        message: n.message,
+        type: n.type,
+        is_read: n.is_read,
+        is_archived: true,
+        archived_at: n.archived_at,
+        created_at: n.created_at ? new Date(n.created_at).toLocaleDateString([], { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' }) : 'Just now',
+        raw: n,
+      }));
+    } catch (err) {
+      console.error('Failed to load archived notifications:', err);
+      return [];
+    }
+  },
+
+  archiveNotification: async (id) => {
+    try {
+      await apiNotifications.archiveNotification(id);
+    } catch (err) {
+      console.error('Failed to archive notification:', err);
+    }
+    notificationsData = notificationsData.filter((n) => n.id !== id);
+    notifyListeners();
+  },
+
+  unarchiveNotification: async (id) => {
+    try {
+      await apiNotifications.unarchiveNotification(id);
+      await notificationsService.loadNotifications();
+    } catch (err) {
+      console.error('Failed to unarchive notification:', err);
+    }
+  },
 };
 

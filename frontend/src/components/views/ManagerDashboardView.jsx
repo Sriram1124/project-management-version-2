@@ -138,9 +138,9 @@ export default function ManagerDashboardView({
 
   const internUsers = React.useMemo(() => {
     return users.filter((u) => {
-      const isLead = Boolean(u.is_tech_lead) || u.type === 'TECH_LEAD' || u.role === 'TECH_LEAD' || u.project_role === 'TECH_LEAD';
-      const isManagement = u.type === 'MANAGER' || u.role === 'MANAGER' || u.type === 'ADMIN' || u.type === 'SUPER_ADMIN';
-      if (isLead || isManagement) return false;
+      const isIntern = u.type === 'INTERN' || u.role === 'INTERN' || u.roles?.includes('INTERN');
+      const isManagement = u.type === 'MANAGER' || u.role === 'MANAGER' || u.roles?.includes('MANAGER') || u.type === 'ADMIN' || u.type === 'SUPER_ADMIN';
+      if (!isIntern || isManagement) return false;
       if (selectedCohort?.id && selectedCohort.id !== 'ALL') {
         const matchesCohort =
           u.cohort_id === selectedCohort.id ||

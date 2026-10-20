@@ -8,6 +8,7 @@ import {
   User, 
   AlertCircle 
 } from 'lucide-react';
+import { formatFormDeadline } from '../../services/forms.service';
 
 export default function FillFormModal({ form, isOpen, onClose, onSubmitResponse }) {
   const [internName, setInternName] = useState('Rohan Patel');
@@ -58,7 +59,7 @@ export default function FillFormModal({ form, isOpen, onClose, onSubmitResponse 
               <span>•</span>
               <span className="flex items-center gap-1 text-amber-600 font-semibold">
                 <Clock className="w-3 h-3" />
-                {form.dueDate}
+                {form.deadline ? formatFormDeadline(form.deadline) : (form.dueDate || 'No deadline')}
               </span>
             </div>
           </div>

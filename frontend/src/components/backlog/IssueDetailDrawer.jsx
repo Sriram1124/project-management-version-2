@@ -65,6 +65,9 @@ export default function IssueDetailDrawer({
     memberRole === 'TECH_LEAD' ||
     Boolean(currentMember?.is_tech_lead);
 
+  const isStory = String(issue?.type || '').toUpperCase() === 'STORY';
+  const isManagerUser = authRole === 'MANAGER' || memberRole === 'MANAGER';
+  const isWorklogHidden = isStory && isManagerUser;
   const isManagerOrAdmin =
     authRole === 'MANAGER' ||
     authRole === 'ADMIN' ||
@@ -133,6 +136,7 @@ export default function IssueDetailDrawer({
   const canDelete = canManageProject || hasTaskDelete || isCreator;
   const canEditTitleAndDesc = canManageProject || hasTaskUpdate || !isIntern;
   const canChangeStatus = canManageProject || hasTaskUpdate || isAssignedToMe || !isIntern;
+  const canCompleteStatus = canManageProject;
   const canChangePriority = canManageProject || hasTaskUpdate || !isIntern;
   const canChangeAssignee = canManageProject || hasTaskUpdate || memberPerms.has('ROLE_ASSIGN') || !isIntern;
   const canChangeSprint = canManageProject || hasTaskUpdate || !isIntern;
@@ -142,7 +146,13 @@ export default function IssueDetailDrawer({
   const canAddChildItems = canManageProject || hasTaskCreate || !isIntern;
 
   const [updatingField, setUpdatingField] = useState(null); // 'assignee' | 'status' | 'priority' | 'sprint' | 'epic' | 'storyPoints' | 'dueDate' | 'title' | 'description'
-  const [activeTab, setActiveTab] = useState('comments'); // 'comments' | 'worklog' | 'history'
+  const [activeTab, setActiveTab] = useState('comments');
+  useEffect(() => {
+    if (isWorklogHidden && activeTab === 'worklog') {
+      setActiveTab('comments');
+    }
+  }, [isWorklogHidden, activeTab]);
+ // 'comments' | 'worklog' | 'history'
   const [editedTitle, setEditedTitle] = useState(issue?.title || '');
   const [editedDesc, setEditedDesc] = useState(issue?.description || '');
   const [editedStoryPoints, setEditedStoryPoints] = useState(
@@ -270,7 +280,7 @@ export default function IssueDetailDrawer({
       return ['STORY', 'BUG', 'TASK'];
     }
     if (t === 'STORY') {
-      return ['TASK', 'BUG', 'SUBTASK'];
+      return ['TASK'];
     }
     if (t === 'TASK' || t === 'BUG') {
       return ['SUBTASK'];
@@ -529,6 +539,10 @@ export default function IssueDetailDrawer({
   const handleStatusChange = async (newStatus) => {
     if (updatingField) return;
     if (newStatus === issue?.status) return;
+    if (newStatus === 'COMPLETED' && !canCompleteStatus) {
+      setError('Only managers and tech leads can mark tasks as completed');
+      return;
+    }
     setUpdatingField('status');
     try {
       await onUpdateIssue?.({ ...issue, status: newStatus });
@@ -628,13 +642,34 @@ export default function IssueDetailDrawer({
     if (updatingField) return;
     const raw = editedStoryPoints;
     if (raw === '' || raw === null || raw === undefined) {
-      setEditedStoryPoints(issue?.story_points ?? issue?.storyPoints ?? 0);
+      setEditedStoryPoints(issue?.story_points ?? issue?.storyPoints ?? (isStory ? 1 : 0));
       return;
     }
     const val = parseInt(raw, 10);
-    if (isApplicableType) {
+    if (isStory) {
+      if (isNaN(val) || val <= 0) {
+        alert('Story points are mandatory for stories and must be a positive integer (1 or greater).');
+        setEditedStoryPoints(issue?.story_points ?? issue?.storyPoints ?? 1);
+        return;
+      }
+      if (val !== (issue?.story_points ?? issue?.storyPoints)) {
+        setUpdatingField('storyPoints');
+        try {
+          await onUpdateIssue?.({
+            ...issue,
+            story_points: val,
+            storyPoints: val,
+          });
+        } catch (err) {
+          console.error('Failed to update story points:', err);
+          setEditedStoryPoints(issue?.story_points ?? issue?.storyPoints ?? 1);
+        } finally {
+          setUpdatingField(null);
+        }
+      }
+    } else if (isApplicableType) {
       if (isNaN(val) || val < 0) {
-        alert('Story points are mandatory for tasks, stories, subtasks, and bugs and must be a non-negative integer (0 or greater).');
+        alert('Story points are mandatory for tasks, subtasks, and bugs and must be a non-negative integer (0 or greater).');
         setEditedStoryPoints(issue?.story_points ?? issue?.storyPoints ?? 0);
         return;
       }
@@ -935,7 +970,11 @@ export default function IssueDetailDrawer({
                 <option value="IN_PROGRESS">In Progress</option>
                 <option value="IN_REVIEW">In Review</option>
                 <option value="BLOCKED">Blocked</option>
-                <option value="COMPLETED">Completed</option>
+                {canCompleteStatus ? (
+                  <option value="COMPLETED">Completed</option>
+                ) : issue.status === 'COMPLETED' ? (
+                  <option value="COMPLETED" disabled>Completed</option>
+                ) : null}
               </select>
             ) : (
               <span className="px-2 py-1 rounded border border-slate-200 text-xs font-semibold bg-slate-50 text-slate-700 select-none">
@@ -996,7 +1035,7 @@ export default function IssueDetailDrawer({
                   value={currentAssigneeId}
                   disabled={updatingField === 'assignee'}
                   onChange={(e) => handleAssigneeChange(e.target.value)}
-                  className="px-2 py-1 rounded border border-slate-200 text-xs font-medium bg-white text-slate-800 focus:outline-none focus:border-purple-600 max-w-[150px] truncate cursor-pointer disabled:opacity-60 disabled:cursor-not-allowed"
+                  className="px-2 py-1 rounded border border-slate-200 text-xs font-medium bg-white text-slate-800 focus:outline-none focus:border-purple-600 min-w-[120px] max-w-full truncate cursor-pointer disabled:opacity-60 disabled:cursor-not-allowed"
                 >
                   <option value="">Unassigned</option>
                   {members.map((u) => {
@@ -1095,7 +1134,7 @@ export default function IssueDetailDrawer({
               <div className="flex items-center gap-1.5">
                 <input
                   type="number"
-                  min={0}
+                  min={isStory ? 1 : 0}
                   max={999}
                   disabled={updatingField === 'storyPoints'}
                   value={editedStoryPoints}
@@ -1421,6 +1460,7 @@ export default function IssueDetailDrawer({
               >
                 Comments
               </button>
+              {!isWorklogHidden && (
               <button
                 type="button"
                 onClick={() => setActiveTab('worklog')}
@@ -1432,6 +1472,7 @@ export default function IssueDetailDrawer({
               >
                 Worklog ({timeEntries.length})
               </button>
+            )}
               <button
                 type="button"
                 onClick={() => setActiveTab('history')}
@@ -1446,7 +1487,7 @@ export default function IssueDetailDrawer({
             </div>
           </div>
 
-          {activeTab === 'comments' ? (
+          {activeTab === 'comments' || (activeTab === 'worklog' && isWorklogHidden) ? (
             <div className="pt-1">
               <WorkItemComments workItemId={issue.id} />
             </div>

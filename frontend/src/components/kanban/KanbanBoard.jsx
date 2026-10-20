@@ -180,6 +180,10 @@ export default function KanbanBoard({ projectId, project = null, isKanbanProject
         onToast?.('You can only update the status of your own assigned work items');
         return;
       }
+      if (targetColumnId === 'COMPLETED') {
+        onToast?.('Only managers and tech leads can mark tasks as completed');
+        return;
+      }
     }
 
     const prevStatus = task.status;
@@ -366,7 +370,7 @@ export default function KanbanBoard({ projectId, project = null, isKanbanProject
       }
 
       if (quickFilterOverdue) {
-        if (!task.due_date || new Date(task.due_date) >= new Date() || task.status === 'COMPLETED') {
+        if (!workItemsService.isOverdue(task)) {
           return false;
         }
       }
@@ -532,13 +536,6 @@ export default function KanbanBoard({ projectId, project = null, isKanbanProject
                 {isKanban ? (
                   <>
                     <span className="text-blue-700 font-semibold">{kanbanMetrics.inProgressWip} in-progress WIP</span>
-                    <span>•</span>
-                    <span
-                      className="text-purple-700 font-semibold"
-                      title={kanbanMetrics.avgCycleTimeFormatted ? `Average Cycle Time: ${kanbanMetrics.avgCycleTimeFormatted}` : 'No completed tasks with valid cycle time'}
-                    >
-                      {kanbanMetrics.avgCycleTimeDisplay}
-                    </span>
                     <span>•</span>
                     <span className="text-rose-700 font-semibold">{kanbanMetrics.blocked} blocked</span>
                   </>

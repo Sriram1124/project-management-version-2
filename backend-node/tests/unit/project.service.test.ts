@@ -79,6 +79,15 @@ jest.mock('../../src/services/storage.service', () => ({
   },
 }));
 
+jest.mock('../../src/services/object-storage.service', () => ({
+  ObjectStorageService: {
+    uploadStream: jest.fn().mockResolvedValue({ key: 'projects/p-1/Architecture.pdf', sizeBytes: 100 }),
+    uploadBuffer: jest.fn().mockResolvedValue({ key: 'projects/p-1/Architecture.pdf', sizeBytes: 100 }),
+    deleteObject: jest.fn().mockResolvedValue(true),
+    getObjectStream: jest.fn().mockResolvedValue({}),
+  },
+}));
+
 describe('ProjectService Unit Tests', () => {
   const mockOrgUser = {
     id: 'user-mgr-1',
@@ -168,44 +177,88 @@ describe('ProjectService Unit Tests', () => {
   });
 
   describe('createProject', () => {
-    it('should validate required fields: name and methodology', async () => {
+    it('should validate required fields: name, methodology, and description', async () => {
       await expect(
-        ProjectService.createProject({ name: '', methodology: 'SCRUM' }, mockOrgUser)
+        ProjectService.createProject({ name: '', methodology: 'SCRUM', description: 'Desc' }, mockOrgUser)
       ).rejects.toThrow('Project name is required');
 
       await expect(
-        ProjectService.createProject({ name: 'Project A', methodology: '' }, mockOrgUser)
+        ProjectService.createProject({ name: 'Project A', methodology: '', description: 'Desc' }, mockOrgUser)
       ).rejects.toThrow('Project methodology is required (SCRUM or KANBAN)');
 
       await expect(
-        ProjectService.createProject({ name: 'Project A', methodology: 'WATERFALL' }, mockOrgUser)
+        ProjectService.createProject({ name: 'Project A', methodology: 'WATERFALL', description: 'Desc' }, mockOrgUser)
       ).rejects.toThrow('Invalid project methodology: WATERFALL. Must be SCRUM or KANBAN.');
+
+      await expect(
+        ProjectService.createProject({ name: 'Project A', methodology: 'SCRUM' }, mockOrgUser)
+      ).rejects.toThrow('Project description is required');
+
+      await expect(
+        ProjectService.createProject({ name: 'Project A', methodology: 'SCRUM', description: '   ' }, mockOrgUser)
+      ).rejects.toThrow('Project description is required');
     });
 
-    it('should validate owner belongs to organization', async () => {
-      (prisma.user.findFirst as jest.Mock).mockResolvedValue(null);
+    it('should validate owner belongs to organization and is an eligible manager', async () => {
+      (prisma.user.findMany as jest.Mock).mockResolvedValue([]);
 
       await expect(
         ProjectService.createProject(
-          { name: 'Project A', methodology: 'SCRUM', owner_id: 'bad-owner' },
+          { name: 'Project A', methodology: 'SCRUM', description: 'Valid desc', owner_id: 'bad-owner' },
           mockOrgUser
         )
       ).rejects.toThrow('Project owner does not exist in your organization');
+
+      // Owner is intern
+      (prisma.user.findMany as jest.Mock).mockResolvedValue([
+        {
+          id: 'intern-owner',
+          name: 'Intern Dave',
+          roles: [{ role: { name: 'INTERN' } }],
+        },
+      ]);
+      await expect(
+        ProjectService.createProject(
+          { name: 'Project A', methodology: 'SCRUM', description: 'Valid desc', owner_id: 'intern-owner' },
+          mockOrgUser
+        )
+      ).rejects.toThrow('User "Intern Dave" is an intern and cannot be assigned as a project owner');
+
+      // Owner is Tech Lead
+      (prisma.user.findMany as jest.Mock).mockResolvedValue([
+        {
+          id: 'lead-owner',
+          name: 'Lead Sarah',
+          roles: [{ role: { name: 'TECH_LEAD' } }],
+        },
+      ]);
+      await expect(
+        ProjectService.createProject(
+          { name: 'Project A', methodology: 'SCRUM', description: 'Valid desc', owner_id: 'lead-owner' },
+          mockOrgUser
+        )
+      ).rejects.toThrow('User "Lead Sarah" is a Tech Lead and cannot be assigned as a project owner');
     });
 
     it('should validate start_date and end_date', async () => {
-      (prisma.user.findFirst as jest.Mock).mockResolvedValue({ id: 'valid-owner' });
+      (prisma.user.findMany as jest.Mock).mockResolvedValue([
+        {
+          id: 'user-mgr-1',
+          name: 'Manager 1',
+          roles: [{ role: { name: 'MANAGER' } }],
+        },
+      ]);
 
       await expect(
         ProjectService.createProject(
-          { name: 'Proj', methodology: 'SCRUM', start_date: 'invalid-date' },
+          { name: 'Proj', methodology: 'SCRUM', description: 'Valid desc', start_date: 'invalid-date' },
           mockOrgUser
         )
       ).rejects.toThrow('Invalid start_date format');
 
       await expect(
         ProjectService.createProject(
-          { name: 'Proj', methodology: 'SCRUM', end_date: 'invalid-date' },
+          { name: 'Proj', methodology: 'SCRUM', description: 'Valid desc', end_date: 'invalid-date' },
           mockOrgUser
         )
       ).rejects.toThrow('Invalid end_date format');
@@ -215,6 +268,7 @@ describe('ProjectService Unit Tests', () => {
           {
             name: 'Proj',
             methodology: 'SCRUM',
+            description: 'Valid desc',
             start_date: '2026-05-01',
             end_date: '2026-04-01',
           },
@@ -224,12 +278,19 @@ describe('ProjectService Unit Tests', () => {
     });
 
     it('should validate status normalization and member validation', async () => {
-      (prisma.user.findMany as jest.Mock).mockResolvedValue([{ id: 'm-1' }]); // returned 1, requested 2
+      (prisma.user.findMany as jest.Mock).mockImplementation(({ where }: any) => {
+        if (where?.id?.in?.includes('user-mgr-1')) {
+          return Promise.resolve([{ id: 'user-mgr-1', name: 'Manager 1', roles: [{ role: { name: 'MANAGER' } }] }]);
+        }
+        return Promise.resolve([{ id: 'm-1' }]); // returned 1 for 2 members requested
+      });
+
       await expect(
         ProjectService.createProject(
           {
             name: 'Proj',
             methodology: 'KANBAN',
+            description: 'Valid desc',
             member_ids: ['m-1', 'm-2'],
           },
           mockOrgUser
@@ -238,10 +299,16 @@ describe('ProjectService Unit Tests', () => {
     });
 
     it('should create project successfully with members', async () => {
-      (prisma.user.findMany as jest.Mock).mockResolvedValue([{ id: 'm-1' }]);
+      (prisma.user.findMany as jest.Mock).mockImplementation(({ where }: any) => {
+        if (where?.id?.in?.includes('user-mgr-1')) {
+          return Promise.resolve([{ id: 'user-mgr-1', name: 'Manager 1', roles: [{ role: { name: 'MANAGER' } }] }]);
+        }
+        return Promise.resolve([{ id: 'm-1' }]);
+      });
       (prisma.project.create as jest.Mock).mockResolvedValue({
         id: 'p-new',
         name: 'New Project',
+        description: 'Valid desc',
         methodology: ProjectMethodology.SCRUM,
         status: ProjectStatus.ACTIVE,
       });
@@ -249,6 +316,7 @@ describe('ProjectService Unit Tests', () => {
       const res = await ProjectService.createProject(
         {
           name: 'New Project',
+          description: 'Valid desc',
           methodology: 'SCRUM',
           status: 'IN_PROGRESS' as any,
           member_ids: ['m-1'],
@@ -344,7 +412,7 @@ describe('ProjectService Unit Tests', () => {
       });
       (prisma.user.findMany as jest.Mock).mockResolvedValue([
         { id: 'user-mgr-1', name: 'Manager 1', roles: [{ role: { name: 'MANAGER' } }] },
-        { id: 'user-mgr-2', name: 'Manager 2', roles: [{ role: { name: 'TECH_LEAD' } }] },
+        { id: 'user-mgr-2', name: 'Manager 2', roles: [{ role: { name: 'MANAGER' } }] },
       ]);
       (prisma.project.update as jest.Mock).mockResolvedValue({
         id: 'p-1',
@@ -390,6 +458,22 @@ describe('ProjectService Unit Tests', () => {
       await expect(
         ProjectService.updateProject('p-1', { owner_ids: ['user-intern-1'] }, mockOrgUser)
       ).rejects.toThrow('User "Intern Dave" is an intern and cannot be assigned as a project owner');
+    });
+
+    it('should reject assigning Tech Leads as project owners', async () => {
+      (prisma.project.findFirst as jest.Mock).mockResolvedValue({
+        id: 'p-1',
+        owner_id: 'user-mgr-1',
+        organization_id: 'org-1',
+        methodology: ProjectMethodology.SCRUM,
+      });
+      (prisma.user.findMany as jest.Mock).mockResolvedValue([
+        { id: 'user-lead-1', name: 'Lead Sarah', roles: [{ role: { name: 'TECH_LEAD' } }] },
+      ]);
+
+      await expect(
+        ProjectService.updateProject('p-1', { owner_ids: ['user-lead-1'] }, mockOrgUser)
+      ).rejects.toThrow('User "Lead Sarah" is a Tech Lead and cannot be assigned as a project owner');
     });
   });
 

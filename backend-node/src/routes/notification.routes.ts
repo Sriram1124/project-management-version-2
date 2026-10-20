@@ -11,6 +11,8 @@ router.use(authenticate);
 router.get('/', NotificationController.list);
 router.get('/unread-count', NotificationController.unreadCount);
 router.patch('/read-all', NotificationController.markAllRead);
+router.patch('/:id/archive', NotificationController.archive);
+router.patch('/:id/unarchive', NotificationController.unarchive);
 router.patch('/:id/read', NotificationController.markRead);
 router.patch('/:id', NotificationController.markRead);
 

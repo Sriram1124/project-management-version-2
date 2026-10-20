@@ -1,5 +1,6 @@
 import { prisma } from '../lib/prisma';
 import { FormStatus, QuestionType } from '@prisma/client';
+import { generateSimpleXlsx } from './excel.service';
 
 function normalizeQuestionType(type: any): QuestionType {
   if (!type) return QuestionType.SHORT_TEXT;
@@ -174,6 +175,36 @@ export class FormService {
     return form;
   }
 
+  private static validateDeadlineDate(
+    deadlineInput: string | Date | null | undefined,
+    isNew: boolean,
+    existingDeadline?: Date | null
+  ): Date | null {
+    if (!deadlineInput) return null;
+    const d = new Date(deadlineInput);
+    if (isNaN(d.getTime())) {
+      throw new Error('Invalid deadline date and time format');
+    }
+
+    // If updating and deadline is unchanged from existing, allow preservation even if in the past
+    if (!isNew && existingDeadline) {
+      if (Math.abs(d.getTime() - existingDeadline.getTime()) <= 60000) {
+        return existingDeadline;
+      }
+    }
+
+    // Business timezone: Asia/Kolkata (IST)
+    const timeZone = 'Asia/Kolkata';
+    const deadlineDateStr = new Intl.DateTimeFormat('en-CA', { timeZone }).format(d);
+    const todayDateStr = new Intl.DateTimeFormat('en-CA', { timeZone }).format(new Date());
+
+    if (deadlineDateStr < todayDateStr) {
+      throw new Error(`Deadline date cannot be in the past (minimum permitted date is ${todayDateStr} in ${timeZone})`);
+    }
+
+    return d;
+  }
+
   static async createForm(data: any, organizationId?: string, creatorId?: string) {
     let orgId = organizationId;
     if (!orgId) {
@@ -201,13 +232,17 @@ export class FormService {
       }
     }
 
+    const validatedDeadline = data.deadline
+      ? FormService.validateDeadlineDate(data.deadline, true)
+      : null;
+
     return prisma.form.create({
       data: {
         title: data.title || 'Untitled Form',
         description: data.description || null,
         status,
         target_roles: roles,
-        deadline: data.deadline ? new Date(data.deadline) : null,
+        deadline: validatedDeadline,
         organization_id: orgId,
         creator_id: creator,
         project_id: data.project_id || null
@@ -232,7 +267,9 @@ export class FormService {
       updateData.target_roles = Array.isArray(data.target_roles) ? data.target_roles : [data.target_roles];
     }
     if (data.deadline !== undefined) {
-      updateData.deadline = data.deadline ? new Date(data.deadline) : null;
+      updateData.deadline = data.deadline
+        ? FormService.validateDeadlineDate(data.deadline, false, existing.deadline)
+        : null;
     }
     if (data.status !== undefined) {
       const statusUpper = String(data.status).toUpperCase();
@@ -247,6 +284,26 @@ export class FormService {
     return prisma.form.update({
       where: { id: formId },
       data: updateData,
+      include: {
+        questions: { orderBy: { order_index: 'asc' } },
+        creator: { select: { id: true, name: true, email: true } }
+      }
+    });
+  }
+
+  static async revertForm(formId: string, organizationId?: string) {
+    const existing = await prisma.form.findUnique({ where: { id: formId } });
+    if (!existing) {
+      throw new Error('Form not found');
+    }
+
+    // When reverting to DRAFT, strictly preserve the previous deadline date, time, and form configuration
+    return prisma.form.update({
+      where: { id: formId },
+      data: {
+        status: FormStatus.DRAFT,
+        deadline: existing.deadline
+      },
       include: {
         questions: { orderBy: { order_index: 'asc' } },
         creator: { select: { id: true, name: true, email: true } }
@@ -730,6 +787,61 @@ export class FormService {
       data,
       overdueCount: data.totalOverdueCount,
       membersCount: data.overdueMembersCount
+    };
+  }
+
+  static async generateOverdueExcel(organizationId?: string, cohortId?: string, formId?: string) {
+    const data = await FormService.getOverdueData(organizationId, cohortId, formId);
+    const timeZone = data.timezone || 'Asia/Kolkata';
+    const now = data.generatedAt || new Date();
+
+    const calculateDaysPassed = (deadline: Date): number => {
+      if (!deadline) return 1;
+      const deadlineDateStr = new Intl.DateTimeFormat('en-CA', { timeZone }).format(new Date(deadline));
+      const nowDateStr = new Intl.DateTimeFormat('en-CA', { timeZone }).format(now);
+      const d1 = new Date(deadlineDateStr).getTime();
+      const d2 = new Date(nowDateStr).getTime();
+      const calendarDays = Math.round((d2 - d1) / (1000 * 60 * 60 * 24));
+      return Math.max(1, calendarDays);
+    };
+
+    // Columns: Name, Mail, Days Passed
+    const rows: Array<[string, string, number]> = [];
+    const seen = new Set<string>();
+
+    if (formId) {
+      // Scoped to specific form: 1 row per overdue member
+      for (const row of data.details) {
+        if (!row.memberEmail || seen.has(row.memberId)) continue;
+        seen.add(row.memberId);
+        const daysPassed = calculateDaysPassed(row.formDeadline);
+        rows.push([row.memberName || 'Unnamed Intern', row.memberEmail, daysPassed]);
+      }
+    } else {
+      // Scoped across forms/cohort: deduplicate database join records by memberId and formId
+      for (const row of data.details) {
+        const uniqueKey = `${row.memberId}_${row.formId}`;
+        if (!row.memberEmail || seen.has(uniqueKey)) continue;
+        seen.add(uniqueKey);
+        const daysPassed = calculateDaysPassed(row.formDeadline);
+        rows.push([row.memberName || 'Unnamed Intern', row.memberEmail, daysPassed]);
+      }
+    }
+
+    // Sort by Days Passed descending, then Name ascending
+    rows.sort((a, b) => {
+      if (b[2] !== a[2]) return b[2] - a[2];
+      return a[0].localeCompare(b[0]);
+    });
+
+    const buffer = generateSimpleXlsx('Overdue Forms', ['Name', 'Mail', 'Days Passed'], rows);
+    const filename = 'overdue_forms.xlsx';
+
+    return {
+      buffer,
+      filename,
+      rowsCount: rows.length,
+      data
     };
   }
 }

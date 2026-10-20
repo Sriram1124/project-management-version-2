@@ -3,14 +3,15 @@ import {
   X,
   CheckCircle2,
   AlertTriangle,
-  RotateCcw,
   ArrowRight,
   Layers,
   PlusCircle,
   Calendar,
-  CheckSquare,
-  Square,
-  Sparkles,
+  Ban,
+  Undo2,
+  Check,
+  User,
+  AlertCircle,
 } from 'lucide-react';
 
 export default function CompleteSprintModal({
@@ -28,18 +29,20 @@ export default function CompleteSprintModal({
   const term = isKanban ? 'cycle' : 'sprint';
   const sprintName = sprint?.name || Term;
 
-  // Incomplete tasks list from passed tasks or synthesized
+  // Filter completed and incomplete tasks
+  const completedTasks = useMemo(() => {
+    return tasks.filter((t) => t.status === 'COMPLETED');
+  }, [tasks]);
+
   const incompleteTasks = useMemo(() => {
     return tasks.filter((t) => t.status !== 'COMPLETED');
   }, [tasks]);
 
-  const effectiveIncompleteCount = incompleteTasks.length > 0
-    ? incompleteTasks.length
-    : (sprint?.incomplete_items ?? incompleteCount);
+  const effectiveCompletedCount =
+    tasks.length > 0 ? completedTasks.length : (sprint?.completed_items ?? completedCount);
 
-  const effectiveCompletedCount = tasks.length > 0
-    ? tasks.filter((t) => t.status === 'COMPLETED').length
-    : (sprint?.completed_items ?? completedCount);
+  const effectiveIncompleteCount =
+    tasks.length > 0 ? incompleteTasks.length : (sprint?.incomplete_items ?? incompleteCount);
 
   // Story Points calculation
   const plannedSp = useMemo(() => {
@@ -53,10 +56,8 @@ export default function CompleteSprintModal({
     if (sprint?.completed_points !== undefined && sprint?.completed_points !== null) {
       return Number(sprint.completed_points);
     }
-    return tasks
-      .filter((t) => t.status === 'COMPLETED')
-      .reduce((sum, t) => sum + (Number(t.story_points) || 0), 0);
-  }, [sprint, tasks]);
+    return completedTasks.reduce((sum, t) => sum + (Number(t.story_points) || 0), 0);
+  }, [sprint, completedTasks]);
 
   const remainingSp = useMemo(() => {
     if (sprint?.remaining_points !== undefined && sprint?.remaining_points !== null) {
@@ -65,121 +66,155 @@ export default function CompleteSprintModal({
     return Math.max(0, plannedSp - completedSp);
   }, [sprint, plannedSp, completedSp]);
 
-  // Mode: 'CARRY_FORWARD' (Option B) vs 'CONTINUE' (Option A)
-  const [activeMode, setActiveMode] = useState('CARRY_FORWARD');
-
-  // Option A: Reopen/Continue Cycle state
-  const [newEndDate, setNewEndDate] = useState(() => {
-    if (sprint?.end_date) {
-      const d = new Date(sprint.end_date);
-      d.setDate(d.getDate() + 7);
-      return d.toISOString().split('T')[0];
-    }
-    const d = new Date();
-    d.setDate(d.getDate() + 7);
-    return d.toISOString().split('T')[0];
-  });
-
-  // Option B: Carry Forward Destination
-  const [destinationType, setDestinationType] = useState(() => {
-    return upcomingSprints.length > 0 ? 'EXISTING_CYCLE' : 'BACKLOG';
-  });
-  const [selectedTargetId, setSelectedTargetId] = useState(() => {
-    return upcomingSprints.length > 0 ? upcomingSprints[0].id : '';
-  });
+  // Destination options for Carried Forward work
+  const hasUpcoming = upcomingSprints && upcomingSprints.length > 0;
+  const [destinationType, setDestinationType] = useState(() => (hasUpcoming ? 'EXISTING_SPRINT' : 'BACKLOG'));
+  const [selectedTargetId, setSelectedTargetId] = useState(() => (hasUpcoming ? upcomingSprints[0].id : ''));
   const [newSprintName, setNewSprintName] = useState('');
-  const [selectedTaskIds, setSelectedTaskIds] = useState(() => new Set());
 
-  // Initialize/reset states on modal open
+  // Per-task decisions: { [taskId]: { action: 'CARRY_FORWARD' | 'RETURN_TO_BACKLOG' | 'CANCEL', cancel_reason: string } }
+  const [taskDecisions, setTaskDecisions] = useState({});
+  const [validationError, setValidationError] = useState(null);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [isConfirmStep, setIsConfirmStep] = useState(false);
+
+  // Initialize decisions when modal opens or tasks change
   useEffect(() => {
     if (isOpen) {
-      setActiveMode('CARRY_FORWARD');
-      if (upcomingSprints.length > 0) {
-        setDestinationType('EXISTING_CYCLE');
-        setSelectedTargetId(upcomingSprints[0].id);
-      } else {
-        setDestinationType('BACKLOG');
-        setSelectedTargetId('');
-      }
+      setIsConfirmStep(false);
+      setValidationError(null);
+      setIsSubmitting(false);
+
+      const hasNext = upcomingSprints && upcomingSprints.length > 0;
+      setDestinationType(hasNext ? 'EXISTING_SPRINT' : 'BACKLOG');
+      setSelectedTargetId(hasNext ? upcomingSprints[0].id : '');
       setNewSprintName(`${sprintName} Carryover`);
 
-      if (incompleteTasks.length > 0) {
-        setSelectedTaskIds(new Set(incompleteTasks.map((t) => t.id)));
-      } else {
-        setSelectedTaskIds(new Set());
-      }
-
-      if (sprint?.end_date) {
-        const d = new Date(sprint.end_date);
-        d.setDate(d.getDate() + 7);
-        setNewEndDate(d.toISOString().split('T')[0]);
-      }
+      // Default decision: If destination sprint exists, CARRY_FORWARD; else RETURN_TO_BACKLOG
+      const initialDecisions = {};
+      const defaultAction = hasNext ? 'CARRY_FORWARD' : 'RETURN_TO_BACKLOG';
+      incompleteTasks.forEach((t) => {
+        initialDecisions[t.id] = {
+          action: defaultAction,
+          cancel_reason: '',
+        };
+      });
+      setTaskDecisions(initialDecisions);
     }
   }, [isOpen, sprint, upcomingSprints, incompleteTasks, sprintName]);
 
   if (!isOpen) return null;
 
-  const toggleSelectAll = () => {
-    if (selectedTaskIds.size === incompleteTasks.length) {
-      setSelectedTaskIds(new Set());
-    } else {
-      setSelectedTaskIds(new Set(incompleteTasks.map((t) => t.id)));
-    }
+  const setSingleDecision = (taskId, action) => {
+    setTaskDecisions((prev) => ({
+      ...prev,
+      [taskId]: {
+        ...(prev[taskId] || {}),
+        action,
+      },
+    }));
+    setValidationError(null);
   };
 
-  const toggleTaskSelection = (taskId) => {
-    setSelectedTaskIds((prev) => {
-      const next = new Set(prev);
-      if (next.has(taskId)) {
-        next.delete(taskId);
-      } else {
-        next.add(taskId);
+  const setSingleCancelReason = (taskId, reason) => {
+    setTaskDecisions((prev) => ({
+      ...prev,
+      [taskId]: {
+        ...(prev[taskId] || {}),
+        cancel_reason: reason,
+      },
+    }));
+    setValidationError(null);
+  };
+
+  const handleApplyBulkAction = (action) => {
+    setTaskDecisions((prev) => {
+      const updated = { ...prev };
+      incompleteTasks.forEach((t) => {
+        updated[t.id] = {
+          ...(updated[t.id] || {}),
+          action,
+        };
+      });
+      return updated;
+    });
+    setValidationError(null);
+  };
+
+  // Group decision counts
+  const carryCount = Object.values(taskDecisions).filter((d) => d.action === 'CARRY_FORWARD').length;
+  const backlogCount = Object.values(taskDecisions).filter((d) => d.action === 'RETURN_TO_BACKLOG').length;
+  const cancelCount = Object.values(taskDecisions).filter((d) => d.action === 'CANCEL').length;
+
+  const handleProceedToConfirm = () => {
+    // Validate cancellation reasons
+    for (const task of incompleteTasks) {
+      const decision = taskDecisions[task.id];
+      if (decision?.action === 'CANCEL') {
+        if (!decision.cancel_reason || !decision.cancel_reason.trim()) {
+          setValidationError(`Please provide a cancellation reason for task "${task.title}".`);
+          return;
+        }
       }
-      return next;
-    });
-  };
+    }
 
-  const handleConfirm = () => {
-    if (effectiveIncompleteCount === 0) {
-      onConfirmComplete?.({
-        target_sprint_id: null,
-      });
-      onClose();
+    if (carryCount > 0 && destinationType === 'NEW_SPRINT' && !newSprintName.trim()) {
+      setValidationError('Please specify a name for the new sprint.');
       return;
     }
 
-    if (activeMode === 'CONTINUE') {
-      // Option A: Reopen/Continue Cycle with date adjustment
-      onConfirmComplete?.({
-        unfinished_action: 'CONTINUE',
-        new_end_date: newEndDate ? new Date(newEndDate).toISOString() : null,
-      });
-      onClose();
-      return;
-    }
-
-    // Option B: Carry forward unfinished items
-    let targetId = null;
-    let action = 'MOVE_TO_BACKLOG';
-
-    if (destinationType === 'EXISTING_CYCLE' && selectedTargetId) {
-      targetId = selectedTargetId;
-      action = 'MOVE_TO_SPRINT';
-    } else if (destinationType === 'NEW_CYCLE' && newSprintName.trim()) {
-      action = 'CREATE_NEW_SPRINT';
-    } else {
-      targetId = null;
-      action = 'MOVE_TO_BACKLOG';
-    }
-
-    onConfirmComplete?.({
-      unfinished_action: action,
-      target_sprint_id: targetId,
-      new_sprint_name: destinationType === 'NEW_CYCLE' ? newSprintName.trim() : null,
-      selected_task_ids: incompleteTasks.length > 0 ? Array.from(selectedTaskIds) : null,
-    });
-    onClose();
+    setValidationError(null);
+    setIsConfirmStep(true);
   };
+
+  const handleFinalSubmit = async () => {
+    try {
+      setIsSubmitting(true);
+      setValidationError(null);
+
+      // Determine target destination sprint
+      let targetId = null;
+      let newName = null;
+
+      if (destinationType === 'EXISTING_SPRINT' && selectedTargetId) {
+        targetId = selectedTargetId;
+      } else if (destinationType === 'NEW_SPRINT' && newSprintName.trim()) {
+        newName = newSprintName.trim();
+      }
+
+      // Build item_actions payload
+      const item_actions = incompleteTasks.map((t) => {
+        const d = taskDecisions[t.id] || { action: 'RETURN_TO_BACKLOG', cancel_reason: '' };
+        return {
+          work_item_id: t.id,
+          action: d.action,
+          cancel_reason: d.cancel_reason?.trim() || undefined,
+          target_sprint_id: d.action === 'CARRY_FORWARD' ? targetId : null,
+        };
+      });
+
+      await onConfirmComplete?.({
+        target_sprint_id: targetId,
+        new_sprint_name: newName,
+        unfinished_action: destinationType === 'EXISTING_SPRINT' ? 'MOVE_TO_SPRINT' : 'MOVE_TO_BACKLOG',
+        item_actions,
+      });
+
+      onClose();
+    } catch (err) {
+      console.error('Failed to complete sprint:', err);
+      setValidationError(err.message || 'Failed to complete sprint');
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  const targetSprintName =
+    destinationType === 'EXISTING_SPRINT'
+      ? upcomingSprints.find((s) => s.id === selectedTargetId)?.name || 'Selected Sprint'
+      : destinationType === 'NEW_SPRINT'
+      ? newSprintName || 'New Sprint'
+      : 'Backlog';
 
   return (
     <div
@@ -187,7 +222,7 @@ export default function CompleteSprintModal({
       onClick={onClose}
     >
       <div
-        className="bg-white w-full max-w-xl rounded-2xl shadow-2xl border border-slate-200 overflow-hidden flex flex-col max-h-[90vh]"
+        className="bg-white w-full max-w-2xl rounded-2xl shadow-2xl border border-slate-200 overflow-hidden flex flex-col max-h-[90vh]"
         onClick={(e) => e.stopPropagation()}
       >
         {/* Header */}
@@ -201,7 +236,7 @@ export default function CompleteSprintModal({
                 Complete {Term} — {sprintName}
               </h3>
               <p className="text-xs text-slate-500">
-                Review {term} metrics and choose how to handle open deliverables
+                Review completed work and resolve unfinished deliverables
               </p>
             </div>
           </div>
@@ -215,7 +250,15 @@ export default function CompleteSprintModal({
 
         {/* Content Body */}
         <div className="p-6 space-y-5 overflow-y-auto">
-          {/* Metrics Card: Planned SP, Completed SP, Remaining SP, Incomplete Count */}
+          {/* Error Banner */}
+          {validationError && (
+            <div className="p-3.5 rounded-xl bg-rose-50 border border-rose-200 flex items-start gap-2.5 text-rose-800 text-xs animate-in fade-in">
+              <AlertCircle className="w-4 h-4 text-rose-600 shrink-0 mt-0.5" />
+              <div className="flex-1 font-medium">{validationError}</div>
+            </div>
+          )}
+
+          {/* Metrics Card */}
           <div className="grid grid-cols-4 gap-2.5">
             <div className="p-3 rounded-xl bg-slate-50 border border-slate-200/80 text-center">
               <div className="text-xl font-black text-slate-800 font-mono">{plannedSp}</div>
@@ -238,331 +281,366 @@ export default function CompleteSprintModal({
               </div>
             </div>
 
-            <div className={`p-3 rounded-xl text-center border ${
-              effectiveIncompleteCount > 0
-                ? 'bg-amber-50 border-amber-200/80'
-                : 'bg-emerald-50 border-emerald-200/80'
-            }`}>
-              <div className={`text-xl font-black font-mono ${
-                effectiveIncompleteCount > 0 ? 'text-amber-700' : 'text-emerald-700'
-              }`}>
+            <div
+              className={`p-3 rounded-xl text-center border ${
+                effectiveIncompleteCount > 0
+                  ? 'bg-amber-50 border-amber-200/80'
+                  : 'bg-emerald-50 border-emerald-200/80'
+              }`}
+            >
+              <div
+                className={`text-xl font-black font-mono ${
+                  effectiveIncompleteCount > 0 ? 'text-amber-700' : 'text-emerald-700'
+                }`}
+              >
                 {effectiveIncompleteCount}
               </div>
-              <div className={`text-[10px] font-bold uppercase tracking-wider mt-0.5 ${
-                effectiveIncompleteCount > 0 ? 'text-amber-800' : 'text-emerald-800'
-              }`}>
-                Incomplete Tasks
+              <div
+                className={`text-[10px] font-bold uppercase tracking-wider mt-0.5 ${
+                  effectiveIncompleteCount > 0 ? 'text-amber-800' : 'text-emerald-800'
+                }`}
+              >
+                Unfinished Tasks
               </div>
             </div>
           </div>
 
-          {/* If all tasks completed */}
-          {effectiveIncompleteCount === 0 && (
-            <div className="p-4 rounded-xl bg-emerald-50/70 border border-emerald-200 text-xs text-emerald-800 flex items-start gap-2.5">
-              <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0 mt-0.5" />
-              <div>
-                <p className="font-bold">All planned work items are completed!</p>
-                <p className="text-emerald-700 mt-0.5">
-                  100% of planned story points were successfully delivered in this {term}. Closing the {term} will archive its velocity record.
-                </p>
-              </div>
-            </div>
-          )}
-
-          {/* If unfinished items exist: Options A and B */}
-          {effectiveIncompleteCount > 0 && (
-            <div className="space-y-4">
-              <div className="text-xs font-bold text-slate-700 uppercase tracking-wider flex items-center gap-1.5">
-                <span>Select Resolution for Unfinished Work:</span>
-              </div>
-
-              {/* Mode Selection Tabs / Radios */}
-              <div className="grid grid-cols-2 gap-3">
-                {/* Option B: Carry Forward */}
-                <button
-                  type="button"
-                  onClick={() => setActiveMode('CARRY_FORWARD')}
-                  className={`p-3.5 rounded-xl border text-left cursor-pointer transition-all ${
-                    activeMode === 'CARRY_FORWARD'
-                      ? 'border-purple-600 bg-purple-50/70 shadow-xs ring-1 ring-purple-600'
-                      : 'border-slate-200 hover:border-purple-200 bg-white'
-                  }`}
-                >
-                  <div className="flex items-center gap-2 mb-1">
-                    <ArrowRight className="w-4 h-4 text-purple-600" />
-                    <span className="text-xs font-bold text-slate-900">
-                      Option B: Carry Forward
-                    </span>
-                  </div>
-                  <p className="text-[11px] text-slate-500 leading-relaxed">
-                    Close this {term} and roll over unfinished tasks to another {term} or backlog.
-                  </p>
-                </button>
-
-                {/* Option A: Reopen / Continue Cycle */}
-                <button
-                  type="button"
-                  onClick={() => setActiveMode('CONTINUE')}
-                  className={`p-3.5 rounded-xl border text-left cursor-pointer transition-all ${
-                    activeMode === 'CONTINUE'
-                      ? 'border-purple-600 bg-purple-50/70 shadow-xs ring-1 ring-purple-600'
-                      : 'border-slate-200 hover:border-purple-200 bg-white'
-                  }`}
-                >
-                  <div className="flex items-center gap-2 mb-1">
-                    <RotateCcw className="w-4 h-4 text-purple-600" />
-                    <span className="text-xs font-bold text-slate-900">
-                      Option A: Continue {Term}
-                    </span>
-                  </div>
-                  <p className="text-[11px] text-slate-500 leading-relaxed">
-                    Extend {term} duration with a new end date and keep working on open items.
-                  </p>
-                </button>
-              </div>
-
-              {/* Mode Details: Option A Details */}
-              {activeMode === 'CONTINUE' && (
-                <div className="p-4 rounded-xl bg-purple-50/40 border border-purple-200/80 space-y-3">
-                  <div className="flex items-center gap-2 text-xs font-bold text-purple-900">
-                    <Calendar className="w-4 h-4 text-purple-600" />
-                    <span>Adjust {Term} End Date:</span>
-                  </div>
-                  <p className="text-xs text-slate-600">
-                    The {term} remains in ACTIVE status without closing. All {effectiveIncompleteCount} incomplete items and {remainingSp} remaining story points stay assigned to this {term}.
-                  </p>
+          {/* View Mode: Normal Review vs Confirmation Step */}
+          {!isConfirmStep ? (
+            <>
+              {/* All tasks completed state */}
+              {effectiveIncompleteCount === 0 && (
+                <div className="p-4 rounded-xl bg-emerald-50/70 border border-emerald-200 text-xs text-emerald-800 flex items-start gap-2.5">
+                  <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0 mt-0.5" />
                   <div>
-                    <label className="block text-[11px] font-semibold text-slate-700 mb-1">
-                      New End Date *
-                    </label>
-                    <input
-                      type="date"
-                      value={newEndDate}
-                      onChange={(e) => setNewEndDate(e.target.value)}
-                      className="px-3 py-2 rounded-lg border border-slate-300 bg-white text-slate-800 text-xs focus:outline-none focus:border-purple-600"
-                    />
+                    <p className="font-bold">All planned work items are completed!</p>
+                    <p className="text-emerald-700 mt-0.5">
+                      100% of planned story points were successfully delivered in this {term}. Completing the {term} will finalize velocity records.
+                    </p>
                   </div>
                 </div>
               )}
 
-              {/* Mode Details: Option B Details */}
-              {activeMode === 'CARRY_FORWARD' && (
+              {/* Unfinished tasks resolution */}
+              {effectiveIncompleteCount > 0 && (
                 <div className="space-y-4">
-                  {/* Task Selection Checklist (if incomplete tasks provided) */}
-                  {incompleteTasks.length > 0 && (
-                    <div className="border border-slate-200 rounded-xl overflow-hidden">
-                      <div className="px-3 py-2 bg-slate-50 border-b border-slate-200 flex items-center justify-between">
-                        <span className="text-[11px] font-bold text-slate-700 uppercase tracking-wider">
-                          Select Tasks to Carry Forward ({selectedTaskIds.size}/{incompleteTasks.length})
-                        </span>
-                        <button
-                          type="button"
-                          onClick={toggleSelectAll}
-                          className="text-[11px] font-semibold text-purple-600 hover:text-purple-700 cursor-pointer"
-                        >
-                          {selectedTaskIds.size === incompleteTasks.length ? 'Deselect All' : 'Select All'}
-                        </button>
-                      </div>
-
-                      <div className="max-h-40 overflow-y-auto divide-y divide-slate-100 bg-white text-xs">
-                        {incompleteTasks.map((t) => {
-                          const isChecked = selectedTaskIds.has(t.id);
-                          return (
-                            <label
-                              key={t.id}
-                              className="px-3 py-2 flex items-center gap-2.5 hover:bg-slate-50 cursor-pointer transition-colors"
-                            >
-                              <input
-                                type="checkbox"
-                                checked={isChecked}
-                                onChange={() => toggleTaskSelection(t.id)}
-                                className="w-3.5 h-3.5 text-purple-600 rounded border-slate-300 focus:ring-purple-500 cursor-pointer"
-                              />
-                              <span className="font-mono text-[10px] font-semibold text-slate-400">
-                                {t.id}
-                              </span>
-                              <span className="text-slate-800 truncate flex-1">
-                                {t.title}
-                              </span>
-                              {t.story_points > 0 && (
-                                <span className="font-mono text-[10px] font-bold px-1.5 py-0.5 rounded bg-slate-100 text-slate-600">
-                                  {t.story_points} SP
-                                </span>
-                              )}
-                              <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-amber-100 text-amber-700 uppercase">
-                                {t.status}
-                              </span>
-                            </label>
-                          );
-                        })}
-                      </div>
-                      <div className="px-3 py-1.5 bg-slate-50/70 border-t border-slate-100 text-[11px] text-slate-500">
-                        {selectedTaskIds.size < incompleteTasks.length
-                          ? `${incompleteTasks.length - selectedTaskIds.size} unselected tasks will return to the backlog.`
-                          : 'All unfinished items will carry forward to the destination selected below.'}
-                      </div>
+                  {/* Destination sprint selector for Carried-Forward items */}
+                  <div className="p-3.5 rounded-xl bg-slate-50 border border-slate-200 space-y-2.5">
+                    <div className="flex items-center justify-between">
+                      <span className="text-xs font-bold text-slate-700 uppercase tracking-wider flex items-center gap-1.5">
+                        <Layers className="w-3.5 h-3.5 text-purple-600" />
+                        <span>Destination for Carried-Forward Tasks:</span>
+                      </span>
                     </div>
-                  )}
 
-                  {/* Destination Selection */}
-                  <div className="space-y-2">
-                    <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider">
-                      Destination for Carried-Forward Work:
-                    </label>
-
-                    <div className="space-y-2">
-                      {/* Sub-option 1: Existing Planned Cycle */}
-                      {upcomingSprints.length > 0 && (
-                        <div
-                          className={`p-3 rounded-xl border transition-colors ${
-                            destinationType === 'EXISTING_CYCLE'
-                              ? 'border-purple-300 bg-purple-50/40'
-                              : 'border-slate-200 bg-slate-50/50'
+                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                      {hasUpcoming && (
+                        <label
+                          className={`p-2.5 rounded-lg border text-xs cursor-pointer flex items-center gap-2 transition-colors ${
+                            destinationType === 'EXISTING_SPRINT'
+                              ? 'border-purple-500 bg-purple-50/50 text-purple-900 font-semibold'
+                              : 'border-slate-200 bg-white text-slate-700'
                           }`}
                         >
-                          <label className="flex items-center gap-2.5 cursor-pointer">
-                            <input
-                              type="radio"
-                              name="destinationType"
-                              value="EXISTING_CYCLE"
-                              checked={destinationType === 'EXISTING_CYCLE'}
-                              onChange={() => setDestinationType('EXISTING_CYCLE')}
-                              className="text-purple-600 focus:ring-purple-500"
-                            />
-                            <div className="font-bold text-xs text-slate-800 flex items-center gap-1.5">
-                              <Layers className="w-3.5 h-3.5 text-purple-600" />
-                              <span>Carry forward into a planned {term}</span>
-                            </div>
-                          </label>
+                          <input
+                            type="radio"
+                            name="destType"
+                            checked={destinationType === 'EXISTING_SPRINT'}
+                            onChange={() => setDestinationType('EXISTING_SPRINT')}
+                            className="text-purple-600"
+                          />
+                          <span>Planned {Term}</span>
+                        </label>
+                      )}
 
-                          {destinationType === 'EXISTING_CYCLE' && (
-                            <div className="mt-2.5 ml-6">
-                              <select
-                                value={selectedTargetId}
-                                onChange={(e) => setSelectedTargetId(e.target.value)}
-                                className="w-full px-3 py-1.5 rounded-lg border border-purple-200 bg-white text-xs text-slate-800 focus:outline-none focus:border-purple-600"
+                      <label
+                        className={`p-2.5 rounded-lg border text-xs cursor-pointer flex items-center gap-2 transition-colors ${
+                          destinationType === 'BACKLOG'
+                            ? 'border-purple-500 bg-purple-50/50 text-purple-900 font-semibold'
+                            : 'border-slate-200 bg-white text-slate-700'
+                        }`}
+                      >
+                        <input
+                          type="radio"
+                          name="destType"
+                          checked={destinationType === 'BACKLOG'}
+                          onChange={() => setDestinationType('BACKLOG')}
+                          className="text-purple-600"
+                        />
+                        <span>Project Backlog</span>
+                      </label>
+
+                      <label
+                        className={`p-2.5 rounded-lg border text-xs cursor-pointer flex items-center gap-2 transition-colors ${
+                          destinationType === 'NEW_SPRINT'
+                            ? 'border-purple-500 bg-purple-50/50 text-purple-900 font-semibold'
+                            : 'border-slate-200 bg-white text-slate-700'
+                        }`}
+                      >
+                        <input
+                          type="radio"
+                          name="destType"
+                          checked={destinationType === 'NEW_SPRINT'}
+                          onChange={() => setDestinationType('NEW_SPRINT')}
+                          className="text-purple-600"
+                        />
+                        <span>Create New {Term}</span>
+                      </label>
+                    </div>
+
+                    {destinationType === 'EXISTING_SPRINT' && hasUpcoming && (
+                      <div className="pt-1">
+                        <select
+                          value={selectedTargetId}
+                          onChange={(e) => setSelectedTargetId(e.target.value)}
+                          className="w-full px-3 py-1.5 rounded-lg border border-purple-200 bg-white text-xs text-slate-800 focus:outline-none focus:border-purple-600"
+                        >
+                          {upcomingSprints.map((us) => (
+                            <option key={us.id} value={us.id}>
+                              {us.name} {us.status === 'PLANNED' ? '(Planned)' : `(${us.status})`}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+                    )}
+
+                    {destinationType === 'NEW_SPRINT' && (
+                      <div className="pt-1">
+                        <input
+                          type="text"
+                          value={newSprintName}
+                          onChange={(e) => setNewSprintName(e.target.value)}
+                          placeholder={`e.g. ${Term} 2 (Carryover)`}
+                          className="w-full px-3 py-1.5 rounded-lg border border-purple-200 bg-white text-xs text-slate-800 focus:outline-none focus:border-purple-600"
+                        />
+                      </div>
+                    )}
+
+                    {!hasUpcoming && destinationType === 'BACKLOG' && (
+                      <p className="text-[11px] text-slate-500">
+                        No upcoming planned {term}s exist. Unfinished tasks will return to the backlog without auto-creating unexpected sprints.
+                      </p>
+                    )}
+                  </div>
+
+                  {/* Bulk Actions Bar */}
+                  <div className="flex items-center justify-between text-xs pt-1">
+                    <span className="font-bold text-slate-700 uppercase tracking-wider text-[11px]">
+                      Unfinished Tasks ({incompleteTasks.length})
+                    </span>
+                    <div className="flex items-center gap-1.5">
+                      <span className="text-[11px] text-slate-400">Bulk set all:</span>
+                      <button
+                        type="button"
+                        onClick={() => handleApplyBulkAction('CARRY_FORWARD')}
+                        className="px-2 py-0.5 rounded bg-purple-50 text-purple-700 hover:bg-purple-100 font-medium text-[11px] border border-purple-200 cursor-pointer"
+                      >
+                        Carry Forward
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => handleApplyBulkAction('RETURN_TO_BACKLOG')}
+                        className="px-2 py-0.5 rounded bg-slate-100 text-slate-700 hover:bg-slate-200 font-medium text-[11px] border border-slate-200 cursor-pointer"
+                      >
+                        Backlog
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* Tasks List */}
+                  <div className="border border-slate-200 rounded-xl divide-y divide-slate-100 max-h-64 overflow-y-auto bg-white">
+                    {incompleteTasks.map((t) => {
+                      const decision = taskDecisions[t.id] || { action: 'RETURN_TO_BACKLOG', cancel_reason: '' };
+                      const assigneeName =
+                        t.assignees?.[0]?.name ||
+                        t.assignees?.[0]?.user?.name ||
+                        t.assignee?.name ||
+                        'Unassigned';
+
+                      return (
+                        <div key={t.id} className="p-3 space-y-2 hover:bg-slate-50/50 transition-colors">
+                          <div className="flex items-center justify-between gap-3">
+                            <div className="min-w-0 flex-1">
+                              <div className="flex items-center gap-2">
+                                <span className="font-mono text-[10px] font-semibold text-slate-400">
+                                  {t.code || t.id.slice(0, 8)}
+                                </span>
+                                <span className="text-xs font-semibold text-slate-900 truncate">
+                                  {t.title}
+                                </span>
+                              </div>
+                              <div className="flex items-center gap-3 text-[11px] text-slate-500 mt-1">
+                                <span className="flex items-center gap-1">
+                                  <User className="w-3 h-3 text-slate-400" />
+                                  <span>{assigneeName}</span>
+                                </span>
+                                <span className="px-1.5 py-0.2 rounded text-[10px] font-bold bg-amber-50 text-amber-700 border border-amber-200">
+                                  {t.status}
+                                </span>
+                                <span className="font-mono text-[10px] font-bold px-1.5 py-0.2 rounded bg-slate-100 text-slate-600">
+                                  {t.story_points ?? 0} SP
+                                </span>
+                              </div>
+                            </div>
+
+                            {/* Action selector segmented buttons */}
+                            <div className="flex items-center gap-1 shrink-0">
+                              <button
+                                type="button"
+                                onClick={() => setSingleDecision(t.id, 'CARRY_FORWARD')}
+                                className={`px-2 py-1 rounded text-[11px] font-semibold transition-colors cursor-pointer border ${
+                                  decision.action === 'CARRY_FORWARD'
+                                    ? 'bg-purple-600 text-white border-purple-600 shadow-xs'
+                                    : 'bg-white text-slate-600 hover:bg-slate-100 border-slate-200'
+                                }`}
                               >
-                                {upcomingSprints.map((us) => (
-                                  <option key={us.id} value={us.id}>
-                                    {us.name} {us.status === 'PLANNED' ? '(Planned)' : ''}
-                                  </option>
-                                ))}
-                              </select>
+                                Carry Forward
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => setSingleDecision(t.id, 'RETURN_TO_BACKLOG')}
+                                className={`px-2 py-1 rounded text-[11px] font-semibold transition-colors cursor-pointer border ${
+                                  decision.action === 'RETURN_TO_BACKLOG'
+                                    ? 'bg-slate-700 text-white border-slate-700 shadow-xs'
+                                    : 'bg-white text-slate-600 hover:bg-slate-100 border-slate-200'
+                                }`}
+                              >
+                                Backlog
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => setSingleDecision(t.id, 'CANCEL')}
+                                className={`px-2 py-1 rounded text-[11px] font-semibold transition-colors cursor-pointer border ${
+                                  decision.action === 'CANCEL'
+                                    ? 'bg-rose-600 text-white border-rose-600 shadow-xs'
+                                    : 'bg-white text-slate-600 hover:bg-rose-50 hover:text-rose-600 border-slate-200'
+                                }`}
+                              >
+                                Cancel
+                              </button>
+                            </div>
+                          </div>
+
+                          {/* Cancellation reason input (required if Cancel is selected) */}
+                          {decision.action === 'CANCEL' && (
+                            <div className="pt-1.5 pl-2 border-l-2 border-rose-500 animate-in fade-in">
+                              <label className="block text-[10px] font-bold text-rose-700 uppercase tracking-wider mb-1">
+                                Cancellation Reason *
+                              </label>
+                              <input
+                                type="text"
+                                value={decision.cancel_reason || ''}
+                                onChange={(e) => setSingleCancelReason(t.id, e.target.value)}
+                                placeholder="Enter reason (e.g. Scope dropped, duplicate, obsolete)..."
+                                className={`w-full px-2.5 py-1 text-xs rounded border bg-white focus:outline-none ${
+                                  !decision.cancel_reason?.trim()
+                                    ? 'border-rose-300 focus:border-rose-500'
+                                    : 'border-slate-300 focus:border-purple-600'
+                                }`}
+                              />
                             </div>
                           )}
                         </div>
-                      )}
-
-                      {/* Sub-option 2: Create New Cycle */}
-                      <div
-                        className={`p-3 rounded-xl border transition-colors ${
-                          destinationType === 'NEW_CYCLE'
-                            ? 'border-purple-300 bg-purple-50/40'
-                            : 'border-slate-200 bg-slate-50/50'
-                        }`}
-                      >
-                        <label className="flex items-center gap-2.5 cursor-pointer">
-                          <input
-                            type="radio"
-                            name="destinationType"
-                            value="NEW_CYCLE"
-                            checked={destinationType === 'NEW_CYCLE'}
-                            onChange={() => setDestinationType('NEW_CYCLE')}
-                            className="text-purple-600 focus:ring-purple-500"
-                          />
-                          <div className="font-bold text-xs text-slate-800 flex items-center gap-1.5">
-                            <PlusCircle className="w-3.5 h-3.5 text-purple-600" />
-                            <span>Create new planned {term} for carryover</span>
-                          </div>
-                        </label>
-
-                        {destinationType === 'NEW_CYCLE' && (
-                          <div className="mt-2.5 ml-6">
-                            <input
-                              type="text"
-                              value={newSprintName}
-                              onChange={(e) => setNewSprintName(e.target.value)}
-                              placeholder={`e.g. ${Term} 2 (Carryover)`}
-                              className="w-full px-3 py-1.5 rounded-lg border border-purple-200 bg-white text-xs text-slate-800 focus:outline-none focus:border-purple-600"
-                            />
-                          </div>
-                        )}
-                      </div>
-
-                      {/* Sub-option 3: Project Backlog */}
-                      <div
-                        className={`p-3 rounded-xl border transition-colors ${
-                          destinationType === 'BACKLOG'
-                            ? 'border-purple-300 bg-purple-50/40'
-                            : 'border-slate-200 bg-slate-50/50'
-                        }`}
-                      >
-                        <label className="flex items-center gap-2.5 cursor-pointer">
-                          <input
-                            type="radio"
-                            name="destinationType"
-                            value="BACKLOG"
-                            checked={destinationType === 'BACKLOG'}
-                            onChange={() => setDestinationType('BACKLOG')}
-                            className="text-purple-600 focus:ring-purple-500"
-                          />
-                          <div>
-                            <div className="text-xs font-bold text-slate-800">
-                              Move to Project Backlog
-                            </div>
-                            <div className="text-[11px] text-slate-400">
-                              Unassign from {isKanban ? 'cycles' : 'sprints'} and return to {isKanban ? 'continuous backlog pool' : 'backlog'}
-                            </div>
-                          </div>
-                        </label>
-                      </div>
-                    </div>
+                      );
+                    })}
                   </div>
                 </div>
               )}
+
+              {/* Preservation Notice */}
+              <div className="p-3 rounded-xl bg-slate-50 border border-slate-200 text-xs text-slate-600 flex items-start gap-2.5">
+                <AlertTriangle className="w-4 h-4 text-amber-500 shrink-0 mt-0.5" />
+                <span className="leading-relaxed">
+                  Carried-forward work preserves exact task IDs, assignees, comments, points, and epic/story hierarchy without duplicating records or altering previous completion metrics.
+                </span>
+              </div>
+            </>
+          ) : (
+            /* Step 2: Explicit Confirmation Dialog */
+            <div className="space-y-4 animate-in fade-in">
+              <div className="p-4 rounded-xl bg-purple-50/70 border border-purple-200">
+                <h4 className="text-sm font-bold text-purple-900 mb-1 flex items-center gap-2">
+                  <CheckCircle2 className="w-4 h-4 text-purple-700" />
+                  <span>Confirm Sprint Closure Decisions</span>
+                </h4>
+                <p className="text-xs text-purple-700">
+                  Please review the summary below before finalizing closure of {Term} "{sprintName}".
+                </p>
+              </div>
+
+              <div className="space-y-2.5 text-xs text-slate-700 bg-slate-50 p-4 rounded-xl border border-slate-200">
+                <div className="flex items-center justify-between py-1 border-b border-slate-200">
+                  <span className="font-medium text-slate-600">Completed Deliverables (Archived):</span>
+                  <span className="font-bold text-emerald-700 font-mono">
+                    {effectiveCompletedCount} tasks ({completedSp} SP)
+                  </span>
+                </div>
+                {effectiveIncompleteCount > 0 && (
+                  <>
+                    <div className="flex items-center justify-between py-1 border-b border-slate-200">
+                      <span className="font-medium text-slate-600">Carry Forward to {targetSprintName}:</span>
+                      <span className="font-bold text-purple-700 font-mono">{carryCount} tasks</span>
+                    </div>
+                    <div className="flex items-center justify-between py-1 border-b border-slate-200">
+                      <span className="font-medium text-slate-600">Return to Project Backlog:</span>
+                      <span className="font-bold text-slate-800 font-mono">{backlogCount} tasks</span>
+                    </div>
+                    <div className="flex items-center justify-between py-1">
+                      <span className="font-medium text-slate-600">Cancel with Audit Log:</span>
+                      <span className="font-bold text-rose-700 font-mono">{cancelCount} tasks</span>
+                    </div>
+                  </>
+                )}
+              </div>
+
+              <p className="text-xs text-slate-500 italic">
+                Note: Unfinished tasks will NOT be marked as completed. Sprints can be reopened later by authorized Managers or Tech Leads if needed.
+              </p>
             </div>
           )}
-
-          {/* Safety Notice */}
-          <div className="p-3 rounded-xl bg-slate-50 border border-slate-200 text-xs text-slate-600 flex items-start gap-2.5">
-            <AlertTriangle className="w-4 h-4 text-amber-500 shrink-0 mt-0.5" />
-            <span className="leading-relaxed">
-              Carried-forward work preserves exact task IDs, assignees, comments, points, and history without duplicate records or false completion metrics.
-            </span>
-          </div>
         </div>
 
         {/* Footer Actions */}
         <div className="px-6 py-4 bg-slate-50/70 border-t border-slate-100 flex items-center justify-end gap-2.5">
-          <button
-            type="button"
-            onClick={onClose}
-            className="px-4 py-2 text-xs font-semibold text-slate-600 hover:text-slate-800 hover:bg-slate-100 rounded-xl transition-colors cursor-pointer"
-          >
-            Cancel
-          </button>
-
-          <button
-            type="button"
-            onClick={handleConfirm}
-            className={`px-4 py-2 text-xs font-bold text-white rounded-xl shadow-xs flex items-center gap-1.5 transition-colors cursor-pointer ${
-              activeMode === 'CONTINUE' && effectiveIncompleteCount > 0
-                ? 'bg-purple-600 hover:bg-purple-700'
-                : 'bg-emerald-600 hover:bg-emerald-700'
-            }`}
-          >
-            {activeMode === 'CONTINUE' && effectiveIncompleteCount > 0 ? (
-              <>
-                <RotateCcw className="w-3.5 h-3.5" />
-                <span>Adjust Dates & Continue {Term}</span>
-              </>
-            ) : (
-              <>
-                <CheckCircle2 className="w-3.5 h-3.5" />
-                <span>Confirm & Complete {Term}</span>
-              </>
-            )}
-          </button>
+          {!isConfirmStep ? (
+            <>
+              <button
+                type="button"
+                onClick={onClose}
+                className="px-4 py-2 text-xs font-semibold text-slate-600 hover:text-slate-800 hover:bg-slate-100 rounded-xl transition-colors cursor-pointer"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={handleProceedToConfirm}
+                className="px-4 py-2 text-xs font-bold text-white bg-purple-600 hover:bg-purple-700 rounded-xl shadow-xs flex items-center gap-1.5 transition-colors cursor-pointer"
+              >
+                <span>Review & Complete {Term}</span>
+                <ArrowRight className="w-3.5 h-3.5" />
+              </button>
+            </>
+          ) : (
+            <>
+              <button
+                type="button"
+                onClick={() => setIsConfirmStep(false)}
+                disabled={isSubmitting}
+                className="px-4 py-2 text-xs font-semibold text-slate-600 hover:text-slate-800 hover:bg-slate-100 rounded-xl transition-colors cursor-pointer"
+              >
+                Back to Edit Decisions
+              </button>
+              <button
+                type="button"
+                onClick={handleFinalSubmit}
+                disabled={isSubmitting}
+                className="px-4 py-2 text-xs font-bold text-white bg-emerald-600 hover:bg-emerald-700 rounded-xl shadow-xs flex items-center gap-1.5 transition-colors cursor-pointer disabled:opacity-50"
+              >
+                <Check className="w-3.5 h-3.5" />
+                <span>{isSubmitting ? 'Finalizing...' : `Confirm & Close ${Term}`}</span>
+              </button>
+            </>
+          )}
         </div>
       </div>
     </div>

@@ -1293,7 +1293,7 @@ export default function TimesheetView({
               <thead className="sticky top-0 z-10 bg-slate-50/95 backdrop-blur-xs border-b border-slate-200 text-slate-600 font-bold text-[11px] shadow-2xs">
                 <tr>
                   {/* Task Header */}
-                  <th className="py-3 px-4 min-w-[260px] max-w-[340px]">
+                  <th className="py-3 px-4 min-w-[260px] max-w-xl">
                     Task & Deliverable
                   </th>
 

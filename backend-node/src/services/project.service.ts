@@ -7,6 +7,7 @@ import { StorageService } from './storage.service';
 import { ProjectHealthService } from './project-health.service';
 import { ProjectFile } from '../models/project-file.model';
 import { ObjectStorageService } from './object-storage.service';
+import { invalidateUserSessionCache } from '../middleware/auth.middleware';
 
 export interface CreateProjectInput {
   name: string;
@@ -425,7 +426,11 @@ export class ProjectService {
     }
     const methodology = methUpper as ProjectMethodology;
 
-    let ownerId = user.id;
+    if (!data.description || typeof data.description !== 'string' || !data.description.trim()) {
+      throw new Error('Project description is required');
+    }
+    const description = data.description.trim();
+
     let targetOwnerIds: string[] = [];
 
     if (data.owner_ids && Array.isArray(data.owner_ids) && data.owner_ids.length > 0) {
@@ -433,51 +438,54 @@ export class ProjectService {
       if (targetOwnerIds.length === 0) {
         throw new Error('At least one project owner is required');
       }
+    } else if (data.owner_id && typeof data.owner_id === 'string' && data.owner_id.trim()) {
+      targetOwnerIds = [data.owner_id.trim()];
+    } else {
+      targetOwnerIds = [user.id];
+    }
 
-      const ownerUsers = await prisma.user.findMany({
-        where: {
-          id: { in: targetOwnerIds },
-          organization_id: orgId,
-          is_active: true,
-        },
-        include: {
-          roles: {
-            include: {
-              role: true,
-            },
+    const ownerUsers = await prisma.user.findMany({
+      where: {
+        id: { in: targetOwnerIds },
+        organization_id: orgId,
+        is_active: true,
+      },
+      include: {
+        roles: {
+          include: {
+            role: true,
           },
         },
-      });
+      },
+    });
 
-      if (ownerUsers.length !== targetOwnerIds.length) {
-        throw new Error('One or more selected project owners do not exist in your organization or are inactive');
+    if (ownerUsers.length !== targetOwnerIds.length) {
+      if (targetOwnerIds.length === 1 && data.owner_id && !data.owner_ids) {
+        throw new Error('Project owner does not exist in your organization');
       }
+      throw new Error('One or more selected project owners do not exist in your organization or are inactive');
+    }
 
-      for (const candidate of ownerUsers) {
-        const roleNames = (candidate.roles || []).map((ur: any) => ur.role?.name || ur.name);
-        const isInternOnly =
-          roleNames.includes('INTERN') &&
-          !roleNames.some((r: string) => ['MANAGER', 'ADMIN', 'SUPER_ADMIN', 'TECH_LEAD', 'EMPLOYEE'].includes(r));
-        if (isInternOnly) {
-          throw new Error(`User "${candidate.name}" is an intern and cannot be assigned as a project owner. Only authorized managers or staff can be project owners.`);
-        }
-      }
+    for (const candidate of ownerUsers) {
+      const roleNames = (candidate.roles || []).map((ur: any) => ur.role?.name || ur.name);
+      const isIntern = roleNames.includes('INTERN');
+      const isTechLead = roleNames.includes('TECH_LEAD');
+      const isManager = roleNames.some((r: string) => ['MANAGER', 'ADMIN', 'SUPER_ADMIN'].includes(r));
 
-      ownerId = targetOwnerIds[0];
-      if (data.owner_id && targetOwnerIds.includes(data.owner_id)) {
-        ownerId = data.owner_id;
+      if (isIntern) {
+        throw new Error(`User "${candidate.name}" is an intern and cannot be assigned as a project owner. Only eligible managers can be project owners.`);
       }
-    } else {
-      if (data.owner_id) {
-        const ownerUser = await prisma.user.findFirst({
-          where: { id: data.owner_id, organization_id: orgId },
-        });
-        if (!ownerUser) {
-          throw new Error('Project owner does not exist in your organization');
-        }
-        ownerId = data.owner_id;
+      if (isTechLead) {
+        throw new Error(`User "${candidate.name}" is a Tech Lead and cannot be assigned as a project owner. Only eligible managers can be project owners.`);
       }
-      targetOwnerIds = [ownerId];
+      if (!isManager) {
+        throw new Error(`User "${candidate.name}" is not an eligible manager and cannot be assigned as a project owner. Only eligible managers can be project owners.`);
+      }
+    }
+
+    let ownerId = targetOwnerIds[0];
+    if (data.owner_id && targetOwnerIds.includes(data.owner_id)) {
+      ownerId = data.owner_id;
     }
 
     // Validate dates
@@ -551,7 +559,7 @@ export class ProjectService {
     const created = await prisma.project.create({
       data: {
         name: data.name.trim(),
-        description: data.description?.trim() || null,
+        description,
         methodology,
         start_date: startDate,
         end_date: endDate,
@@ -647,7 +655,10 @@ export class ProjectService {
     }
 
     if (data.description !== undefined) {
-      updateData.description = data.description ? data.description.trim() : null;
+      if (data.description === null || typeof data.description !== 'string' || !data.description.trim()) {
+        throw new Error('Project description cannot be empty');
+      }
+      updateData.description = data.description.trim();
     }
 
     if (data.methodology !== undefined) {
@@ -749,11 +760,18 @@ export class ProjectService {
 
       for (const candidate of candidateOwners) {
         const roleNames = (candidate.roles || []).map((ur: any) => ur.role?.name || ur.name);
-        const isInternOnly =
-          roleNames.includes('INTERN') &&
-          !roleNames.some((r: string) => ['MANAGER', 'ADMIN', 'SUPER_ADMIN', 'TECH_LEAD', 'EMPLOYEE'].includes(r));
-        if (isInternOnly) {
-          throw new Error(`User "${candidate.name}" is an intern and cannot be assigned as a project owner. Only authorized managers or staff can be project owners.`);
+        const isIntern = roleNames.includes('INTERN');
+        const isTechLead = roleNames.includes('TECH_LEAD');
+        const isManager = roleNames.some((r: string) => ['MANAGER', 'ADMIN', 'SUPER_ADMIN'].includes(r));
+
+        if (isIntern) {
+          throw new Error(`User "${candidate.name}" is an intern and cannot be assigned as a project owner. Only eligible managers can be project owners.`);
+        }
+        if (isTechLead) {
+          throw new Error(`User "${candidate.name}" is a Tech Lead and cannot be assigned as a project owner. Only eligible managers can be project owners.`);
+        }
+        if (!isManager) {
+          throw new Error(`User "${candidate.name}" is not an eligible manager and cannot be assigned as a project owner. Only eligible managers can be project owners.`);
         }
       }
 
@@ -1815,6 +1833,7 @@ export class ProjectService {
       }
     }
 
+    assignments.forEach((a: any) => { if (a.user_id) invalidateUserSessionCache(a.user_id); });
     return await this.getProjectMembers(projectId, user);
   }
 
@@ -1832,6 +1851,10 @@ export class ProjectService {
     }
     if (!targetUserId) {
       throw new Error('Target user ID is required');
+    }
+
+    if (!this.isManagerOrAdmin(user) && !this.isSuperAdmin(user)) {
+      throw new Error('Forbidden: Only authorized managers may edit project member permissions');
     }
 
     let orgId = user.organization_id;
@@ -1895,6 +1918,7 @@ export class ProjectService {
         await prisma.role.delete({ where: { id: member.role.id } }).catch(() => {});
       }
 
+      invalidateUserSessionCache(targetUserId);
       return await this.getProjectMembers(projectId, user);
     }
 
@@ -1960,6 +1984,7 @@ export class ProjectService {
       });
     });
 
+    invalidateUserSessionCache(targetUserId);
     return await this.getProjectMembers(projectId, user);
   }
 
@@ -1997,6 +2022,23 @@ export class ProjectService {
     });
     if (!project) {
       throw new Error('Project not found');
+    }
+
+    // Authorize caller: managers, project owners, or assigned Tech Leads on this project
+    const isMgr = this.isManagerOrAdmin(user) || this.isSuperAdmin(user);
+    const isOwner = project.owner_id === user?.id || (Array.isArray((project as any).owners) && (project as any).owners.some((o: any) => o.user_id === user?.id));
+    const callerMembership = user?.id ? await prisma.projectMember.findUnique({
+      where: {
+        project_id_user_id: {
+          project_id: projectId,
+          user_id: user.id,
+        },
+      },
+    }) : null;
+    const isTechLead = callerMembership?.project_role === 'TECH_LEAD';
+
+    if (!isMgr && !isOwner && !isTechLead) {
+      throw new Error('Forbidden: Only managers, project owners, or assigned Tech Leads can add members to this project');
     }
 
     // Verify the target user belongs to the same organization
@@ -2106,6 +2148,7 @@ export class ProjectService {
       },
     });
 
+    invalidateUserSessionCache(targetUserId);
     return {
       project_id: newMember.project_id,
       user_id: newMember.user_id,

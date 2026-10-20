@@ -6,7 +6,9 @@ import {
   Plus, 
   Check, 
   Play, 
-  Calendar 
+  Calendar,
+  RotateCcw,
+  AlertTriangle
 } from 'lucide-react';
 
 export default function SprintSection({
@@ -113,15 +115,44 @@ export default function SprintSection({
           </h3>
 
           {/* Status Badge */}
-          {isActive ? (
-            <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-purple-100 text-purple-700 border border-purple-200/80 uppercase tracking-wider">
-              Active {Term}
-            </span>
-          ) : !isBacklog ? (
-            <span className="px-2 py-0.5 rounded text-[10px] font-semibold bg-slate-200/70 text-slate-700 uppercase tracking-wider">
-              Planned
-            </span>
-          ) : null}
+          {canManageSprint && (
+            <>
+              {isActive ? (
+                <button
+                  type="button"
+                  onClick={() => onCompleteSprint?.(sprint.id)}
+                  className="px-2.5 py-1 rounded-md border border-slate-200 bg-white hover:bg-slate-50 text-slate-700 text-xs font-medium transition-colors flex items-center gap-1 cursor-pointer"
+                >
+                  <Check className="w-3 h-3 text-emerald-600" />
+                  <span>Complete {term}</span>
+                </button>
+              ) : sprint.status === 'COMPLETED' ? (
+                <button
+                  type="button"
+                  onClick={() => onReopenSprint?.(sprint.id)}
+                  className="px-2.5 py-1 rounded-md border border-slate-200 bg-white hover:bg-slate-50 text-slate-700 text-xs font-medium transition-colors flex items-center gap-1 cursor-pointer"
+                  title={`Reopen ${sprint.name}`}
+                >
+                  <RotateCcw className="w-3 h-3 text-amber-600" />
+                  <span>Reopen {term}</span>
+                </button>
+              ) : !isBacklog ? (
+                <button
+                  type="button"
+                  onClick={() => onStartSprint?.(sprint.id)}
+                  title={
+                    sprints?.find((s) => s.id !== sprint.id && s.status === 'ACTIVE')
+                      ? `Cannot start ${term}: ${Term} "${sprints.find((s) => s.id !== sprint.id && s.status === 'ACTIVE').name}" is currently active`
+                      : `Start ${sprint.name}`
+                  }
+                  className="px-2.5 py-1 rounded-md border border-purple-200 bg-purple-50 hover:bg-purple-100 text-purple-700 text-xs font-semibold transition-colors flex items-center gap-1 cursor-pointer"
+                >
+                  <Play className="w-3 h-3 fill-purple-600 text-purple-600" />
+                  <span>Start {term}</span>
+                </button>
+              ) : null}
+            </>
+          )}
 
           {/* Dates */}
           {!isBacklog && formattedDates && (

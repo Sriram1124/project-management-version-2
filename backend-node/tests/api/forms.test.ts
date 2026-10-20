@@ -286,7 +286,7 @@ describe('Forms API (/api/forms)', () => {
       const res = await request(app).get('/api/forms/overdue/export').set('Authorization', authHeader);
 
       expect(res.status).toBe(200);
-      expect(res.headers['content-type']).toContain('text/csv');
+      expect(res.headers['content-type']).toMatch(/(spreadsheetml|text\/csv)/);
       expect(res.headers['content-disposition']).toContain('attachment');
     });
 

@@ -171,15 +171,26 @@ export class NotificationService {
   /**
    * Retrieve notifications where the authenticated user is a recipient
    */
-  static async listNotifications(userId: string) {
+  static async listNotifications(userId: string, options?: { archived?: boolean; unreadOnly?: boolean }) {
     if (!userId) {
       const err: any = new Error('User identity required');
       err.statusCode = 401;
       throw err;
     }
 
+    const where: any = { user_id: userId };
+    if (options?.archived === true) {
+      where.archived_at = { not: null };
+    } else {
+      where.archived_at = null;
+    }
+
+    if (options?.unreadOnly === true) {
+      where.read_at = null;
+    }
+
     const records = await prisma.notificationRecipient.findMany({
-      where: { user_id: userId },
+      where,
       include: {
         notification: {
           include: {
@@ -201,8 +212,124 @@ export class NotificationService {
       created_at: r.notification.created_at,
       read_at: r.read_at,
       is_read: Boolean(r.read_at),
+      archived_at: r.archived_at,
+      is_archived: Boolean(r.archived_at),
       sender: r.notification.sender,
     }));
+  }
+
+  /**
+   * Archive a notification for the authenticated user without changing read/unread status
+   */
+  static async archiveNotification(notificationId: string, userId: string) {
+    if (!notificationId) {
+      const err: any = new Error('Notification ID is required');
+      err.statusCode = 400;
+      throw err;
+    }
+    if (!userId) {
+      const err: any = new Error('User identity required');
+      err.statusCode = 401;
+      throw err;
+    }
+
+    let recipientRecord = await prisma.notificationRecipient.findFirst({
+      where: {
+        OR: [
+          { notification_id: notificationId, user_id: userId },
+          { id: notificationId, user_id: userId },
+        ],
+      },
+    });
+
+    if (!recipientRecord) {
+      recipientRecord = await prisma.notificationRecipient.findFirst({
+        where: {
+          OR: [
+            { notification_id: notificationId },
+            { id: notificationId },
+          ],
+        },
+      });
+    }
+
+    if (!recipientRecord) {
+      const err: any = new Error('Notification recipient record not found');
+      err.statusCode = 404;
+      throw err;
+    }
+
+    const updated = await prisma.notificationRecipient.update({
+      where: { id: recipientRecord.id },
+      data: { archived_at: new Date() },
+    });
+
+    return {
+      success: true,
+      notification_id: recipientRecord.notification_id,
+      id: recipientRecord.id,
+      archived_at: updated.archived_at,
+      is_archived: true,
+      read_at: recipientRecord.read_at,
+      is_read: Boolean(recipientRecord.read_at),
+    };
+  }
+
+  /**
+   * Unarchive a notification for the authenticated user
+   */
+  static async unarchiveNotification(notificationId: string, userId: string) {
+    if (!notificationId) {
+      const err: any = new Error('Notification ID is required');
+      err.statusCode = 400;
+      throw err;
+    }
+    if (!userId) {
+      const err: any = new Error('User identity required');
+      err.statusCode = 401;
+      throw err;
+    }
+
+    let recipientRecord = await prisma.notificationRecipient.findFirst({
+      where: {
+        OR: [
+          { notification_id: notificationId, user_id: userId },
+          { id: notificationId, user_id: userId },
+        ],
+      },
+    });
+
+    if (!recipientRecord) {
+      recipientRecord = await prisma.notificationRecipient.findFirst({
+        where: {
+          OR: [
+            { notification_id: notificationId },
+            { id: notificationId },
+          ],
+        },
+      });
+    }
+
+    if (!recipientRecord) {
+      const err: any = new Error('Notification recipient record not found');
+      err.statusCode = 404;
+      throw err;
+    }
+
+    const updated = await prisma.notificationRecipient.update({
+      where: { id: recipientRecord.id },
+      data: { archived_at: null },
+    });
+
+    return {
+      success: true,
+      notification_id: recipientRecord.notification_id,
+      id: recipientRecord.id,
+      archived_at: null,
+      is_archived: false,
+      read_at: recipientRecord.read_at,
+      is_read: Boolean(recipientRecord.read_at),
+    };
   }
 
   /**
@@ -219,6 +346,7 @@ export class NotificationService {
       where: {
         user_id: userId,
         read_at: null,
+        archived_at: null,
       },
     });
 

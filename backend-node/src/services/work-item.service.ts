@@ -76,6 +76,50 @@ export function invalidateAnalyticsCache(projectId?: string) {
 
 export class WorkItemService {
   /**
+   * Helper: calculate the end of a due date in the configured business timezone (Asia/Kolkata).
+   * The due date is valid until 23:59:59.999 on that day in Asia/Kolkata (18:29:59.999 UTC).
+   */
+  public static getEndOfDueDate(dueDateVal: string | Date | null | undefined, timeZone = 'Asia/Kolkata'): Date | null {
+    if (!dueDateVal) return null;
+    let year: number, month: number, day: number;
+    if (typeof dueDateVal === 'string' && /^\d{4}-\d{2}-\d{2}/.test(dueDateVal)) {
+      const parts = dueDateVal.slice(0, 10).split('-');
+      year = Number(parts[0]);
+      month = Number(parts[1]);
+      day = Number(parts[2]);
+    } else {
+      const d = new Date(dueDateVal);
+      if (isNaN(d.getTime())) return null;
+      const formatter = new Intl.DateTimeFormat('en-US', {
+        timeZone,
+        year: 'numeric',
+        month: 'numeric',
+        day: 'numeric',
+      });
+      const p = Object.fromEntries(
+        formatter.formatToParts(d).filter((x) => x.type !== 'literal').map((x) => [x.type, Number(x.value)])
+      );
+      year = p.year;
+      month = p.month;
+      day = p.day;
+    }
+    const approxUtc = Date.UTC(year, month - 1, day, 12, 0, 0);
+    const tf = new Intl.DateTimeFormat('en-US', {
+      timeZone,
+      hour: 'numeric',
+      minute: 'numeric',
+      second: 'numeric',
+      hour12: false,
+    });
+    const parts = Object.fromEntries(
+      tf.formatToParts(new Date(approxUtc)).filter((x) => x.type !== 'literal').map((x) => [x.type, Number(x.value)])
+    );
+    const offsetMs = (parts.hour * 3600 + parts.minute * 60 + parts.second - 12 * 3600) * 1000;
+    const endOfDayUtcMs = Date.UTC(year, month - 1, day, 23, 59, 59, 999) - offsetMs;
+    return new Date(endOfDayUtcMs);
+  }
+
+  /**
    * Helper to ensure user belongs to an organization
    */
   private static getUserOrgId(user: any): string {
@@ -402,9 +446,9 @@ export class WorkItemService {
         break;
 
       case WorkItemType.STORY:
-        if (type !== WorkItemType.TASK && type !== WorkItemType.BUG) {
+        if (type !== WorkItemType.TASK) {
           throw new Error(
-            `A STORY can only contain TASK or BUG work items. Cannot create ${type} under a STORY.`
+            `A STORY can only contain TASK work items as direct children. Cannot create or move ${type} under a STORY.`
           );
         }
         break;
@@ -463,10 +507,12 @@ export class WorkItemService {
    */
   private static formatWorkItem(item: any): any {
     if (!item) return null;
+    const eod = WorkItemService.getEndOfDueDate(item.due_date);
     const is_overdue = Boolean(
-      item.due_date &&
-        new Date(item.due_date) < new Date() &&
-        item.status !== WorkItemStatus.COMPLETED
+      eod &&
+        new Date() > eod &&
+        item.status !== WorkItemStatus.COMPLETED &&
+        String(item.status).toUpperCase() !== 'CANCELLED'
     );
 
     const formattedAssignees = Array.isArray(item.assignees)
@@ -548,33 +594,55 @@ export class WorkItemService {
       throw new Error(`Invalid status: ${data.status}`);
     }
 
+    if (
+      data.status &&
+      (data.status === WorkItemStatus.COMPLETED || String(data.status).toUpperCase() === 'COMPLETED')
+    ) {
+      const canComplete = data.project_id
+        ? await this.canManageProject(user, data.project_id, orgId)
+        : this.isManagerOrAdmin(user);
+      if (!canComplete) {
+        throw new Error('Forbidden: only managers and tech leads can mark tasks as completed');
+      }
+    }
+
     if (data.priority && !Object.values(WorkItemPriority).includes(data.priority)) {
       throw new Error(`Invalid priority: ${data.priority}`);
     }
 
-    // Story points validation:
-    // For TASK, STORY, SUBTASK, BUG: story_points is mandatory and must be a non-negative integer (>= 0).
-    const isTaskLike =
-      data.type === WorkItemType.TASK ||
-      data.type === WorkItemType.STORY ||
-      data.type === WorkItemType.SUBTASK ||
-      data.type === WorkItemType.BUG;
-
-    if (isTaskLike) {
+    // Story points defaulting and validation:
+    // For STORY: default to 1 if not explicitly supplied; must be a positive integer (>= 1).
+    if (data.type === WorkItemType.STORY) {
       const rawSp: any = (data as any).story_points;
-      const sp = rawSp !== undefined && rawSp !== null && rawSp !== '' ? Number(rawSp) : NaN;
-      if (
-        rawSp === undefined ||
-        rawSp === null ||
-        (typeof rawSp === 'string' && rawSp.trim() === '') ||
-        isNaN(sp) ||
-        !Number.isInteger(sp) ||
-        sp < 0
-      ) {
-        const noun = data.type === WorkItemType.STORY ? 'stories' : `${data.type.toLowerCase()}s`;
-        throw new Error(
-          `Story points are mandatory for ${noun} and must be a non-negative integer (0 or greater).`
-        );
+      if (rawSp === undefined || rawSp === null || (typeof rawSp === 'string' && rawSp.trim() === '')) {
+        (data as any).story_points = 1;
+      }
+      const sp = Number((data as any).story_points);
+      if (isNaN(sp) || !Number.isInteger(sp) || sp <= 0) {
+        throw new Error('Story points are mandatory for stories and must be a positive integer (1 or greater).');
+      }
+    } else {
+      // For TASK, SUBTASK, BUG: story_points is mandatory and must be a non-negative integer (>= 0).
+      const isTaskLike =
+        data.type === WorkItemType.TASK ||
+        data.type === WorkItemType.SUBTASK ||
+        data.type === WorkItemType.BUG;
+
+      if (isTaskLike) {
+        const rawSp: any = (data as any).story_points;
+        const sp = rawSp !== undefined && rawSp !== null && rawSp !== '' ? Number(rawSp) : NaN;
+        if (
+          rawSp === undefined ||
+          rawSp === null ||
+          (typeof rawSp === 'string' && rawSp.trim() === '') ||
+          isNaN(sp) ||
+          !Number.isInteger(sp) ||
+          sp < 0
+        ) {
+          throw new Error(
+            `Story points are mandatory for ${data.type.toLowerCase()}s and must be a non-negative integer (0 or greater).`
+          );
+        }
       }
     }
 
@@ -712,7 +780,18 @@ export class WorkItemService {
       data.type === WorkItemType.BUG;
 
     let storyPointsVal = 0;
-    if (isApplicableType) {
+    if (data.type === WorkItemType.STORY) {
+      const rawSp: any = (data as any).story_points;
+      const sp = rawSp !== undefined && rawSp !== null && rawSp !== '' ? Number(rawSp) : 1;
+      if (isNaN(sp) || !Number.isInteger(sp) || sp <= 0) {
+        throw new Error('Story points are mandatory for stories and must be a positive integer (1 or greater).');
+      }
+      storyPointsVal = sp;
+    } else if (
+      data.type === WorkItemType.TASK ||
+      data.type === WorkItemType.SUBTASK ||
+      data.type === WorkItemType.BUG
+    ) {
       const rawSp: any = (data as any).story_points;
       const sp = rawSp !== undefined && rawSp !== null && rawSp !== '' ? Number(rawSp) : NaN;
       if (
@@ -723,9 +802,8 @@ export class WorkItemService {
         !Number.isInteger(sp) ||
         sp < 0
       ) {
-        const noun = data.type === WorkItemType.STORY ? 'stories' : `${data.type.toLowerCase()}s`;
         throw new Error(
-          `Story points are mandatory for ${noun} and must be a non-negative integer (0 or greater).`
+          `Story points are mandatory for ${data.type.toLowerCase()}s and must be a non-negative integer (0 or greater).`
         );
       }
       storyPointsVal = sp;
@@ -875,8 +953,8 @@ export class WorkItemService {
     }
 
     if (filters?.overdue_only) {
-      where.due_date = { lt: new Date() };
-      where.status = { not: WorkItemStatus.COMPLETED };
+      where.due_date = { not: null };
+      where.status = { notIn: [WorkItemStatus.COMPLETED, 'CANCELLED' as any] };
     }
 
     let takeLimit: number | undefined = undefined;
@@ -960,7 +1038,11 @@ export class WorkItemService {
       orderBy: { created_at: 'desc' },
     });
 
-    return items.map((item) => this.formatWorkItem(item));
+    const formatted = items.map((item) => this.formatWorkItem(item));
+    if (filters?.overdue_only) {
+      return formatted.filter((item) => item?.is_overdue);
+    }
+    return formatted;
   }
 
   /**
@@ -1191,6 +1273,21 @@ export class WorkItemService {
       if (!Object.values(WorkItemStatus).includes(input.status)) {
         throw new Error(`Invalid status: ${input.status}`);
       }
+
+      // Restrict status completion to Managers and Tech Leads
+      if (
+        input.status === WorkItemStatus.COMPLETED ||
+        String(input.status).toUpperCase() === 'COMPLETED'
+      ) {
+        const canComplete = currentItem.project_id
+          ? await this.canManageProject(user, currentItem.project_id, orgId)
+          : isMgr;
+
+        if (!canComplete) {
+          throw new Error('Forbidden: only managers and tech leads can mark tasks as completed');
+        }
+      }
+
       dataToUpdate.status = input.status;
 
       // Handle completed_at timestamp
@@ -1225,13 +1322,7 @@ export class WorkItemService {
     const effectiveType = input.type !== undefined ? input.type : currentItem.type;
 
     if (input.story_points !== undefined) {
-      const isApplicableType =
-        effectiveType === WorkItemType.TASK ||
-        effectiveType === WorkItemType.STORY ||
-        effectiveType === WorkItemType.SUBTASK ||
-        effectiveType === WorkItemType.BUG;
-
-      if (isApplicableType) {
+      if (effectiveType === WorkItemType.STORY) {
         const rawSp: any = (input as any).story_points;
         const sp = rawSp !== null && rawSp !== undefined && rawSp !== '' ? Number(rawSp) : NaN;
         if (
@@ -1240,20 +1331,47 @@ export class WorkItemService {
           (typeof rawSp === 'string' && rawSp.trim() === '') ||
           isNaN(sp) ||
           !Number.isInteger(sp) ||
-          sp < 0
+          sp <= 0
         ) {
           throw new Error(
-            'Story points are mandatory for tasks, stories, subtasks, and bugs and must be a non-negative integer (0 or greater).'
+            'Story points are mandatory for stories and must be a positive integer (1 or greater).'
           );
         }
         dataToUpdate.story_points = sp;
       } else {
-        const rawSp: any = (input as any).story_points;
-        const sp = rawSp !== null && rawSp !== undefined && rawSp !== '' ? Number(rawSp) : null;
-        if (sp !== null && (isNaN(sp) || !Number.isInteger(sp) || sp < 0)) {
-          throw new Error('Story points must be a non-negative integer.');
+        const isApplicableType =
+          effectiveType === WorkItemType.TASK ||
+          effectiveType === WorkItemType.SUBTASK ||
+          effectiveType === WorkItemType.BUG;
+
+        if (isApplicableType) {
+          const rawSp: any = (input as any).story_points;
+          const sp = rawSp !== null && rawSp !== undefined && rawSp !== '' ? Number(rawSp) : NaN;
+          if (
+            rawSp === null ||
+            rawSp === undefined ||
+            (typeof rawSp === 'string' && rawSp.trim() === '') ||
+            isNaN(sp) ||
+            !Number.isInteger(sp) ||
+            sp < 0
+          ) {
+            throw new Error(
+              `Story points are mandatory for ${effectiveType.toLowerCase()}s and must be a non-negative integer (0 or greater).`
+            );
+          }
+          dataToUpdate.story_points = sp;
+        } else {
+          const rawSp: any = (input as any).story_points;
+          const sp = rawSp !== null && rawSp !== undefined && rawSp !== '' ? Number(rawSp) : null;
+          if (sp !== null && (isNaN(sp) || !Number.isInteger(sp) || sp < 0)) {
+            throw new Error('Story points must be a non-negative integer.');
+          }
+          dataToUpdate.story_points = sp ?? 0;
         }
-        dataToUpdate.story_points = sp ?? 0;
+      }
+    } else if (input.type === WorkItemType.STORY && currentItem.type !== WorkItemType.STORY) {
+      if (!currentItem.story_points || currentItem.story_points <= 0) {
+        dataToUpdate.story_points = 1;
       }
     }
 
@@ -1345,11 +1463,10 @@ export class WorkItemService {
             }
             if (
               input.type === WorkItemType.STORY &&
-              child.type !== WorkItemType.TASK &&
-              child.type !== WorkItemType.BUG
+              child.type !== WorkItemType.TASK
             ) {
               throw new Error(
-                `Cannot change type to STORY: existing child item is of type ${child.type}. STORY only allows TASK or BUG.`
+                `Cannot change type to STORY: existing child item is of type ${child.type}. STORY only allows TASK children.`
               );
             }
             if (input.type === WorkItemType.TASK && child.type !== WorkItemType.SUBTASK) {
@@ -1510,27 +1627,19 @@ export class WorkItemService {
         }
       }
     } else {
-      if (this.isIntern(user) && !this.isManagerOrAdmin(user)) {
-        if (item.created_by !== user.id) {
-          throw new Error('Forbidden: only the creator can delete this personal task');
-        }
+      if (this.isIntern(user)) {
+        throw new Error('Forbidden: interns do not have permission to delete work items');
       }
       if (item.created_by !== user.id && !isMgr) {
         throw new Error('Forbidden: only the creator can delete this personal task');
       }
     }
 
-    // Cascade delete any child items if this work item has children
+    // Hierarchy safe deletion: reject if children exist
     if (item.children && item.children.length > 0) {
-      const childIds = item.children.map((c: any) => c.id);
-      // Recursively delete sub-children (e.g. subtasks under stories under this epic)
-      await prisma.workItem.deleteMany({
-        where: { parent_id: { in: childIds } },
-      });
-      // Delete child items
-      await prisma.workItem.deleteMany({
-        where: { parent_id: id },
-      });
+      throw new Error(
+        'Cannot delete work item with child items. Please reassign or delete children first.'
+      );
     }
 
     await prisma.workItem.delete({
@@ -2101,11 +2210,8 @@ export class WorkItemService {
 
     // Helper: effective deadline (if midnight UTC date-only, extend to end-of-day UTC so it is not prematurely overdue during its deadline day)
     const getEffectiveDeadline = (dueDate: Date): Date => {
-      const d = new Date(dueDate);
-      if (d.getUTCHours() === 0 && d.getUTCMinutes() === 0 && d.getUTCSeconds() === 0) {
-        d.setUTCHours(23, 59, 59, 999);
-      }
-      return d;
+      const eod = WorkItemService.getEndOfDueDate(dueDate);
+      return eod || new Date(dueDate);
     };
 
     // Current Overdue Work (Requirement 2):

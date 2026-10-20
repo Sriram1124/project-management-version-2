@@ -15,6 +15,29 @@ export const BLOCKED_RISK_THRESHOLDS = {
   HIGH_RISK_MIN: 50, // >= 50%: High delivery risk (evaluate for CRITICAL or AT_RISK)
 } as const;
 
+function getEndOfDueDate(dueDateVal: string | Date | null | undefined, timeZone = 'Asia/Kolkata'): Date | null {
+  if (!dueDateVal) return null;
+  const d = new Date(dueDateVal);
+  if (isNaN(d.getTime())) return null;
+
+  let dateStr = '';
+  if (typeof dueDateVal === 'string') {
+    const match = dueDateVal.match(/^(\d{4}-\d{2}-\d{2})/);
+    if (match) {
+      dateStr = match[1];
+    }
+  }
+  if (!dateStr) {
+    dateStr = d.toLocaleDateString('en-CA', { timeZone });
+  }
+
+  if (timeZone === 'Asia/Kolkata') {
+    return new Date(`${dateStr}T23:59:59.999+05:30`);
+  }
+
+  return new Date(`${dateStr}T23:59:59.999`);
+}
+
 export interface StoryHealthItem {
   id: string;
   title: string;
@@ -253,8 +276,14 @@ export class ProjectHealthService {
       );
       const isBlocked = isStoryExplicitlyBlocked || hasBlockedChildTask;
 
-      const isStoryExplicitlyOverdue = Boolean(s.due_date && new Date(s.due_date) < now && s.status !== WorkItemStatus.COMPLETED);
-      const hasOverdueChildTask = childTasks.some((t: any) => t.due_date && new Date(t.due_date) < now && t.status !== WorkItemStatus.COMPLETED);
+      const storyEod = getEndOfDueDate(s.due_date);
+      const isStoryExplicitlyOverdue = Boolean(
+        storyEod && now > storyEod && s.status !== WorkItemStatus.COMPLETED && (s.status as any) !== 'CANCELLED'
+      );
+      const hasOverdueChildTask = childTasks.some((t: any) => {
+        const tEod = getEndOfDueDate(t.due_date);
+        return Boolean(tEod && now > tEod && t.status !== WorkItemStatus.COMPLETED && (t.status as any) !== 'CANCELLED');
+      });
       const isOverdue = isStoryExplicitlyOverdue || hasOverdueChildTask;
 
       return {
@@ -301,9 +330,10 @@ export class ProjectHealthService {
     // Task and story counts from eligible leaves
     const total_tasks = eligibleLeaves.length;
     const completed_tasks = eligibleLeaves.filter((t: any) => t.status === WorkItemStatus.COMPLETED).length;
-    const overdueTasksList = unfinishedLeaves.filter(
-      (t: any) => t.due_date && new Date(t.due_date) < now
-    );
+    const overdueTasksList = unfinishedLeaves.filter((t: any) => {
+      const tEod = getEndOfDueDate(t.due_date);
+      return Boolean(tEod && now > tEod);
+    });
     const overdue_tasks = overdueTasksList.length;
     const overdue_sp = overdueTasksList.reduce((sum: number, t: any) => sum + (Number(t.story_points) || 0), 0);
     const overdue_sp_percentage = total_sp > 0 ? Number(((overdue_sp / total_sp) * 100).toFixed(1)) : 0;
@@ -318,9 +348,10 @@ export class ProjectHealthService {
     let maxTaskOverdueDays = 0;
     if (overdueTasksList.length > 0) {
       maxTaskOverdueDays = Math.max(
-        ...overdueTasksList.map((t) =>
-          Math.max(1, Math.floor((now.getTime() - new Date(t.due_date!).getTime()) / (1000 * 60 * 60 * 24)))
-        )
+        ...overdueTasksList.map((t) => {
+          const tEod = getEndOfDueDate(t.due_date) || new Date(t.due_date!);
+          return Math.max(1, Math.floor((now.getTime() - tEod.getTime()) / (1000 * 60 * 60 * 24)));
+        })
       );
     }
 

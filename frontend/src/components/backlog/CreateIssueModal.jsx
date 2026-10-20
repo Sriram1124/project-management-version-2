@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { X, Bookmark, CheckSquare, AlertCircle, Layers, GitFork, Loader2 } from 'lucide-react';
 import { workItemsService } from '../../services/workItems.service';
+import { useAuth } from '../../context/AuthContext';
 
 export default function CreateIssueModal({
   isOpen,
@@ -29,8 +30,25 @@ export default function CreateIssueModal({
   const [assigneeId, setAssigneeId] = useState('');
   const [priority, setPriority] = useState('Medium');
   const [status, setStatus] = useState('TODO');
+  const { user: authUser } = useAuth();
+  const authRole = String(authUser?.role?.name || authUser?.role || authUser?.type || authUser?.user_type || '').toUpperCase();
+  const currentMember = useMemo(() => {
+    const uid = authUser?.id || authUser?.user_id;
+    return members.find((m) => (m.user_id || m.id) === uid) || null;
+  }, [members, authUser]);
+  const isTechLead =
+    authRole === 'TECH_LEAD' ||
+    Boolean(authUser?.is_tech_lead) ||
+    currentMember?.project_role === 'TECH_LEAD';
+  const isManagerOrAdmin =
+    authRole === 'MANAGER' ||
+    authRole === 'ADMIN' ||
+    authRole === 'SUPER_ADMIN' ||
+    Boolean(authUser?.is_admin) ||
+    isTechLead;
+  const canCompleteStatus = isManagerOrAdmin;
   const [submitting, setSubmitting] = useState(false);
-  const [storyPoints, setStoryPoints] = useState(3);
+  const [storyPoints, setStoryPoints] = useState((initialIssueType || 'Story') === 'Story' ? 1 : 3);
   const [startDate, setStartDate] = useState('');
   const [dueDate, setDueDate] = useState('');
   const [error, setError] = useState('');
@@ -70,7 +88,7 @@ export default function CreateIssueModal({
     }
     if (parentItem) {
       if (parentItem.type === 'EPIC') return ['Story', 'Bug'];
-      if (parentItem.type === 'STORY') return ['Task', 'Bug'];
+      if (parentItem.type === 'STORY') return ['Task'];
       if (parentItem.type === 'TASK') return ['Subtask'];
       return [];
     }
@@ -107,7 +125,7 @@ export default function CreateIssueModal({
         return item.type === 'TASK';
       }
       if (issueType === 'Bug') {
-        return item.type === 'EPIC' || item.type === 'STORY';
+        return item.type === 'EPIC';
       }
       return false;
     });
@@ -117,6 +135,9 @@ export default function CreateIssueModal({
   const handleTypeChange = (newType) => {
     setIssueType(newType);
     setError('');
+    if (newType === 'Story') {
+      setStoryPoints((prev) => (prev === '' || prev === 3 || isNaN(Number(prev)) || Number(prev) <= 0 ? 1 : prev));
+    }
 
     if (newType === 'Epic') {
       setParentId('');
@@ -142,7 +163,7 @@ export default function CreateIssueModal({
     if (newType === 'Story' && pType === 'EPIC') isValid = true;
     else if (newType === 'Task' && pType === 'STORY') isValid = true;
     else if (newType === 'Subtask' && pType === 'TASK') isValid = true;
-    else if (newType === 'Bug' && (pType === 'EPIC' || pType === 'STORY')) isValid = true;
+    else if (newType === 'Bug' && pType === 'EPIC') isValid = true;
 
     if (!isValid) {
       setParentId('');
@@ -159,11 +180,11 @@ export default function CreateIssueModal({
       setAssigneeId('');
       setPriority('Medium');
       setStatus('TODO');
-      setStoryPoints(3);
       setStartDate('');
       setDueDate('');
       setSprintId(initialSprintId || 'backlog');
 
+      let chosen = 'Story';
       if (parentItem) {
         setParentId(parentItem.id);
         const defaultType =
@@ -172,13 +193,13 @@ export default function CreateIssueModal({
             : parentItem.type === 'STORY'
             ? 'Task'
             : 'Subtask';
-        const chosen =
+        chosen =
           initialIssueType && effectiveAllowedTypes.includes(initialIssueType)
             ? initialIssueType
             : defaultType;
         setIssueType(chosen);
       } else {
-        const chosen =
+        chosen =
           initialIssueType && effectiveAllowedTypes.includes(initialIssueType)
             ? initialIssueType
             : effectiveAllowedTypes[0] || 'Story';
@@ -187,6 +208,7 @@ export default function CreateIssueModal({
         // When creating an issue from the main Create Issue button, default to no parent Epic
         setParentId('');
       }
+      setStoryPoints(chosen === 'Story' ? 1 : 3);
     }
   }, [
     isOpen,
@@ -262,17 +284,29 @@ export default function CreateIssueModal({
               setSubmitting(false);
               return;
             }
-            if (issueType === 'Bug' && pType !== 'EPIC' && pType !== 'STORY') {
-              setError('A Bug can only have an Epic or Story as its parent.');
+            if (issueType === 'Bug' && pType !== 'EPIC') {
+              setError('A Bug can only have an Epic as its parent.');
               setSubmitting(false);
               return;
             }
           }
         }
 
-        const isApplicableType = ['Task', 'Subtask', 'Bug', 'Story'].includes(issueType);
         const sp = Number(storyPoints);
-        if (isApplicableType) {
+        if (issueType === 'Story') {
+          if (
+            storyPoints === '' ||
+            storyPoints === null ||
+            storyPoints === undefined ||
+            isNaN(sp) ||
+            !Number.isInteger(sp) ||
+            sp <= 0
+          ) {
+            setError('Story points are mandatory for stories and must be a positive integer (1 or greater).');
+            setSubmitting(false);
+            return;
+          }
+        } else if (['Task', 'Subtask', 'Bug'].includes(issueType)) {
           if (
             storyPoints === '' ||
             storyPoints === null ||
@@ -281,7 +315,7 @@ export default function CreateIssueModal({
             !Number.isInteger(sp) ||
             sp < 0
           ) {
-            setError('Story points are mandatory for tasks, stories, subtasks, and bugs and must be a non-negative integer (0 or greater).');
+            setError('Story points are mandatory for tasks, subtasks, and bugs and must be a non-negative integer (0 or greater).');
             setSubmitting(false);
             return;
           }
@@ -531,8 +565,8 @@ export default function CreateIssueModal({
                 <option value="TODO">To Do</option>
                 <option value="IN_PROGRESS">In Progress</option>
                 <option value="IN_REVIEW">In Review</option>
-                <option value="COMPLETED">Completed</option>
                 <option value="BLOCKED">Blocked</option>
+                {canCompleteStatus && <option value="COMPLETED">Completed</option>}
               </select>
             </div>
 
@@ -582,7 +616,7 @@ export default function CreateIssueModal({
               </label>
               <input
                 type="number"
-                min={0}
+                min={issueType === 'Story' ? 1 : 0}
                 max={100}
                 required
                 value={storyPoints}

@@ -71,7 +71,7 @@ export default function AddTaskModal({
     }
     if (parentItem) {
       if (parentItem.type === 'EPIC') return ['STORY', 'BUG'];
-      if (parentItem.type === 'STORY') return ['TASK', 'BUG'];
+      if (parentItem.type === 'STORY') return ['TASK'];
       if (parentItem.type === 'TASK') return ['SUBTASK'];
       return [];
     }
@@ -91,12 +91,12 @@ export default function AddTaskModal({
       setStatus(initialStatus || 'TODO');
       setSprintId(initialSprintId || '');
       setPriority('MEDIUM');
-      setStoryPoints(3);
       setAssigneeId('');
       setStartDate('');
       setDueDate('');
       setError('');
 
+      let chosenType = 'TASK';
       if (parentItem) {
         setParentId(parentItem.id);
         const defaultType =
@@ -105,19 +105,20 @@ export default function AddTaskModal({
             : parentItem.type === 'STORY'
             ? 'TASK'
             : 'SUBTASK';
-        const chosenType =
+        chosenType =
           initialType && effectiveAllowedTypes.includes(initialType)
             ? initialType
             : defaultType;
         setType(chosenType);
       } else {
         setParentId(initialParentId || '');
-        const chosenType =
+        chosenType =
           initialType && effectiveAllowedTypes.includes(initialType)
             ? initialType
             : effectiveAllowedTypes[0] || 'TASK';
         setType(chosenType);
       }
+      setStoryPoints(chosenType === 'STORY' ? 1 : 3);
 
       if (sprints && sprints.length > 0) {
         setAvailableSprints(sprints);
@@ -225,7 +226,7 @@ export default function AddTaskModal({
         .listWorkItems({ project_id: targetProjId })
         .then((items) => {
           const validParents = (items || []).filter(
-            (i) => i.type === 'EPIC' || i.type === 'STORY'
+            (i) => i.type === 'EPIC'
           );
           setPotentialParents(validParents);
           setParentId((prev) => (validParents.some((p) => p.id === prev) ? prev : ''));
@@ -238,6 +239,9 @@ export default function AddTaskModal({
   const handleTypeChange = (newType) => {
     setType(newType);
     setError('');
+    if (newType === 'STORY') {
+      setStoryPoints((prev) => (prev === '' || prev === 3 || isNaN(Number(prev)) || Number(prev) <= 0 ? 1 : prev));
+    }
 
     if (newType === 'EPIC') {
       setParentId('');
@@ -259,7 +263,7 @@ export default function AddTaskModal({
     if (newType === 'STORY' && pType === 'EPIC') isValid = true;
     else if (newType === 'TASK' && pType === 'STORY') isValid = true;
     else if (newType === 'SUBTASK' && pType === 'TASK') isValid = true;
-    else if (newType === 'BUG' && (pType === 'EPIC' || pType === 'STORY')) isValid = true;
+    else if (newType === 'BUG' && pType === 'EPIC') isValid = true;
 
     if (!isValid) {
       setParentId('');
@@ -309,8 +313,8 @@ export default function AddTaskModal({
           setError('A Subtask must have a Task as its parent.');
           return;
         }
-        if (type === 'BUG' && pType !== 'EPIC' && pType !== 'STORY') {
-          setError('A Bug must have an Epic or Story as its parent.');
+        if (type === 'BUG' && pType !== 'EPIC') {
+          setError('A Bug can only have an Epic as its parent.');
           return;
         }
       }
@@ -321,9 +325,20 @@ export default function AddTaskModal({
       }
     }
 
-    const isApplicableType = type === 'TASK' || type === 'SUBTASK' || type === 'BUG' || type === 'STORY';
     const sp = Number(storyPoints);
-    if (isApplicableType) {
+    if (type === 'STORY') {
+      if (
+        storyPoints === '' ||
+        storyPoints === null ||
+        storyPoints === undefined ||
+        isNaN(sp) ||
+        !Number.isInteger(sp) ||
+        sp <= 0
+      ) {
+        setError('Story points are mandatory for stories and must be a positive integer (1 or greater).');
+        return;
+      }
+    } else if (['TASK', 'SUBTASK', 'BUG'].includes(type)) {
       if (
         storyPoints === '' ||
         storyPoints === null ||
@@ -332,7 +347,7 @@ export default function AddTaskModal({
         !Number.isInteger(sp) ||
         sp < 0
       ) {
-        setError('Story points are mandatory for tasks, stories, subtasks, and bugs and must be a non-negative integer (0 or greater).');
+        setError('Story points are mandatory for tasks, subtasks, and bugs and must be a non-negative integer (0 or greater).');
         return;
       }
     }
@@ -476,7 +491,7 @@ export default function AddTaskModal({
                 </label>
                 <input
                   type="number"
-                  min="0"
+                  min={type === 'STORY' ? '1' : '0'}
                   max="99"
                   step="1"
                   required

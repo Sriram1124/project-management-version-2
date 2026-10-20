@@ -1,3 +1,4 @@
+import { workItemsService } from '../../services/workItems.service';
 import React, { useState, useRef, useEffect, useMemo } from 'react';
 import {
   ChevronRight,
@@ -109,7 +110,7 @@ export function StatusBadge({ status }) {
     case 'DONE':
       return (
         <span className="px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider bg-emerald-50 text-emerald-700 border border-emerald-200/80">
-          Done
+          Completed
         </span>
       );
     case 'IN_PROGRESS':
@@ -382,6 +383,7 @@ function HierarchicalRow({
 
   const canDrag = canManageProject || hasTaskUpdate || isAssignedToMe || !isIntern;
   const canChangeStatus = canManageProject || hasTaskUpdate || isAssignedToMe || !isIntern;
+  const canCompleteStatus = canManageProject;
   const canChangePriority = canManageProject || hasTaskUpdate || !isIntern;
   const canChangeAssignee = canManageProject || hasTaskUpdate || memberPerms.has('ROLE_ASSIGN') || !isIntern;
   const canChangeSprint = canManageProject || hasTaskUpdate || !isIntern;
@@ -390,10 +392,22 @@ function HierarchicalRow({
   const canDelete = canManageProject || hasTaskDelete || isCreator || !isIntern;
 
   const [menuOpen, setMenuOpen] = useState(null); // 'status' | 'priority' | 'assignee' | 'sprint' | 'points' | 'date' | 'more' | 'epicSprint'
+  const [openUpward, setOpenUpward] = useState(false);
   const [editingPoints, setEditingPoints] = useState(false);
   const [pointsValue, setPointsValue] = useState(item.story_points ?? '');
   const rowRef = useRef(null);
 
+  const handleToggleMenu = (menuName) => {
+    if (menuOpen === menuName) {
+      setMenuOpen(null);
+    } else {
+      if (rowRef.current) {
+        const rect = rowRef.current.getBoundingClientRect();
+        setOpenUpward(window.innerHeight - rect.bottom < 240);
+      }
+      setMenuOpen(menuName);
+    }
+  };
   // Close menus when clicking outside
   useEffect(() => {
     const handleClickOutside = (e) => {
@@ -482,11 +496,7 @@ function HierarchicalRow({
   const sprintLabel = currentSprint ? currentSprint.name : 'Backlog';
 
   // Overdue check
-  const isOverdue = Boolean(
-    item.due_date &&
-      new Date(item.due_date) < new Date() &&
-      item.status !== 'COMPLETED'
-  );
+  const isOverdue = workItemsService.isOverdue(item);
 
   const formattedDueDate = item.due_date
     ? new Date(item.due_date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
@@ -497,11 +507,20 @@ function HierarchicalRow({
 
   const handlePointsSubmit = (e) => {
     e.preventDefault();
-    if (isTask || isLeaf) {
+    if (isStory) {
       const val = parseInt(pointsValue, 10);
       if (isNaN(val) || val <= 0) {
-        alert('Story points are mandatory for tasks, subtasks, and bugs and must be a positive integer greater than 0.');
+        alert('Story points are mandatory for stories and must be a positive integer (1 or greater).');
         setPointsValue(item.story_points ?? 1);
+        setEditingPoints(false);
+        return;
+      }
+      onUpdateStoryPoints?.(item.id, val);
+    } else if (isTask || isLeaf) {
+      const val = parseInt(pointsValue, 10);
+      if (isNaN(val) || val < 0) {
+        alert('Story points are mandatory for tasks, subtasks, and bugs and must be a non-negative integer (0 or greater).');
+        setPointsValue(item.story_points ?? 0);
         setEditingPoints(false);
         return;
       }
@@ -514,7 +533,7 @@ function HierarchicalRow({
   };
 
   return (
-    <div ref={rowRef} className="group border-b border-slate-100 last:border-b-0">
+    <div ref={rowRef} className={`group border-b border-slate-100 last:border-b-0 ${menuOpen ? 'relative z-50' : 'relative z-1'}`}>
       <div
         draggable={canDrag}
         onDragStart={(e) => canDrag && onDragStart?.(e, item.id)}
@@ -601,7 +620,7 @@ function HierarchicalRow({
             type="button"
             onClick={() => {
               if (canChangePriority) {
-                setMenuOpen(menuOpen === 'priority' ? null : 'priority');
+                handleToggleMenu('priority');
               }
             }}
             className={`p-1 rounded transition-colors ${canChangePriority ? 'hover:bg-slate-100 cursor-pointer' : 'cursor-default'}`}
@@ -610,7 +629,7 @@ function HierarchicalRow({
           </button>
 
           {canChangePriority && menuOpen === 'priority' && (
-            <div className="absolute left-0 mt-1 w-32 bg-white rounded-md shadow-lg border border-slate-200 py-1 z-40">
+            <div className={`absolute left-0 w-32 bg-white rounded-md shadow-lg border border-slate-200 py-1 z-50 ${openUpward ? 'bottom-full mb-1' : 'top-full mt-1'}`}>
               {['LOW', 'MEDIUM', 'HIGH', 'URGENT'].map((p) => (
                 <button
                   key={p}
@@ -637,7 +656,7 @@ function HierarchicalRow({
             type="button"
             onClick={() => {
               if (canChangeAssignee) {
-                setMenuOpen(menuOpen === 'assignee' ? null : 'assignee');
+                handleToggleMenu('assignee');
               }
             }}
             className={`flex items-center gap-1.5 p-1 rounded transition-colors max-w-full truncate ${canChangeAssignee ? 'hover:bg-slate-100 cursor-pointer' : 'cursor-default'}`}
@@ -662,7 +681,7 @@ function HierarchicalRow({
           </button>
 
           {canChangeAssignee && menuOpen === 'assignee' && (
-            <div className="absolute left-0 mt-1 w-48 bg-white rounded-md shadow-lg border border-slate-200 py-1 z-40 max-h-56 overflow-y-auto">
+            <div className={`absolute left-0 w-48 bg-white rounded-md shadow-lg border border-slate-200 py-1 z-50 max-h-56 overflow-y-auto ${openUpward ? 'bottom-full mb-1' : 'top-full mt-1'}`}>
               <button
                 type="button"
                 onClick={() => {
@@ -716,7 +735,7 @@ function HierarchicalRow({
               type="button"
               onClick={() => {
                 if (canChangeStatus) {
-                  setMenuOpen(menuOpen === 'status' ? null : 'status');
+                  handleToggleMenu('status');
                 }
               }}
               className={`p-0.5 rounded transition-opacity ${canChangeStatus ? 'hover:opacity-80 cursor-pointer' : 'cursor-default'}`}
@@ -734,8 +753,8 @@ function HierarchicalRow({
           </div>
 
           {canChangeStatus && menuOpen === 'status' && (
-            <div className="absolute left-0 mt-1 w-36 bg-white rounded-md shadow-lg border border-slate-200 py-1 z-40">
-              {['TODO', 'IN_PROGRESS', 'IN_REVIEW', 'BLOCKED', 'COMPLETED'].map((st) => (
+            <div className={`absolute left-0 w-36 bg-white rounded-md shadow-lg border border-slate-200 py-1 z-50 ${openUpward ? 'bottom-full mb-1' : 'top-full mt-1'}`}>
+              {['TODO', 'IN_PROGRESS', 'IN_REVIEW', 'BLOCKED', ...(canCompleteStatus ? ['COMPLETED'] : [])].map((st) => (
                 <button
                   key={st}
                   type="button"
@@ -765,7 +784,7 @@ function HierarchicalRow({
                   type="button"
                   onClick={() => {
                     if (epicSprintSummary?.details?.length > 1) {
-                      setMenuOpen(menuOpen === 'epicSprint' ? null : 'epicSprint');
+                      handleToggleMenu('epicSprint');
                     }
                   }}
                   className={`px-1.5 py-0.5 rounded text-[11px] border truncate max-w-[200px] block select-none ${
@@ -805,7 +824,7 @@ function HierarchicalRow({
                   type="button"
                   onClick={() => {
                     if (canChangeSprint) {
-                      setMenuOpen(menuOpen === 'sprint' ? null : 'sprint');
+                      handleToggleMenu('sprint');
                     }
                   }}
                   className={`px-1.5 py-0.5 rounded text-[11px] font-medium border truncate max-w-[120px] block transition-colors ${
@@ -819,7 +838,7 @@ function HierarchicalRow({
                 </button>
 
                 {canChangeSprint && menuOpen === 'sprint' && (
-                  <div className="absolute left-0 mt-1 w-44 bg-white rounded-md shadow-lg border border-slate-200 py-1 z-40 max-h-52 overflow-y-auto">
+                  <div className={`absolute left-0 w-44 bg-white rounded-md shadow-lg border border-slate-200 py-1 z-50 max-h-52 overflow-y-auto ${openUpward ? 'bottom-full mb-1' : 'top-full mt-1'}`}>
                     <button
                       type="button"
                       onClick={() => {
@@ -863,7 +882,7 @@ function HierarchicalRow({
             <form onSubmit={handlePointsSubmit} className="w-12">
               <input
                 type="number"
-                min="0"
+                min={isStory ? '1' : '0'}
                 max="999"
                 autoFocus
                 value={pointsValue}
@@ -905,7 +924,7 @@ function HierarchicalRow({
             type="button"
             onClick={() => {
               if (canChangeDueDate) {
-                setMenuOpen(menuOpen === 'date' ? null : 'date');
+                handleToggleMenu('date');
               }
             }}
             className={`text-[11px] font-medium p-1 rounded transition-colors ${
@@ -923,7 +942,7 @@ function HierarchicalRow({
           </button>
 
           {canChangeDueDate && menuOpen === 'date' && (
-            <div className="absolute right-0 mt-1 w-44 bg-white rounded-md shadow-lg border border-slate-200 p-2 z-40">
+            <div className={`absolute right-0 w-44 bg-white rounded-md shadow-lg border border-slate-200 p-2 z-50 ${openUpward ? 'bottom-full mb-1' : 'top-full mt-1'}`}>
               <label className="block text-[10px] font-bold text-slate-500 uppercase mb-1">
                 Set Due Date
               </label>
@@ -987,7 +1006,7 @@ function HierarchicalRow({
                 isEpic
                   ? 'Add Story or Bug under this Epic'
                   : isStory
-                  ? 'Add Task or Bug under this Story'
+                  ? 'Add Task under this Story'
                   : 'Add Subtask under this Task'
               }
               className="w-5 h-5 rounded hover:bg-purple-100 hover:text-purple-700 text-slate-400 flex items-center justify-center transition-colors cursor-pointer"
@@ -1000,7 +1019,7 @@ function HierarchicalRow({
           <div className="relative">
             <button
               type="button"
-              onClick={() => setMenuOpen(menuOpen === 'more' ? null : 'more')}
+              onClick={() => handleToggleMenu('more')}
               className="w-5 h-5 rounded hover:bg-slate-200 text-slate-400 hover:text-slate-700 flex items-center justify-center transition-colors cursor-pointer"
             >
               <MoreHorizontal className="w-3.5 h-3.5" />
@@ -1031,7 +1050,7 @@ function HierarchicalRow({
                   >
                     <Plus className="w-3.5 h-3.5 text-purple-600" />
                     <span>
-                      {isEpic ? 'Add Story/Bug' : isStory ? 'Add Task/Bug' : 'Add Subtask'}
+                      {isEpic ? 'Add Story/Bug' : isStory ? 'Add Task' : 'Add Subtask'}
                     </span>
                   </button>
                 )}
@@ -1266,7 +1285,7 @@ export default function HierarchicalIssueTable({
   }, [issues, allWorkItems, isHierarchical, hasActiveFilters]);
 
   return (
-    <div className="rounded-md border border-slate-200 bg-white overflow-hidden shadow-xs">
+    <div className="rounded-md border border-slate-200 bg-white shadow-xs">
       {/* Table Header: Precise columns matching Jira */}
       <div className={`grid ${isKanban ? 'grid-cols-[minmax(260px,2.5fr)_90px_120px_110px_60px_85px_95px_75px]' : 'grid-cols-[minmax(260px,2.5fr)_90px_120px_110px_minmax(140px,1.3fr)_60px_85px_95px_75px]'} items-center gap-2 px-3 py-2 bg-slate-50 border-b border-slate-200 text-[11px] font-bold text-slate-500 uppercase tracking-wider select-none`}>
         <div>Key &amp; Summary</div>

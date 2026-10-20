@@ -63,6 +63,17 @@ export const sprintsService = {
     return res.sprint;
   },
 
+    /**
+   * Reopen sprint (transitions COMPLETED -> ACTIVE)
+   */
+  async reopenSprint(projectId, sprintId) {
+    const res = await api.post(`/projects/${projectId}/sprints/${sprintId}/reopen`);
+    if (typeof window !== 'undefined') {
+      window.dispatchEvent(new CustomEvent('work-items-updated', { detail: { action: 'reopen-sprint', projectId, sprint: res.sprint } }));
+    }
+    return res.sprint;
+  },
+
   /**
    * Delete sprint (disassociates work items safely back to backlog)
    */

@@ -1,6 +1,25 @@
 import api from './api';
 
+export function formatFormDeadline(deadline, timeZone = 'Asia/Kolkata') {
+  if (!deadline) return 'No deadline';
+  const d = new Date(deadline);
+  if (isNaN(d.getTime())) return 'No deadline';
+
+  const formatted = new Intl.DateTimeFormat('en-GB', {
+    day: 'numeric',
+    month: 'short',
+    year: 'numeric',
+    hour: 'numeric',
+    minute: '2-digit',
+    hour12: true,
+    timeZone,
+  }).format(d);
+
+  return formatted.replace(/\b(am|pm)\b/i, (m) => m.toUpperCase());
+}
+
 export const formsService = {
+  formatDeadline: formatFormDeadline,
   getForms: async (cohortId) => {
     const params = cohortId && cohortId !== 'ALL' ? `?cohort_id=${encodeURIComponent(cohortId)}` : '';
     const res = await api.get(`/forms${params}`);
@@ -88,7 +107,7 @@ export const formsService = {
     return await api.get(`/forms/overdue/summary${qs}`);
   },
 
-  downloadOverdueReport: async (cohortId, defaultFilename = 'Overdue_Members_Report.csv', formId) => {
+  downloadOverdueReport: async (cohortId, defaultFilename = 'overdue_forms.xlsx', formId) => {
     const q = new URLSearchParams();
     if (cohortId && cohortId !== 'ALL') q.set('cohort_id', cohortId);
     if (formId) q.set('form_id', formId);

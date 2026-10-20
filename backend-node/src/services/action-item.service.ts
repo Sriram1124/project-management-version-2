@@ -174,8 +174,11 @@ export class ActionItemService {
   }
 
   static async create(data: CreateActionItemInput, user?: any) {
-    if (user && this.isIntern(user)) {
-      throw new Error('Forbidden: interns do not have permission to create action items');
+    if (user) {
+      const canManage = await this.canManageProject(user, data.project_id, data.organization_id);
+      if (this.isIntern(user) && !canManage) {
+        throw new Error('Forbidden: interns do not have permission to create action items');
+      }
     }
 
     return prisma.actionItem.create({
@@ -219,14 +222,17 @@ export class ActionItemService {
     const existing = await this.getById(id, organization_id);
 
     if (user && this.isIntern(user)) {
-      // Intern can only update their own assigned action item
-      if (existing.assignee_id !== user.id) {
-        throw new Error('Forbidden: you can only update action items assigned to you');
-      }
+      const canManage = await this.canManageProject(user, existing.project_id, organization_id);
+      if (!canManage) {
+        // Intern can only update their own assigned action item
+        if (existing.assignee_id !== user.id) {
+          throw new Error('Forbidden: you can only update action items assigned to you');
+        }
 
-      // Interns cannot modify title, description, assignee, priority, or due_date
-      if (data.title !== undefined || data.description !== undefined || data.assignee_id !== undefined || data.priority !== undefined || data.due_date !== undefined) {
-        throw new Error('Forbidden: interns can only update progress or status of assigned action items');
+        // Interns cannot modify title, description, assignee, priority, or due_date
+        if (data.title !== undefined || data.description !== undefined || data.assignee_id !== undefined || data.priority !== undefined || data.due_date !== undefined) {
+          throw new Error('Forbidden: interns can only update progress or status of assigned action items');
+        }
       }
     }
 
@@ -271,14 +277,16 @@ export class ActionItemService {
   static async delete(id: string, organization_id: string, user?: any) {
     const existing = await this.getById(id, organization_id);
 
-    // Interns must NEVER be able to delete action items
-    if (user && this.isIntern(user)) {
-      throw new Error('Forbidden: interns are not permitted to delete action items');
-    }
-
     if (user) {
       const canManage = await this.canManageProject(user, existing.project_id, organization_id);
-      if (!this.isManagerOrAdmin(user) && !canManage && existing.creator_id !== user.id) {
+      const isMgr = this.isManagerOrAdmin(user);
+      const isCreator = existing.creator_id === user.id;
+
+      if (this.isIntern(user) && !canManage) {
+        throw new Error('Forbidden: interns are not permitted to delete action items');
+      }
+
+      if (!isMgr && !canManage && !isCreator) {
         throw new Error('Forbidden: you do not have permission to delete this action item');
       }
     }

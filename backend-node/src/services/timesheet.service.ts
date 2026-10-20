@@ -963,6 +963,11 @@ export class TimesheetService {
       throw new Error('Forbidden: you are not assigned to this task');
     }
 
+    const isManagerUser = this.hasRole(user, ['MANAGER']) || user.role === 'MANAGER' || user.role?.name === 'MANAGER';
+    if (String(task.type || '').toUpperCase() === 'STORY' && isManagerUser) {
+      throw new Error('Forbidden: Managers cannot log time on Stories');
+    }
+
     let startTime = toDate(input.start_time);
     let endTime = toDate(input.end_time);
     let durationMinutes = Number(input.duration_minutes ?? (startTime && endTime ? diffMinutes(startTime, endTime) : 0));
@@ -2365,26 +2370,18 @@ export class TimesheetService {
       is_active: true,
       AND: [
         {
-          OR: [
-            {
-              roles: {
-                some: {
-                  role: {
-                    name: { in: ['INTERN', 'EMPLOYEE'] },
-                  },
-                },
+          roles: {
+            some: {
+              role: {
+                name: { in: ['INTERN', 'EMPLOYEE'] },
               },
             },
-            {
-              roles: {
-                none: {
-                  role: {
-                    name: { in: ['MANAGER', 'ADMIN', 'SUPER_ADMIN', 'TECH_LEAD'] },
-                  },
-                },
+            none: {
+              role: {
+                name: { in: ['MANAGER', 'ADMIN', 'SUPER_ADMIN'] },
               },
             },
-          ],
+          },
         },
       ],
     };

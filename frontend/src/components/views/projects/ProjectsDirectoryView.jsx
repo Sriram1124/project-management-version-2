@@ -155,12 +155,17 @@ export default function ProjectsDirectoryView({ onSelectProject, isIntern = fals
     return () => window.removeEventListener('work-items-updated', handleSync);
   }, [isIntern]);
 
-  // Show ONLY interns in the project member pickers
-  const internUsers = orgUsers.filter((u) => u.type === 'INTERN' || u.role === 'INTERN');
+  // Show eligible interns and project members (including Tech Leads who have intern identity)
+  const internUsers = orgUsers.filter((u) => u.type === 'INTERN' || u.role === 'INTERN' || u.roles?.includes('INTERN'));
 
-  // Authorized project owners (managers/leads/admins, strictly not interns)
-  const authorizedOwners = orgUsers.filter((u) => u.type !== 'INTERN' && u.role !== 'INTERN');
-  const eligibleOwners = authorizedOwners.length > 0 ? authorizedOwners : orgUsers;
+  // Authorized project owners: eligible managers only (strictly not interns, strictly not tech leads)
+  const eligibleOwners = orgUsers.filter((u) => {
+    const isIntern = u.type === 'INTERN' || u.role === 'INTERN' || u.roles?.includes('INTERN');
+    const isTechLead = Boolean(u.is_tech_lead) || u.type === 'TECH_LEAD' || u.role === 'TECH_LEAD' || u.roles?.includes('TECH_LEAD');
+    const isManager = u.type === 'MANAGER' || u.role === 'MANAGER' || u.roles?.includes('MANAGER') || u.type === 'ADMIN' || u.role === 'ADMIN' || u.roles?.includes('ADMIN') || u.type === 'SUPER_ADMIN' || u.role === 'SUPER_ADMIN' || u.roles?.includes('SUPER_ADMIN');
+    return isManager && !isIntern && !isTechLead;
+  });
+  const authorizedOwners = eligibleOwners;
 
   const handleAddCreateOwner = () => {
     const available = eligibleOwners.find((u) => !createOwnerIds.includes(u.id));
@@ -260,6 +265,10 @@ export default function ProjectsDirectoryView({ onSelectProject, isIntern = fals
       setCreateError('Project name is required');
       return;
     }
+    if (!createForm.description || !createForm.description.trim()) {
+      setCreateError('Project description is required');
+      return;
+    }
     if (!createForm.methodology) {
       setCreateError('Project Methodology is required. Please select Scrum or Kanban.');
       return;
@@ -275,7 +284,7 @@ export default function ProjectsDirectoryView({ onSelectProject, isIntern = fals
       const payload = {
         name: createForm.name.trim(),
         methodology: createForm.methodology,
-        description: createForm.description.trim() || undefined,
+        description: createForm.description.trim(),
         status: createForm.status,
         start_date: createForm.start_date || undefined,
         end_date: createForm.end_date || undefined,
@@ -1092,10 +1101,11 @@ export default function ProjectsDirectoryView({ onSelectProject, isIntern = fals
 
               <div>
                 <label className="block text-xs font-semibold text-slate-700 mb-1">
-                  Description
+                  Description <span className="text-rose-500">*</span>
                 </label>
                 <textarea
                   rows={3}
+                  required
                   placeholder="Provide project objectives, scope, or details..."
                   value={createForm.description}
                   onChange={(e) => setCreateForm({ ...createForm, description: e.target.value })}

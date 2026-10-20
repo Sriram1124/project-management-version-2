@@ -16,7 +16,39 @@ export interface UpdateSprintInput {
   status?: SprintStatus | string;
 }
 
+export interface WorkItemClosureAction {
+  work_item_id: string;
+  action: 'CARRY_FORWARD' | 'RETURN_TO_BACKLOG' | 'CANCEL';
+  cancel_reason?: string;
+  target_sprint_id?: string | null;
+}
+
 export class SprintService {
+  static async isAuthorizedManagerOrLead(user: any, projectId: string): Promise<boolean> {
+    if (!user) return false;
+    if (this.isManagerOrAdmin(user)) return true;
+
+    const roleNames: string[] = [];
+    if (user.role) roleNames.push(user.role);
+    if (Array.isArray(user.roles)) {
+      user.roles.forEach((r: any) => {
+        const name = r.role?.name || r.name;
+        if (name) roleNames.push(name);
+      });
+    }
+    if (roleNames.includes('TECH_LEAD') || roleNames.includes('PROJECT_MANAGER')) return true;
+
+    if (user.is_tech_lead) return true;
+
+    const membership = await prisma.projectMember.findFirst({
+      where: { project_id: projectId, user_id: user.id },
+      select: { project_role: true },
+    });
+    if (membership && (membership.project_role === 'TECH_LEAD' || membership.project_role === 'MANAGER')) {
+      return true;
+    }
+    return false;
+  }
   private static isManagerOrAdmin(user: any): boolean {
     if (!user) return false;
     if (user.role === 'SUPER_ADMIN' || user.role === 'ADMIN' || user.role === 'MANAGER') return true;
@@ -650,6 +682,7 @@ export class SprintService {
       new_sprint_name?: string | null;
       new_end_date?: string | Date | null;
       selected_task_ids?: string[] | null;
+      item_actions?: WorkItemClosureAction[] | null;
     },
     user: any
   ) {
@@ -658,6 +691,13 @@ export class SprintService {
     }
     if (!sprintId || sprintId === 'undefined') {
       throw new Error('Sprint not found in this project');
+    }
+
+    const isAuthorized = await this.isAuthorizedManagerOrLead(user, projectId);
+    if (!isAuthorized) {
+      const err: any = new Error('Forbidden: Only managers and tech leads can complete sprints or cycles');
+      err.statusCode = 403;
+      throw err;
     }
 
     let orgId = user.organization_id;
@@ -757,9 +797,80 @@ export class SprintService {
           }
         }
 
-        // Move unfinished items (status != COMPLETED)
-        // If specific task IDs are selected, carry forward only those and leave others in backlog
-        if (Array.isArray(options.selected_task_ids) && options.selected_task_ids.length > 0) {
+        // Granular item actions (Carry Forward, Return to Backlog, Cancel)
+        if (Array.isArray(options.item_actions) && options.item_actions.length > 0) {
+          for (const act of options.item_actions) {
+            if (!act || !act.work_item_id) continue;
+
+            const item = await tx.workItem.findFirst({
+              where: {
+                id: act.work_item_id,
+                sprint_id: sprintId,
+                status: { not: WorkItemStatus.COMPLETED },
+              },
+            });
+            if (!item) continue;
+
+            if (act.action === 'CANCEL') {
+              try {
+                await tx.$executeRaw`UPDATE "work_items" SET "status" = 'CANCELLED'::"WorkItemStatus", "sprint_id" = NULL, "updated_at" = NOW() WHERE "id" = ${item.id};`;
+              } catch (rawErr) {
+                // If enum in DB lacks CANCELLED, set sprint_id to null and status to BLOCKED with cancel audit
+                await tx.workItem.update({
+                  where: { id: item.id },
+                  data: { sprint_id: null },
+                });
+              }
+
+              if (act.cancel_reason && act.cancel_reason.trim()) {
+                await tx.workItemComment.create({
+                  data: {
+                    work_item_id: item.id,
+                    author_id: user.id,
+                    content: `[Sprint Closure] Task cancelled. Reason: ${act.cancel_reason.trim()}`,
+                  },
+                });
+              }
+            } else if (act.action === 'RETURN_TO_BACKLOG') {
+              await tx.workItem.update({
+                where: { id: item.id },
+                data: { sprint_id: null },
+              });
+            } else if (act.action === 'CARRY_FORWARD') {
+              let itemDestSprintId = destinationSprintId;
+              if (act.target_sprint_id) {
+                const itemTarget = await tx.sprint.findFirst({
+                  where: {
+                    id: act.target_sprint_id,
+                    project_id: projectId,
+                    ...(project.organization_id ? { organization_id: project.organization_id } : {}),
+                  },
+                });
+                if (itemTarget) {
+                  itemDestSprintId = itemTarget.id;
+                }
+              }
+              await tx.workItem.update({
+                where: { id: item.id },
+                data: { sprint_id: itemDestSprintId },
+              });
+            }
+          }
+
+          // Any remaining incomplete items in sprint not explicitly handled in item_actions
+          const handledIds = options.item_actions.map((a) => a.work_item_id);
+          await tx.workItem.updateMany({
+            where: {
+              sprint_id: sprintId,
+              id: { notIn: handledIds },
+              status: { not: WorkItemStatus.COMPLETED },
+            },
+            data: {
+              sprint_id: destinationSprintId,
+            },
+          });
+        } else if (Array.isArray(options.selected_task_ids) && options.selected_task_ids.length > 0) {
+          // If specific task IDs are selected, carry forward only those and leave others in backlog
           await tx.workItem.updateMany({
             where: {
               id: { in: options.selected_task_ids },
@@ -799,6 +910,94 @@ export class SprintService {
         data: {
           status: SprintStatus.COMPLETED,
           end_date: sprint.end_date || new Date(),
+        },
+      });
+    });
+  }
+
+  /**
+   * Reopen a completed sprint (ensures only one active sprint per project)
+   */
+  static async reopenSprint(projectId: string, sprintId: string, user: any) {
+    if (!projectId || projectId === 'undefined') {
+      throw new Error('Project not found');
+    }
+    if (!sprintId || sprintId === 'undefined') {
+      throw new Error('Sprint not found in this project');
+    }
+
+    const isAuthorized = await this.isAuthorizedManagerOrLead(user, projectId);
+    if (!isAuthorized) {
+      const err: any = new Error('Forbidden: Only managers and tech leads can reopen sprints or cycles');
+      err.statusCode = 403;
+      throw err;
+    }
+
+    let orgId = user.organization_id;
+    if (!orgId && this.isManagerOrAdmin(user)) {
+      const firstOrg = await prisma.organization.findFirst({ where: { is_active: true } });
+      orgId = firstOrg?.id;
+    }
+
+    const where: any = { id: projectId };
+    if (orgId) {
+      where.organization_id = orgId;
+    }
+
+    const project = await prisma.project.findFirst({
+      where,
+    });
+    if (!project) {
+      throw new Error('Project not found');
+    }
+    if (project.methodology === 'KANBAN') {
+      throw new Error('Sprints and cycles are not supported for Kanban projects.');
+    }
+    if (project.status === 'ARCHIVED' && !this.isManagerOrAdmin(user)) {
+      throw new Error('Cannot reopen sprints or cycles in an archived project');
+    }
+
+    return await prisma.$transaction(async (tx) => {
+      // Serialize concurrent sprint status modifications
+      await tx.$executeRaw`SELECT id FROM "projects" WHERE id = ${projectId} FOR UPDATE;`;
+
+      const sprintWhere: any = { id: sprintId, project_id: projectId };
+      if (project.organization_id) {
+        sprintWhere.organization_id = project.organization_id;
+      }
+
+      const sprint = await tx.sprint.findFirst({
+        where: sprintWhere,
+      });
+      if (!sprint) {
+        throw new Error('Sprint not found in this project');
+      }
+
+      if (sprint.status === SprintStatus.ACTIVE) {
+        return sprint;
+      }
+
+      // Enforce strictly one active sprint per project
+      const activeSprint = await tx.sprint.findFirst({
+        where: {
+          project_id: projectId,
+          status: SprintStatus.ACTIVE,
+          id: { not: sprintId },
+        },
+      });
+
+      if (activeSprint) {
+        const err: any = new Error(
+          `Cannot reopen sprint: Sprint "${activeSprint.name}" is currently active. Only one active sprint is allowed per project.`
+        );
+        err.statusCode = 400;
+        throw err;
+      }
+
+      return await tx.sprint.update({
+        where: { id: sprintId },
+        data: {
+          status: SprintStatus.ACTIVE,
         },
       });
     });

@@ -369,6 +369,10 @@ export default function TaskDetailModal({
   };
 
   const handleToggleDone = async () => {
+    if (!canCompleteStatus) {
+      setError('Only managers and tech leads can mark tasks as completed');
+      return;
+    }
     const isCurrentlyDone = (status === 'COMPLETED' || liveTask?.status === 'COMPLETED');
     const nextStatus = isCurrentlyDone ? 'TODO' : 'COMPLETED';
     await handleStatusChange(nextStatus);
@@ -380,19 +384,34 @@ export default function TaskDetailModal({
       return;
     }
 
+    const isStory = liveTask.type === 'STORY';
     const requiresStoryPoints = ['TASK', 'SUBTASK', 'BUG', 'STORY'].includes(liveTask.type);
     const sp = Number(storyPoints);
-    if (requiresStoryPoints && !isIntern) {
-      if (
-        storyPoints === '' ||
-        storyPoints === null ||
-        storyPoints === undefined ||
-        isNaN(sp) ||
-        !Number.isInteger(sp) ||
-        sp < 0
-      ) {
-        setError('Story points are mandatory for tasks, stories, subtasks, and bugs and must be a non-negative integer (0 or greater).');
-        return;
+    if (!isIntern) {
+      if (isStory) {
+        if (
+          storyPoints === '' ||
+          storyPoints === null ||
+          storyPoints === undefined ||
+          isNaN(sp) ||
+          !Number.isInteger(sp) ||
+          sp <= 0
+        ) {
+          setError('Story points are mandatory for stories and must be a positive integer (1 or greater).');
+          return;
+        }
+      } else if (requiresStoryPoints) {
+        if (
+          storyPoints === '' ||
+          storyPoints === null ||
+          storyPoints === undefined ||
+          isNaN(sp) ||
+          !Number.isInteger(sp) ||
+          sp < 0
+        ) {
+          setError('Story points are mandatory for tasks, subtasks, and bugs and must be a non-negative integer (0 or greater).');
+          return;
+        }
       }
     }
 
@@ -406,7 +425,7 @@ export default function TaskDetailModal({
         priority,
         start_date: startDate ? new Date(startDate).toISOString() : null,
         due_date: dueDate ? new Date(dueDate).toISOString() : null,
-        ...(!isIntern && storyPoints !== '' && !isNaN(sp) && sp >= 0 ? { story_points: sp } : {}),
+        ...(!isIntern && storyPoints !== '' && !isNaN(sp) && (isStory ? sp > 0 : sp >= 0) ? { story_points: sp } : {}),
       };
 
       const updated = await workItemsService.updateWorkItem(liveTask.id, payload);
@@ -520,6 +539,7 @@ export default function TaskDetailModal({
   const canDelete = Boolean(liveTask?.id) && (isManagerOrAdmin || !isIntern || isCreator);
   const canEditFields = !isIntern || isManagerOrAdmin;
   const canUpdateStatus = !isIntern || isAssignedIntern || isManagerOrAdmin;
+  const canCompleteStatus = isManagerOrAdmin;
   const canAssignOrReassign = !isIntern || isManagerOrAdmin;
 
   // Story-level aggregated task story points
@@ -592,7 +612,7 @@ export default function TaskDetailModal({
           </div>
 
           <div className="flex items-center gap-2">
-            {canUpdateStatus && (
+            {canUpdateStatus && canCompleteStatus && (
               <button
                 type="button"
                 onClick={handleToggleDone}
@@ -761,7 +781,7 @@ export default function TaskDetailModal({
           )}
 
           {/* Story Progress Banner (Aggregated Child Task SP) */}
-          {liveTask.type === 'STORY' && (
+          {String(liveTask.type || '').toUpperCase() === 'STORY' && (
             <div className="p-3 bg-purple-50/70 border border-purple-200/80 rounded-xl space-y-1.5">
               <div className="flex items-center justify-between text-xs">
                 <span className="font-bold text-purple-900 uppercase text-[10px] tracking-wider">
@@ -798,8 +818,8 @@ export default function TaskDetailModal({
                   onChange={(e) => handleStatusChange(e.target.value)}
                   className="w-full px-2.5 py-1.5 rounded-lg border border-slate-200 bg-white text-slate-800 font-semibold focus:outline-none focus:border-purple-600 text-xs"
                 >
-                  {STATUS_OPTIONS.map((st) => (
-                    <option key={st.id} value={st.id}>
+                  {STATUS_OPTIONS.filter((st) => st.id !== 'COMPLETED' || canCompleteStatus || status === 'COMPLETED').map((st) => (
+                    <option key={st.id} value={st.id} disabled={st.id === 'COMPLETED' && !canCompleteStatus}>
                       {st.label}
                     </option>
                   ))}
@@ -1048,7 +1068,7 @@ export default function TaskDetailModal({
                 </span>
 
                 {/* Context-Sensitive Actions based on Jira Hierarchy */}
-                {(!isIntern || isManagerOrAdmin) && liveTask.type === 'EPIC' && (
+                {(!isIntern || isManagerOrAdmin) && String(liveTask.type || '').toUpperCase() === 'EPIC' && (
                   <div className="flex items-center gap-1.5">
                     <button
                       type="button"
@@ -1089,7 +1109,7 @@ export default function TaskDetailModal({
                         setChildModal({
                           isOpen: true,
                           initialType: 'TASK',
-                          allowedTypes: ['TASK', 'BUG'],
+                          allowedTypes: ['TASK'],
                         })
                       }
                       className="px-2.5 py-1 text-[11px] font-bold text-blue-700 bg-blue-50 hover:bg-blue-100 border border-blue-200 rounded-lg flex items-center gap-1 transition-colors cursor-pointer"
@@ -1097,24 +1117,10 @@ export default function TaskDetailModal({
                       <Plus className="w-3 h-3" />
                       <span>Create Task</span>
                     </button>
-                    <button
-                      type="button"
-                      onClick={() =>
-                        setChildModal({
-                          isOpen: true,
-                          initialType: 'BUG',
-                          allowedTypes: ['TASK', 'BUG'],
-                        })
-                      }
-                      className="px-2.5 py-1 text-[11px] font-bold text-rose-700 bg-rose-50 hover:bg-rose-100 border border-rose-200 rounded-lg flex items-center gap-1 transition-colors cursor-pointer"
-                    >
-                      <Plus className="w-3 h-3" />
-                      <span>Create Bug</span>
-                    </button>
                   </div>
                 )}
 
-                {liveTask.type === 'TASK' && (
+                {String(liveTask.type || '').toUpperCase() === 'TASK' && (
                   <button
                     type="button"
                     onClick={() =>

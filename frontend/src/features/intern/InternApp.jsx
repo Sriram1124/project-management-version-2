@@ -575,9 +575,7 @@ export default function InternApp({ onLogout, onSelectProject, onToast }) {
           <div className={
             currentTab === 'forms'
               ? 'w-full h-full min-h-0 min-w-0 flex flex-col'
-              : currentTab === 'dashboard' || currentTab === 'projects' || currentTab === 'profile' || currentTab === 'analytics'
-              ? 'w-full space-y-6 min-w-0'
-              : 'max-w-6xl mx-auto space-y-6 min-w-0'
+              : 'w-full space-y-6 min-w-0'
           }>
             {/* Render Tab View */}
             {currentTab === 'dashboard' && (
@@ -707,6 +705,8 @@ export default function InternApp({ onLogout, onSelectProject, onToast }) {
           } else if (notif.target_type === 'form') {
             const form = formsService.getFormById(notif.target_id);
             if (form) setSelectedForm(form);
+          } else {
+            handleTabChange('alerts');
           }
         }}
         onToast={onToast}

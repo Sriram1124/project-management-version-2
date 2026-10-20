@@ -241,7 +241,7 @@ export default function IssueRow({
               </div>
 
               <span className={`text-[10px] font-semibold ${subtask.done ? 'text-emerald-600' : 'text-slate-400'}`}>
-                {subtask.done ? 'DONE' : 'TO DO'}
+                {subtask.done ? 'COMPLETED' : 'TO DO'}
               </span>
             </div>
           ))}

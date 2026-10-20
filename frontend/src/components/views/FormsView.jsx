@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
-import { FileText, Plus, Search, Calendar, Settings, FileEdit, Trash2, CheckCircle, Users } from 'lucide-react';
-import { formsService } from '../../services/forms.service';
+import { FileText, Plus, Search, Calendar, Settings, FileEdit, Trash2, CheckCircle, Users, Clock } from 'lucide-react';
+import { formsService, formatFormDeadline } from '../../services/forms.service';
 import CreateFormModal from '../modals/CreateFormModal';
 import FormBuilderDrawer from '../modals/FormBuilderDrawer';
 import ViewSubmissionsDrawer from '../modals/ViewSubmissionsDrawer';
@@ -108,9 +108,9 @@ export default function FormsView({ onToast }) {
               </p>
               
               <div className="flex items-center justify-between text-xs border-t border-slate-100 pt-3 mt-auto">
-                <span className="text-slate-500 flex items-center gap-1">
-                  <Calendar className="w-3.5 h-3.5" />
-                  {form.deadline ? new Date(form.deadline).toLocaleDateString() : 'No deadline'}
+                <span className="text-slate-600 font-medium flex items-center gap-1.5" title={form.deadline ? `Deadline: ${formatFormDeadline(form.deadline)}` : 'No deadline set'}>
+                  <Clock className="w-3.5 h-3.5 text-purple-600 shrink-0" />
+                  <span className="truncate">{formatFormDeadline(form.deadline)}</span>
                 </span>
                 <span className="font-semibold text-slate-700">
                   {form._count?.submissions || 0} Responses

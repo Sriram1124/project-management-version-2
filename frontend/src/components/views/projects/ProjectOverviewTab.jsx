@@ -26,7 +26,7 @@ import AddProjectMembersModal from '../../modals/AddProjectMembersModal';
 import AddCustomRoleModal from '../../modals/AddCustomRoleModal';
 import ProjectTaskCharts from './ProjectTaskCharts';
 
-export default function ProjectOverviewTab({ projectId, project, onNavigateTab, onToast, onDeleted, readOnly = false }) {
+export default function ProjectOverviewTab({ projectId, project, onNavigateTab, onToast, onDeleted, readOnly = false, isTechLead = false }) {
   const { user: authUser } = useAuth();
   const currentUserId = authUser?.id || authUser?.user_id;
   const authRole = String(authUser?.role?.name || authUser?.role || authUser?.type || authUser?.user_type || '').toUpperCase();
@@ -42,6 +42,7 @@ export default function ProjectOverviewTab({ projectId, project, onNavigateTab, 
   const [isDeleting, setIsDeleting] = useState(false);
 
   const isTechLeadOnProject = 
+    isTechLead ||
     authRole === 'TECH_LEAD' || 
     Boolean(authUser?.is_tech_lead && (authUser?.lead_project_ids?.includes(projectId) || !authUser?.lead_project_ids?.length)) ||
     (members || project?.members || []).some((m) => 
@@ -49,14 +50,18 @@ export default function ProjectOverviewTab({ projectId, project, onNavigateTab, 
       (m.project_role === 'TECH_LEAD' || m.role === 'TECH_LEAD')
     );
 
-  const canManageProject = 
+  const isManager = 
     authRole === 'MANAGER' || 
     authRole === 'ADMIN' || 
     authRole === 'SUPER_ADMIN' || 
-    authUser?.id === project?.owner_id ||
+    authUser?.id === project?.owner_id;
+
+  const canManageProject = 
+    isManager ||
     isTechLeadOnProject;
 
-  const canAssignRoles = canManageProject;
+  const canAssignRoles = isManager;
+  const canAddMembers = isManager || isTechLeadOnProject;
 
   const loadMembers = (force = false) => {
     if (!projectId) return;
@@ -364,7 +369,8 @@ export default function ProjectOverviewTab({ projectId, project, onNavigateTab, 
         projectId={projectId || project?.id}
         canAssignRoles={canAssignRoles}
         canRemoveMembers={canAssignRoles}
-        canAddMembers={canAssignRoles}
+        canAddMembers={canAddMembers}
+        canEditPermissions={isManager}
         onOpenAssignRoles={handleOpenAssignRoles}
         onMembersAdded={handleMembersAdded}
         onToast={onToast}

@@ -80,7 +80,7 @@ export default function AddProjectMembersModal({
       const email = (u.email || '').toLowerCase();
       const matchesSearch = !q || name.includes(q) || email.includes(q);
 
-      const isIntern = u.type === 'INTERN' || u.role === 'INTERN';
+      const isIntern = u.type === 'INTERN' || u.role === 'INTERN' || u.roles?.includes('INTERN');
       let matchesType = true;
       if (typeFilter === 'INTERN') matchesType = isIntern;
       if (typeFilter === 'STAFF') matchesType = !isIntern;
@@ -142,7 +142,7 @@ export default function AddProjectMembersModal({
 
   if (!isOpen) return null;
 
-  const internCount = availableUsers.filter((u) => u.type === 'INTERN' || u.role === 'INTERN').length;
+  const internCount = availableUsers.filter((u) => u.type === 'INTERN' || u.role === 'INTERN' || u.roles?.includes('INTERN')).length;
   const staffCount = availableUsers.length - internCount;
   const isAllFilteredSelected = filteredUsers.length > 0 && filteredUsers.every((u) => selectedUserIds.has(u.id));
 
@@ -316,7 +316,7 @@ export default function AddProjectMembersModal({
               {filteredUsers.map((u) => {
                 const isSelected = selectedUserIds.has(u.id);
                 const avatar = `https://ui-avatars.com/api/?name=${encodeURIComponent(u.name || u.email)}&background=random`;
-                const isIntern = u.type === 'INTERN' || u.role === 'INTERN';
+                const isIntern = u.type === 'INTERN' || u.role === 'INTERN' || u.roles?.includes('INTERN');
 
                 return (
                   <div

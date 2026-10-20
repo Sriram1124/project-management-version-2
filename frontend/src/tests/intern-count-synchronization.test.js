@@ -7,7 +7,7 @@ import { fileURLToPath } from 'node:url';
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-describe('Intern Count Synchronization Suite (Dashboard & Timesheets)', () => {
+describe('Canonical Intern Count Synchronization Suite (Dashboard & Timesheets)', () => {
   const dashboardViewPath = path.join(__dirname, '../components/views/ManagerDashboardView.jsx');
   const broadcastAlertPath = path.join(__dirname, '../components/dashboard/BroadcastAlert.jsx');
   const timesheetServicePath = path.join(__dirname, '../../../backend-node/src/services/timesheet.service.ts');
@@ -16,7 +16,7 @@ describe('Intern Count Synchronization Suite (Dashboard & Timesheets)', () => {
   const broadcastAlertContent = fs.readFileSync(broadcastAlertPath, 'utf8');
   const timesheetServiceContent = fs.readFileSync(timesheetServicePath, 'utf8');
 
-  test('ManagerDashboardView strictly isolates intern pool from tech leads and management', () => {
+  test('ManagerDashboardView includes all canonical interns (including interns with Tech Lead duties) and excludes management', () => {
     assert.match(
       dashboardContent,
       /const internUsers = React\.useMemo\(\(\) => \{/,
@@ -24,12 +24,12 @@ describe('Intern Count Synchronization Suite (Dashboard & Timesheets)', () => {
     );
     assert.match(
       dashboardContent,
-      /const isLead = Boolean\(u\.is_tech_lead\) \|\| u\.type === 'TECH_LEAD' \|\| u\.role === 'TECH_LEAD' \|\| u\.project_role === 'TECH_LEAD'/,
-      'Must exclude tech leads from total interns metric'
+      /const isIntern = u\.type === 'INTERN' \|\| u\.role === 'INTERN' \|\| u\.roles\?\.includes\('INTERN'\)/,
+      'Must identify users with canonical intern role'
     );
     assert.match(
       dashboardContent,
-      /const isManagement = u\.type === 'MANAGER' \|\| u\.role === 'MANAGER' \|\| u\.type === 'ADMIN' \|\| u\.type === 'SUPER_ADMIN'/,
+      /const isManagement = u\.type === 'MANAGER' \|\| u\.role === 'MANAGER' \|\| u\.roles\?\.includes\('MANAGER'\) \|\| u\.type === 'ADMIN' \|\| u\.type === 'SUPER_ADMIN'/,
       'Must exclude managers and admins from total interns metric'
     );
     assert.match(
@@ -39,24 +39,29 @@ describe('Intern Count Synchronization Suite (Dashboard & Timesheets)', () => {
     );
   });
 
-  test('BroadcastAlert strictly matches intern pool semantics', () => {
+  test('BroadcastAlert matches canonical intern pool semantics (does not exclude interns with tech lead duties)', () => {
     assert.match(
       broadcastAlertContent,
-      /const isLead = Boolean\(u\.is_tech_lead\) \|\| u\.type === 'TECH_LEAD' \|\| u\.role === 'TECH_LEAD' \|\| u\.project_role === 'TECH_LEAD'/,
-      'BroadcastAlert must exclude tech leads'
+      /const isIntern = u\.type === 'INTERN' \|\| u\.role === 'INTERN' \|\| u\.roles\?\.includes\('INTERN'\)/,
+      'BroadcastAlert must recognize canonical interns'
     );
     assert.match(
       broadcastAlertContent,
-      /const isManagement = u\.type === 'MANAGER' \|\| u\.role === 'MANAGER' \|\| u\.type === 'ADMIN' \|\| u\.type === 'SUPER_ADMIN'/,
+      /const isManagement = u\.type === 'MANAGER' \|\| u\.role === 'MANAGER' \|\| u\.roles\?\.includes\('MANAGER'\) \|\| u\.type === 'ADMIN' \|\| u\.type === 'SUPER_ADMIN'/,
       'BroadcastAlert must exclude managers and admins'
     );
   });
 
-  test('Backend TimesheetService counts identical intern pool excluding management and tech leads', () => {
+  test('Backend TimesheetService counts canonical intern pool excluding management without excluding tech leads', () => {
     assert.match(
       timesheetServiceContent,
-      /name:\s*\{\s*in:\s*\[\s*'MANAGER',\s*'ADMIN',\s*'SUPER_ADMIN',\s*'TECH_LEAD'\s*\]\s*\}/,
-      'TimesheetService must exclude managers, admins, and tech leads'
+      /name:\s*\{\s*in:\s*\[\s*'INTERN',\s*'EMPLOYEE'\s*\]\s*\}/,
+      'TimesheetService must include users with INTERN/EMPLOYEE role'
+    );
+    assert.match(
+      timesheetServiceContent,
+      /name:\s*\{\s*in:\s*\[\s*'MANAGER',\s*'ADMIN',\s*'SUPER_ADMIN'\s*\]\s*\}/,
+      'TimesheetService must exclude managers and admins without excluding tech leads'
     );
   });
 });

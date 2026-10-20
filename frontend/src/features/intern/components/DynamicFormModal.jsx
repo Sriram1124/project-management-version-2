@@ -11,7 +11,7 @@ import {
   FileText,
   UploadCloud
 } from 'lucide-react';
-import { formsService } from '../services/formsService';
+import { formsService, formatFormDeadline } from '../services/formsService';
 
 export default function DynamicFormModal({
   form,
@@ -426,7 +426,7 @@ export default function DynamicFormModal({
               <div className="flex items-center gap-3 text-xs text-slate-500 mt-1">
                 <span className="flex items-center gap-1">
                   <Clock className="w-3.5 h-3.5 text-slate-400" />
-                  Deadline: {new Date(form.deadline).toLocaleString([], { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}
+                  Deadline: {formatFormDeadline(form.deadline)}
                 </span>
               </div>
             )}

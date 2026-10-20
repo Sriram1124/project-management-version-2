@@ -2,7 +2,7 @@ import { Router } from 'express';
 import multer from 'multer';
 import { ProjectController } from '../controllers/project.controller';
 import { SprintController } from '../controllers/sprint.controller';
-import { authenticate, requirePermission, requireAnyPermission } from '../middleware/auth.middleware';
+import { authenticate, requirePermission, requireAnyPermission, requireRoleOrPermission } from '../middleware/auth.middleware';
 
 const upload = multer({
   storage: multer.memoryStorage(),
@@ -32,7 +32,7 @@ router.get('/:id/extension-requests', requirePermission('PROJECT_READ'), Project
 router.get('/:id/members', requirePermission('PROJECT_READ'), ProjectController.getMembers);
 router.post('/:id/members', requirePermission('PROJECT_UPDATE'), ProjectController.addMember);
 router.patch('/:id/members/roles', requireAnyPermission('ROLE_ASSIGN', 'PROJECT_ROLE_ASSIGN', 'PROJECT_UPDATE'), ProjectController.updateMemberRoles);
-router.patch('/:id/members/:userId/permissions', requireAnyPermission('ROLE_ASSIGN', 'PROJECT_ROLE_ASSIGN', 'PROJECT_UPDATE'), ProjectController.updateMemberPermissions);
+router.patch('/:id/members/:userId/permissions', requireRoleOrPermission(['ADMIN', 'MANAGER', 'SUPER_ADMIN']), ProjectController.updateMemberPermissions);
 router.delete('/:id/members/:userId', requirePermission('PROJECT_UPDATE'), ProjectController.removeMember);
 router.get('/:id/roles', requirePermission('PROJECT_READ'), ProjectController.getProjectRoles);
 router.post('/:id/roles', requirePermission('PROJECT_UPDATE'), ProjectController.createCustomRole);
@@ -44,6 +44,7 @@ router.get('/:id/sprints/:sprintId', requirePermission('PROJECT_READ'), SprintCo
 router.patch('/:id/sprints/:sprintId', requireAnyPermission('CYCLE_UPDATE', 'SPRINT_UPDATE', 'PROJECT_UPDATE'), SprintController.update);
 router.post('/:id/sprints/:sprintId/start', requireAnyPermission('CYCLE_ACTIVATE', 'SPRINT_ACTIVATE', 'PROJECT_UPDATE'), SprintController.start);
 router.post('/:id/sprints/:sprintId/complete', requireAnyPermission('CYCLE_UPDATE', 'SPRINT_UPDATE', 'PROJECT_UPDATE'), SprintController.complete);
+router.post('/:id/sprints/:sprintId/reopen', requireAnyPermission('CYCLE_UPDATE', 'SPRINT_UPDATE', 'PROJECT_UPDATE'), SprintController.reopen);
 router.delete('/:id/sprints/:sprintId', requirePermission('PROJECT_UPDATE'), SprintController.delete);
 
 // ── Project Documents ────────────────────────────────────────────────────────

@@ -1,3 +1,4 @@
+import { workItemsService } from '../../services/workItems.service';
 import React from 'react';
 import { Clock, CheckCircle2, User, Lock } from 'lucide-react';
 import { KANBAN_STATUSES, KANBAN_PRIORITIES } from '../../constants/kanban';
@@ -18,7 +19,7 @@ export default function TaskCard({
 
   const isBlocked = task.status === KANBAN_STATUSES.BLOCKED || task.status === 'BLOCKED';
   const isCompleted = task.status === KANBAN_STATUSES.COMPLETED || task.status === 'COMPLETED';
-  const isOverdue = Boolean(task.is_overdue || task.isOverdue);
+  const isOverdue = workItemsService.isOverdue(task);
   const formattedDueDate = task.due_date 
     ? new Date(task.due_date).toLocaleDateString([], { month: 'short', day: 'numeric' })
     : task.dueDate || 'No date';

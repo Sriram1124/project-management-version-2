@@ -68,11 +68,52 @@ export class NotificationController {
   static async list(req: Request, res: Response) {
     try {
       const userId = (req as any).fullUser?.id || (req as any).user?.id;
-      const notifications = await NotificationService.listNotifications(userId);
+      const isArchived = req.query.archived === 'true' || req.query.status === 'ARCHIVED';
+      const unreadOnly = req.query.unread_only === 'true';
+      const notifications = await NotificationService.listNotifications(userId, {
+        archived: isArchived,
+        unreadOnly,
+      });
       res.status(200).json({ notifications, data: notifications });
     } catch (err: any) {
       const status = err.statusCode || 500;
       res.status(status).json({ error: err.message || 'Failed to list notifications' });
+    }
+  }
+
+  /**
+   * Archive a notification for the authenticated user
+   */
+  static async archive(req: Request, res: Response) {
+    try {
+      const userId = (req as any).fullUser?.id || (req as any).user?.id;
+      const id = req.params.notificationId || req.params.id;
+      const result = await NotificationService.archiveNotification(id, userId);
+      res.status(200).json({
+        ...result,
+        message: 'Notification archived successfully',
+      });
+    } catch (err: any) {
+      const status = err.statusCode || 500;
+      res.status(status).json({ error: err.message || 'Failed to archive notification' });
+    }
+  }
+
+  /**
+   * Unarchive a notification for the authenticated user
+   */
+  static async unarchive(req: Request, res: Response) {
+    try {
+      const userId = (req as any).fullUser?.id || (req as any).user?.id;
+      const id = req.params.notificationId || req.params.id;
+      const result = await NotificationService.unarchiveNotification(id, userId);
+      res.status(200).json({
+        ...result,
+        message: 'Notification unarchived successfully',
+      });
+    } catch (err: any) {
+      const status = err.statusCode || 500;
+      res.status(status).json({ error: err.message || 'Failed to unarchive notification' });
     }
   }
 

@@ -31,6 +31,7 @@ export default function AllProjectMembersModal({
   canAssignRoles = false,
   canRemoveMembers = false,
   canAddMembers = false,
+  canEditPermissions = false,
   onOpenAssignRoles,
   onMemberRemoved,
   onMembersAdded,
@@ -610,7 +611,7 @@ export default function AllProjectMembersModal({
                       </span>
 
                       {/* Member Actions Three-Dot Menu */}
-                      {(canAssignRoles || canRemoveMembers) && (
+                      {(canEditPermissions || canAssignRoles || canRemoveMembers) && (
                         <div className={`relative ${activeMenuMemberId === member.user_id ? 'z-30' : 'z-10'}`}>
                           <button
                             type="button"
@@ -629,7 +630,7 @@ export default function AllProjectMembersModal({
                               className="absolute right-0 top-full mt-1 w-48 rounded-xl bg-white border border-slate-200 shadow-xl p-1.5 z-50 animate-in fade-in zoom-in-95 duration-100"
                               onClick={(e) => e.stopPropagation()}
                             >
-                              {canAssignRoles && (
+                              {canEditPermissions && (
                                 <button
                                   type="button"
                                   onClick={(e) => {

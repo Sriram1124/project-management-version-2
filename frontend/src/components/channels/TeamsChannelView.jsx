@@ -25,7 +25,7 @@ import {
 import PostFormModal from './PostFormModal';
 import FillFormModal from './FillFormModal';
 import ViewSubmissionsModal from './ViewSubmissionsModal';
-import { formsService } from '../../services/forms.service';
+import { formsService, formatFormDeadline } from '../../services/forms.service';
 import CreateFormModal from '../modals/CreateFormModal';
 import FormBuilderDrawer from '../modals/FormBuilderDrawer';
 import ViewSubmissionsDrawer from '../modals/ViewSubmissionsDrawer';
@@ -102,10 +102,7 @@ export default function TeamsChannelView({
 
     setIsDownloadingOverdue(true);
     try {
-      const dateStr = new Date().toISOString().slice(0, 10);
-      const scope = selectedCohort?.name ? selectedCohort.name.replace(/\s+/g, '_') : 'All_Cohorts';
-      const filename = `Overdue_Members_Report_${scope}_${dateStr}.csv`;
-      
+      const filename = 'overdue_forms.xlsx';
       await formsService.downloadOverdueReport(selectedCohortId, filename);
       onToast?.(`Downloaded overdue members report (${overdueStats.overdueMembersCount} member${overdueStats.overdueMembersCount === 1 ? '' : 's'})`);
     } catch (err) {
@@ -123,7 +120,7 @@ export default function TeamsChannelView({
     }
     const isPast = new Date(form.deadline) < new Date();
     if (!isPast) {
-      const formattedDue = new Date(form.deadline).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+      const formattedDue = formatFormDeadline(form.deadline);
       onToast?.(`"${form.title}" deadline has not passed yet (Due ${formattedDue}).`);
       return;
     }
@@ -133,9 +130,7 @@ export default function TeamsChannelView({
     }
 
     try {
-      const dateStr = new Date().toISOString().slice(0, 10);
-      const safeTitle = form.title.replace(/[^a-zA-Z0-9_-]/g, '_');
-      const filename = `Overdue_Members_${safeTitle}_${dateStr}.csv`;
+      const filename = 'overdue_forms.xlsx';
       await formsService.downloadOverdueReport(selectedCohortId, filename, form.id);
       onToast?.(`Downloaded overdue report for "${form.title}" (${count} member${count === 1 ? '' : 's'})`);
     } catch (err) {
@@ -343,7 +338,7 @@ export default function TeamsChannelView({
                 : form.postedAt || 'Recently';
 
               const formattedDeadline = form.deadline
-                ? new Date(form.deadline).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
+                ? formatFormDeadline(form.deadline)
                 : form.dueDate || 'No deadline';
 
               const category = form.category || 'General Form';

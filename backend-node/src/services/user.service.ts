@@ -1377,6 +1377,83 @@ export class UserService {
   }
 
   /**
+   * Canonical definition of the intern population:
+   * Distinct users with the organization-wide role 'INTERN'
+   * (excluding global SUPER_ADMIN accounts).
+   * Interns who hold Tech Lead responsibilities on projects are strictly included.
+   */
+  static getCanonicalInternWhereClause(filters: {
+    organizationId?: string;
+    cohortId?: string;
+    isActive?: boolean;
+    searchQuery?: string;
+    batch?: string;
+  } = {}) {
+    const where: any = {
+      roles: {
+        some: {
+          role: { name: 'INTERN' },
+        },
+        none: {
+          role: { name: 'SUPER_ADMIN' },
+        },
+      },
+    };
+
+    if (filters.organizationId) {
+      where.organization_id = filters.organizationId;
+    }
+
+    if (filters.isActive !== undefined) {
+      where.is_active = filters.isActive;
+    }
+
+    if (filters.batch && filters.batch.trim()) {
+      where.batch = { contains: filters.batch.trim(), mode: 'insensitive' };
+    }
+
+    if (filters.cohortId && filters.cohortId.trim() && filters.cohortId !== 'ALL' && filters.cohortId !== 'null' && filters.cohortId !== 'undefined') {
+      const cId = filters.cohortId.trim();
+      where.AND = [
+        ...(where.AND || []),
+        {
+          OR: [
+            { cohort_id: cId },
+            { cohort: { id: cId } },
+            { cohort: { code: cId } },
+            { cohort: { name: cId } },
+          ],
+        },
+      ];
+    }
+
+    if (filters.searchQuery && filters.searchQuery.trim()) {
+      const q = filters.searchQuery.trim();
+      where.AND = [
+        ...(where.AND || []),
+        {
+          OR: [
+            { name: { contains: q, mode: 'insensitive' } },
+            { email: { contains: q, mode: 'insensitive' } },
+            { user_code: { contains: q, mode: 'insensitive' } },
+          ],
+        },
+      ];
+    }
+
+    return where;
+  }
+
+  static async getCanonicalInternCount(filters: {
+    organizationId?: string;
+    cohortId?: string;
+    isActive?: boolean;
+  } = {}): Promise<number> {
+    const where = this.getCanonicalInternWhereClause(filters);
+    return prisma.user.count({ where });
+  }
+
+  /**
    * List users belonging strictly to manager's organization with search and batch filtering
    */
   static async listUsers(
@@ -1485,10 +1562,13 @@ export class UserService {
       const isOrgLead = roleNames.includes('TECH_LEAD');
       const isTechLead = isOrgLead || isProjectLead;
 
-      let primaryRole = roleNames[0] || 'MEMBER';
-      if (isTechLead) {
-        primaryRole = 'TECH_LEAD';
-      }
+      // Canonical identity: if assigned INTERN at organization level, retain canonical INTERN identity.
+      // Tech Lead responsibilities are captured in is_tech_lead and project_role.
+      let primaryRole = roleNames.includes('INTERN')
+        ? 'INTERN'
+        : isOrgLead
+        ? 'TECH_LEAD'
+        : roleNames[0] || 'MEMBER';
 
       const extensionRequests = u.requested_extensions || [];
       const totalExtensions = extensionRequests.length;
@@ -1531,7 +1611,15 @@ export class UserService {
       } else if (typeFilter === 'INACTIVE') {
         filtered = filtered.filter((u) => !u.is_active);
       } else if (['INTERN', 'EMPLOYEE', 'MANAGER', 'TECH_LEAD'].includes(typeFilter)) {
-        filtered = filtered.filter((u) => u.type === typeFilter || u.role === typeFilter || (typeFilter === 'TECH_LEAD' && u.is_tech_lead));
+        filtered = filtered.filter((u) => {
+          if (typeFilter === 'INTERN') {
+            return u.roles.includes('INTERN') || u.type === 'INTERN' || u.role === 'INTERN';
+          }
+          if (typeFilter === 'TECH_LEAD') {
+            return u.is_tech_lead || u.type === 'TECH_LEAD' || u.role === 'TECH_LEAD' || u.roles.includes('TECH_LEAD');
+          }
+          return u.type === typeFilter || u.role === typeFilter || u.roles.includes(typeFilter);
+        });
       }
     }
 

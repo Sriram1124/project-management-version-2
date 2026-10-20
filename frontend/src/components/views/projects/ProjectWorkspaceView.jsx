@@ -186,6 +186,7 @@ export default function ProjectWorkspaceView({
             onToast={onToast}
             onDeleted={onBackToDirectory}
             readOnly={effectiveReadOnly}
+            isTechLead={isTechLeadOnProject}
           />
         ) : currentTab === 'roadmap' ? (
           <ProjectRoadmapTab
@@ -225,6 +226,7 @@ export default function ProjectWorkspaceView({
             projectName={liveProject?.name}
             onToast={onToast}
             readOnly={effectiveReadOnly}
+            isTechLead={isTechLeadOnProject}
           />
         ) : (currentTab === 'approvals' && !isInternUser) ? (
           <ProjectApprovalsTab

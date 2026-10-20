@@ -119,11 +119,11 @@ export class SprintController {
     try {
       const user = (req as any).fullUser;
       const { id: projectId, sprintId } = req.params;
-      const { unfinished_action, target_sprint_id, new_sprint_name, new_end_date, selected_task_ids } = req.body;
+      const { unfinished_action, target_sprint_id, new_sprint_name, new_end_date, selected_task_ids, item_actions } = req.body;
       const sprint = await SprintService.completeSprint(
         projectId,
         sprintId,
-        { unfinished_action, target_sprint_id, new_sprint_name, new_end_date, selected_task_ids },
+        { unfinished_action, target_sprint_id, new_sprint_name, new_end_date, selected_task_ids, item_actions },
         user
       );
       res.status(200).json({
@@ -133,6 +133,23 @@ export class SprintController {
         name: sprint.name,
         status: sprint.status,
         message: 'Sprint completed successfully',
+      });
+    } catch (error) {
+      SprintController.handleError(res, error);
+    }
+  }
+  static async reopen(req: Request, res: Response): Promise<void> {
+    try {
+      const user = (req as any).fullUser;
+      const { id: projectId, sprintId } = req.params;
+      const sprint = await SprintService.reopenSprint(projectId, sprintId, user);
+      res.status(200).json({
+        ...sprint,
+        sprint,
+        id: sprint.id,
+        name: sprint.name,
+        status: sprint.status,
+        message: 'Sprint reopened successfully',
       });
     } catch (error) {
       SprintController.handleError(res, error);

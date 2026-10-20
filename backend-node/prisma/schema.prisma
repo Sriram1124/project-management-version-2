@@ -590,6 +590,7 @@ model NotificationRecipient {
   notification_id String
   user_id         String
   read_at         DateTime?
+  archived_at     DateTime?
   delivered       Boolean   @default(false)
   created_at      DateTime  @default(now())
 
@@ -600,6 +601,7 @@ model NotificationRecipient {
   @@index([notification_id])
   @@index([user_id])
   @@index([user_id, read_at])
+  @@index([user_id, archived_at])
   @@map("notification_recipients")
 }
 
