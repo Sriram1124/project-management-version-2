@@ -77,3 +77,9 @@ test_*.js
 
 # Generated test coverage reports
 backend-node/coverage/
+
+
+# Credential exports and generated CSVs
+credentials_exports/
+backend-node/credentials_exports/
+*.csv
