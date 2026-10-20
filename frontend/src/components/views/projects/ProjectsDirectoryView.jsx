@@ -608,195 +608,337 @@ export default function ProjectsDirectoryView({ onSelectProject, isIntern = fals
               </p>
             </div>
           ) : (
-            <div className="overflow-x-auto min-w-0 max-w-full">
-              <table className="w-full text-left text-xs">
-                <thead className="bg-slate-50/70 border-b border-slate-200/80 text-slate-400 font-semibold uppercase tracking-wider text-[10px]">
-                  <tr>
-                    <th className="py-3.5 px-6 min-w-[220px]">Project Details</th>
-                    <th className="py-3.5 px-6 w-[130px] min-w-[130px]">Methodology</th>
-                    <th className="py-3.5 px-6 min-w-[180px]">Project Owner</th>
-                    <th className="py-3.5 px-6 min-w-[150px]">Members</th>
-                    <th className="py-3.5 px-6 min-w-[180px]">Timeline</th>
-                    <th className="py-3.5 px-6 min-w-[130px]">Progress</th>
-                    <th className="py-3.5 px-6 min-w-[110px]">Status</th>
-                    <th className="py-3.5 px-6 text-right min-w-[90px]">Actions</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-slate-100">
-                  {filteredProjects.map((proj) => {
-                    const ownerName = proj.owner 
-                      ? proj.owner.name || proj.owner.email || 'Owner'
-                      : 'Unassigned';
-                    const ownerAvatar = `https://ui-avatars.com/api/?name=${encodeURIComponent(ownerName)}&background=7C3AED&color=fff`;
+            <>
+              {/* Desktop & Tablet Table View */}
+              <div className="hidden md:block overflow-x-auto min-w-0 max-w-full">
+                <table className="w-full text-left text-xs table-fixed">
+                  <colgroup>
+                    <col className="w-[22%]" />
+                    <col className="w-[9%]" />
+                    <col className="w-[16%]" />
+                    <col className="w-[9%]" />
+                    <col className="w-[15%]" />
+                    <col className="w-[11%]" />
+                    <col className="w-[9%]" />
+                    <col className="w-[9%]" />
+                  </colgroup>
+                  <thead className="bg-slate-50/70 border-b border-slate-200/80 text-slate-400 font-semibold uppercase tracking-wider text-[10px]">
+                    <tr>
+                      <th className="py-3 px-3 sm:px-3.5">Project Details</th>
+                      <th className="py-3 px-2 sm:px-2.5">Methodology</th>
+                      <th className="py-3 px-2 sm:px-2.5">Project Owner</th>
+                      <th className="py-3 px-2 sm:px-2.5">Members</th>
+                      <th className="py-3 px-2 sm:px-2.5">Timeline</th>
+                      <th className="py-3 px-2 sm:px-2.5">Progress</th>
+                      <th className="py-3 px-2 sm:px-2.5">Status</th>
+                      <th className="py-3 px-2 sm:px-3 text-right">Actions</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100">
+                    {filteredProjects.map((proj) => {
+                      const ownerName = proj.owner 
+                        ? proj.owner.name || proj.owner.email || 'Owner'
+                        : 'Unassigned';
+                      const ownerAvatar = `https://ui-avatars.com/api/?name=${encodeURIComponent(ownerName)}&background=7C3AED&color=fff`;
 
-                    const memberCount = proj._count?.members ?? (proj.members?.length ?? 0);
-                    const startDateStr = proj.start_date ? new Date(proj.start_date).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : 'TBD';
-                    const endDateStr = proj.end_date ? new Date(proj.end_date).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : 'TBD';
-                    const progressVal = proj.status === 'COMPLETED' ? 100 : (proj.status === 'ACTIVE' ? 75 : 0);
+                      const memberCount = proj._count?.members ?? (proj.members?.length ?? 0);
+                      const startDateStr = proj.start_date ? new Date(proj.start_date).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : 'TBD';
+                      const endDateStr = proj.end_date ? new Date(proj.end_date).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : 'TBD';
+                      const progressVal = proj.status === 'COMPLETED' ? 100 : (proj.status === 'ACTIVE' ? 75 : 0);
 
-                    return (
-                      <tr 
-                        key={proj.id}
-                        onClick={() => onSelectProject?.(proj.id, proj.name)}
-                        className="hover:bg-purple-50/40 transition-colors cursor-pointer group"
-                      >
-                        {/* Project Details */}
-                        <td className="py-4 px-6 min-w-[220px] max-w-[280px]">
-                          <div className="flex items-center gap-3 min-w-0">
-                            <div className="w-9 h-9 rounded-xl bg-purple-50 text-purple-600 flex items-center justify-center border border-purple-100/80 shrink-0 group-hover:scale-105 transition-transform">
-                              <FolderKanban className="w-4 h-4" />
-                            </div>
-                            <div className="min-w-0 flex-1">
-                              <span 
-                                className="font-bold text-slate-900 group-hover:text-purple-700 transition-colors text-xs leading-snug block truncate"
-                                title={proj.name}
-                              >
-                                {proj.name}
-                              </span>
-                              <div className="text-[10px] text-slate-400 font-mono mt-0.5">
-                                ID: {proj.id.slice(0, 8)}...
+                      return (
+                        <tr 
+                          key={proj.id}
+                          onClick={() => onSelectProject?.(proj.id, proj.name)}
+                          className="hover:bg-purple-50/40 transition-colors cursor-pointer group"
+                        >
+                          {/* Project Details */}
+                          <td className="py-3 px-3 sm:px-3.5">
+                            <div className="flex items-center gap-2.5 min-w-0">
+                              <div className="w-8 h-8 rounded-xl bg-purple-50 text-purple-600 flex items-center justify-center border border-purple-100/80 shrink-0 group-hover:scale-105 transition-transform">
+                                <FolderKanban className="w-4 h-4" />
                               </div>
-                            </div>
-                          </div>
-                        </td>
-
-                        {/* Methodology */}
-                        <td className="py-4 px-6 w-[130px] min-w-[130px] whitespace-nowrap">
-                          <ProjectMethodologyBadge methodology={proj.methodology} />
-                        </td>
-
-                        {/* Project Owner */}
-                        <td className="py-4 px-6">
-                          <div className="flex items-center gap-2.5">
-                            <img
-                              src={ownerAvatar}
-                              alt={ownerName}
-                              className="w-7 h-7 rounded-full object-cover ring-1 ring-purple-200"
-                            />
-                            <div>
-                              <div className="flex items-center gap-1.5">
-                                <span className="font-semibold text-slate-800 text-xs block leading-tight">
-                                  {ownerName}
+                              <div className="min-w-0 flex-1">
+                                <span 
+                                  className="font-bold text-slate-900 group-hover:text-purple-700 transition-colors text-xs leading-snug line-clamp-2 break-words"
+                                  title={proj.name}
+                                >
+                                  {proj.name}
                                 </span>
-                                {Array.isArray(proj.owners) && proj.owners.length > 1 && (
-                                  <span 
-                                    className="px-1.5 py-0.2 rounded-full text-[10px] font-bold bg-purple-100 text-purple-700 border border-purple-200 shrink-0"
-                                    title={proj.owners.map((o) => o.name || o.email).join(', ')}
-                                  >
-                                    +{proj.owners.length - 1}
-                                  </span>
-                                )}
+                                <div className="text-[10px] text-slate-400 font-mono mt-0.5 truncate" title={`ID: ${proj.id}`}>
+                                  ID: {proj.id.slice(0, 8)}...
+                                </div>
                               </div>
-                              <span className="text-[10px] text-slate-400 block leading-tight">
-                                {proj.owner?.email || 'Owner'}
+                            </div>
+                          </td>
+
+                          {/* Methodology */}
+                          <td className="py-3 px-2 sm:px-2.5 whitespace-nowrap">
+                            <ProjectMethodologyBadge methodology={proj.methodology} size="sm" />
+                          </td>
+
+                          {/* Project Owner */}
+                          <td className="py-3 px-2 sm:px-2.5">
+                            <div className="flex items-center gap-2 min-w-0">
+                              <img
+                                src={ownerAvatar}
+                                alt={ownerName}
+                                className="w-6 h-6 sm:w-7 sm:h-7 rounded-full object-cover ring-1 ring-purple-200 shrink-0"
+                              />
+                              <div className="min-w-0 flex-1">
+                                <div className="flex items-center gap-1 min-w-0">
+                                  <span className="font-semibold text-slate-800 text-xs leading-tight line-clamp-1 break-words" title={ownerName}>
+                                    {ownerName}
+                                  </span>
+                                  {Array.isArray(proj.owners) && proj.owners.length > 1 && (
+                                    <span 
+                                      className="px-1.5 py-0.2 rounded-full text-[10px] font-bold bg-purple-100 text-purple-700 border border-purple-200 shrink-0"
+                                      title={proj.owners.map((o) => o.name || o.email).join(', ')}
+                                    >
+                                      +{proj.owners.length - 1}
+                                    </span>
+                                  )}
+                                </div>
+                                <span className="text-[10px] text-slate-400 truncate block leading-tight mt-0.5" title={proj.owner?.email || 'Owner'}>
+                                  {proj.owner?.email || 'Owner'}
+                                </span>
+                              </div>
+                            </div>
+                          </td>
+
+                          {/* Members */}
+                          <td className="py-3 px-2 sm:px-2.5">
+                            <div className="flex items-center gap-1.5 min-w-0">
+                              <span className="px-2 py-0.5 text-[11px] font-bold rounded bg-purple-100 text-purple-700 border border-purple-200/60 shrink-0">
+                                {memberCount}
+                              </span>
+                              <span className="text-slate-500 font-medium text-xs truncate">
+                                {memberCount === 1 ? 'member' : 'members'}
                               </span>
                             </div>
-                          </div>
-                        </td>
+                          </td>
 
-                        {/* Members */}
-                        <td className="py-4 px-6">
-                          <div className="flex items-center gap-2">
-                            <span className="px-2 py-0.5 text-[11px] font-bold rounded bg-purple-100 text-purple-700 border border-purple-200/60">
-                              {memberCount}
-                            </span>
-                            <span className="text-slate-500 font-medium text-xs">
-                              {memberCount === 1 ? 'member assigned' : 'members assigned'}
-                            </span>
-                          </div>
-                        </td>
-
-                        {/* Timeline */}
-                        <td className="py-4 px-6">
-                          <div className="text-slate-800 font-medium text-xs">
-                            {startDateStr} — {endDateStr}
-                          </div>
-                          <div className="text-[11px] text-slate-400 mt-0.5 flex items-center gap-1">
-                            <Calendar className="w-3 h-3 text-slate-400" />
-                            <span>{proj.status === 'ARCHIVED' ? 'Archived' : 'Active Timeline'}</span>
-                          </div>
-                        </td>
-
-                        {/* Progress */}
-                        <td className="py-4 px-6">
-                          <div className="flex items-center gap-3 max-w-[120px]">
-                            <div className="w-full bg-slate-100 rounded-full h-1.5 overflow-hidden">
-                              <div
-                                className={`h-full rounded-full ${
-                                  proj.status === 'COMPLETED' ? 'bg-purple-600' : (proj.status === 'ACTIVE' ? 'bg-emerald-500' : 'bg-slate-300')
-                                }`}
-                                style={{ width: `${progressVal}%` }}
-                              />
+                          {/* Timeline */}
+                          <td className="py-3 px-2 sm:px-2.5">
+                            <div className="text-slate-800 font-medium text-xs leading-snug break-words">
+                              {startDateStr} — {endDateStr}
                             </div>
-                            <span className="text-xs font-bold text-slate-700 w-8 text-right">
-                              {progressVal}%
-                            </span>
-                          </div>
-                        </td>
+                            <div className="text-[11px] text-slate-400 mt-0.5 flex items-center gap-1">
+                              <Calendar className="w-3 h-3 text-slate-400 shrink-0" />
+                              <span className="truncate">{proj.status === 'ARCHIVED' ? 'Archived' : 'Active Timeline'}</span>
+                            </div>
+                          </td>
 
-                        {/* Status */}
-                        <td className="py-4 px-6">
-                          <span className={`px-2.5 py-0.5 rounded-full text-[11px] font-semibold border ${getStatusBadgeStyle(proj.status)}`}>
+                          {/* Progress */}
+                          <td className="py-3 px-2 sm:px-2.5">
+                            <div className="flex items-center gap-2 max-w-[120px] w-full">
+                              <div className="w-full bg-slate-100 rounded-full h-1.5 overflow-hidden">
+                                <div
+                                  className={`h-full rounded-full ${
+                                    proj.status === 'COMPLETED' ? 'bg-purple-600' : (proj.status === 'ACTIVE' ? 'bg-emerald-500' : 'bg-slate-300')
+                                  }`}
+                                  style={{ width: `${progressVal}%` }}
+                                />
+                              </div>
+                              <span className="text-xs font-bold text-slate-700 w-7 text-right shrink-0">
+                                {progressVal}%
+                              </span>
+                            </div>
+                          </td>
+
+                          {/* Status */}
+                          <td className="py-3 px-2 sm:px-2.5">
+                            <span className={`px-2 py-0.5 rounded-full text-[10px] font-semibold border whitespace-nowrap inline-block ${getStatusBadgeStyle(proj.status)}`}>
+                              {proj.status}
+                            </span>
+                          </td>
+
+                          {/* Actions */}
+                          <td className="py-3 px-2 sm:px-3 text-right">
+                            <div className="flex items-center justify-end gap-1 shrink-0 whitespace-nowrap" onClick={(e) => e.stopPropagation()}>
+                              {isIntern ? (
+                                <button
+                                  title="Open Workspace"
+                                  onClick={() => onSelectProject?.(proj.id, proj.name)}
+                                  className="inline-flex items-center gap-1 px-2.5 py-1 text-xs font-semibold text-purple-700 bg-purple-50 hover:bg-purple-100 rounded-lg transition-colors cursor-pointer"
+                                >
+                                  <span>Open</span>
+                                  <ChevronRight className="w-3.5 h-3.5" />
+                                </button>
+                              ) : (
+                                <>
+                                  <button 
+                                    title="Edit Project"
+                                    onClick={(e) => handleOpenEdit(proj, e)}
+                                    className="p-1.5 text-slate-400 hover:text-purple-600 hover:bg-purple-50 rounded-lg transition-colors cursor-pointer"
+                                  >
+                                    <Edit3 className="w-4 h-4" />
+                                  </button>
+                                  {proj.status === 'ARCHIVED' ? (
+                                    <button 
+                                      title="Reactivate Project"
+                                      onClick={(e) => handleReactivate(proj, e)}
+                                      className="p-1.5 text-slate-400 hover:text-emerald-600 hover:bg-emerald-50 rounded-lg transition-colors cursor-pointer"
+                                    >
+                                      <RotateCcw className="w-4 h-4" />
+                                    </button>
+                                  ) : (
+                                    <button 
+                                      title="Archive Project"
+                                      onClick={(e) => handleOpenArchive(proj, e)}
+                                      className="p-1.5 text-slate-400 hover:text-amber-600 hover:bg-amber-50 rounded-lg transition-colors cursor-pointer"
+                                    >
+                                      <Archive className="w-4 h-4" />
+                                    </button>
+                                  )}
+                                  <button 
+                                    title="Delete Project"
+                                    onClick={(e) => handleOpenDelete(proj, e)}
+                                    className="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-colors cursor-pointer"
+                                    aria-label={`Delete ${proj.name}`}
+                                  >
+                                    <Trash2 className="w-4 h-4" />
+                                  </button>
+                                </>
+                              )}
+                            </div>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+
+              {/* Mobile Card Layout (Narrow Screens < md) */}
+              <div className="block md:hidden divide-y divide-slate-100">
+                {filteredProjects.map((proj) => {
+                  const ownerName = proj.owner 
+                    ? proj.owner.name || proj.owner.email || 'Owner'
+                    : 'Unassigned';
+                  const ownerAvatar = `https://ui-avatars.com/api/?name=${encodeURIComponent(ownerName)}&background=7C3AED&color=fff`;
+                  const memberCount = proj._count?.members ?? (proj.members?.length ?? 0);
+                  const startDateStr = proj.start_date ? new Date(proj.start_date).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : 'TBD';
+                  const endDateStr = proj.end_date ? new Date(proj.end_date).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : 'TBD';
+                  const progressVal = proj.status === 'COMPLETED' ? 100 : (proj.status === 'ACTIVE' ? 75 : 0);
+
+                  return (
+                    <div
+                      key={proj.id}
+                      onClick={() => onSelectProject?.(proj.id, proj.name)}
+                      className="p-4 hover:bg-purple-50/30 transition-colors cursor-pointer space-y-3"
+                    >
+                      {/* Top row: Project Details & Badges */}
+                      <div className="flex items-start justify-between gap-3">
+                        <div className="flex items-center gap-2.5 min-w-0">
+                          <div className="w-8 h-8 rounded-xl bg-purple-50 text-purple-600 flex items-center justify-center border border-purple-100/80 shrink-0">
+                            <FolderKanban className="w-4 h-4" />
+                          </div>
+                          <div className="min-w-0">
+                            <h4 className="font-bold text-slate-900 text-xs leading-snug break-words">
+                              {proj.name}
+                            </h4>
+                            <p className="text-[10px] text-slate-400 font-mono mt-0.5">
+                              ID: {proj.id.slice(0, 8)}...
+                            </p>
+                          </div>
+                        </div>
+                        <div className="flex items-center gap-1.5 shrink-0">
+                          <ProjectMethodologyBadge methodology={proj.methodology} size="sm" />
+                          <span className={`px-2 py-0.5 rounded-full text-[10px] font-semibold border ${getStatusBadgeStyle(proj.status)}`}>
                             {proj.status}
                           </span>
-                        </td>
+                        </div>
+                      </div>
 
-                        {/* Actions */}
-                        <td className="py-4 px-6 text-right">
-                          <div className="flex items-center justify-end gap-2" onClick={(e) => e.stopPropagation()}>
-                            {isIntern ? (
-                              <button
-                                title="Open Workspace"
-                                onClick={() => onSelectProject?.(proj.id, proj.name)}
-                                className="inline-flex items-center gap-1.5 px-2.5 py-1 text-xs font-semibold text-purple-700 bg-purple-50 hover:bg-purple-100 rounded-lg transition-colors cursor-pointer"
+                      {/* Middle row: Owner & Members */}
+                      <div className="grid grid-cols-2 gap-2 text-xs pt-1 border-t border-slate-50">
+                        <div className="flex items-center gap-2 min-w-0">
+                          <img
+                            src={ownerAvatar}
+                            alt={ownerName}
+                            className="w-5 h-5 rounded-full object-cover ring-1 ring-purple-200 shrink-0"
+                          />
+                          <span className="text-slate-700 font-medium truncate text-[11px]">{ownerName}</span>
+                        </div>
+                        <div className="flex items-center gap-1.5 text-slate-500 text-[11px] justify-end">
+                          <Users className="w-3.5 h-3.5 text-slate-400 shrink-0" />
+                          <span>{memberCount} {memberCount === 1 ? 'member' : 'members'}</span>
+                        </div>
+                      </div>
+
+                      {/* Timeline & Progress */}
+                      <div className="space-y-1.5">
+                        <div className="flex items-center justify-between text-[11px] text-slate-500">
+                          <span className="flex items-center gap-1">
+                            <Calendar className="w-3 h-3 text-slate-400" />
+                            <span>{startDateStr} – {endDateStr}</span>
+                          </span>
+                          <span className="font-bold text-slate-700">{progressVal}%</span>
+                        </div>
+                        <div className="w-full bg-slate-100 rounded-full h-1.5 overflow-hidden">
+                          <div
+                            className={`h-full rounded-full ${
+                              proj.status === 'COMPLETED' ? 'bg-purple-600' : (proj.status === 'ACTIVE' ? 'bg-emerald-500' : 'bg-slate-300')
+                            }`}
+                            style={{ width: `${progressVal}%` }}
+                          />
+                        </div>
+                      </div>
+
+                      {/* Actions row */}
+                      <div className="flex items-center justify-end gap-1.5 pt-1 border-t border-slate-50" onClick={(e) => e.stopPropagation()}>
+                        {isIntern ? (
+                          <button
+                            title="Open Workspace"
+                            onClick={() => onSelectProject?.(proj.id, proj.name)}
+                            className="inline-flex items-center gap-1 px-2.5 py-1 text-xs font-semibold text-purple-700 bg-purple-50 hover:bg-purple-100 rounded-lg transition-colors cursor-pointer"
+                          >
+                            <span>Open</span>
+                            <ChevronRight className="w-3.5 h-3.5" />
+                          </button>
+                        ) : (
+                          <>
+                            <button 
+                              title="Edit Project"
+                              onClick={(e) => handleOpenEdit(proj, e)}
+                              className="p-1.5 text-slate-400 hover:text-purple-600 hover:bg-purple-50 rounded-lg transition-colors cursor-pointer"
+                            >
+                              <Edit3 className="w-4 h-4" />
+                            </button>
+                            {proj.status === 'ARCHIVED' ? (
+                              <button 
+                                title="Reactivate Project"
+                                onClick={(e) => handleReactivate(proj, e)}
+                                className="p-1.5 text-slate-400 hover:text-emerald-600 hover:bg-emerald-50 rounded-lg transition-colors cursor-pointer"
                               >
-                                <span>Open</span>
-                                <ChevronRight className="w-3.5 h-3.5" />
+                                <RotateCcw className="w-4 h-4" />
                               </button>
                             ) : (
-                              <>
-                                <button 
-                                  title="Edit Project"
-                                  onClick={(e) => handleOpenEdit(proj, e)}
-                                  className="p-1.5 text-slate-400 hover:text-purple-600 hover:bg-purple-50 rounded-lg transition-colors cursor-pointer"
-                                >
-                                  <Edit3 className="w-4 h-4" />
-                                </button>
-                                {proj.status === 'ARCHIVED' ? (
-                                  <button 
-                                    title="Reactivate Project"
-                                    onClick={(e) => handleReactivate(proj, e)}
-                                    className="p-1.5 text-slate-400 hover:text-emerald-600 hover:bg-emerald-50 rounded-lg transition-colors cursor-pointer"
-                                  >
-                                    <RotateCcw className="w-4 h-4" />
-                                  </button>
-                                ) : (
-                                  <button 
-                                    title="Archive Project"
-                                    onClick={(e) => handleOpenArchive(proj, e)}
-                                    className="p-1.5 text-slate-400 hover:text-amber-600 hover:bg-amber-50 rounded-lg transition-colors cursor-pointer"
-                                  >
-                                    <Archive className="w-4 h-4" />
-                                  </button>
-                                )}
-                                <button 
-                                  title="Delete Project"
-                                  onClick={(e) => handleOpenDelete(proj, e)}
-                                  className="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-colors cursor-pointer"
-                                  aria-label={`Delete ${proj.name}`}
-                                >
-                                  <Trash2 className="w-4 h-4" />
-                                </button>
-                              </>
+                              <button 
+                                title="Archive Project"
+                                onClick={(e) => handleOpenArchive(proj, e)}
+                                className="p-1.5 text-slate-400 hover:text-amber-600 hover:bg-amber-50 rounded-lg transition-colors cursor-pointer"
+                              >
+                                <Archive className="w-4 h-4" />
+                              </button>
                             )}
-                          </div>
-                        </td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
-            </div>
+                            <button 
+                              title="Delete Project"
+                              onClick={(e) => handleOpenDelete(proj, e)}
+                              className="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-colors cursor-pointer"
+                              aria-label={`Delete ${proj.name}`}
+                            >
+                              <Trash2 className="w-4 h-4" />
+                            </button>
+                          </>
+                        )}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </>
           )}
 
           {/* Table Footer */}

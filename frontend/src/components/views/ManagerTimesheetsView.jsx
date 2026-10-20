@@ -22,16 +22,7 @@ import { timesheetService } from '../../services/timesheet.service';
 import { projectsService } from '../../services/projects.service';
 import { cohortsService } from '../../services/cohorts.service';
 import TimesheetView from './TimesheetView';
-
-const formatMinutes = (minutes = 0) => {
-  const mins = Number(minutes) || 0;
-  const hours = Math.floor(mins / 60);
-  const remainder = mins % 60;
-  if (hours === 0 && remainder === 0) return '0h 0m';
-  if (hours === 0) return `${remainder}m`;
-  if (remainder === 0) return `${hours}h`;
-  return `${hours}h ${remainder}m`;
-};
+import { getCalendarWeekRange, toLocalDateString, formatMinutes } from '../../utils/dateUtils';
 
 export default function ManagerTimesheetsView({ onToast, cohorts: propCohorts = [], selectedCohortId: propCohortId = null }) {
   // Navigation / Selection State
@@ -297,20 +288,8 @@ export default function ManagerTimesheetsView({ onToast, cohorts: propCohorts = 
     selectedProject !== 'ALL'
   );
 
-  // Formatted date period title
-  const weekRangeTitle = useMemo(() => {
-    if (!reviewData?.period?.start_date || !reviewData?.period?.end_date) {
-      return 'Selected Week';
-    }
-    const s = new Date(reviewData.period.start_date);
-    const e = new Date(reviewData.period.end_date);
-    const sMonth = s.toLocaleDateString('en-US', { month: 'short' });
-    const eMonth = e.toLocaleDateString('en-US', { month: 'short' });
-    if (sMonth === eMonth) {
-      return `${sMonth} ${s.getUTCDate()} – ${e.getUTCDate()}, ${s.getUTCFullYear()}`;
-    }
-    return `${sMonth} ${s.getUTCDate()} – ${eMonth} ${e.getUTCDate()}, ${s.getUTCFullYear()}`;
-  }, [reviewData?.period?.start_date, reviewData?.period?.end_date]);
+  // Authoritative date period calculations
+  const weekInfo = useMemo(() => getCalendarWeekRange(selectedDate), [selectedDate]);
 
   // If an intern is selected, render their full read-only timesheet
   if (selectedIntern) {
@@ -319,6 +298,8 @@ export default function ManagerTimesheetsView({ onToast, cohorts: propCohorts = 
         targetUserId={selectedIntern.id}
         readOnly={true}
         internInfo={selectedIntern}
+        initialDate={selectedDate}
+        onDateChange={(d) => setSelectedDate(d)}
         onBack={() => setSelectedIntern(null)}
         onToast={onToast}
       />
@@ -365,8 +346,8 @@ export default function ManagerTimesheetsView({ onToast, cohorts: propCohorts = 
             >
               <ChevronLeft className="w-4 h-4" />
             </button>
-            <div className="px-3 py-1 text-xs font-bold text-slate-800 whitespace-nowrap">
-              {weekRangeTitle}
+            <div className="px-3 py-1 text-xs font-bold text-slate-800 whitespace-nowrap min-w-[130px] text-center">
+              {weekInfo.formattedRange}
             </div>
             <button
               type="button"
@@ -381,7 +362,11 @@ export default function ManagerTimesheetsView({ onToast, cohorts: propCohorts = 
           <button
             type="button"
             onClick={handleCurrentWeek}
-            className="px-3 py-2 text-xs font-semibold rounded-xl bg-slate-100 hover:bg-purple-50 hover:text-purple-700 border border-slate-200 transition-colors cursor-pointer whitespace-nowrap"
+            className={`px-3 py-2 text-xs font-semibold rounded-xl border transition-colors cursor-pointer whitespace-nowrap ${
+              weekInfo.isCurrentWeek
+                ? 'bg-purple-100 text-purple-800 border-purple-300 font-bold'
+                : 'bg-slate-100 hover:bg-purple-50 hover:text-purple-700 border-slate-200 text-slate-700'
+            }`}
           >
             This Week
           </button>
@@ -398,224 +383,9 @@ export default function ManagerTimesheetsView({ onToast, cohorts: propCohorts = 
         </div>
       </div>
 
-      {/* Tab Switcher */}
-      <div className="flex items-center gap-2 border-b border-slate-200/80 pb-2">
-        <button
-          type="button"
-          onClick={() => setActiveTab('DIRECTORY')}
-          className={`flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer ${
-            activeTab === 'DIRECTORY'
-              ? 'bg-purple-600 text-white shadow-xs'
-              : 'bg-white text-slate-600 hover:bg-slate-100 border border-slate-200'
-          }`}
-        >
-          <Clock className="w-4 h-4" />
-          <span>Timesheets Directory</span>
-        </button>
 
-        <button
-          type="button"
-          onClick={() => setActiveTab('CORRECTIONS')}
-          className={`flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer ${
-            activeTab === 'CORRECTIONS'
-              ? 'bg-purple-600 text-white shadow-xs'
-              : 'bg-white text-slate-600 hover:bg-slate-100 border border-slate-200'
-          }`}
-        >
-          <RotateCcw className="w-4 h-4" />
-          <span>Time Corrections</span>
-          {pendingCount > 0 && (
-            <span
-              className={`px-1.5 py-0.2 rounded-full text-[10px] font-extrabold ${
-                activeTab === 'CORRECTIONS'
-                  ? 'bg-white text-purple-700'
-                  : 'bg-amber-500 text-white'
-              }`}
-            >
-              {pendingCount}
-            </span>
-          )}
-        </button>
-      </div>
 
-      {activeTab === 'CORRECTIONS' ? (
-        <div className="space-y-4">
-          {/* Header & Filter Controls for Corrections */}
-          <div className="bg-white p-4 rounded-2xl border border-slate-200/80 shadow-xs flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-            <div className="flex items-center gap-2">
-              <span className="font-semibold text-slate-700 text-xs">Filter by Status:</span>
-              <div className="flex items-center gap-1.5 bg-slate-100 p-1 rounded-xl">
-                {[
-                  { id: 'ALL', label: 'All' },
-                  { id: 'PENDING', label: `Pending (${pendingCount})` },
-                  { id: 'APPROVED', label: 'Approved' },
-                  { id: 'REJECTED', label: 'Rejected' },
-                ].map((tab) => (
-                  <button
-                    key={tab.id}
-                    type="button"
-                    onClick={() => setCorrectionFilter(tab.id)}
-                    className={`px-2.5 py-1 rounded-lg text-xs font-semibold transition-all cursor-pointer ${
-                      correctionFilter === tab.id
-                        ? 'bg-white text-purple-700 shadow-2xs font-bold'
-                        : 'text-slate-600 hover:text-slate-900'
-                    }`}
-                  >
-                    {tab.label}
-                  </button>
-                ))}
-              </div>
-            </div>
-
-            <button
-              type="button"
-              onClick={loadCorrections}
-              disabled={loadingCorrections}
-              className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl border border-slate-200 bg-white hover:bg-slate-50 text-slate-700 font-semibold cursor-pointer text-xs self-start sm:self-auto"
-            >
-              <RefreshCw className={`w-3.5 h-3.5 ${loadingCorrections ? 'animate-spin' : ''}`} />
-              <span>Refresh Requests</span>
-            </button>
-          </div>
-
-          {/* Corrections List */}
-          {loadingCorrections ? (
-            <div className="p-12 text-center text-slate-400 bg-white rounded-2xl border border-slate-200/80">
-              <RefreshCw className="w-6 h-6 animate-spin mx-auto text-purple-600 mb-2" />
-              <p>Loading time correction requests...</p>
-            </div>
-          ) : filteredCorrections.length === 0 ? (
-            <div className="p-12 text-center text-slate-500 bg-white rounded-2xl border border-slate-200/80 max-w-md mx-auto space-y-2">
-              <div className="w-12 h-12 rounded-2xl bg-slate-100 text-slate-400 flex items-center justify-center mx-auto">
-                <RotateCcw className="w-6 h-6" />
-              </div>
-              <h3 className="text-sm font-bold text-slate-800">No Correction Requests</h3>
-              <p className="text-xs text-slate-400">
-                {correctionFilter === 'PENDING'
-                  ? 'No pending time corrections requiring review.'
-                  : `No time correction requests found matching "${correctionFilter.toLowerCase()}".`}
-              </p>
-            </div>
-          ) : (
-            <div className="grid grid-cols-1 gap-3.5">
-              {filteredCorrections.map((req) => {
-                const isPending = req.status === 'PENDING';
-                const isApproved = req.status === 'APPROVED';
-
-                return (
-                  <div
-                    key={req.request_id}
-                    className="bg-white p-5 rounded-2xl border border-slate-200/80 shadow-xs space-y-3.5"
-                  >
-                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-slate-100 pb-3">
-                      <div>
-                        <div className="flex items-center gap-2">
-                          <span className="font-bold text-slate-900 text-sm">{req.user_name}</span>
-                          <span
-                            className={`text-[9px] font-extrabold px-2 py-0.5 rounded-full border uppercase ${
-                              isPending
-                                ? 'bg-amber-50 text-amber-700 border-amber-200'
-                                : isApproved
-                                ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
-                                : 'bg-rose-50 text-rose-700 border-rose-200'
-                            }`}
-                          >
-                            {req.status}
-                          </span>
-                        </div>
-                        <p className="text-[11px] text-slate-500 mt-0.5">
-                          Task: <span className="font-semibold text-slate-700">{req.task_title}</span>
-                          {req.date && <span> · Date: {new Date(req.date).toLocaleDateString([], { month: 'short', day: 'numeric', year: 'numeric' })}</span>}
-                        </p>
-                      </div>
-
-                      <div className="flex items-center gap-3 bg-slate-50 px-3 py-1.5 rounded-xl border border-slate-200/60 font-mono text-xs">
-                        <div>
-                          <span className="text-[10px] text-slate-400 block">Original</span>
-                          <span className="font-bold text-slate-700">{formatMinutes(req.original_duration_minutes)}</span>
-                        </div>
-                        <span className="text-slate-300 font-sans">→</span>
-                        <div>
-                          <span className="text-[10px] text-rose-500 font-bold block">Excess</span>
-                          <span className="font-bold text-rose-600">-{formatMinutes(req.excess_minutes)}</span>
-                        </div>
-                        <span className="text-slate-300 font-sans">→</span>
-                        <div>
-                          <span className="text-[10px] text-emerald-600 font-bold block">Corrected</span>
-                          <span className="font-bold text-emerald-700">{formatMinutes(req.corrected_duration_minutes)}</span>
-                        </div>
-                      </div>
-                    </div>
-
-                    {/* Intern Reason */}
-                    <div className="bg-amber-50/50 p-3 rounded-xl border border-amber-200/50 text-xs">
-                      <span className="text-[10px] font-bold uppercase tracking-wider text-amber-800 block mb-0.5">
-                        Intern's Reason
-                      </span>
-                      <p className="text-slate-700 italic">&quot;{req.reason}&quot;</p>
-                    </div>
-
-                    {/* Review Actions or Decision Info */}
-                    {isPending ? (
-                      <div className="pt-2 flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-t border-slate-100">
-                        <div className="flex-1 min-w-0">
-                          <input
-                            type="text"
-                            placeholder="Optional manager note (e.g., Approved after discussion)..."
-                            value={reviewNotes[req.request_id] || ''}
-                            onChange={(e) =>
-                              setReviewNotes((prev) => ({
-                                ...prev,
-                                [req.request_id]: e.target.value,
-                              }))
-                            }
-                            className="w-full px-3 py-1.5 text-xs rounded-xl border border-slate-200 bg-slate-50/50 focus:bg-white focus:outline-none focus:border-purple-600"
-                          />
-                        </div>
-
-                        <div className="flex items-center gap-2 shrink-0">
-                          <button
-                            type="button"
-                            onClick={() => handleReviewCorrection(req.request_id, 'REJECT')}
-                            disabled={reviewActionLoading}
-                            className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl border border-rose-200 bg-rose-50 hover:bg-rose-100 text-rose-700 font-semibold cursor-pointer transition-colors disabled:opacity-50 text-xs"
-                          >
-                            <X className="w-3.5 h-3.5" />
-                            <span>Reject</span>
-                          </button>
-
-                          <button
-                            type="button"
-                            onClick={() => handleReviewCorrection(req.request_id, 'APPROVE')}
-                            disabled={reviewActionLoading}
-                            className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold cursor-pointer transition-colors disabled:opacity-50 text-xs shadow-xs"
-                          >
-                            <Check className="w-3.5 h-3.5" />
-                            <span>Approve Deduction</span>
-                          </button>
-                        </div>
-                      </div>
-                    ) : (
-                      <div className="text-[11px] text-slate-500 pt-1 border-t border-slate-100 flex items-center justify-between gap-2">
-                        <span>
-                          Reviewed at {req.reviewed_at ? new Date(req.reviewed_at).toLocaleString() : 'N/A'}
-                        </span>
-                        {req.decision_note && (
-                          <span className="italic text-slate-600">
-                            Note: &quot;{req.decision_note}&quot;
-                          </span>
-                        )}
-                      </div>
-                    )}
-                  </div>
-                );
-              })}
-            </div>
-          )}
-        </div>
-      ) : (
-        <>
-          {/* 2. KPI SUMMARY CARDS */}
+      {/* 2. KPI SUMMARY CARDS */}
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-3.5">
         <div className="bg-white p-4 rounded-xl border border-slate-200/80 shadow-2xs">
           <div className="flex items-center justify-between text-slate-500 text-[11px] font-semibold">
@@ -997,8 +767,6 @@ export default function ManagerTimesheetsView({ onToast, cohorts: propCohorts = 
           </div>
         )}
       </div>
-        </>
-      )}
     </div>
   );
 }

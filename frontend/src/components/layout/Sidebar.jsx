@@ -103,7 +103,6 @@ export default function Sidebar({
                         onExitProject?.();
                       } else {
                         setCurrentView(item.id);
-                        if (isProjectWorkspace) onExitProject?.();
                       }
                     }}
                     className={`w-full flex items-center justify-between px-3 py-2 rounded-xl text-xs font-semibold transition-colors cursor-pointer ${
@@ -142,7 +141,6 @@ export default function Sidebar({
                     key={item.id}
                     onClick={() => {
                       setCurrentView(item.id);
-                      if (isProjectWorkspace) onExitProject?.();
                     }}
                     className={`w-full flex items-center justify-between px-3 py-2 rounded-xl text-xs font-semibold transition-colors cursor-pointer ${
                       isActive
@@ -169,7 +167,6 @@ export default function Sidebar({
               <button
                 onClick={() => {
                   setCurrentView('channels');
-                  if (isProjectWorkspace) onExitProject?.();
                 }}
                 className={`w-full flex items-center justify-between px-3 py-2 rounded-xl text-xs font-semibold transition-colors cursor-pointer ${
                   !isProjectWorkspace && currentView === 'channels'
@@ -200,7 +197,6 @@ export default function Sidebar({
               <button
                 onClick={() => {
                   setCurrentView('profile');
-                  if (isProjectWorkspace) onExitProject?.();
                 }}
                 className={`w-full flex items-center justify-between px-3 py-2 rounded-xl text-xs font-semibold transition-colors cursor-pointer ${
                   !isProjectWorkspace && currentView === 'profile'
@@ -226,7 +222,6 @@ export default function Sidebar({
             type="button"
             onClick={() => {
               setCurrentView('profile');
-              if (isProjectWorkspace) onExitProject?.();
             }}
             className="flex items-center gap-2.5 flex-1 min-w-0 text-left rounded-lg transition-colors group cursor-pointer"
             title="View Profile (/manager/profile)"

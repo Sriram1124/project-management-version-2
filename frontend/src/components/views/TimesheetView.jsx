@@ -20,11 +20,21 @@ import {
   Info,
   Search,
   Filter,
-  RotateCcw
+  RotateCcw,
+  ChevronDown,
+  ChevronUp,
+  SlidersHorizontal,
 } from 'lucide-react';
 import { timesheetService } from '../../services/timesheet.service';
 import { useAuth } from '../../context/AuthContext';
 import { COLUMNS_CONFIG } from '../../constants/kanban';
+import {
+  getCalendarWeekRange,
+  getCalendarMonthRange,
+  toLocalDateString,
+  parseLocalDate,
+  formatMinutes,
+} from '../../utils/dateUtils';
 
 const STATUS_OPTIONS = [
   { id: 'ALL', label: 'All Statuses' },
@@ -33,6 +43,14 @@ const STATUS_OPTIONS = [
     label: c.title,
     dotColor: c.dotColor,
   })),
+];
+
+const PRIORITY_OPTIONS = [
+  { id: 'ALL', label: 'All Priorities' },
+  { id: 'URGENT', label: 'Urgent', bg: 'bg-rose-50 text-rose-700 border-rose-200', dot: 'bg-rose-600' },
+  { id: 'HIGH', label: 'High', bg: 'bg-amber-50 text-amber-700 border-amber-200', dot: 'bg-amber-500' },
+  { id: 'MEDIUM', label: 'Medium', bg: 'bg-blue-50 text-blue-700 border-blue-200', dot: 'bg-blue-500' },
+  { id: 'LOW', label: 'Low', bg: 'bg-slate-100 text-slate-600 border-slate-200', dot: 'bg-slate-400' },
 ];
 
 const TIME_FILTER_OPTIONS = [
@@ -58,14 +76,19 @@ const getStatusBadge = (status) => {
   }
 };
 
-const formatMinutes = (minutes = 0) => {
-  const mins = Number(minutes) || 0;
-  const hours = Math.floor(mins / 60);
-  const remainder = mins % 60;
-  if (hours === 0 && remainder === 0) return '0h 0m';
-  if (hours === 0) return `${remainder}m`;
-  if (remainder === 0) return `${hours}h`;
-  return `${hours}h ${remainder}m`;
+const getPriorityBadge = (priority) => {
+  const norm = (priority || 'MEDIUM').toUpperCase();
+  switch (norm) {
+    case 'URGENT':
+      return { label: 'Urgent', bg: 'bg-rose-50 text-rose-700 border-rose-200', dot: 'bg-rose-600' };
+    case 'HIGH':
+      return { label: 'High', bg: 'bg-amber-50 text-amber-700 border-amber-200', dot: 'bg-amber-500' };
+    case 'LOW':
+      return { label: 'Low', bg: 'bg-slate-100 text-slate-600 border-slate-200', dot: 'bg-slate-400' };
+    case 'MEDIUM':
+    default:
+      return { label: 'Medium', bg: 'bg-blue-50 text-blue-700 border-blue-200', dot: 'bg-blue-500' };
+  }
 };
 
 import { getSessionCutoffMs, formatElapsed } from '../../utils/time';
@@ -77,6 +100,9 @@ export default function TimesheetView({
   readOnly = false,
   onBack = null,
   internInfo = null,
+  initialDate = null,
+  onDateChange = null,
+  initialViewMode = null,
 }) {
   const { user: authUser } = useAuth();
   const authRole = String(
@@ -84,9 +110,30 @@ export default function TimesheetView({
   ).toUpperCase();
   const isManager = authRole === 'MANAGER';
 
-  // Week navigation state
-  const [selectedDate, setSelectedDate] = useState(() => new Date());
+  // View Mode: 'WEEK' | 'MONTH'
+  const [viewMode, setViewMode] = useState(() => {
+    if (initialViewMode) return initialViewMode;
+    try {
+      return sessionStorage.getItem('internhub_timesheet_view_mode') || 'WEEK';
+    } catch {
+      return 'WEEK';
+    }
+  });
+
+  // Authoritative date state (Week / Month)
+  const [selectedDate, setSelectedDate] = useState(() => {
+    if (initialDate) return parseLocalDate(initialDate);
+    try {
+      const stored = sessionStorage.getItem('internhub_timesheet_selected_date');
+      if (stored) return parseLocalDate(stored);
+    } catch {}
+    return new Date();
+  });
+
   const [showWeekends, setShowWeekends] = useState(false); // Mon-Fri default
+
+  // Month view week-group expansion state (all expanded by default)
+  const [expandedWeeks, setExpandedWeeks] = useState({});
 
   // Timesheet data
   const [timesheet, setTimesheet] = useState(null);
@@ -112,13 +159,14 @@ export default function TimesheetView({
   // General Manual Log Modal
   const [isLogModalOpen, setIsLogModalOpen] = useState(false);
   const [manualTaskId, setManualTaskId] = useState('');
-  const [manualDate, setManualDate] = useState(() => new Date().toISOString().slice(0, 10));
+  const [manualDate, setManualDate] = useState(() => toLocalDateString(new Date()));
   const [manualHours, setManualHours] = useState('');
   const [manualMinutes, setManualMinutes] = useState('30');
   const [manualNotes, setManualNotes] = useState('');
 
   // Task Filters & Search State
   const [statusFilter, setStatusFilter] = useState('ALL');
+  const [priorityFilter, setPriorityFilter] = useState('ALL');
   const [timeFilter, setTimeFilter] = useState('ALL'); // 'ALL' | 'LOGGED' | 'NO_LOGGED'
   const [taskSearchQuery, setTaskSearchQuery] = useState('');
 
@@ -134,13 +182,27 @@ export default function TimesheetView({
   const [pageSize, setPageSize] = useState(15);
   const [currentPage, setCurrentPage] = useState(1);
 
+  // Authoritative date range objects
+  const weekInfo = useMemo(() => getCalendarWeekRange(selectedDate), [selectedDate]);
+  const monthInfo = useMemo(() => getCalendarMonthRange(selectedDate), [selectedDate]);
+
+  // Persist selected date and view mode
+  useEffect(() => {
+    try {
+      sessionStorage.setItem('internhub_timesheet_selected_date', toLocalDateString(selectedDate));
+      sessionStorage.setItem('internhub_timesheet_view_mode', viewMode);
+    } catch {}
+    onDateChange?.(selectedDate);
+  }, [selectedDate, viewMode, onDateChange]);
+
   // Reset pagination on filter or page size changes
   useEffect(() => {
     setCurrentPage(1);
-  }, [statusFilter, timeFilter, taskSearchQuery, pageSize]);
+  }, [statusFilter, priorityFilter, timeFilter, taskSearchQuery, pageSize]);
 
   const handleResetFilters = () => {
     setStatusFilter('ALL');
+    setPriorityFilter('ALL');
     setTimeFilter('ALL');
     setTaskSearchQuery('');
     setCurrentPage(1);
@@ -171,7 +233,24 @@ export default function TimesheetView({
     return list;
   }, [timesheet]);
 
-  // Load timesheet for the selected week
+  // Week/Month expansion handlers
+  const toggleWeekExpanded = (weekNum) => {
+    setExpandedWeeks((prev) => ({
+      ...prev,
+      [weekNum]: prev[weekNum] === false ? true : false,
+    }));
+  };
+
+  const toggleAllWeeks = (expand) => {
+    if (!timesheet?.weeks) return;
+    const next = {};
+    timesheet.weeks.forEach((w) => {
+      next[w.week_number] = expand;
+    });
+    setExpandedWeeks(next);
+  };
+
+  // Load timesheet for the selected week or month
   const loadTimesheet = useCallback(async (options = {}) => {
     const isBackground = options?.isBackground ?? false;
     try {
@@ -179,7 +258,19 @@ export default function TimesheetView({
         setLoading(true);
         setError('');
       }
-      const response = await timesheetService.getWeekly(targetUserId, selectedDate.toISOString());
+      const dateStr = toLocalDateString(selectedDate);
+      const filters = {
+        status: statusFilter,
+        priority: priorityFilter,
+        time_filter: timeFilter,
+        search: taskSearchQuery,
+      };
+      let response;
+      if (viewMode === 'MONTH') {
+        response = await timesheetService.getMonthly(targetUserId, dateStr, filters);
+      } else {
+        response = await timesheetService.getWeekly(targetUserId, dateStr, filters);
+      }
       const data = response?.timesheet || null;
       setTimesheet(data);
       if (readOnly) {
@@ -196,7 +287,7 @@ export default function TimesheetView({
         }
       }
     } catch (err) {
-      console.error('Failed to load weekly timesheet:', err);
+      console.error(`Failed to load ${viewMode.toLowerCase()} timesheet:`, err);
       if (!isBackground) {
         setError(err?.message || 'Unable to load timesheet data. Please check your connection.');
       }
@@ -205,7 +296,7 @@ export default function TimesheetView({
         setLoading(false);
       }
     }
-  }, [selectedDate, targetUserId, readOnly]);
+  }, [viewMode, selectedDate, targetUserId, statusFilter, priorityFilter, timeFilter, taskSearchQuery, readOnly]);
 
   useEffect(() => {
     loadTimesheet();
@@ -252,24 +343,32 @@ export default function TimesheetView({
     return () => clearInterval(interval);
   }, [activeSession, loadTimesheet]);
 
-  // Navigate weeks
-  const handlePrevWeek = () => {
+  // Navigate periods (Week or Month)
+  const handlePrevPeriod = () => {
     setSelectedDate((prev) => {
       const next = new Date(prev);
-      next.setDate(next.getDate() - 7);
+      if (viewMode === 'MONTH') {
+        next.setMonth(next.getMonth() - 1);
+      } else {
+        next.setDate(next.getDate() - 7);
+      }
       return next;
     });
   };
 
-  const handleNextWeek = () => {
+  const handleNextPeriod = () => {
     setSelectedDate((prev) => {
       const next = new Date(prev);
-      next.setDate(next.getDate() + 7);
+      if (viewMode === 'MONTH') {
+        next.setMonth(next.getMonth() + 1);
+      } else {
+        next.setDate(next.getDate() + 7);
+      }
       return next;
     });
   };
 
-  const handleCurrentWeek = () => {
+  const handleCurrentPeriod = () => {
     setSelectedDate(new Date());
   };
 
@@ -486,21 +585,30 @@ export default function TimesheetView({
   const summaryStats = useMemo(() => {
     const totalMins = timesheet?.total_minutes || 0;
     const taskRows = timesheet?.task_rows || [];
-    const activeTasksCount = taskRows.filter((r) => r.total_minutes > 0).length;
-    const activeDaysCount = (displayedDays || []).filter((d) => d.total_minutes > 0).length;
+    const activeTasksCount = timesheet?.active_tasks_count ?? taskRows.filter((r) => r.total_minutes > 0).length;
+    let activeDaysCount = 0;
+    if (viewMode === 'MONTH') {
+      activeDaysCount = timesheet?.active_days_count ?? 0;
+    } else {
+      activeDaysCount = (displayedDays || []).filter((d) => d.total_minutes > 0).length;
+    }
     const avgDailyMins = activeDaysCount > 0 ? Math.round(totalMins / activeDaysCount) : 0;
     return {
-      totalFormatted: formatMinutes(totalMins),
+      totalFormatted: timesheet?.total_formatted || formatMinutes(totalMins),
       activeTasksCount,
       activeDaysCount,
-      avgDailyFormatted: formatMinutes(avgDailyMins),
+      avgDailyFormatted: timesheet?.avg_daily_formatted || formatMinutes(avgDailyMins),
     };
-  }, [timesheet, displayedDays]);
+  }, [timesheet, displayedDays, viewMode]);
 
   const taskRows = timesheet?.task_rows || [];
   const availableTasks = timesheet?.available_tasks || [];
 
-  const isFiltered = statusFilter !== 'ALL' || timeFilter !== 'ALL' || Boolean(taskSearchQuery.trim());
+  const isFiltered =
+    statusFilter !== 'ALL' ||
+    priorityFilter !== 'ALL' ||
+    timeFilter !== 'ALL' ||
+    Boolean(taskSearchQuery.trim());
 
   const filteredTaskRows = useMemo(() => {
     if (!taskRows) return [];
@@ -511,12 +619,18 @@ export default function TimesheetView({
         if (s !== statusFilter) return false;
       }
 
-      // 2. Time Logged Filter
+      // 2. Priority Filter
+      if (priorityFilter !== 'ALL') {
+        const p = (task.priority || 'MEDIUM').toUpperCase();
+        if (p !== priorityFilter) return false;
+      }
+
+      // 3. Time Logged Filter
       const totalMins = Number(task.total_minutes) || 0;
       if (timeFilter === 'LOGGED' && totalMins <= 0) return false;
       if (timeFilter === 'NO_LOGGED' && totalMins > 0) return false;
 
-      // 3. Search Query (title, ID/key, project name)
+      // 4. Search Query (title, ID/key, project name)
       if (taskSearchQuery.trim()) {
         const q = taskSearchQuery.trim().toLowerCase();
         const titleMatch = (task.title || '').toLowerCase().includes(q);
@@ -527,7 +641,7 @@ export default function TimesheetView({
 
       return true;
     });
-  }, [taskRows, statusFilter, timeFilter, taskSearchQuery]);
+  }, [taskRows, statusFilter, priorityFilter, timeFilter, taskSearchQuery]);
 
   // Totals for filtered task rows
   const filteredTotals = useMemo(() => {
@@ -564,21 +678,21 @@ export default function TimesheetView({
 
   return (
     <div className="space-y-5 text-xs text-slate-800">
-      {/* 1. TOP HEADER & WEEK CONTROLS */}
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 bg-white p-4 sm:p-5 rounded-2xl border border-slate-200/80 shadow-xs">
+      {/* 1. TOP HEADER & NAVIGATION CONTROLS */}
+      <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4 bg-white p-5 sm:p-6 rounded-2xl border border-slate-200/80 shadow-xs">
         <div>
           {onBack && (
             <button
               type="button"
               onClick={onBack}
-              className="inline-flex items-center gap-1.5 text-xs font-semibold text-purple-700 hover:text-purple-900 mb-2.5 transition-colors cursor-pointer group"
+              className="inline-flex items-center gap-1.5 text-xs font-semibold text-purple-700 hover:text-purple-900 mb-3 transition-colors cursor-pointer group"
             >
               <ChevronLeft className="w-4 h-4 transition-transform group-hover:-translate-x-0.5" />
               <span>Back to Intern Timesheets Directory</span>
             </button>
           )}
 
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 flex-wrap">
             <span className="p-1.5 rounded-lg bg-purple-100 text-purple-700">
               <Calendar className="w-4 h-4" />
             </span>
@@ -592,18 +706,20 @@ export default function TimesheetView({
             )}
           </div>
 
-          <h1 className="text-xl sm:text-2xl font-bold text-slate-900 tracking-tight mt-1">
-            {currentIntern ? `${currentIntern.name}'s Timesheet` : 'Weekly Timesheet'}
+          <h1 className="text-xl sm:text-2xl font-bold text-slate-900 tracking-tight mt-1.5">
+            {currentIntern
+              ? `${currentIntern.name}'s ${viewMode === 'MONTH' ? 'Monthly' : 'Weekly'} Timesheet`
+              : `${viewMode === 'MONTH' ? 'Monthly' : 'Weekly'} Timesheet`}
           </h1>
 
-          <div className="flex flex-wrap items-center gap-x-2.5 gap-y-1 text-xs text-slate-500 mt-0.5">
+          <div className="flex flex-wrap items-center gap-x-2.5 gap-y-1 text-xs text-slate-500 mt-1">
             {currentIntern ? (
               <>
                 <span className="text-slate-700 font-medium">{currentIntern.email}</span>
                 {currentIntern.cohort?.name && (
                   <>
                     <span>•</span>
-                    <span className="font-semibold text-purple-700 bg-purple-50 px-2 py-0.2 rounded border border-purple-200/60">
+                    <span className="font-semibold text-purple-700 bg-purple-50 px-2 py-0.5 rounded border border-purple-200/60">
                       {currentIntern.cohort.name}
                     </span>
                   </>
@@ -622,59 +738,99 @@ export default function TimesheetView({
         </div>
 
         {/* Action Buttons & Nav */}
-        <div className="flex flex-wrap items-center gap-2">
-          {/* Week Nav Buttons */}
+        <div className="flex flex-wrap items-center gap-2.5 sm:gap-3">
+          {/* View Mode Selector: Week vs Month */}
+          <div className="flex items-center bg-slate-100 p-1 rounded-xl border border-slate-200 text-xs font-semibold">
+            <button
+              type="button"
+              onClick={() => setViewMode('WEEK')}
+              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg transition-all cursor-pointer ${
+                viewMode === 'WEEK'
+                  ? 'bg-white text-purple-700 font-bold shadow-2xs'
+                  : 'text-slate-600 hover:text-slate-900'
+              }`}
+            >
+              <Clock className="w-3.5 h-3.5" />
+              <span>Week</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => setViewMode('MONTH')}
+              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg transition-all cursor-pointer ${
+                viewMode === 'MONTH'
+                  ? 'bg-white text-purple-700 font-bold shadow-2xs'
+                  : 'text-slate-600 hover:text-slate-900'
+              }`}
+            >
+              <Calendar className="w-3.5 h-3.5" />
+              <span>Month</span>
+            </button>
+          </div>
+
+          {/* Period Nav Buttons */}
           <div className="flex items-center bg-slate-100 p-1 rounded-xl border border-slate-200 text-slate-700">
             <button
               type="button"
-              onClick={handlePrevWeek}
-              className="p-1 rounded-lg hover:bg-white hover:text-slate-900 transition-colors cursor-pointer"
-              title="Previous Week"
+              onClick={handlePrevPeriod}
+              className="p-1.5 rounded-lg hover:bg-white hover:text-slate-900 transition-colors cursor-pointer"
+              title={viewMode === 'MONTH' ? 'Previous Month' : 'Previous Week'}
             >
               <ChevronLeft className="w-4 h-4" />
             </button>
+            <div className="px-3 py-1 font-bold text-xs text-slate-800 whitespace-nowrap min-w-[125px] text-center">
+              {viewMode === 'MONTH' ? monthInfo.monthName : weekInfo.formattedRange}
+            </div>
             <button
               type="button"
-              onClick={handleCurrentWeek}
-              className="px-2.5 py-0.5 font-semibold text-xs rounded-lg hover:bg-white hover:text-purple-700 transition-colors cursor-pointer"
-            >
-              This Week
-            </button>
-            <button
-              type="button"
-              onClick={handleNextWeek}
-              className="p-1 rounded-lg hover:bg-white hover:text-slate-900 transition-colors cursor-pointer"
-              title="Next Week"
+              onClick={handleNextPeriod}
+              className="p-1.5 rounded-lg hover:bg-white hover:text-slate-900 transition-colors cursor-pointer"
+              title={viewMode === 'MONTH' ? 'Next Month' : 'Next Week'}
             >
               <ChevronRight className="w-4 h-4" />
             </button>
           </div>
 
-          {/* 5-Day vs 7-Day Toggle */}
-          <div className="flex items-center bg-slate-100 p-1 rounded-xl border border-slate-200 text-xs font-semibold">
-            <button
-              type="button"
-              onClick={() => setShowWeekends(false)}
-              className={`px-2.5 py-1 rounded-lg transition-all cursor-pointer ${
-                !showWeekends
-                  ? 'bg-white text-purple-700 font-bold shadow-2xs'
-                  : 'text-slate-600 hover:text-slate-900'
-              }`}
-            >
-              Mon–Fri
-            </button>
-            <button
-              type="button"
-              onClick={() => setShowWeekends(true)}
-              className={`px-2.5 py-1 rounded-lg transition-all cursor-pointer ${
-                showWeekends
-                  ? 'bg-white text-purple-700 font-bold shadow-2xs'
-                  : 'text-slate-600 hover:text-slate-900'
-              }`}
-            >
-              7 Days
-            </button>
-          </div>
+          {/* Jump to Current Period Button */}
+          <button
+            type="button"
+            onClick={handleCurrentPeriod}
+            className={`px-3 py-2 text-xs font-semibold rounded-xl border transition-colors cursor-pointer whitespace-nowrap ${
+              (viewMode === 'MONTH' ? monthInfo.isCurrentMonth : weekInfo.isCurrentWeek)
+                ? 'bg-purple-100 text-purple-800 border-purple-300 font-bold'
+                : 'bg-slate-100 hover:bg-purple-50 hover:text-purple-700 border-slate-200 text-slate-700'
+            }`}
+            title={viewMode === 'MONTH' ? 'Jump to Current Month' : 'Jump to Current Calendar Week'}
+          >
+            {viewMode === 'MONTH' ? 'This Month' : 'This Week'}
+          </button>
+
+          {/* 5-Day vs 7-Day Toggle (Week view only) */}
+          {viewMode === 'WEEK' && (
+            <div className="flex items-center bg-slate-100 p-1 rounded-xl border border-slate-200 text-xs font-semibold">
+              <button
+                type="button"
+                onClick={() => setShowWeekends(false)}
+                className={`px-2.5 py-1 rounded-lg transition-all cursor-pointer ${
+                  !showWeekends
+                    ? 'bg-white text-purple-700 font-bold shadow-2xs'
+                    : 'text-slate-600 hover:text-slate-900'
+                }`}
+              >
+                Mon–Fri
+              </button>
+              <button
+                type="button"
+                onClick={() => setShowWeekends(true)}
+                className={`px-2.5 py-1 rounded-lg transition-all cursor-pointer ${
+                  showWeekends
+                    ? 'bg-white text-purple-700 font-bold shadow-2xs'
+                    : 'text-slate-600 hover:text-slate-900'
+                }`}
+              >
+                7 Days
+              </button>
+            </div>
+          )}
 
           {/* Refresh */}
           <button
@@ -709,29 +865,7 @@ export default function TimesheetView({
             </button>
           )}
 
-          {/* Request Correction Button (Intern Only) */}
-          {!readOnly && (
-            <button
-              type="button"
-              onClick={() => {
-                if (allWeekEntries.length > 0) {
-                  const first = allWeekEntries[0];
-                  setCorrectionEntry(first);
-                  setCorrectionExcessMinutes(Math.min(30, Math.max(5, Math.floor((first.duration_minutes || 30) / 2))));
-                } else {
-                  setCorrectionEntry(null);
-                }
-                setCorrectionReason('');
-                setCorrectionError('');
-                setIsCorrectionModalOpen(true);
-              }}
-              className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-amber-50 hover:bg-amber-100 text-amber-800 border border-amber-200 font-semibold transition-colors cursor-pointer shadow-xs"
-              title="Request Time Correction for accidentally recorded extra time"
-            >
-              <RotateCcw className="w-3.5 h-3.5 text-amber-700" />
-              <span>Request Correction</span>
-            </button>
-          )}
+
 
           {/* Log Time Button (Intern Only) */}
           {!readOnly && (
@@ -769,21 +903,23 @@ export default function TimesheetView({
         </div>
       )}
 
-      {/* 3. WEEKLY SUMMARY STAT CARDS */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
-        <div className="bg-white p-4 rounded-2xl border border-slate-200/80 shadow-2xs">
+      {/* 2. SUMMARY STAT CARDS */}
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3.5 sm:gap-4">
+        <div className="bg-white p-4.5 rounded-2xl border border-slate-200/80 shadow-2xs">
           <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider block">
-            Week Period
+            {viewMode === 'MONTH' ? 'Month Period' : 'Week Period'}
           </span>
           <div className="text-sm sm:text-base font-bold text-slate-900 mt-1 truncate">
-            {weekRangeTitle}
+            {viewMode === 'MONTH' ? monthInfo.monthName : weekInfo.formattedRange}
           </div>
           <span className="text-[11px] text-purple-600 font-semibold block mt-0.5">
-            {showWeekends ? '7 calendar days' : 'Monday – Friday'}
+            {viewMode === 'MONTH'
+              ? `${timesheet?.weeks?.length || monthInfo.weeks.length} calendar weeks · ${monthInfo.daysInMonth} days`
+              : showWeekends ? '7 calendar days' : 'Monday – Friday'}
           </span>
         </div>
 
-        <div className="bg-white p-4 rounded-2xl border border-slate-200/80 shadow-2xs">
+        <div className="bg-white p-4.5 rounded-2xl border border-slate-200/80 shadow-2xs">
           <div className="flex items-center justify-between gap-1">
             <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider block">
               {isFiltered ? 'Total Logged (Filtered)' : 'Total Logged'}
@@ -798,11 +934,15 @@ export default function TimesheetView({
             {(loading && !timesheet) ? '...' : (isFiltered ? filteredTotals.totalFormatted : summaryStats.totalFormatted)}
           </div>
           <span className="text-[11px] text-slate-500 font-medium block mt-0.5">
-            {isFiltered ? `Filtered total (${summaryStats.totalFormatted} overall)` : 'Recorded task effort'}
+            {viewMode === 'MONTH'
+              ? 'Recorded task effort (excl. boundary days)'
+              : isFiltered
+              ? `Filtered total (${summaryStats.totalFormatted} overall)`
+              : 'Recorded task effort'}
           </span>
         </div>
 
-        <div className="bg-white p-4 rounded-2xl border border-slate-200/80 shadow-2xs">
+        <div className="bg-white p-4.5 rounded-2xl border border-slate-200/80 shadow-2xs">
           <div className="flex items-center justify-between gap-1">
             <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider block">
               {isFiltered ? 'Active Tasks (Filtered)' : 'Active Tasks'}
@@ -823,7 +963,7 @@ export default function TimesheetView({
           </span>
         </div>
 
-        <div className="bg-white p-4 rounded-2xl border border-slate-200/80 shadow-2xs">
+        <div className="bg-white p-4.5 rounded-2xl border border-slate-200/80 shadow-2xs">
           <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider block">
             Daily Average
           </span>
@@ -895,6 +1035,26 @@ export default function TimesheetView({
                 className="px-2.5 py-1.5 text-xs rounded-xl border border-slate-200 bg-white font-medium text-slate-800 focus:outline-none focus:border-purple-600 cursor-pointer shadow-2xs"
               >
                 {STATUS_OPTIONS.map((opt) => (
+                  <option key={opt.id} value={opt.id}>
+                    {opt.label}
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            {/* Task Priority Dropdown */}
+            <div className="flex items-center gap-1.5">
+              <label htmlFor="task-priority-filter" className="text-[11px] font-semibold text-slate-500 shrink-0 flex items-center gap-1">
+                <SlidersHorizontal className="w-3 h-3 text-purple-600" />
+                <span>Priority:</span>
+              </label>
+              <select
+                id="task-priority-filter"
+                value={priorityFilter}
+                onChange={(e) => setPriorityFilter(e.target.value)}
+                className="px-2.5 py-1.5 text-xs rounded-xl border border-slate-200 bg-white font-medium text-slate-800 focus:outline-none focus:border-purple-600 cursor-pointer shadow-2xs"
+              >
+                {PRIORITY_OPTIONS.map((opt) => (
                   <option key={opt.id} value={opt.id}>
                     {opt.label}
                   </option>
@@ -1014,8 +1174,340 @@ export default function TimesheetView({
               <span>Reset All Filters</span>
             </button>
           </div>
+        ) : viewMode === 'MONTH' ? (
+          /* MONTH VIEW: Calendar-Week Breakdown & Monthly Comparison Matrix */
+          <div className="p-4 sm:p-5 space-y-6">
+            {/* 1. Expandable Calendar-Week Breakdown */}
+            <div className="space-y-3">
+              <div className="flex items-center justify-between flex-wrap gap-2 pb-1">
+                <div>
+                  <h3 className="text-xs sm:text-sm font-bold text-slate-900 flex items-center gap-2">
+                    <Calendar className="w-4 h-4 text-purple-600" />
+                    <span>Calendar-Week Breakdown</span>
+                    <span className="text-[11px] font-normal text-slate-500 font-mono">
+                      ({timesheet?.weeks?.length || monthInfo.weeks.length} calendar weeks)
+                    </span>
+                  </h3>
+                  <p className="text-[11px] text-slate-500 mt-0.5">
+                    Click any day cell to add or review task time entries. Out-of-month days are shaded and excluded from monthly totals.
+                  </p>
+                </div>
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => toggleAllWeeks(true)}
+                    className="px-2.5 py-1 text-[11px] font-semibold text-purple-700 bg-purple-50 hover:bg-purple-100 border border-purple-200 rounded-lg transition-colors cursor-pointer"
+                  >
+                    Expand All
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => toggleAllWeeks(false)}
+                    className="px-2.5 py-1 text-[11px] font-semibold text-slate-600 bg-slate-100 hover:bg-slate-200 border border-slate-200 rounded-lg transition-colors cursor-pointer"
+                  >
+                    Collapse All
+                  </button>
+                </div>
+              </div>
+
+              {/* Week Group Accordions */}
+              <div className="space-y-3">
+                {(timesheet?.weeks || []).map((wg) => {
+                  const isExpanded = expandedWeeks[wg.week_number] !== false;
+                  // Filter task rows for this week group
+                  const weekFilteredTasks = (wg.task_rows || []).filter((task) => {
+                    if (statusFilter !== 'ALL' && (task.status || 'TODO').toUpperCase() !== statusFilter) return false;
+                    if (priorityFilter !== 'ALL' && (task.priority || 'MEDIUM').toUpperCase() !== priorityFilter) return false;
+                    if (timeFilter === 'LOGGED' && (task.week_minutes || 0) <= 0) return false;
+                    if (timeFilter === 'NO_LOGGED' && (task.week_minutes || 0) > 0) return false;
+                    if (taskSearchQuery.trim()) {
+                      const q = taskSearchQuery.trim().toLowerCase();
+                      const titleMatch = (task.title || '').toLowerCase().includes(q);
+                      const keyMatch = (task.key || task.id || '').toLowerCase().includes(q);
+                      const projMatch = (task.project?.name || '').toLowerCase().includes(q);
+                      if (!titleMatch && !keyMatch && !projMatch) return false;
+                    }
+                    return true;
+                  });
+
+                  return (
+                    <div
+                      key={wg.week_number}
+                      className="border border-slate-200/90 rounded-xl overflow-hidden bg-white shadow-2xs"
+                    >
+                      <div
+                        onClick={() => toggleWeekExpanded(wg.week_number)}
+                        className="px-4 py-3 bg-slate-50/90 hover:bg-slate-100/80 transition-colors flex items-center justify-between gap-3 cursor-pointer select-none"
+                      >
+                        <div className="flex items-center gap-3">
+                          <span className="p-1.5 rounded-lg bg-purple-100 text-purple-700">
+                            <Clock className="w-3.5 h-3.5" />
+                          </span>
+                          <div>
+                            <div className="font-bold text-slate-900 text-xs sm:text-sm flex items-center gap-2 flex-wrap">
+                              <span>{wg.label}</span>
+                              <span className="text-[10px] font-mono text-slate-400 font-normal">
+                                ({wg.start_date} – {wg.end_date})
+                              </span>
+                            </div>
+                            <div className="text-[11px] text-slate-500 mt-0.5">
+                              {weekFilteredTasks.length} {weekFilteredTasks.length === 1 ? 'task' : 'tasks'} worked · {wg.total_formatted} logged
+                            </div>
+                          </div>
+                        </div>
+
+                        <div className="flex items-center gap-3">
+                          <span className="font-mono font-extrabold text-xs sm:text-sm text-purple-700 bg-purple-50 px-2.5 py-1 rounded-lg border border-purple-200">
+                            {wg.total_formatted}
+                          </span>
+                          <button
+                            type="button"
+                            className="p-1 rounded-lg text-slate-400 hover:text-slate-600"
+                            aria-label={isExpanded ? 'Collapse week' : 'Expand week'}
+                          >
+                            {isExpanded ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
+                          </button>
+                        </div>
+                      </div>
+
+                      {isExpanded && (
+                        <div className="border-t border-slate-200/80 overflow-x-auto">
+                          <table className="w-full text-left border-collapse text-xs">
+                            <thead className="bg-slate-50/80 text-slate-600 font-bold text-[11px] border-b border-slate-200">
+                              <tr>
+                                <th className="py-2.5 px-4 min-w-[240px]">Task & Deliverable</th>
+                                {wg.days.map((d) => (
+                                  <th
+                                    key={d.date}
+                                    className={`py-2 px-2 text-center min-w-[75px] ${
+                                      !d.in_month
+                                        ? 'bg-slate-100/70 text-slate-400'
+                                        : d.isToday
+                                        ? 'bg-purple-100/60 text-purple-900 font-extrabold'
+                                        : ''
+                                    }`}
+                                  >
+                                    <span className="block text-[10px] uppercase">{d.dayName}</span>
+                                    <span className="text-xs font-bold">{d.dayNumber}</span>
+                                    {!d.in_month && (
+                                      <span className="block text-[9px] font-medium text-slate-400 uppercase tracking-tighter">
+                                        Excl.
+                                      </span>
+                                    )}
+                                  </th>
+                                ))}
+                                <th className="py-2.5 px-4 text-right min-w-[90px] bg-slate-100/80 font-bold">
+                                  Week Total
+                                </th>
+                              </tr>
+                            </thead>
+                            <tbody className="divide-y divide-slate-100">
+                              {weekFilteredTasks.length === 0 ? (
+                                <tr>
+                                  <td colSpan={wg.days.length + 2} className="py-6 text-center text-slate-400 italic">
+                                    No time logged for this week matching current filters.
+                                  </td>
+                                </tr>
+                              ) : (
+                                weekFilteredTasks.map((task) => {
+                                  const statusBadge = getStatusBadge(task.status);
+                                  const priorityBadge = getPriorityBadge(task.priority);
+                                  return (
+                                    <tr key={task.id} className="hover:bg-purple-50/20">
+                                      <td className="py-2.5 px-4">
+                                        <div className="flex items-center gap-1.5 flex-wrap">
+                                          <span className={`text-[9px] font-bold px-1.5 py-0.2 rounded border uppercase inline-flex items-center gap-1 ${statusBadge.bg}`}>
+                                            <span className={`w-1.5 h-1.5 rounded-full ${statusBadge.dot}`}></span>
+                                            <span>{statusBadge.label}</span>
+                                          </span>
+                                          <span className={`text-[9px] font-bold px-1.5 py-0.2 rounded border uppercase inline-flex items-center gap-1 ${priorityBadge.bg}`}>
+                                            <span className={`w-1.5 h-1.5 rounded-full ${priorityBadge.dot}`}></span>
+                                            <span>{priorityBadge.label}</span>
+                                          </span>
+                                          {task.project?.name && (
+                                            <span className="text-[10px] text-slate-400 font-medium">
+                                              {task.project.name}
+                                            </span>
+                                          )}
+                                        </div>
+                                        <div className="font-semibold text-slate-900 mt-1 truncate max-w-sm">
+                                          {task.title}
+                                        </div>
+                                      </td>
+                                      {wg.days.map((d) => {
+                                        const cellMins = task.days?.[d.date]?.minutes || 0;
+                                        return (
+                                          <td
+                                            key={d.date}
+                                            onClick={() => handleOpenCell(task, d.date, d)}
+                                            className={`py-2 px-2 text-center cursor-pointer transition-colors ${
+                                              !d.in_month
+                                                ? 'bg-slate-50/50 text-slate-300 opacity-60'
+                                                : cellMins > 0
+                                                ? 'bg-purple-50/60 hover:bg-purple-100 font-mono font-bold text-purple-900'
+                                                : 'hover:bg-slate-50 text-slate-300'
+                                            }`}
+                                            title={
+                                              !d.in_month
+                                                ? `${d.date} is outside ${monthInfo.monthName}`
+                                                : `Click to log or inspect entries for ${task.title} on ${d.date}`
+                                            }
+                                          >
+                                            {cellMins > 0 ? (
+                                              <span className="inline-block px-1.5 py-0.5 rounded bg-purple-100/80 text-purple-900 border border-purple-200/80 font-mono text-xs">
+                                                {formatMinutes(cellMins)}
+                                              </span>
+                                            ) : (
+                                              '—'
+                                            )}
+                                          </td>
+                                        );
+                                      })}
+                                      <td className="py-2.5 px-4 text-right font-mono font-bold text-slate-900 bg-slate-50/50">
+                                        {formatMinutes(task.week_minutes || 0)}
+                                      </td>
+                                    </tr>
+                                  );
+                                })
+                              )}
+                            </tbody>
+                            <tfoot>
+                              <tr className="bg-slate-50/90 font-bold border-t border-slate-200 text-slate-800">
+                                <td className="py-2.5 px-4 font-bold text-slate-700">Daily Total</td>
+                                {wg.days.map((d) => (
+                                  <td
+                                    key={d.date}
+                                    className={`py-2 px-2 text-center font-mono font-extrabold ${
+                                      !d.in_month ? 'text-slate-400 bg-slate-100/50' : 'text-purple-900'
+                                    }`}
+                                  >
+                                    {d.total_minutes > 0 ? formatMinutes(d.total_minutes) : '—'}
+                                  </td>
+                                ))}
+                                <td className="py-2.5 px-4 text-right font-mono font-extrabold text-purple-900 bg-purple-100/60">
+                                  {wg.total_formatted}
+                                </td>
+                              </tr>
+                            </tfoot>
+                          </table>
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+
+            {/* 2. Monthly Task Comparison Matrix */}
+            <div className="border border-slate-200/90 rounded-2xl overflow-hidden bg-white shadow-xs">
+              <div className="p-4 border-b border-slate-100 bg-slate-50/70 flex items-center justify-between flex-wrap gap-2">
+                <div>
+                  <h3 className="font-bold text-slate-900 text-sm flex items-center gap-2">
+                    <Layers className="w-4 h-4 text-purple-600" />
+                    <span>Monthly Task Comparison Matrix</span>
+                  </h3>
+                  <p className="text-[11px] text-slate-500 mt-0.5">
+                    Consolidated effort per task across calendar weeks in {monthInfo.monthName}
+                  </p>
+                </div>
+                <span className="text-[11px] text-slate-500 font-mono">
+                  Showing {paginatedTaskRows.length} of {filteredTaskRows.length} tasks
+                </span>
+              </div>
+
+              <div className="overflow-x-auto">
+                <table className="w-full text-left border-collapse text-xs">
+                  <thead className="bg-slate-50 text-slate-600 font-bold text-[11px] border-b border-slate-200">
+                    <tr>
+                      <th className="py-3 px-4 min-w-[260px]">Task & Deliverable</th>
+                      {(timesheet?.weeks || []).map((wg) => (
+                        <th key={wg.week_number} className="py-3 px-3 text-center min-w-[100px]">
+                          <span className="block text-slate-800 font-bold">Week {wg.week_number}</span>
+                          <span className="block text-[9px] text-slate-400 font-normal">
+                            {wg.label.replace(`Week ${wg.week_number}`, '').replace(/[()]/g, '').trim()}
+                          </span>
+                        </th>
+                      ))}
+                      <th className="py-3 px-4 text-right min-w-[110px] bg-slate-100/80 font-extrabold text-slate-900">
+                        Month Total
+                      </th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100">
+                    {paginatedTaskRows.map((task) => {
+                      const statusBadge = getStatusBadge(task.status);
+                      const priorityBadge = getPriorityBadge(task.priority);
+
+                      return (
+                        <tr key={task.id} className="hover:bg-purple-50/20">
+                          <td className="py-3 px-4">
+                            <div className="flex items-center gap-1.5 flex-wrap">
+                              <span className={`text-[9px] font-bold px-1.5 py-0.2 rounded border uppercase inline-flex items-center gap-1 ${statusBadge.bg}`}>
+                                <span className={`w-1.5 h-1.5 rounded-full ${statusBadge.dot}`}></span>
+                                <span>{statusBadge.label}</span>
+                              </span>
+                              <span className={`text-[9px] font-bold px-1.5 py-0.2 rounded border uppercase inline-flex items-center gap-1 ${priorityBadge.bg}`}>
+                                <span className={`w-1.5 h-1.5 rounded-full ${priorityBadge.dot}`}></span>
+                                <span>{priorityBadge.label}</span>
+                              </span>
+                              {task.project?.name && (
+                                <span className="text-[10px] text-slate-400 font-medium">
+                                  {task.project.name}
+                                </span>
+                              )}
+                            </div>
+                            <div className="font-semibold text-slate-900 mt-1 truncate max-w-sm" title={task.title}>
+                              {task.title}
+                            </div>
+                          </td>
+
+                          {(timesheet?.weeks || []).map((wg) => {
+                            const weekMins = task.weeks?.[wg.week_number]?.minutes || 0;
+                            return (
+                              <td key={wg.week_number} className="py-3 px-3 text-center font-mono">
+                                {weekMins > 0 ? (
+                                  <span className="px-2 py-0.5 rounded bg-purple-50 text-purple-900 font-bold border border-purple-200/60">
+                                    {formatMinutes(weekMins)}
+                                  </span>
+                                ) : (
+                                  <span className="text-slate-300">—</span>
+                                )}
+                              </td>
+                            );
+                          })}
+
+                          <td className="py-3 px-4 text-right font-mono font-bold text-slate-900 bg-slate-50/50">
+                            {task.total_minutes > 0 ? (
+                              <span className="px-2.5 py-1 rounded bg-slate-100 text-slate-800 border border-slate-200 font-extrabold">
+                                {formatMinutes(task.total_minutes)}
+                              </span>
+                            ) : (
+                              <span className="text-slate-300">—</span>
+                            )}
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                  <tfoot>
+                    <tr className="bg-slate-50 border-t-2 border-slate-200 font-bold text-slate-800">
+                      <td className="py-3.5 px-4 font-bold text-slate-700">Weekly Total</td>
+                      {(timesheet?.weeks || []).map((wg) => (
+                        <td key={wg.week_number} className="py-3.5 px-3 text-center font-mono font-extrabold text-purple-900">
+                          {wg.total_formatted}
+                        </td>
+                      ))}
+                      <td className="py-3.5 px-4 text-right font-mono font-extrabold text-sm text-purple-700 bg-purple-100/50">
+                        {timesheet?.total_formatted || '0h 0m'}
+                      </td>
+                    </tr>
+                  </tfoot>
+                </table>
+              </div>
+            </div>
+          </div>
         ) : (
-          /* Table Matrix */
+          /* Table Matrix (Week) */
           <div className="overflow-x-auto max-h-[70vh] overflow-y-auto">
             <table className="w-full text-left border-collapse text-xs">
               <thead className="sticky top-0 z-10 bg-slate-50/95 backdrop-blur-xs border-b border-slate-200 text-slate-600 font-bold text-[11px] shadow-2xs">
@@ -1071,6 +1563,17 @@ export default function TimesheetView({
                                 <span className={`w-1.5 h-1.5 rounded-full ${statusBadge.dot}`}></span>
                                 <span>{statusBadge.label}</span>
                               </span>
+
+                              {/* Priority Badge */}
+                              {task.priority && (() => {
+                                const pBadge = getPriorityBadge(task.priority);
+                                return (
+                                  <span className={`text-[9px] font-bold px-1.5 py-0.2 rounded border uppercase inline-flex items-center gap-1 ${pBadge.bg}`}>
+                                    <span className={`w-1.5 h-1.5 rounded-full ${pBadge.dot}`}></span>
+                                    <span>{pBadge.label}</span>
+                                  </span>
+                                );
+                              })()}
 
                               {task.type && (
                                 <span className="text-[9px] font-bold px-1.5 py-0.2 rounded bg-purple-50 text-purple-700 border border-purple-200 uppercase">

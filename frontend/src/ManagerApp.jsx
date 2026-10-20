@@ -40,8 +40,12 @@ export default function ManagerApp() {
     return 'dashboard';
   };
 
-  const getInitialProjectState = () => {
+  const getInitialProjectState = (pathname) => {
     try {
+      const clean = pathname.replace(/^\/manager\/?/, '').replace(/\/+$/, '');
+      if (clean !== 'projects') {
+        return { projId: null, tab: 'overview' };
+      }
       const sp = new URLSearchParams(window.location.search);
       const projId = sp.get('projectId') || sp.get('project') || null;
       const tab = sp.get('tab') || 'overview';
@@ -51,13 +55,15 @@ export default function ManagerApp() {
     }
   };
 
-  const initialProjectState = getInitialProjectState();
+  const initialProjectState = getInitialProjectState(location.pathname);
   const [currentRole, setCurrentRole] = useState('manager'); // 'manager' | 'intern'
   const [currentView, setCurrentView] = useState(() => {
-    if (initialProjectState.projId) return 'projects';
     return getViewFromPath(location.pathname);
   });
-  const [activeProjectId, setActiveProjectId] = useState(initialProjectState.projId);
+  const [activeProjectId, setActiveProjectId] = useState(() => {
+    const v = getViewFromPath(location.pathname);
+    return v === 'projects' ? initialProjectState.projId : null;
+  });
   const [activeProjectName, setActiveProjectName] = useState(null);
   const [activeProjectTab, setActiveProjectTab] = useState(initialProjectState.tab);
 
@@ -119,25 +125,27 @@ export default function ManagerApp() {
   };
 
   useEffect(() => {
+    const view = getViewFromPath(location.pathname);
     const sp = new URLSearchParams(location.search);
-    const pId = sp.get('projectId') || sp.get('project') || null;
+    const pId = view === 'projects' ? (sp.get('projectId') || sp.get('project') || null) : null;
     const tab = sp.get('tab') || 'overview';
+
     if (pId !== activeProjectId) {
       setActiveProjectId(pId);
-      if (pId) setCurrentView('projects');
+      if (!pId) setActiveProjectName(null);
     }
     if (tab !== activeProjectTab) {
       setActiveProjectTab(tab);
     }
-    const v = getViewFromPath(location.pathname);
-    if (v !== currentView && !pId) {
-      setCurrentView(v);
+    if (view !== currentView) {
+      setCurrentView(view);
     }
   }, [location.pathname, location.search, activeProjectId, activeProjectTab, currentView]);
 
   const handleNavigate = (viewId) => {
     setCurrentView(viewId);
     setActiveProjectId(null);
+    setActiveProjectName(null);
     if (currentRole !== 'manager') setCurrentRole('manager');
     if (viewId === 'dashboard') {
       navigate('/manager/dashboard');
@@ -180,7 +188,7 @@ export default function ManagerApp() {
     triggerToast('Form response submitted successfully!');
   };
 
-  // Global Keyboard Shortcuts (Cmd+K / Ctrl+K) & Browser Back/Forward navigation
+  // Global Keyboard Shortcuts (Cmd+K / Ctrl+K)
   useEffect(() => {
     const handleKeyDown = (e) => {
       if ((e.metaKey || e.ctrlKey) && e.key === 'k') {
@@ -194,23 +202,9 @@ export default function ManagerApp() {
       }
     };
 
-    const handlePopState = (e) => {
-      if (e.state?.projectId) {
-        setActiveProjectId(e.state.projectId);
-        setCurrentView('projects');
-      } else {
-        setActiveProjectId(null);
-        if (e.state?.view) {
-          setCurrentView(e.state.view);
-        }
-      }
-    };
-
     window.addEventListener('keydown', handleKeyDown);
-    window.addEventListener('popstate', handlePopState);
     return () => {
       window.removeEventListener('keydown', handleKeyDown);
-      window.removeEventListener('popstate', handlePopState);
     };
   }, []);
 
@@ -298,7 +292,7 @@ export default function ManagerApp() {
 
   const getViewTitle = () => {
     if (currentRole === 'intern') return 'Intern Workstation';
-    if (activeProjectId) {
+    if (currentView === 'projects' && activeProjectId) {
       return activeProjectName || 'Project Workspace';
     }
     switch (currentView) {
@@ -319,6 +313,7 @@ export default function ManagerApp() {
       case 'reports':
         return 'Intern Performance Reports';
       case 'timesheet':
+      case 'timesheets':
         return 'Timesheet & Attendance';
       case 'channels':
         return 'Teams Channel: Forms & Broadcasts';
@@ -329,7 +324,7 @@ export default function ManagerApp() {
 
   const getBreadcrumbs = () => {
     if (currentRole === 'intern') return ['Intern Portal', 'My Workspace'];
-    if (activeProjectId) {
+    if (currentView === 'projects' && activeProjectId) {
       return ['Projects', activeProjectName || 'Project Workspace'];
     }
     const pageLabel =
@@ -342,6 +337,7 @@ export default function ManagerApp() {
         'tech-leads': 'Tech Leads',
         tasks: 'Tasks',
         reports: 'Performance Reports',
+        timesheets: 'Timesheet',
         timesheet: 'Timesheet',
         channels: 'Teams Channel',
       }[currentView] || 'Manager Dashboard';
@@ -375,7 +371,7 @@ export default function ManagerApp() {
           onOpenSearch={() => setIsSearchOpen(true)}
           onOpenAlertModal={() => setIsAlertModalOpen(true)}
           unreadAlertCount={0}
-          onBackClick={activeProjectId ? handleExitProject : null}
+          onBackClick={currentView === 'projects' && activeProjectId ? handleExitProject : null}
           cohorts={cohorts}
           selectedCohortId={selectedCohortId}
           onSelectCohort={handleSelectCohort}
@@ -393,14 +389,14 @@ export default function ManagerApp() {
           className={`flex-1 min-h-0 min-w-0 ${
             currentView === 'channels'
               ? 'p-3 sm:p-4 md:p-5 flex flex-col overflow-hidden h-full'
-              : activeProjectId
+              : (currentView === 'projects' && activeProjectId)
               ? 'px-4 sm:px-6 pb-4 sm:pb-6 pt-0 overflow-y-auto overflow-x-hidden'
               : 'p-4 sm:p-6 overflow-y-auto overflow-x-hidden'
           }`}
         >
           {currentRole === 'intern' ? (
             <InternPortalView onSwitchToManager={() => setCurrentRole('manager')} />
-          ) : activeProjectId ? (
+          ) : (currentView === 'projects' && activeProjectId) ? (
             <ProjectWorkspaceView
               projectId={activeProjectId}
               onBackToDirectory={handleExitProject}
@@ -498,13 +494,11 @@ export default function ManagerApp() {
         onClose={() => setIsSearchOpen(false)}
         onSelectResult={(type, item) => {
           if (type === 'interns') {
-            setActiveProjectId(null);
-            setCurrentView('interns');
+            handleNavigate('interns');
           } else if (type === 'projects') {
             handleSelectProject(item.id);
           } else if (type === 'tasks') {
-            setActiveProjectId(null);
-            setCurrentView('tasks');
+            handleNavigate('tasks');
           }
           triggerToast(`Navigated to ${item.name || item.title}`);
         }}

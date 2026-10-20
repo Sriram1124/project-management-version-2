@@ -61,14 +61,23 @@ export const timesheetService = {
     if (userId) params.set('user_id', userId);
     if (date) params.set('date', date);
     if (filters.status && filters.status !== 'ALL') params.set('status', filters.status);
+    if (filters.priority && filters.priority !== 'ALL') params.set('priority', filters.priority);
     if (filters.time_filter && filters.time_filter !== 'ALL') params.set('time_filter', filters.time_filter);
     if (filters.search && filters.search.trim()) params.set('search', filters.search.trim());
     const qs = params.toString();
     return api.get(`/timesheet/weekly${qs ? `?${qs}` : ''}`);
   },
 
-  getMonthly(userId = null) {
-    return api.get(`/timesheet/monthly${userId ? `?user_id=${encodeURIComponent(userId)}` : ''}`);
+  getMonthly(userId = null, date = null, filters = {}) {
+    const params = new URLSearchParams();
+    if (userId) params.set('user_id', userId);
+    if (date) params.set('date', date);
+    if (filters.status && filters.status !== 'ALL') params.set('status', filters.status);
+    if (filters.priority && filters.priority !== 'ALL') params.set('priority', filters.priority);
+    if (filters.time_filter && filters.time_filter !== 'ALL') params.set('time_filter', filters.time_filter);
+    if (filters.search && filters.search.trim()) params.set('search', filters.search.trim());
+    const qs = params.toString();
+    return api.get(`/timesheet/monthly${qs ? `?${qs}` : ''}`);
   },
 
   getTaskTime(userId = null) {
