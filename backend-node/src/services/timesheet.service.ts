@@ -2352,17 +2352,6 @@ export class TimesheetService {
       });
     }
 
-    if (options.search && options.search.trim()) {
-      const q = options.search.trim();
-      whereClause.AND.push({
-        OR: [
-          { name: { contains: q, mode: 'insensitive' } },
-          { email: { contains: q, mode: 'insensitive' } },
-          { user_code: { contains: q, mode: 'insensitive' } },
-        ],
-      });
-    }
-
     if (options.project_id && options.project_id !== 'ALL') {
       const pId = options.project_id.trim();
       whereClause.AND.push({
@@ -2374,14 +2363,81 @@ export class TimesheetService {
       });
     }
 
+    // Base cohort where clause (WITHOUT search) used for authoritative aggregate summary statistics
+    const cohortWhereClause: any = {
+      organization_id: orgId,
+      is_active: true,
+      AND: [...whereClause.AND],
+    };
+
+    // Table where clause (WITH search filter if provided) used strictly for row rendering and pagination
+    const tableWhereClause: any = {
+      organization_id: orgId,
+      is_active: true,
+      AND: [...whereClause.AND],
+    };
+
+    if (options.search && options.search.trim()) {
+      const q = options.search.trim();
+      tableWhereClause.AND.push({
+        OR: [
+          { name: { contains: q, mode: 'insensitive' } },
+          { email: { contains: q, mode: 'insensitive' } },
+          { user_code: { contains: q, mode: 'insensitive' } },
+        ],
+      });
+    }
+
+    // 1. Calculate Aggregate Statistics for the entire selected cohort & week (independent of search filter)
+    const cohortInterns = await prisma.user.findMany({
+      where: cohortWhereClause,
+      select: { id: true },
+    });
+    const cohortInternIds = cohortInterns.map((u) => u.id);
+    const totalCohortCount = cohortInternIds.length;
+
+    const cohortTimeEntries = cohortInternIds.length > 0
+      ? await prisma.timeEntry.findMany({
+          where: {
+            user_id: { in: cohortInternIds },
+            organization_id: orgId,
+            date: {
+              gte: startOfWeek,
+              lte: endOfWeek,
+            },
+            ...(options.project_id && options.project_id !== 'ALL' ? { project_id: options.project_id.trim() } : {}),
+          },
+          select: {
+            user_id: true,
+            duration_minutes: true,
+          },
+        })
+      : [];
+
+    let cohortOverallLoggedMinutes = 0;
+    const cohortActiveInternIds = new Set<string>();
+
+    for (const entry of cohortTimeEntries) {
+      const dur = Number(entry.duration_minutes) || 0;
+      cohortOverallLoggedMinutes += dur;
+      if (dur > 0 && entry.user_id) {
+        cohortActiveInternIds.add(entry.user_id);
+      }
+    }
+
+    const cohortActiveCount = cohortActiveInternIds.size;
+    const cohortTotalHours = Number((cohortOverallLoggedMinutes / 60).toFixed(1));
+    const cohortAvgMinutesPerActive = cohortActiveCount > 0 ? Math.round(cohortOverallLoggedMinutes / cohortActiveCount) : 0;
+
+    // 2. Fetch paginated intern rows according to search filter
     const page = Math.max(1, Number(options.page) || 1);
     const limit = Math.min(100, Math.max(1, Number(options.limit) || 50));
     const skip = (page - 1) * limit;
 
-    const totalCount = await prisma.user.count({ where: whereClause });
+    const totalCount = await prisma.user.count({ where: tableWhereClause });
 
     const interns = await prisma.user.findMany({
-      where: whereClause,
+      where: tableWhereClause,
       select: {
         id: true,
         name: true,
@@ -2502,11 +2558,11 @@ export class TimesheetService {
         day_dates: dayDateStrings,
       },
       summary: {
-        total_interns: totalCount,
-        active_interns: activeInternsCount,
-        total_logged_minutes: overallLoggedMinutes,
-        total_logged_hours: Number((overallLoggedMinutes / 60).toFixed(1)),
-        avg_logged_minutes_per_active: activeInternsCount > 0 ? Math.round(overallLoggedMinutes / activeInternsCount) : 0,
+        total_interns: totalCohortCount,
+        active_interns: cohortActiveCount,
+        total_logged_minutes: cohortOverallLoggedMinutes,
+        total_logged_hours: cohortTotalHours,
+        avg_logged_minutes_per_active: cohortAvgMinutesPerActive,
       },
       pagination: {
         total: totalCount,

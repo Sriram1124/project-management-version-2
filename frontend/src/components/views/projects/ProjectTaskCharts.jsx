@@ -127,6 +127,15 @@ export default function ProjectTaskCharts({ projectId = null, project = null, me
   const [selectedSprintId, setSelectedSprintId] = useState('ALL');
   const [dateRangeFilter, setDateRangeFilter] = useState('ALL'); // 'ALL' | '7D' | '14D' | '30D' | 'THIS_MONTH'
 
+  // Server Analytics & Raw Items
+  const [analyticsData, setAnalyticsData] = useState(null);
+  const [workItems, setWorkItems] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [isRefreshing, setIsRefreshing] = useState(false);
+  const [error, setError] = useState(null);
+  const analyticsDataRef = useRef(analyticsData);
+  analyticsDataRef.current = analyticsData;
+
   // Determine project methodology
   const isKanban = Boolean(
     project?.methodology === 'KANBAN' || 
@@ -156,15 +165,6 @@ export default function ProjectTaskCharts({ projectId = null, project = null, me
       window.dispatchEvent(new CustomEvent('project-tab-change', { detail: { tab: targetTab } }));
     }
   };
-
-  // Server Analytics & Raw Items
-  const [analyticsData, setAnalyticsData] = useState(null);
-  const [workItems, setWorkItems] = useState([]);
-  const [loading, setLoading] = useState(true);
-  const [isRefreshing, setIsRefreshing] = useState(false);
-  const [error, setError] = useState(null);
-  const analyticsDataRef = useRef(analyticsData);
-  analyticsDataRef.current = analyticsData;
 
   // Effective project members (from props or from backend analytics response)
   const effectiveMembers = useMemo(() => {

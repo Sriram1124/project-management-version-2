@@ -2520,7 +2520,7 @@ export class WorkItemService {
       if (pm.user && !membersMap.has(pm.user.id)) {
         const isLead =
           pm.project_role === 'TECH_LEAD' ||
-          pm.user.roles?.some((r: any) => r.role?.name === 'TECH_LEAD');
+          (pm.user as any).roles?.some((r: any) => r.role?.name === 'TECH_LEAD');
         membersMap.set(pm.user.id, {
           id: pm.user.id,
           user_id: pm.user.id,

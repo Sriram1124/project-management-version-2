@@ -35,6 +35,7 @@ export default function ManagerTimesheetsView({
 
   // Filters State
   const [search, setSearch] = useState('');
+  const [debouncedSearch, setDebouncedSearch] = useState('');
   const [selectedCohort, setSelectedCohort] = useState(() => propCohortId || 'ALL');
   const [selectedProject, setSelectedProject] = useState('ALL');
   const [selectedDate, setSelectedDate] = useState(() => new Date());
@@ -48,11 +49,25 @@ export default function ManagerTimesheetsView({
 
   // Directory Data State
   const [reviewData, setReviewData] = useState(null);
+  // Authoritative cohort summary state (independent of search filter)
+  const [cohortSummary, setCohortSummary] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
 
   // Request sequence ref to prevent stale response overwrite
   const requestSeqRef = useRef(0);
+
+  // Debounce search query so fast keystrokes don't spam requests or cause flickering
+  useEffect(() => {
+    if (!search.trim()) {
+      setDebouncedSearch('');
+      return;
+    }
+    const timer = setTimeout(() => {
+      setDebouncedSearch(search);
+    }, 250);
+    return () => clearTimeout(timer);
+  }, [search]);
 
   // Sync propCohorts if passed
   useEffect(() => {
@@ -110,7 +125,7 @@ export default function ManagerTimesheetsView({
 
       const response = await timesheetService.getManagerReview({
         date: selectedDate.toISOString(),
-        search: search.trim() || undefined,
+        search: debouncedSearch.trim() || undefined,
         cohort_id: selectedCohort !== 'ALL' ? selectedCohort : undefined,
         project_id: selectedProject !== 'ALL' ? selectedProject : undefined,
         page,
@@ -118,6 +133,9 @@ export default function ManagerTimesheetsView({
       });
 
       if (seq !== requestSeqRef.current) return;
+      if (response?.summary) {
+        setCohortSummary(response.summary);
+      }
       setReviewData(response || null);
     } catch (err) {
       if (seq !== requestSeqRef.current) return;
@@ -132,7 +150,7 @@ export default function ManagerTimesheetsView({
           });
           if (seq !== requestSeqRef.current) return;
           const rawUsers = Array.isArray(usersRes) ? usersRes : (usersRes?.users || []);
-          const q = search.trim().toLowerCase();
+          const q = debouncedSearch.trim().toLowerCase();
 
           // Compute week date strings
           const startOfWeek = new Date(selectedDate);
@@ -153,7 +171,8 @@ export default function ManagerTimesheetsView({
             dayDateStrings.push(cur.toISOString().slice(0, 10));
           }
 
-          const filtered = rawUsers
+          // Authoritative cohort users (independent of search query)
+          const cohortUsers = rawUsers
             .filter((u) => u.type === 'INTERN' || !u.type || u.type === 'EMPLOYEE')
             .filter((u) => {
               if (selectedCohort !== 'ALL') {
@@ -164,6 +183,12 @@ export default function ManagerTimesheetsView({
                   u.cohort?.name === selectedCohort;
                 if (!matchCohort) return false;
               }
+              return true;
+            });
+
+          // Table filtered by search query
+          const filtered = cohortUsers
+            .filter((u) => {
               if (!q) return true;
               return (
                 u.name?.toLowerCase().includes(q) ||
@@ -192,19 +217,22 @@ export default function ManagerTimesheetsView({
               })),
             }));
 
+          const fallbackSummary = {
+            total_interns: cohortUsers.length,
+            active_interns: 0,
+            total_logged_minutes: 0,
+            total_logged_hours: 0,
+            avg_logged_minutes_per_active: 0,
+          };
+
+          setCohortSummary(fallbackSummary);
           setReviewData({
             period: {
               start_date: startOfWeek.toISOString().slice(0, 10),
               end_date: endOfWeek.toISOString().slice(0, 10),
               day_dates: dayDateStrings,
             },
-            summary: {
-              total_interns: filtered.length,
-              active_interns: 0,
-              total_logged_minutes: 0,
-              total_logged_hours: 0,
-              avg_logged_minutes_per_active: 0,
-            },
+            summary: fallbackSummary,
             pagination: {
               total: filtered.length,
               page: 1,
@@ -226,7 +254,7 @@ export default function ManagerTimesheetsView({
         setLoading(false);
       }
     }
-  }, [selectedDate, search, selectedCohort, selectedProject, page, limit]);
+  }, [selectedDate, debouncedSearch, selectedCohort, selectedProject, page, limit]);
 
   useEffect(() => {
     loadReviewDirectory();
@@ -255,6 +283,7 @@ export default function ManagerTimesheetsView({
   // Reset all filters (restores active cohort)
   const handleClearFilters = () => {
     setSearch('');
+    setDebouncedSearch('');
     setSelectedCohort(propCohortId || 'ALL');
     setSelectedProject('ALL');
     setSelectedDate(new Date());
@@ -286,13 +315,26 @@ export default function ManagerTimesheetsView({
     );
   }
 
-  const internsList = reviewData?.interns || [];
-  const summary = reviewData?.summary || {
+  const summary = cohortSummary || reviewData?.summary || {
     total_interns: 0,
     active_interns: 0,
     total_logged_hours: 0,
     avg_logged_minutes_per_active: 0,
   };
+
+  // Immediate client-side filtering on current intern list for responsive searching
+  const filteredInterns = useMemo(() => {
+    const list = reviewData?.interns || [];
+    const q = search.trim().toLowerCase();
+    if (!q) return list;
+    return list.filter((intern) => {
+      return (
+        intern.name?.toLowerCase().includes(q) ||
+        intern.email?.toLowerCase().includes(q) ||
+        intern.user_code?.toLowerCase().includes(q)
+      );
+    });
+  }, [reviewData?.interns, search]);
 
   return (
     <div className="space-y-6 text-xs text-slate-800">
@@ -378,7 +420,7 @@ export default function ManagerTimesheetsView({
             <div className="text-2xl font-extrabold text-slate-900 tracking-tight">
               {summary.total_interns}
             </div>
-            <div className="text-[11px] text-slate-400 mt-0.5">In current filter scope</div>
+            <div className="text-[11px] text-slate-400 mt-0.5">In selected cohort</div>
           </div>
         </div>
 
@@ -449,6 +491,7 @@ export default function ManagerTimesheetsView({
                 type="button"
                 onClick={() => {
                   setSearch('');
+                  setDebouncedSearch('');
                   setPage(1);
                 }}
                 className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"
@@ -559,7 +602,7 @@ export default function ManagerTimesheetsView({
                     </td>
                   </tr>
                 ))
-              ) : internsList.length === 0 ? (
+              ) : filteredInterns.length === 0 ? (
                 <tr>
                   <td colSpan={6} className="py-12 text-center text-slate-500">
                     <div className="max-w-sm mx-auto space-y-2">
@@ -586,7 +629,7 @@ export default function ManagerTimesheetsView({
                   </td>
                 </tr>
               ) : (
-                internsList.map((intern) => {
+                filteredInterns.map((intern) => {
                   const avatarUrl = `https://ui-avatars.com/api/?name=${encodeURIComponent(
                     intern.name
                   )}&background=7C3AED&color=fff&size=64`;
@@ -725,7 +768,7 @@ export default function ManagerTimesheetsView({
           <div className="px-4 py-3 bg-slate-50/70 border-t border-slate-200 flex items-center justify-between text-slate-600 text-xs">
             <span>
               Showing Page {reviewData.pagination.page} of {reviewData.pagination.totalPages} (
-              {reviewData.pagination.total} total interns)
+              {search.trim() ? `${filteredInterns.length} matching` : `${reviewData.pagination.total} total`} interns)
             </span>
             <div className="flex items-center gap-1">
               <button
