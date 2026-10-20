@@ -33,7 +33,8 @@ export class FormController {
       const role = user.role || fullUser.role || 'INTERN';
       const userId = fullUser.id || user.id;
 
-      const forms = await FormService.listForms(orgId, role, userId);
+      const cohortId = (req.query.cohort_id as string) || (req.query.cohortId as string) || (req.query.cohort as string) || undefined;
+      const forms = await FormService.listForms(orgId, role, userId, cohortId);
       res.status(200).json({ forms, data: forms });
     } catch (err: any) {
       FormController.handleError(res, err);

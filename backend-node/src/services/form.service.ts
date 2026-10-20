@@ -36,25 +36,32 @@ function normalizeQuestionType(type: any): QuestionType {
 
 export class FormService {
   
-  static async listForms(organizationId?: string, userRole?: string, userId?: string) {
+  static async listForms(organizationId?: string, userRole?: string, userId?: string, cohortId?: string) {
     const where: any = {};
     if (organizationId) {
       where.organization_id = organizationId;
     }
 
+    const memberWhere: any = {
+      organization_id: organizationId,
+      is_active: true,
+      roles: { some: { role: { name: 'INTERN' } } },
+    };
+    if (cohortId && cohortId !== 'ALL' && cohortId !== 'null' && cohortId !== 'undefined') {
+      memberWhere.cohort_id = cohortId;
+    }
+
     const targetInterns = organizationId
-      ? await prisma.user.count({
-          where: {
-            organization_id: organizationId,
-            is_active: true,
-            roles: { some: { role: { name: 'INTERN' } } },
-          },
-        })
+      ? await prisma.user.count({ where: memberWhere })
       : 0;
 
     const totalActiveUsers = organizationId
       ? await prisma.user.count({
-          where: { organization_id: organizationId, is_active: true },
+          where: {
+            organization_id: organizationId,
+            is_active: true,
+            ...(cohortId && cohortId !== 'ALL' && cohortId !== 'null' && cohortId !== 'undefined' ? { cohort_id: cohortId } : {}),
+          },
         })
       : 0;
 

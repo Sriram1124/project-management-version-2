@@ -35,6 +35,7 @@ const ALL_SUBBATCHES = ['A1', 'A2', 'B1', 'B2', 'C1', 'C2', 'D1', 'D2'];
 
 export default function InternsView({ cohorts = [], selectedCohortId = null }) {
   const [users, setUsers] = useState([]);
+  const userReqSeq = useRef(0);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
   const [activeTab, setActiveTab] = useState('ALL'); // 'ALL' | 'ACTIVE' | 'INACTIVE' | 'INTERN'
@@ -81,16 +82,29 @@ export default function InternsView({ cohorts = [], selectedCohortId = null }) {
   }, [isFilterOpen]);
 
   const fetchUsers = () => {
+    const seq = ++userReqSeq.current;
     setLoading(true);
-    usersService.getUsers(activeTab)
-      .then((data) => setUsers(data?.users || []))
+    usersService.getUsers(activeTab, selectedCohortId)
+      .then((data) => {
+        if (seq !== userReqSeq.current) return;
+        setUsers(data?.users || []);
+      })
       .catch((err) => console.error('Failed to load users:', err))
-      .finally(() => setLoading(false));
+      .finally(() => {
+        if (seq === userReqSeq.current) setLoading(false);
+      });
   };
 
   useEffect(() => {
     fetchUsers();
-  }, [activeTab]);
+  }, [activeTab, selectedCohortId]);
+
+  // Clear selections and reset to page 1 on cohort change
+  useEffect(() => {
+    setSelectedUserIds(new Set());
+    setIsAllAcrossPagesSelected(false);
+    setCurrentPage(1);
+  }, [selectedCohortId]);
 
   // Reset pagination when search, activeTab, or subbatch filters change
   useEffect(() => {
@@ -137,6 +151,16 @@ export default function InternsView({ cohorts = [], selectedCohortId = null }) {
 
   // Filter users by subbatch selections and search query
   const filteredUsers = users.filter((u) => {
+    // Cohort filter
+    if (selectedCohortId && selectedCohortId !== 'ALL') {
+      const matchCohort =
+        u.cohort_id === selectedCohortId ||
+        u.cohort?.id === selectedCohortId ||
+        u.cohort?.code === selectedCohortId ||
+        u.cohort?.name === selectedCohortId;
+      if (!matchCohort) return false;
+    }
+
     // Subbatch filter (OR logic between selected subbatches)
     if (selectedSubbatches.size > 0) {
       const uSubbatch = (u.subbatch || '').trim().toUpperCase();

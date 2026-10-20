@@ -897,9 +897,6 @@ export default function ProjectRoadmapTab({
     setAssigneeFilter('ALL');
   };
 
-  const ownerName = project?.owner
-    ? project.owner.name || project.owner.email
-    : 'Project Lead';
 
   if (loading && workItems.length === 0 && sprints.length === 0) {
     return (
@@ -928,10 +925,7 @@ export default function ProjectRoadmapTab({
               }`}>
                 {isKanban ? 'Kanban Deliverables Roadmap' : 'Scrum Deliverables Roadmap'}
               </span>
-              <span className="text-slate-300">•</span>
-              <span className="text-xs text-slate-500 font-medium">
-                Lead: <strong className="text-slate-700 font-semibold">{ownerName}</strong>
-              </span>
+
               <span className="text-slate-300">•</span>
               <span className="text-xs text-slate-500 font-medium">
                 Methodology: <strong className={isKanban ? 'text-indigo-700 font-semibold' : 'text-purple-700 font-semibold'}>{isKanban ? 'Kanban (Flow)' : 'Scrum (Sprints)'}</strong>

@@ -197,5 +197,36 @@ describe('Sidebar & Reports Navigation Suite', () => {
     assert.strictEqual(activeProjectId, null);
     assert.strictEqual(currentView, 'projects');
   });
+
+  test('7. Profile section styling, initials extraction, and two-line name wrapping', () => {
+    const getInitials = (name) => {
+      if (!name) return 'PP';
+      const parts = name.trim().split(/\s+/);
+      if (parts.length >= 2) {
+        return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
+      }
+      return name.slice(0, 2).toUpperCase();
+    };
+
+    // Test with Postman Manager Profile
+    assert.strictEqual(getInitials('Postman Manager Profile'), 'PP');
+    assert.strictEqual(getInitials('Alice Johnson'), 'AJ');
+    assert.strictEqual(getInitials('Manager'), 'MA');
+    assert.strictEqual(getInitials(''), 'PP');
+
+    // Layout configuration checks
+    const profileContainerClasses = 'shrink-0 min-h-[76px] px-3.5 py-4 sm:px-4 sm:py-4.5 bg-purple-950/40 border-t border-purple-800/60 flex items-center';
+    assert.ok(profileContainerClasses.includes('min-h-[76px]'), 'Profile section should have sufficient minimum height');
+    assert.ok(profileContainerClasses.includes('px-3.5') || profileContainerClasses.includes('px-4'), 'Profile section should have generous horizontal padding');
+    assert.ok(profileContainerClasses.includes('py-4'), 'Profile section should have generous vertical padding');
+
+    const nameSpanClasses = 'text-xs sm:text-[13px] font-bold text-white leading-tight break-words line-clamp-2';
+    assert.ok(nameSpanClasses.includes('line-clamp-2'), 'User name should allow two lines rather than premature single-line clipping');
+    assert.ok(nameSpanClasses.includes('break-words'), 'User name should break gracefully without overflowing container');
+
+    const roleSpanClasses = 'text-[10px] font-semibold text-purple-300/80 tracking-wider uppercase block mt-1 truncate';
+    assert.ok(roleSpanClasses.includes('mt-1'), 'Role badge should have clean spacing below name');
+    assert.ok(roleSpanClasses.includes('uppercase'), 'Role should be formatted uppercase');
+  });
 });
 

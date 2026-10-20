@@ -42,6 +42,7 @@ export default function TeamsChannelView({
   const [isPostModalOpen, setIsPostModalOpen] = useState(false);
   
   const [forms, setForms] = useState([]);
+  const formsReqSeq = React.useRef(0);
   const [selectedFormForView, setSelectedFormForView] = useState(null);
   const [selectedFormBuilder, setSelectedFormBuilder] = useState(null);
   const [selectedFormForEdit, setSelectedFormForEdit] = useState(null);
@@ -77,8 +78,10 @@ export default function TeamsChannelView({
   };
 
   const loadForms = async () => {
+    const seq = ++formsReqSeq.current;
     try {
-      const data = await formsService.getForms();
+      const data = await formsService.getForms(selectedCohortId);
+      if (seq !== formsReqSeq.current) return;
       setForms(data);
       loadOverdueStats();
     } catch (e) {

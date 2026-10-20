@@ -61,8 +61,16 @@ const HEALTH_CONFIG = {
     text: 'text-rose-700',
     riskText: 'text-rose-700 font-bold',
   },
+  NOT_ASSESSED: {
+    label: 'Not Assessed',
+    badge: 'text-slate-600 bg-slate-100 border-slate-200/80 shadow-2xs',
+    dot: 'bg-slate-400',
+    bar: 'bg-slate-300',
+    text: 'text-slate-500',
+    riskText: 'text-slate-500',
+  },
   INSUFFICIENT_DATA: {
-    label: 'Insufficient Data',
+    label: 'Not Assessed',
     badge: 'text-slate-600 bg-slate-100 border-slate-200/80 shadow-2xs',
     dot: 'bg-slate-400',
     bar: 'bg-slate-300',
@@ -130,7 +138,7 @@ function ProjectHealthDetailsModal({ project, leadName, onClose, onSelectProject
               </div>
               <div className="flex items-baseline gap-2 mt-1">
                 <span className="text-3xl font-extrabold text-slate-900">
-                  {project.health_score !== null ? `${project.health_score}/100` : '—'}
+                  {project.health_score !== null && project.health_score !== undefined ? `${project.health_score}%` : 'Not Assessed'}
                 </span>
                 <span className={`inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-bold border ${meta.badge}`}>
                   <span className={`w-1.5 h-1.5 rounded-full ${meta.dot}`} />
@@ -171,7 +179,7 @@ function ProjectHealthDetailsModal({ project, leadName, onClose, onSelectProject
             <div className="flex items-center justify-between text-xs font-medium text-slate-600">
               <span>Overall Delivery Health:</span>
               <span className="font-bold text-slate-800">
-                {project.health_score !== null ? `${project.health_score}%` : 'Not Assessed'}
+                {project.health_score !== null && project.health_score !== undefined ? `${project.health_score}% · ${project.health_label || meta.label}` : 'Not Assessed'}
               </span>
             </div>
             <div className="w-full bg-slate-100 rounded-full h-2 overflow-hidden shadow-inner">
@@ -673,13 +681,19 @@ export default function TechLeadsView({ onRebalanceLead, onSelectProject }) {
                       <div className="space-y-2.5 max-h-52 overflow-y-auto pr-1">
                         {lead.projects.map((proj) => {
                           const projMeta = getHealthMeta(proj.health);
+                          const isProjNotAssessed =
+                            proj.health === 'NOT_ASSESSED' ||
+                            proj.health === 'INSUFFICIENT_DATA' ||
+                            !proj.has_estimated_work ||
+                            proj.health_score === null ||
+                            proj.health_score === undefined;
 
                           return (
                             <div
                               key={proj.id}
                               className="p-3 rounded-xl bg-slate-50/90 border border-slate-200/80 hover:border-purple-300 transition-all space-y-2"
                             >
-                              {/* Top Line: Project Name + Health Score Pill + Health Details Button */}
+                              {/* Top Line: Project Name + Schedule/Risk Indicators + Health Details Button */}
                               <div className="flex items-start justify-between gap-2">
                                 <div className="min-w-0 flex-1">
                                   <div className="flex items-center gap-1.5 flex-wrap">
@@ -693,14 +707,8 @@ export default function TechLeadsView({ onRebalanceLead, onSelectProject }) {
                                     )}
                                   </div>
 
-                                  {/* Health Score & Status & Schedule Pills */}
+                                  {/* Schedule & Risk Context (Health score badge removed beside project name) */}
                                   <div className="flex items-center gap-1.5 mt-1 flex-wrap text-[10px]">
-                                    <span className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded-md font-bold text-[10px] border ${projMeta.badge}`}>
-                                      <Activity className="w-2.5 h-2.5" />
-                                      <span>{proj.health_score !== null ? `${proj.health_score}/100` : '—'}</span>
-                                      <span className="opacity-90">· {proj.health_label || projMeta.label}</span>
-                                    </span>
-
                                     <span className="text-slate-400 text-[10px]">
                                       Risk: <strong className={projMeta.riskText}>{proj.risk_level || 'N/A'}</strong>
                                     </span>
@@ -713,6 +721,12 @@ export default function TechLeadsView({ onRebalanceLead, onSelectProject }) {
                                     }`}>
                                       {proj.schedule_label || 'On Track'}
                                     </span>
+
+                                    {proj.reasons && proj.reasons.length > 0 && (
+                                      <span className="text-slate-400 truncate max-w-[200px]" title={proj.reasons[0]}>
+                                        · {proj.reasons[0]}
+                                      </span>
+                                    )}
                                   </div>
                                 </div>
 
@@ -728,39 +742,25 @@ export default function TechLeadsView({ onRebalanceLead, onSelectProject }) {
                                 </button>
                               </div>
 
-                              {/* Progress Bar of Completion */}
+                              {/* Health Score & Classification + Proportional Health Progress Bar */}
                               <div className="space-y-1">
                                 <div className="flex items-center justify-between text-[10px] font-medium text-slate-600">
                                   <span>
-                                    {(proj.total_sp > 0 || proj.total_points > 0) ? (
-                                      <>Progress: {proj.completed_sp ?? proj.completed_points}/{proj.total_sp ?? proj.total_points} SP</>
+                                    {proj.has_estimated_work && (proj.total_sp > 0 || proj.total_points > 0) ? (
+                                      <>Delivery: {proj.completed_sp ?? proj.completed_points}/{proj.total_sp ?? proj.total_points} SP</>
                                     ) : (
-                                      <>Progress: {proj.completed_tasks}/{proj.total_tasks} tasks</>
+                                      <>Delivery: {proj.completed_tasks}/{proj.total_tasks} tasks</>
                                     )}
                                   </span>
-                                  <span className="font-bold text-slate-800">
-                                    {(proj.progress_percentage !== null && proj.progress_percentage !== undefined)
-                                      ? `${proj.progress_percentage}%`
-                                      : (proj.total_sp > 0 || proj.total_points > 0)
-                                      ? `${Math.round(((proj.completed_sp ?? proj.completed_points) / (proj.total_sp ?? proj.total_points)) * 100)}%`
-                                      : `${proj.completion_rate}%`}
+                                  <span className={`font-bold ${isProjNotAssessed ? 'text-slate-500' : projMeta.text}`}>
+                                    {isProjNotAssessed ? 'Not Assessed' : `${proj.health_score}% · ${proj.health_label || projMeta.label}`}
                                   </span>
                                 </div>
                                 <div className="w-full bg-slate-200/80 rounded-full h-1.5 overflow-hidden">
                                   <div
-                                    className={`h-full rounded-full transition-all duration-300 ${projMeta.bar}`}
+                                    className={`h-full rounded-full transition-all duration-300 ${isProjNotAssessed ? 'bg-slate-300' : projMeta.bar}`}
                                     style={{
-                                      width: `${Math.min(
-                                        100,
-                                        Math.max(
-                                          0,
-                                          proj.progress_percentage !== null && proj.progress_percentage !== undefined
-                                            ? proj.progress_percentage
-                                            : (proj.total_sp > 0 || proj.total_points > 0)
-                                            ? Math.round(((proj.completed_sp ?? proj.completed_points) / (proj.total_sp ?? proj.total_points)) * 100)
-                                            : (proj.completion_rate || 0)
-                                        )
-                                      )}%`
+                                      width: `${isProjNotAssessed ? 0 : Math.min(100, Math.max(0, proj.health_score))}%`
                                     }}
                                   />
                                 </div>

@@ -242,7 +242,9 @@ export class TimesheetController {
   static async getManagerTimesheetsReview(req: Request, res: Response) {
     try {
       const user = (req as any).fullUser;
-      const { date, search, cohort_id, project_id, page, limit } = req.query as Record<string, string | undefined>;
+      const { date, search, page, limit } = req.query as Record<string, string | undefined>;
+      const cohort_id = (req.query.cohort_id || req.query.cohortId || req.query.cohort) as string | undefined;
+      const project_id = (req.query.project_id || req.query.projectId || req.query.project) as string | undefined;
       const review = await TimesheetService.getManagerTimesheetsReview(user, {
         date,
         search,

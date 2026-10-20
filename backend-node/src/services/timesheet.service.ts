@@ -2314,40 +2314,64 @@ export class TimesheetService {
     const whereClause: any = {
       organization_id: orgId,
       is_active: true,
-      roles: {
-        some: {
-          role: {
-            name: { in: ['INTERN', 'EMPLOYEE'] }
-          }
-        }
-      }
+      AND: [
+        {
+          OR: [
+            {
+              roles: {
+                some: {
+                  role: {
+                    name: { in: ['INTERN', 'EMPLOYEE'] },
+                  },
+                },
+              },
+            },
+            {
+              roles: {
+                none: {
+                  role: {
+                    name: { in: ['MANAGER', 'ADMIN', 'SUPER_ADMIN', 'TECH_LEAD'] },
+                  },
+                },
+              },
+            },
+          ],
+        },
+      ],
     };
 
-    if (options.cohort_id && options.cohort_id !== 'ALL') {
-      whereClause.cohort_id = options.cohort_id.trim();
+    if (options.cohort_id && options.cohort_id !== 'ALL' && options.cohort_id !== 'null' && options.cohort_id !== 'undefined') {
+      const cohortId = options.cohort_id.trim();
+      whereClause.AND.push({
+        OR: [
+          { cohort_id: cohortId },
+          { cohort: { id: cohortId } },
+          { cohort: { code: cohortId } },
+          { cohort: { name: cohortId } },
+        ],
+      });
     }
 
     if (options.search && options.search.trim()) {
       const q = options.search.trim();
-      whereClause.OR = [
-        { name: { contains: q, mode: 'insensitive' } },
-        { email: { contains: q, mode: 'insensitive' } },
-        { user_code: { contains: q, mode: 'insensitive' } },
-      ];
+      whereClause.AND.push({
+        OR: [
+          { name: { contains: q, mode: 'insensitive' } },
+          { email: { contains: q, mode: 'insensitive' } },
+          { user_code: { contains: q, mode: 'insensitive' } },
+        ],
+      });
     }
 
     if (options.project_id && options.project_id !== 'ALL') {
       const pId = options.project_id.trim();
-      whereClause.AND = [
-        ...(whereClause.AND || []),
-        {
-          OR: [
-            { project_memberships: { some: { project_id: pId } } },
-            { work_item_assignments: { some: { work_item: { project_id: pId } } } },
-            { time_entries: { some: { project_id: pId } } },
-          ],
-        },
-      ];
+      whereClause.AND.push({
+        OR: [
+          { project_memberships: { some: { project_id: pId } } },
+          { work_item_assignments: { some: { work_item: { project_id: pId } } } },
+          { time_entries: { some: { project_id: pId } } },
+        ],
+      });
     }
 
     const page = Math.max(1, Number(options.page) || 1);

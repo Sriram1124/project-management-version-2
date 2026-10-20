@@ -442,22 +442,25 @@ export default function InternApp({ onLogout, onSelectProject, onToast }) {
         </div>
 
         {/* Bottom Account Area */}
-        <div className="shrink-0 p-3 bg-purple-950/40 border-t border-purple-800/60">
-          <div className="flex items-center justify-between gap-2.5">
+        <div className="shrink-0 min-h-[76px] px-3.5 py-4 sm:px-4 sm:py-4.5 bg-purple-950/40 border-t border-purple-800/60 flex items-center">
+          <div className="flex items-center justify-between gap-2.5 w-full">
             <button
               type="button"
               onClick={() => handleTabChange('profile')}
-              className="flex items-center gap-2.5 flex-1 min-w-0 text-left rounded-lg transition-colors group cursor-pointer"
+              className="flex items-center gap-2.5 sm:gap-3 flex-1 min-w-0 text-left rounded-lg transition-colors group cursor-pointer"
               title="View Profile (/intern/profile)"
             >
-              <div className="w-9 h-9 rounded-xl bg-purple-600 border border-purple-400/30 flex items-center justify-center text-white font-bold text-xs tracking-wider shrink-0 shadow-2xs">
+              <div className="w-10 h-10 rounded-xl bg-purple-600 border border-purple-400/30 flex items-center justify-center text-white font-bold text-xs sm:text-sm tracking-wider shrink-0 shadow-2xs group-hover:bg-purple-500 transition-colors">
                 {getInitials(displayName)}
               </div>
-              <div className="flex flex-col leading-tight min-w-0 flex-1">
-                <span className="text-xs font-bold text-white truncate block">
+              <div className="flex flex-col justify-center leading-tight min-w-0 flex-1">
+                <span 
+                  className="text-xs sm:text-[13px] font-bold text-white leading-tight break-words line-clamp-2"
+                  title={displayName}
+                >
                   {displayName}
                 </span>
-                <span className="text-[10px] font-semibold text-purple-300/70 tracking-wider uppercase block mt-0.5">
+                <span className="text-[10px] font-semibold text-purple-300/80 tracking-wider uppercase block mt-1 truncate">
                   {displayRole.toUpperCase()}
                 </span>
               </div>
@@ -467,9 +470,10 @@ export default function InternApp({ onLogout, onSelectProject, onToast }) {
               type="button"
               onClick={onLogout}
               title="Sign Out / Switch Login"
-              className="p-1.5 rounded-lg text-purple-300/80 hover:text-white hover:bg-white/5 transition-colors shrink-0 cursor-pointer"
+              className="p-2 rounded-xl text-purple-300/80 hover:text-white hover:bg-white/10 transition-colors shrink-0 cursor-pointer flex items-center justify-center ml-1 focus:outline-none"
+              aria-label="Log out"
             >
-              <LogOut className="w-4 h-4" />
+              <LogOut className="w-4 h-4 shrink-0" />
             </button>
           </div>
         </div>

@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import {
   Clock,
   Search,
@@ -24,17 +24,22 @@ import { cohortsService } from '../../services/cohorts.service';
 import TimesheetView from './TimesheetView';
 import { getCalendarWeekRange, toLocalDateString, formatMinutes } from '../../utils/dateUtils';
 
-export default function ManagerTimesheetsView({ onToast, cohorts: propCohorts = [], selectedCohortId: propCohortId = null }) {
+export default function ManagerTimesheetsView({
+  onToast,
+  cohorts: propCohorts = [],
+  selectedCohortId: propCohortId = null,
+  onSelectCohort = null,
+}) {
   // Navigation / Selection State
   const [selectedIntern, setSelectedIntern] = useState(null);
 
   // Filters State
   const [search, setSearch] = useState('');
-  const [selectedCohort, setSelectedCohort] = useState('ALL');
+  const [selectedCohort, setSelectedCohort] = useState(() => propCohortId || 'ALL');
   const [selectedProject, setSelectedProject] = useState('ALL');
   const [selectedDate, setSelectedDate] = useState(() => new Date());
   const [page, setPage] = useState(1);
-  const limit = 50;
+  const limit = 100;
 
   // Metadata Dropdowns
   const [cohorts, setCohorts] = useState(propCohorts);
@@ -46,12 +51,24 @@ export default function ManagerTimesheetsView({ onToast, cohorts: propCohorts = 
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
 
+  // Request sequence ref to prevent stale response overwrite
+  const requestSeqRef = useRef(0);
+
   // Sync propCohorts if passed
   useEffect(() => {
     if (propCohorts && propCohorts.length > 0) {
       setCohorts(propCohorts);
     }
   }, [propCohorts]);
+
+  // Synchronize selectedCohort when propCohortId changes
+  useEffect(() => {
+    if (propCohortId && propCohortId !== selectedCohort) {
+      setSelectedCohort(propCohortId);
+      setPage(1);
+      setSelectedIntern(null);
+    }
+  }, [propCohortId]);
 
   // Load cohorts and projects for filters
   useEffect(() => {
@@ -86,6 +103,7 @@ export default function ManagerTimesheetsView({ onToast, cohorts: propCohorts = 
 
   // Fetch Intern Timesheets Directory
   const loadReviewDirectory = useCallback(async () => {
+    const seq = ++requestSeqRef.current;
     try {
       setLoading(true);
       setError('');
@@ -99,8 +117,11 @@ export default function ManagerTimesheetsView({ onToast, cohorts: propCohorts = 
         limit,
       });
 
+      if (seq !== requestSeqRef.current) return;
       setReviewData(response || null);
     } catch (err) {
+      if (seq !== requestSeqRef.current) return;
+
       console.warn('Timesheet review endpoint unavailable, attempting fallback via users directory:', err);
 
       // Fallback if /review route is not deployed on the backend yet
@@ -109,6 +130,7 @@ export default function ManagerTimesheetsView({ onToast, cohorts: propCohorts = 
           const usersRes = await projectsService.getUsers({
             cohort_id: selectedCohort !== 'ALL' ? selectedCohort : undefined,
           });
+          if (seq !== requestSeqRef.current) return;
           const rawUsers = Array.isArray(usersRes) ? usersRes : (usersRes?.users || []);
           const q = search.trim().toLowerCase();
 
@@ -134,6 +156,14 @@ export default function ManagerTimesheetsView({ onToast, cohorts: propCohorts = 
           const filtered = rawUsers
             .filter((u) => u.type === 'INTERN' || !u.type || u.type === 'EMPLOYEE')
             .filter((u) => {
+              if (selectedCohort !== 'ALL') {
+                const matchCohort =
+                  u.cohort_id === selectedCohort ||
+                  u.cohort?.id === selectedCohort ||
+                  u.cohort?.code === selectedCohort ||
+                  u.cohort?.name === selectedCohort;
+                if (!matchCohort) return false;
+              }
               if (!q) return true;
               return (
                 u.name?.toLowerCase().includes(q) ||
@@ -178,8 +208,8 @@ export default function ManagerTimesheetsView({ onToast, cohorts: propCohorts = 
             pagination: {
               total: filtered.length,
               page: 1,
-              limit: 50,
-              totalPages: 1,
+              limit,
+              totalPages: Math.ceil(filtered.length / limit) || 1,
             },
             interns: filtered,
           });
@@ -192,9 +222,11 @@ export default function ManagerTimesheetsView({ onToast, cohorts: propCohorts = 
 
       setError(err?.message || 'Unable to load intern timesheets directory. Please check your permissions.');
     } finally {
-      setLoading(false);
+      if (seq === requestSeqRef.current) {
+        setLoading(false);
+      }
     }
-  }, [selectedDate, search, selectedCohort, selectedProject, page]);
+  }, [selectedDate, search, selectedCohort, selectedProject, page, limit]);
 
   useEffect(() => {
     loadReviewDirectory();
@@ -220,10 +252,10 @@ export default function ManagerTimesheetsView({ onToast, cohorts: propCohorts = 
     setPage(1);
   };
 
-  // Reset all filters
+  // Reset all filters (restores active cohort)
   const handleClearFilters = () => {
     setSearch('');
-    setSelectedCohort('ALL');
+    setSelectedCohort(propCohortId || 'ALL');
     setSelectedProject('ALL');
     setSelectedDate(new Date());
     setPage(1);
@@ -232,7 +264,7 @@ export default function ManagerTimesheetsView({ onToast, cohorts: propCohorts = 
 
   const isFiltered = Boolean(
     search.trim() || 
-    selectedCohort !== 'ALL' || 
+    (propCohortId ? selectedCohort !== propCohortId : selectedCohort !== 'ALL') || 
     selectedProject !== 'ALL'
   );
 
@@ -431,8 +463,12 @@ export default function ManagerTimesheetsView({ onToast, cohorts: propCohorts = 
             <select
               value={selectedCohort}
               onChange={(e) => {
-                setSelectedCohort(e.target.value);
+                const val = e.target.value;
+                setSelectedCohort(val);
                 setPage(1);
+                if (val !== 'ALL' && onSelectCohort) {
+                  onSelectCohort(val);
+                }
               }}
               className="w-full px-3 py-2 rounded-xl border border-slate-200 bg-white text-xs font-medium text-slate-800 focus:outline-none focus:border-purple-600 cursor-pointer"
             >

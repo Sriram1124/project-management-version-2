@@ -1400,8 +1400,19 @@ export class UserService {
       },
     };
 
-    if (cohortFilter && cohortFilter.trim()) {
-      whereClause.cohort_id = cohortFilter.trim();
+    if (cohortFilter && cohortFilter.trim() && cohortFilter !== 'ALL') {
+      const cVal = cohortFilter.trim();
+      whereClause.AND = [
+        ...(whereClause.AND || []),
+        {
+          OR: [
+            { cohort_id: cVal },
+            { cohort: { id: cVal } },
+            { cohort: { code: cVal } },
+            { cohort: { name: cVal } },
+          ],
+        },
+      ];
     }
 
     if (searchQuery && searchQuery.trim()) {

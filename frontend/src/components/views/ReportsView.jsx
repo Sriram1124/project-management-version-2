@@ -147,6 +147,7 @@ export default function ReportsView({ onToast, selectedCohort, selectedCohortId 
   }, [selectedCohortId, selectedProjectId, selectedScope, loadAnalytics]);
 
   useEffect(() => {
+    setProjectHealthData(null);
     fetchEntitiesAndReport();
   }, [fetchEntitiesAndReport]);
 

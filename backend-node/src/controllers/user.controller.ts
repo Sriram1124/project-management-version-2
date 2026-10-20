@@ -310,7 +310,7 @@ export class UserController {
       const typeFilter = req.query.type as string | undefined;
       const search = (req.query.search || req.query.q) as string | undefined;
       const batch = req.query.batch as string | undefined;
-      const cohort = (req.query.cohort_id || req.query.cohort) as string | undefined;
+      const cohort = (req.query.cohort_id || req.query.cohortId || req.query.cohort) as string | undefined;
       const users = await UserService.listUsers(managerOrgId, typeFilter, search, batch, cohort);
 
       res.status(200).json({ users, data: users });

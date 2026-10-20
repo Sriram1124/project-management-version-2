@@ -11,7 +11,7 @@ import {
 
 const HEALTH_CONFIG = {
   HEALTHY: {
-    label: 'HEALTHY',
+    label: 'Healthy',
     icon: CheckCircle2,
     badgeBg: 'bg-emerald-50 text-emerald-700 border-emerald-200/90 shadow-2xs',
     iconBg: 'bg-emerald-100 text-emerald-600 border-emerald-200/80',
@@ -21,7 +21,7 @@ const HEALTH_CONFIG = {
     dotColor: 'bg-emerald-500',
   },
   NEEDS_ATTENTION: {
-    label: 'NEEDS ATTENTION',
+    label: 'Needs Attention',
     icon: AlertTriangle,
     badgeBg: 'bg-amber-50 text-amber-700 border-amber-200/90 shadow-2xs',
     iconBg: 'bg-amber-100 text-amber-600 border-amber-200/80',
@@ -31,7 +31,7 @@ const HEALTH_CONFIG = {
     dotColor: 'bg-amber-500',
   },
   AT_RISK: {
-    label: 'AT RISK',
+    label: 'At Risk',
     icon: AlertTriangle,
     badgeBg: 'bg-orange-50 text-orange-700 border-orange-200/90 shadow-2xs',
     iconBg: 'bg-orange-100 text-orange-600 border-orange-200/80',
@@ -41,7 +41,7 @@ const HEALTH_CONFIG = {
     dotColor: 'bg-orange-500',
   },
   CRITICAL: {
-    label: 'CRITICAL',
+    label: 'Critical',
     icon: AlertOctagon,
     badgeBg: 'bg-rose-50 text-rose-700 border-rose-200/90 shadow-2xs',
     iconBg: 'bg-rose-100 text-rose-600 border-rose-200/80',
@@ -51,13 +51,13 @@ const HEALTH_CONFIG = {
     dotColor: 'bg-rose-500',
   },
   NOT_ASSESSED: {
-    label: 'NOT ASSESSED',
+    label: 'Not Assessed',
     icon: HelpCircle,
     badgeBg: 'bg-slate-100 text-slate-600 border-slate-200 shadow-2xs',
     iconBg: 'bg-slate-100 text-slate-400 border-slate-200/80',
     borderAccent: 'border-l-slate-300',
     barColor: 'bg-slate-300',
-    percentColor: 'text-slate-400',
+    percentColor: 'text-slate-500',
     dotColor: 'bg-slate-400',
   },
 };
@@ -195,7 +195,8 @@ export default function ProjectHealth({
                 proj.health === 'NOT_ASSESSED' ||
                 proj.health === 'INSUFFICIENT_DATA' ||
                 !proj.has_estimated_work ||
-                proj.progress_percentage === null;
+                proj.health_score === null ||
+                proj.health_score === undefined;
 
               return (
                 <div
@@ -203,7 +204,7 @@ export default function ProjectHealth({
                   onClick={() => onSelectProject?.(proj.id, proj.name)}
                   className={`group relative p-4 sm:p-5 rounded-xl border border-slate-200/80 hover:border-violet-300 bg-white hover:bg-violet-50/20 transition-all cursor-pointer shadow-2xs hover:shadow-xs flex flex-col md:flex-row md:items-center justify-between gap-4 border-l-4 ${config.borderAccent}`}
                 >
-                  {/* Left Side: Prominent Icon + Name + Badge + Primary Reason + Supporting Signals */}
+                  {/* Left Side: Prominent Icon + Name + Primary Reason + Supporting Signals */}
                   <div className="flex items-start gap-3.5 min-w-0 flex-1">
                     {/* Prominent colored health icon */}
                     <div className={`w-11 h-11 rounded-xl flex items-center justify-center shrink-0 border shadow-2xs ${config.iconBg}`}>
@@ -211,15 +212,16 @@ export default function ProjectHealth({
                     </div>
 
                     <div className="space-y-1.5 min-w-0 flex-1">
-                      {/* Project Name & Prominent Health Badge */}
+                      {/* Project Name (Score badge removed beside project name) */}
                       <div className="flex items-center gap-2.5 flex-wrap">
                         <span className="text-base font-bold text-slate-900 group-hover:text-purple-700 transition-colors truncate">
                           {proj.name}
                         </span>
-                        <span className={`inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[11px] font-bold tracking-wide border ${config.badgeBg}`}>
-                          <span className={`w-1.5 h-1.5 rounded-full ${config.dotColor}`} />
-                          <span>{proj.health_score !== null && proj.health_score !== undefined ? `${proj.health_score}/100 · ` : ''}{config.label}</span>
-                        </span>
+                        {proj.status && (
+                          <span className="text-[10px] font-semibold text-slate-500 bg-slate-100 px-2 py-0.5 rounded uppercase">
+                            {proj.status}
+                          </span>
+                        )}
                       </div>
 
                       {/* Concise explanation of the primary health reason */}
@@ -227,7 +229,7 @@ export default function ProjectHealth({
                         {primaryReason}
                       </p>
 
-                      {/* Supporting Signals */}
+                      {/* Supporting Signals / Story-point Delivery Summary */}
                       <div className="flex items-center gap-2 text-[11px] text-slate-500 flex-wrap pt-0.5">
                         {proj.has_estimated_work ? (
                           <>
@@ -276,23 +278,33 @@ export default function ProjectHealth({
                     </div>
                   </div>
 
-                  {/* Right Side: Large Completion Percentage + Progress Bar + Navigation Chevron */}
+                  {/* Right Side: Health Score & Classification + Proportional Health Progress Bar + Navigation Chevron */}
                   <div className="flex items-center justify-between md:justify-end gap-5 shrink-0 pt-2 md:pt-0 border-t md:border-t-0 border-slate-100">
-                    <div className="flex flex-col items-start md:items-end gap-1.5 min-w-[140px]">
+                    <div className="flex flex-col items-start md:items-end gap-1.5 min-w-[150px] sm:min-w-[170px]">
+                      {/* Health percentage and classification header */}
                       <div className="flex items-baseline gap-1.5">
-                        <span className={`text-2xl font-bold tracking-tight ${config.percentColor}`}>
-                          {isNotAssessed ? '—' : `${proj.progress_percentage}%`}
-                        </span>
-                        <span className="text-xs font-medium text-slate-400">
-                          completed
-                        </span>
+                        {isNotAssessed ? (
+                          <span className="text-sm sm:text-base font-bold tracking-tight text-slate-500">
+                            Not Assessed
+                          </span>
+                        ) : (
+                          <>
+                            <span className={`text-xl sm:text-2xl font-extrabold tracking-tight ${config.percentColor}`}>
+                              {proj.health_score}%
+                            </span>
+                            <span className="text-slate-400 font-medium text-xs">·</span>
+                            <span className={`text-xs sm:text-sm font-bold ${config.percentColor}`}>
+                              {config.label}
+                            </span>
+                          </>
+                        )}
                       </div>
 
-                      {/* Compact Progress Bar */}
-                      <div className="w-32 sm:w-36 bg-slate-100 rounded-full h-2 overflow-hidden shadow-inner">
+                      {/* Proportional Health Progress Bar */}
+                      <div className="w-32 sm:w-40 bg-slate-100 rounded-full h-2 overflow-hidden shadow-inner">
                         <div
-                          className={`h-full rounded-full transition-all duration-500 ${config.barColor}`}
-                          style={{ width: `${isNotAssessed ? 0 : proj.progress_percentage}%` }}
+                          className={`h-full rounded-full transition-all duration-500 ${isNotAssessed ? 'bg-slate-300' : config.barColor}`}
+                          style={{ width: `${isNotAssessed ? 0 : Math.min(100, Math.max(0, proj.health_score))}%` }}
                         />
                       </div>
                     </div>

@@ -458,6 +458,7 @@ export default function ManagerApp() {
                   onToast={triggerToast}
                   cohorts={cohorts}
                   selectedCohortId={selectedCohortId}
+                  onSelectCohort={handleSelectCohort}
                 />
               )}
               {currentView === 'channels' && (

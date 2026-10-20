@@ -24,9 +24,10 @@ export default function ManagerDashboardView({
   const [healthOverview, setHealthOverview] = useState(null);
   const [loading, setLoading] = useState(true);
   const [healthLoading, setHealthLoading] = useState(true);
+  const cohortReqSeq = React.useRef(0);
 
   // If Cohort 2 is selected, render the clean future/empty state
-  const isFutureCohort = selectedCohort?.code === 'cohort-2' || (selectedCohort?.name?.toLowerCase().includes('cohort 2') && (!selectedCohort?._count?.users || selectedCohort?._count?.users === 0));
+  const isFutureCohort = (selectedCohort?.code === 'cohort-2' || selectedCohort?.name?.toLowerCase().includes('cohort 2')) && (!selectedCohort?._count?.users || selectedCohort?._count?.users === 0 || users.length === 0);
 
   // Fetch cohort-independent data (projects and work items) once on mount
   const fetchGlobalData = React.useCallback(() => {
@@ -42,6 +43,7 @@ export default function ManagerDashboardView({
   // Fetch cohort-scoped data (users and health overview) whenever selectedCohort changes
   const fetchCohortData = React.useCallback(() => {
     if (!selectedCohort?.id) return Promise.resolve();
+    const seq = ++cohortReqSeq.current;
     const userParams = { cohort_id: selectedCohort.id };
     setHealthLoading(true);
     return Promise.all([
@@ -51,6 +53,7 @@ export default function ManagerDashboardView({
         return null;
       }),
     ]).then(([userData, healthData]) => {
+      if (seq !== cohortReqSeq.current) return;
       const loadedUsers = Array.isArray(userData) ? userData : (userData?.users || []);
       setUsers(loadedUsers);
       setHealthOverview(healthData);
@@ -69,6 +72,8 @@ export default function ManagerDashboardView({
   // When selectedCohort changes, only re-fetch cohort-scoped data (avoid duplicate projects/workItems requests)
   useEffect(() => {
     if (selectedCohort?.id) {
+      setUsers([]);
+      setHealthOverview(null);
       fetchCohortData();
     }
   }, [fetchCohortData, selectedCohort?.id]);

@@ -1,8 +1,9 @@
 import api from './api';
 
 export const formsService = {
-  getForms: async () => {
-    const res = await api.get('/forms');
+  getForms: async (cohortId) => {
+    const params = cohortId && cohortId !== 'ALL' ? `?cohort_id=${encodeURIComponent(cohortId)}` : '';
+    const res = await api.get(`/forms${params}`);
     return (res.forms || []).map(f => ({
       ...f,
       submission_status: f.submissions?.length > 0 ? 'SUBMITTED' : 'PENDING',
