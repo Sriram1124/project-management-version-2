@@ -199,7 +199,7 @@ Enforced in `WorkItemService.validateHierarchy()`:
 * **`STORY`**: Must have a parent of type `EPIC`.
 * **`TASK`**: Can have a parent of type `STORY`, or can be a standalone task (`parent_id = null`).
 * **`SUBTASK`**: **MUST** have a parent of type `TASK`. (Cannot be standalone; cannot belong to an Epic or Story).
-* **`BUG`**: Standalone only (`parent_id = null`).
+* **`BUG`**: Can have a parent of type `EPIC` or be standalone (`parent_id = null`). (Cannot belong to a Story).
 * **Cross-Project Boundary**: A work item cannot have a parent from a different project. If `project_id` is set, `parent.project_id` must match.
 * **Personal Boundary**: If `project_id = null` (personal task), the parent must also have `project_id = null`.
 

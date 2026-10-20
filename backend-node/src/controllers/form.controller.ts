@@ -279,7 +279,8 @@ export class FormController {
       const result = await FormService.generateOverdueExcel(orgId, cohortId, formId);
       res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
       res.setHeader('Content-Disposition', `attachment; filename="${result.filename}"`);
-      res.status(200).send(result.buffer);
+      res.setHeader('Content-Length', String(result.buffer.length));
+      res.status(200).end(result.buffer);
     } catch (err: any) {
       FormController.handleError(res, err);
     }

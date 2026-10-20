@@ -67,7 +67,7 @@ export class NotificationController {
    */
   static async list(req: Request, res: Response) {
     try {
-      const userId = (req as any).fullUser?.id || (req as any).user?.id;
+      const userId = (req as any).fullUser?.id || (req as any).user?.id || (req as any).user?.userId;
       const isArchived = req.query.archived === 'true' || req.query.status === 'ARCHIVED';
       const unreadOnly = req.query.unread_only === 'true';
       const notifications = await NotificationService.listNotifications(userId, {
@@ -86,7 +86,7 @@ export class NotificationController {
    */
   static async archive(req: Request, res: Response) {
     try {
-      const userId = (req as any).fullUser?.id || (req as any).user?.id;
+      const userId = (req as any).fullUser?.id || (req as any).user?.id || (req as any).user?.userId;
       const id = req.params.notificationId || req.params.id;
       const result = await NotificationService.archiveNotification(id, userId);
       res.status(200).json({
@@ -104,7 +104,7 @@ export class NotificationController {
    */
   static async unarchive(req: Request, res: Response) {
     try {
-      const userId = (req as any).fullUser?.id || (req as any).user?.id;
+      const userId = (req as any).fullUser?.id || (req as any).user?.id || (req as any).user?.userId;
       const id = req.params.notificationId || req.params.id;
       const result = await NotificationService.unarchiveNotification(id, userId);
       res.status(200).json({
@@ -122,7 +122,7 @@ export class NotificationController {
    */
   static async unreadCount(req: Request, res: Response) {
     try {
-      const userId = (req as any).fullUser?.id || (req as any).user?.id;
+      const userId = (req as any).fullUser?.id || (req as any).user?.id || (req as any).user?.userId;
       const result = await NotificationService.getUnreadCount(userId);
       res.status(200).json(result);
     } catch (err: any) {
@@ -136,7 +136,7 @@ export class NotificationController {
    */
   static async markRead(req: Request, res: Response) {
     try {
-      const userId = (req as any).fullUser?.id || (req as any).user?.id;
+      const userId = (req as any).fullUser?.id || (req as any).user?.id || (req as any).user?.userId;
       const id = req.params.notificationId || req.params.id;
       const result = await NotificationService.markAsRead(id, userId);
       res.status(200).json({
@@ -154,7 +154,7 @@ export class NotificationController {
    */
   static async markAllRead(req: Request, res: Response) {
     try {
-      const userId = (req as any).fullUser?.id || (req as any).user?.id;
+      const userId = (req as any).fullUser?.id || (req as any).user?.id || (req as any).user?.userId;
       const result = await NotificationService.markAllAsRead(userId);
       res.status(200).json(result);
     } catch (err: any) {

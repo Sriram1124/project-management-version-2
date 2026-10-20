@@ -23,13 +23,15 @@ export default function AlertsTab({ notifications = [], onToast }) {
   const [loadingArchived, setLoadingArchived] = useState(false);
   const [selectedAlert, setSelectedAlert] = useState(null);
 
-  const unreadCount = notifications.filter((n) => !n.is_read).length;
+  // Active notifications strictly exclude archived items
+  const activeNotifs = notifications.filter((n) => !n.is_archived && !n.archived_at);
+  const unreadCount = activeNotifs.filter((n) => !n.is_read).length;
 
   const loadArchived = useCallback(async () => {
     setLoadingArchived(true);
     try {
       const data = await notificationsService.loadArchivedNotifications();
-      setArchivedNotifs(data || []);
+      setArchivedNotifs((data || []).filter((n) => n.is_archived || n.archived_at));
     } catch (err) {
       console.error('Failed to load archived notifications:', err);
     } finally {
@@ -43,11 +45,16 @@ export default function AlertsTab({ notifications = [], onToast }) {
     }
   }, [filter, loadArchived]);
 
+  // Load archived count on mount so the tab badge is accurate
+  useEffect(() => {
+    loadArchived();
+  }, [loadArchived]);
+
   const filteredNotifs = filter === 'ARCHIVED'
-    ? archivedNotifs
+    ? archivedNotifs.filter((n) => n.is_archived || n.archived_at)
     : filter === 'UNREAD'
-    ? notifications.filter((n) => !n.is_read)
-    : notifications;
+    ? activeNotifs.filter((n) => !n.is_read)
+    : activeNotifs;
 
   const handleMarkRead = async (id, e) => {
     e?.stopPropagation();
@@ -65,6 +72,13 @@ export default function AlertsTab({ notifications = [], onToast }) {
 
   const handleArchive = async (id, e) => {
     e?.stopPropagation();
+    const itemToArchive = notifications.find((n) => n.id === id) || (selectedAlert?.id === id ? selectedAlert : null);
+    if (itemToArchive) {
+      setArchivedNotifs((prev) => [
+        { ...itemToArchive, is_archived: true, archived_at: new Date().toISOString() },
+        ...prev.filter((n) => n.id !== id),
+      ]);
+    }
     await notificationsService.archiveNotification(id);
     if (selectedAlert?.id === id) {
       setSelectedAlert(null);
@@ -74,8 +88,8 @@ export default function AlertsTab({ notifications = [], onToast }) {
 
   const handleUnarchive = async (id, e) => {
     e?.stopPropagation();
-    await notificationsService.unarchiveNotification(id);
     setArchivedNotifs((prev) => prev.filter((n) => n.id !== id));
+    await notificationsService.unarchiveNotification(id);
     if (selectedAlert?.id === id) {
       setSelectedAlert(null);
     }
@@ -152,7 +166,7 @@ export default function AlertsTab({ notifications = [], onToast }) {
                   : 'text-slate-600 hover:text-slate-900'
               }`}
             >
-              All ({notifications.length})
+              All ({activeNotifs.length})
             </button>
             <button
               type="button"
@@ -178,7 +192,7 @@ export default function AlertsTab({ notifications = [], onToast }) {
               }`}
             >
               <Archive className="w-3 h-3" />
-              <span>Archived</span>
+              <span>Archived {archivedNotifs.length > 0 ? `(${archivedNotifs.length})` : ''}</span>
             </button>
           </div>
         </div>

@@ -444,10 +444,8 @@ export default function CreateIssueModal({
                   <span>
                     {parentItem
                       ? `Parent ${parentItem.type}`
-                      : issueType === 'Story'
+                      : ['Story', 'Bug'].includes(issueType)
                       ? 'Parent Epic'
-                      : issueType === 'Bug'
-                      ? 'Parent Epic or Story'
                       : issueType === 'Task'
                       ? 'Parent Story'
                       : 'Parent Task'}

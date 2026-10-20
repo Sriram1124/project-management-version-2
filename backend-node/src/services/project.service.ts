@@ -1833,7 +1833,7 @@ export class ProjectService {
       }
     }
 
-    assignments.forEach((a: any) => { if (a.user_id) invalidateUserSessionCache(a.user_id); });
+    roleAssignments.forEach((a: any) => { if (a.user_id) invalidateUserSessionCache(a.user_id); });
     return await this.getProjectMembers(projectId, user);
   }
 

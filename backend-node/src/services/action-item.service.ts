@@ -148,7 +148,7 @@ export class ActionItemService {
         if (ur.name) roleNames.push(ur.name);
       });
     }
-    if (roleNames.includes('TECH_LEAD') || roleNames.includes('PROJECT_MANAGER')) {
+    if (roleNames.includes('TECH_LEAD') || roleNames.includes('PROJECT_MANAGER') || user.is_tech_lead || (Array.isArray(user.project_memberships) && user.project_memberships.some((pm: any) => pm.project_id === projectId))) {
       return true;
     }
 
@@ -156,14 +156,15 @@ export class ActionItemService {
       where: { id: projectId, organization_id: orgId },
       select: { owner_id: true },
     });
-    if (project && project.owner_id === user.id) {
+    const targetUserId = user.id || user.userId;
+    if (project && (project.owner_id === targetUserId || (project as any).owners?.some((o: any) => o.id === targetUserId))) {
       return true;
     }
 
     const membership = await prisma.projectMember.findFirst({
       where: {
         project_id: projectId,
-        user_id: user.id,
+        user_id: targetUserId,
       },
     });
     if (membership && (membership.project_role === 'TECH_LEAD' || membership.project_role === 'MANAGER')) {

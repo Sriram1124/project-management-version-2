@@ -11,7 +11,8 @@ export default function NotificationsDrawer({
 }) {
   if (!isOpen) return null;
 
-  const unreadCount = notifications.filter((n) => !n.is_read).length;
+  const activeNotifs = notifications.filter((n) => !n.is_archived && !n.archived_at);
+  const unreadCount = activeNotifs.filter((n) => !n.is_read).length;
 
   const handleMarkAll = () => {
     notificationsService.markAllAsRead();
@@ -68,13 +69,13 @@ export default function NotificationsDrawer({
 
         {/* Notifications List */}
         <div className="flex-1 divide-y divide-slate-100 overflow-y-auto">
-          {notifications.length === 0 ? (
+          {activeNotifs.length === 0 ? (
             <div className="p-10 text-center text-slate-500">
               <Bell className="mx-auto mb-2 h-7 w-7 text-slate-300" />
               <p className="text-xs font-semibold">No notifications right now</p>
             </div>
           ) : (
-            notifications.map((n) => (
+            activeNotifs.map((n) => (
               <div
                 key={n.id}
                 onClick={() => handleNotificationClick(n)}

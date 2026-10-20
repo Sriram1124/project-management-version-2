@@ -107,10 +107,13 @@ export const formsService = {
     return await api.get(`/forms/overdue/summary${qs}`);
   },
 
-  downloadOverdueReport: async (cohortId, defaultFilename = 'overdue_forms.xlsx', formId) => {
+  downloadOverdueReport: async (cohortId, defaultFilename = 'overdue_forms.xlsx', formId, format) => {
     const q = new URLSearchParams();
     if (cohortId && cohortId !== 'ALL') q.set('cohort_id', cohortId);
     if (formId) q.set('form_id', formId);
+    if (format === 'csv' || (defaultFilename && defaultFilename.toLowerCase().endsWith('.csv'))) {
+      q.set('format', 'csv');
+    }
     const qs = q.toString() ? `?${q.toString()}` : '';
     return await api.downloadFile(`/forms/overdue/export${qs}`, defaultFilename);
   }

@@ -23,15 +23,19 @@ export const notificationsService = {
   loadNotifications: async () => {
     try {
       const data = await apiNotifications.getNotifications();
-      const nextData = (data || []).map((n) => ({
-        id: n.id,
-        title: n.title,
-        message: n.message,
-        type: n.type,
-        is_read: n.is_read,
-        created_at: n.created_at ? new Date(n.created_at).toLocaleDateString([], { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' }) : 'Just now',
-        raw: n,
-      }));
+      const nextData = (data || [])
+        .filter((n) => !n.is_archived && !n.archived_at)
+        .map((n) => ({
+          id: n.id,
+          title: n.title,
+          message: n.message,
+          type: n.type,
+          is_read: n.is_read,
+          is_archived: false,
+          archived_at: null,
+          created_at: n.created_at ? new Date(n.created_at).toLocaleDateString([], { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' }) : 'Just now',
+          raw: n,
+        }));
 
       const hasChanged =
         nextData.length !== notificationsData.length ||
@@ -76,17 +80,19 @@ export const notificationsService = {
   loadArchivedNotifications: async () => {
     try {
       const data = await apiNotifications.getNotifications({ archived: true });
-      return (data || []).map((n) => ({
-        id: n.id,
-        title: n.title,
-        message: n.message,
-        type: n.type,
-        is_read: n.is_read,
-        is_archived: true,
-        archived_at: n.archived_at,
-        created_at: n.created_at ? new Date(n.created_at).toLocaleDateString([], { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' }) : 'Just now',
-        raw: n,
-      }));
+      return (data || [])
+        .filter((n) => n.is_archived || n.archived_at)
+        .map((n) => ({
+          id: n.id,
+          title: n.title,
+          message: n.message,
+          type: n.type,
+          is_read: n.is_read,
+          is_archived: true,
+          archived_at: n.archived_at,
+          created_at: n.created_at ? new Date(n.created_at).toLocaleDateString([], { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' }) : 'Just now',
+          raw: n,
+        }));
     } catch (err) {
       console.error('Failed to load archived notifications:', err);
       return [];

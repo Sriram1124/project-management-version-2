@@ -6,8 +6,14 @@ import { prisma } from '../lib/prisma';
 export class ActionItemController {
   static async list(req: Request, res: Response): Promise<void> {
     try {
-      const fullUser = (req as any).fullUser;
-      const organization_id = fullUser?.organization_id;
+      const fullUser = (req as any).fullUser || {};
+      const user = (req as any).user || {};
+      let organization_id = fullUser.organization_id || user.organization_id;
+      if (!organization_id) {
+        const org = await prisma.organization.findFirst({ where: { is_active: true } });
+        organization_id = org?.id;
+      }
+
       if (!organization_id) {
         res.status(400).json({ error: 'Organization context required' });
         return;
@@ -35,8 +41,14 @@ export class ActionItemController {
 
   static async getById(req: Request, res: Response): Promise<void> {
     try {
-      const fullUser = (req as any).fullUser;
-      const organization_id = fullUser?.organization_id;
+      const fullUser = (req as any).fullUser || {};
+      const user = (req as any).user || {};
+      let organization_id = fullUser.organization_id || user.organization_id;
+      if (!organization_id) {
+        const org = await prisma.organization.findFirst({ where: { is_active: true } });
+        organization_id = org?.id;
+      }
+
       if (!organization_id) {
         res.status(400).json({ error: 'Organization context required' });
         return;
@@ -60,7 +72,7 @@ export class ActionItemController {
       const fullUser = (req as any).fullUser || {};
       const user = (req as any).user || {};
       let organization_id = fullUser.organization_id || user.organization_id;
-      let user_id = fullUser.id || user.id;
+      let user_id = fullUser.id || user.id || user.userId;
 
       if (!organization_id) {
         const org = await prisma.organization.findFirst({ where: { is_active: true } });

@@ -964,8 +964,8 @@ export class TimesheetService {
     }
 
     const isManagerUser = this.hasRole(user, ['MANAGER']) || user.role === 'MANAGER' || user.role?.name === 'MANAGER';
-    if (String(task.type || '').toUpperCase() === 'STORY' && isManagerUser) {
-      throw new Error('Forbidden: Managers cannot log time on Stories');
+    if (isManagerUser) {
+      throw new Error('Forbidden: Managers cannot log time on tasks');
     }
 
     let startTime = toDate(input.start_time);

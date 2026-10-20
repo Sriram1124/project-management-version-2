@@ -86,7 +86,7 @@ export default function IssueDetailDrawer({
   const hasTaskUpdate = canManageProject || memberPerms.has('TASK_UPDATE');
   const hasTaskDelete = canManageProject || memberPerms.has('TASK_DELETE') || memberPerms.has('TASK_UPDATE');
 
-  const isManager = authRole === 'MANAGER';
+  const isManager = authRole === 'MANAGER' || isManagerUser || isManagerOrAdmin;
   // User is a restricted intern only if they have INTERN role and cannot manage the project
   const isIntern = authRole === 'INTERN' && !canManageProject;
 
@@ -277,12 +277,12 @@ export default function IssueDetailDrawer({
   const allowedChildTypes = React.useMemo(() => {
     const t = String(issue?.type || '').toUpperCase();
     if (t === 'EPIC') {
-      return ['STORY', 'BUG', 'TASK'];
+      return ['STORY', 'BUG'];
     }
     if (t === 'STORY') {
       return ['TASK'];
     }
-    if (t === 'TASK' || t === 'BUG') {
+    if (t === 'TASK') {
       return ['SUBTASK'];
     }
     return [];
@@ -416,6 +416,10 @@ export default function IssueDetailDrawer({
 
   const handleSaveWorklog = async (e) => {
     e.preventDefault();
+    if (isManager) {
+      alert('Managers do not have permission to log time on tasks');
+      return;
+    }
     const hours = parseInt(logHours, 10) || 0;
     const minutes = parseInt(logMinutes, 10) || 0;
     const totalMins = hours * 60 + minutes;
@@ -1229,29 +1233,31 @@ export default function IssueDetailDrawer({
                 <span className="px-2 py-0.5 rounded bg-purple-50 text-purple-700 font-mono font-bold text-xs border border-purple-200">
                   {formatHoursMinutes(totalLoggedMinutes)}
                 </span>
-                {activeSession ? (
-                  <button
-                    type="button"
-                    onClick={handleStopTaskTimer}
-                    disabled={timeActionLoading}
-                    className="flex items-center gap-1 px-2 py-0.5 rounded bg-rose-600 hover:bg-rose-700 text-white font-mono font-bold text-xs transition-colors cursor-pointer shadow-2xs"
-                    title="Stop active timer"
-                  >
-                    <Square className="w-2.5 h-2.5 fill-current" />
-                    <span>{elapsedText}</span>
-                  </button>
-                ) : !isManager ? (
-                  <button
-                    type="button"
-                    onClick={handleStartTaskTimer}
-                    disabled={timeActionLoading}
-                    className="flex items-center gap-1 px-2 py-0.5 rounded bg-purple-600 hover:bg-purple-700 text-white font-bold text-xs transition-colors cursor-pointer shadow-2xs"
-                    title="Start timer for this task"
-                  >
-                    <Play className="w-2.5 h-2.5 fill-current" />
-                    <span>Timer</span>
-                  </button>
-                ) : null}
+                {!isManager && (
+                  activeSession ? (
+                    <button
+                      type="button"
+                      onClick={handleStopTaskTimer}
+                      disabled={timeActionLoading}
+                      className="flex items-center gap-1 px-2 py-0.5 rounded bg-rose-600 hover:bg-rose-700 text-white font-mono font-bold text-xs transition-colors cursor-pointer shadow-2xs"
+                      title="Stop active timer"
+                    >
+                      <Square className="w-2.5 h-2.5 fill-current" />
+                      <span>{elapsedText}</span>
+                    </button>
+                  ) : (
+                    <button
+                      type="button"
+                      onClick={handleStartTaskTimer}
+                      disabled={timeActionLoading}
+                      className="flex items-center gap-1 px-2 py-0.5 rounded bg-purple-600 hover:bg-purple-700 text-white font-bold text-xs transition-colors cursor-pointer shadow-2xs"
+                      title="Start timer for this task"
+                    >
+                      <Play className="w-2.5 h-2.5 fill-current" />
+                      <span>Timer</span>
+                    </button>
+                  )
+                )}
               </div>
             </div>
 
@@ -1503,18 +1509,20 @@ export default function IssueDetailDrawer({
                   </div>
                 </div>
 
-                <button
-                  type="button"
-                  onClick={() => setIsLogModalOpen(!isLogModalOpen)}
-                  className="flex items-center gap-1 px-2.5 py-1 rounded-lg bg-purple-600 hover:bg-purple-700 text-white font-semibold text-xs transition-colors cursor-pointer shadow-2xs"
-                >
-                  <Plus className="w-3 h-3" />
-                  <span>Log Time</span>
-                </button>
+                {!isManager && (
+                  <button
+                    type="button"
+                    onClick={() => setIsLogModalOpen(!isLogModalOpen)}
+                    className="flex items-center gap-1 px-2.5 py-1 rounded-lg bg-purple-600 hover:bg-purple-700 text-white font-semibold text-xs transition-colors cursor-pointer shadow-2xs"
+                  >
+                    <Plus className="w-3 h-3" />
+                    <span>Log Time</span>
+                  </button>
+                )}
               </div>
 
               {/* Inline Add Worklog Form */}
-              {isLogModalOpen && (
+              {!isManager && isLogModalOpen && (
                 <form
                   onSubmit={handleSaveWorklog}
                   className="p-3 bg-purple-50/50 border border-purple-200 rounded-xl space-y-2.5 animate-in fade-in duration-150"
@@ -1606,9 +1614,11 @@ export default function IssueDetailDrawer({
               ) : timeEntries.length === 0 ? (
                 <div className="p-5 text-center text-slate-400 bg-slate-50/50 rounded-xl border border-slate-100">
                   <p>No worklog entries recorded yet.</p>
-                  <p className="text-[11px] mt-1 text-slate-400">
-                    Use the Timer or click &quot;Log Time&quot; above to record effort.
-                  </p>
+                  {!isManager && (
+                    <p className="text-[11px] mt-1 text-slate-400">
+                      Use the Timer or click &quot;Log Time&quot; above to record effort.
+                    </p>
+                  )}
                 </div>
               ) : (
                 <div className="space-y-2">

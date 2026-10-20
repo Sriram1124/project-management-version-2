@@ -223,7 +223,7 @@ export default function AddTaskModal({
         .finally(() => setLoadingParents(false));
     } else if (type === 'BUG') {
       workItemsService
-        .listWorkItems({ project_id: targetProjId })
+        .listWorkItems({ project_id: targetProjId, type: 'EPIC' })
         .then((items) => {
           const validParents = (items || []).filter(
             (i) => i.type === 'EPIC'
@@ -564,7 +564,7 @@ export default function AddTaskModal({
                 <label className="block text-[11px] font-bold text-purple-900 uppercase tracking-wider mb-1 flex items-center gap-1.5">
                   <GitFork className="w-3.5 h-3.5 text-purple-600" />
                   <span>
-                    Parent {type === 'STORY' ? 'Epic (Optional)' : type === 'BUG' ? 'Epic or Story (Optional)' : type === 'TASK' ? 'Story *' : type === 'SUBTASK' ? 'Task *' : 'Parent Item *'}
+                    Parent {['STORY', 'BUG'].includes(type) ? 'Epic (Optional)' : type === 'TASK' ? 'Story *' : type === 'SUBTASK' ? 'Task *' : 'Parent Item *'}
                   </span>
                 </label>
 
@@ -576,7 +576,7 @@ export default function AddTaskModal({
                 ) : potentialParents.length === 0 ? (
                   type === 'STORY' || type === 'BUG' ? (
                     <p className="text-[11px] text-slate-600 py-1 font-medium">
-                      No {type === 'STORY' ? 'Epics' : 'Epics or Stories'} found in this project. This item will be created as an independent, standalone {type === 'STORY' ? 'Story' : 'Bug'}.
+                      No Epics found in this project. This item will be created as an independent, standalone {type === 'STORY' ? 'Story' : 'Bug'}.
                     </p>
                   ) : (
                     <p className="text-[11px] text-amber-700 py-1 font-medium">
@@ -594,9 +594,9 @@ export default function AddTaskModal({
                   >
                     <option value="">
                       {type === 'STORY'
-                        ? 'None (Standalone Story - No Epic)'
+                        ? 'None (No Epic - Standalone Story)'
                         : type === 'BUG'
-                        ? 'None (Standalone Bug - No Parent)'
+                        ? 'None (No Epic - Standalone Bug)'
                         : `Select Parent ${type === 'TASK' ? 'Story' : 'Task'} *`}
                     </option>
                     {potentialParents.map((p) => (

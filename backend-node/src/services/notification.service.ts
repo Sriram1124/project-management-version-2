@@ -233,25 +233,15 @@ export class NotificationService {
       throw err;
     }
 
-    let recipientRecord = await prisma.notificationRecipient.findFirst({
+    const recipientRecord = await prisma.notificationRecipient.findFirst({
       where: {
+        user_id: userId,
         OR: [
-          { notification_id: notificationId, user_id: userId },
-          { id: notificationId, user_id: userId },
+          { notification_id: notificationId },
+          { id: notificationId },
         ],
       },
     });
-
-    if (!recipientRecord) {
-      recipientRecord = await prisma.notificationRecipient.findFirst({
-        where: {
-          OR: [
-            { notification_id: notificationId },
-            { id: notificationId },
-          ],
-        },
-      });
-    }
 
     if (!recipientRecord) {
       const err: any = new Error('Notification recipient record not found');
@@ -290,25 +280,15 @@ export class NotificationService {
       throw err;
     }
 
-    let recipientRecord = await prisma.notificationRecipient.findFirst({
+    const recipientRecord = await prisma.notificationRecipient.findFirst({
       where: {
+        user_id: userId,
         OR: [
-          { notification_id: notificationId, user_id: userId },
-          { id: notificationId, user_id: userId },
+          { notification_id: notificationId },
+          { id: notificationId },
         ],
       },
     });
-
-    if (!recipientRecord) {
-      recipientRecord = await prisma.notificationRecipient.findFirst({
-        where: {
-          OR: [
-            { notification_id: notificationId },
-            { id: notificationId },
-          ],
-        },
-      });
-    }
 
     if (!recipientRecord) {
       const err: any = new Error('Notification recipient record not found');
@@ -371,25 +351,15 @@ export class NotificationService {
       throw err;
     }
 
-    let recipientRecord = await prisma.notificationRecipient.findFirst({
+    const recipientRecord = await prisma.notificationRecipient.findFirst({
       where: {
+        user_id: userId,
         OR: [
-          { notification_id: notificationId, user_id: userId },
-          { id: notificationId, user_id: userId },
+          { notification_id: notificationId },
+          { id: notificationId },
         ],
       },
     });
-
-    if (!recipientRecord) {
-      recipientRecord = await prisma.notificationRecipient.findFirst({
-        where: {
-          OR: [
-            { notification_id: notificationId },
-            { id: notificationId },
-          ],
-        },
-      });
-    }
 
     if (!recipientRecord) {
       const err: any = new Error('Notification not found or you are not a recipient');
