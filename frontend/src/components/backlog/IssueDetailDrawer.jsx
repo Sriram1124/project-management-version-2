@@ -498,7 +498,6 @@ export default function IssueDetailDrawer({
 
   const currentSprint = sprints.find(s => s.id === (issue?.sprint_id || issue?.sprintId));
   const isEpic = String(issue?.type || '').toUpperCase() === 'EPIC';
-  const isStory = String(issue?.type || '').toUpperCase() === 'STORY';
   const isTaskLike = ['TASK', 'SUBTASK', 'BUG'].includes(String(issue?.type || '').toUpperCase());
   const isApplicableType = ['TASK', 'SUBTASK', 'BUG', 'STORY'].includes(String(issue?.type || '').toUpperCase());
   const epicSprintSummary = useMemo(() => {
