@@ -13,6 +13,8 @@
     "migrate:project-files:dry-run": "npx tsx src/scripts/migrate-project-files.ts",
     "migrate:project-files:execute": "npx tsx src/scripts/migrate-project-files.ts --execute",
     "migrate:project-files:verify": "npx tsx src/scripts/migrate-project-files.ts --verify-only",
+    "reset:interns:dry-run": "npx tsx src/scripts/bulk-reset-intern-passwords.ts",
+    "reset:interns:execute": "npx tsx src/scripts/bulk-reset-intern-passwords.ts --execute",
     "postinstall": "prisma generate"
   },
   "keywords": [],

@@ -22,7 +22,8 @@ import {
   ArrowRight,
   Timer,
   Sparkles,
-  CheckSquare
+  CheckSquare,
+  FolderKanban
 } from 'lucide-react';
 import { workItemsService } from '../../../services/workItems.service';
 import { projectsService } from '../../../services/projects.service';

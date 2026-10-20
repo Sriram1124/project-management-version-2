@@ -17,6 +17,20 @@ function generateTemporaryPassword(): string {
   return pwd;
 }
 
+async function withRetry<T>(fn: () => Promise<T>, maxRetries = 5, delayMs = 2000): Promise<T> {
+  let attempt = 0;
+  while (true) {
+    try {
+      return await fn();
+    } catch (err: any) {
+      attempt++;
+      if (attempt >= maxRetries) throw err;
+      console.log(`Connection attempt ${attempt} failed (${err.message || 'unknown'}). Retrying in ${delayMs / 1000}s...`);
+      await new Promise((res) => setTimeout(res, delayMs));
+    }
+  }
+}
+
 async function main() {
   const args = process.argv.slice(2);
   const isExecute = args.includes('--execute');
@@ -26,19 +40,25 @@ async function main() {
   console.log('       INTERN BULK PASSWORD RESET TOOL              ');
   console.log('====================================================');
 
+  console.log('Connecting to database...');
+  await withRetry(() => prisma.$queryRaw`SELECT 1`);
+  console.log('Database connected successfully.');
+
   // Query organizations and interns
-  const orgs = await prisma.organization.findMany({
-    select: {
-      id: true,
-      name: true,
-      is_active: true,
-      _count: {
-        select: {
-          users: true,
+  const orgs = await withRetry(() =>
+    prisma.organization.findMany({
+      select: {
+        id: true,
+        name: true,
+        is_active: true,
+        _count: {
+          select: {
+            users: true,
+          },
         },
       },
-    },
-  });
+    })
+  );
 
   console.log(`\nFound ${orgs.length} organization(s):`);
   orgs.forEach((o) => {
@@ -46,39 +66,41 @@ async function main() {
   });
 
   // Find all active interns
-  const interns = await prisma.user.findMany({
-    where: {
-      is_active: true,
-      roles: {
-        some: {
-          role: {
-            name: 'INTERN',
+  const interns = await withRetry(() =>
+    prisma.user.findMany({
+      where: {
+        is_active: true,
+        roles: {
+          some: {
+            role: {
+              name: 'INTERN',
+            },
           },
         },
       },
-    },
-    select: {
-      id: true,
-      name: true,
-      email: true,
-      user_code: true,
-      organization_id: true,
-      organization: {
-        select: {
-          name: true,
+      select: {
+        id: true,
+        name: true,
+        email: true,
+        user_code: true,
+        organization_id: true,
+        organization: {
+          select: {
+            name: true,
+          },
+        },
+        cohort: {
+          select: {
+            name: true,
+            code: true,
+          },
         },
       },
-      cohort: {
-        select: {
-          name: true,
-          code: true,
-        },
+      orderBy: {
+        name: 'asc',
       },
-    },
-    orderBy: {
-      name: 'asc',
-    },
-  });
+    })
+  );
 
   console.log(`\nFound ${interns.length} active INTERN user(s) in database.\n`);
 
@@ -99,7 +121,7 @@ async function main() {
     return;
   }
 
-  console.log('EXECUTING BULK RESET...');
+  console.log(`EXECUTING BULK RESET FOR ${interns.length} INTERNS...`);
   const resetResults: Array<{
     name: string;
     email: string;
@@ -114,17 +136,19 @@ async function main() {
     const tempPassword = generateTemporaryPassword();
     const hash = await argon2.hash(tempPassword);
 
-    await prisma.user.update({
-      where: { id: intern.id },
-      data: {
-        password_hash: hash,
-        must_change_password: true,
-      },
-    });
+    await withRetry(async () => {
+      await prisma.user.update({
+        where: { id: intern.id },
+        data: {
+          password_hash: hash,
+          must_change_password: true,
+        },
+      });
 
-    // Invalidate sessions
-    await prisma.userSession.deleteMany({
-      where: { user_id: intern.id },
+      // Invalidate existing sessions
+      await prisma.userSession.deleteMany({
+        where: { user_id: intern.id },
+      });
     });
 
     resetResults.push({
@@ -136,7 +160,9 @@ async function main() {
       temporary_password: tempPassword,
     });
 
-    console.log(`[${i + 1}/${interns.length}] Reset password for: ${intern.name} (${intern.email})`);
+    if ((i + 1) % 10 === 0 || i === interns.length - 1) {
+      console.log(`Progress: [${i + 1}/${interns.length}] processed...`);
+    }
   }
 
   // Export to CSV
@@ -146,7 +172,7 @@ async function main() {
     fs.mkdirSync(outputDir, { recursive: true });
   }
 
-  const csvFilePath = path.join(outputDir, `reset_credentials_${timestamp}.csv`);
+  const csvFilePath = path.join(outputDir, `intern_credentials_reset_${timestamp}.csv`);
   const csvHeader = 'Name,Email,User Code,Organization,Cohort,Temporary Password\n';
   const csvRows = resetResults
     .map(
@@ -170,3 +196,4 @@ main().catch(async (e) => {
   await prisma.$disconnect();
   process.exit(1);
 });
+
