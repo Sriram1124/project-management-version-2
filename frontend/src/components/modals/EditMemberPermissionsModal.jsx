@@ -83,13 +83,18 @@ export default function EditMemberPermissionsModal({
       setError('');
       const perms = new Set();
       const existingList = member.role_details?.permissions || [];
+      const validProjectKeys = new Set(NINE_PROJECT_CAPABILITIES.map((c) => c.key));
       existingList.forEach((p) => {
         // Map any aliases
-        if (p === 'PROJECT_ROLE_ASSIGN') perms.add('ROLE_ASSIGN');
-        else if (p === 'SPRINT_ACTIVATE') perms.add('CYCLE_ACTIVATE');
-        else if (p === 'SPRINT_UPDATE') perms.add('CYCLE_UPDATE');
-        else if (p === 'SPRINT_CREATE') perms.add('CYCLE_CREATE');
-        else perms.add(p);
+        let mapped = p;
+        if (p === 'PROJECT_ROLE_ASSIGN') mapped = 'ROLE_ASSIGN';
+        else if (p === 'SPRINT_ACTIVATE') mapped = 'CYCLE_ACTIVATE';
+        else if (p === 'SPRINT_UPDATE') mapped = 'CYCLE_UPDATE';
+        else if (p === 'SPRINT_CREATE') mapped = 'CYCLE_CREATE';
+
+        if (validProjectKeys.has(mapped)) {
+          perms.add(mapped);
+        }
       });
       setSelectedPerms(perms);
     }
