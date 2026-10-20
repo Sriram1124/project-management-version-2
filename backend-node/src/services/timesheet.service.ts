@@ -1258,6 +1258,7 @@ export class TimesheetService {
     dateValue?: Date | string,
     filters: {
       status?: string;
+      priority?: string;
       time_filter?: string;
       search?: string;
     } = {}
@@ -1486,6 +1487,10 @@ export class TimesheetService {
       const s = filters.status.toUpperCase();
       task_rows = task_rows.filter((r) => (r.status || 'TODO').toUpperCase() === s);
     }
+    if (filters.priority && filters.priority !== 'ALL') {
+      const p = filters.priority.toUpperCase();
+      task_rows = task_rows.filter((r) => (r.priority || 'MEDIUM').toUpperCase() === p);
+    }
     if (filters.time_filter === 'LOGGED') {
       task_rows = task_rows.filter((r) => (r.total_minutes || 0) > 0);
     } else if (filters.time_filter === 'NO_LOGGED') {
@@ -1519,7 +1524,13 @@ export class TimesheetService {
         { id: 'BLOCKED', label: 'Blocked' },
         { id: 'COMPLETED', label: 'Completed' },
       ],
-      active_session: activeSession,
+      available_priorities: [
+        { id: 'ALL', label: 'All Priorities' },
+        { id: 'URGENT', label: 'Urgent' },
+        { id: 'HIGH', label: 'High' },
+        { id: 'MEDIUM', label: 'Medium' },
+        { id: 'LOW', label: 'Low' },
+      ],
       available_tasks: assignedTasks.map((t) => ({
         id: t.id,
         title: t.title,
@@ -1527,57 +1538,407 @@ export class TimesheetService {
         status: t.status,
         project: t.project,
       })),
+      active_session: activeSession,
     };
   }
 
-  static async getMonthlyTimesheet(user: any, targetUserId?: string | null, dateValue?: Date | string) {
+  static async getMonthlyTimesheet(
+    user: any,
+    targetUserId?: string | null,
+    dateValue?: Date | string,
+    filters: {
+      status?: string;
+      priority?: string;
+      time_filter?: string;
+      search?: string;
+    } = {}
+  ) {
     const targetId = targetUserId || user.id;
-    const referenceDate = dateValue ? new Date(dateValue) : new Date();
-    const startOfMonth = new Date(Date.UTC(referenceDate.getUTCFullYear(), referenceDate.getUTCMonth(), 1));
-    const endOfMonth = new Date(Date.UTC(referenceDate.getUTCFullYear(), referenceDate.getUTCMonth() + 1, 0, 23, 59, 59, 999));
+    const orgId = this.resolveOrganizationId(user, user.organization_id) || await this.getDefaultOrganizationId();
 
-    const calendarDays = [] as any[];
-    let workingDays = 0;
-    let presentDays = 0;
-    let absentDays = 0;
-    let totalOfficialMinutes = 0;
-    let totalActualMinutes = 0;
-    let totalTaskMinutes = 0;
-    let totalUnallocatedMinutes = 0;
-    const current = new Date(startOfMonth);
-
-    while (current <= endOfMonth) {
-      const summary = await this.getDailyTimesheet(user, targetId, current);
-      calendarDays.push(summary);
-      totalOfficialMinutes += summary.gross_office_minutes;
-      totalActualMinutes += summary.attendance_minutes;
-      totalTaskMinutes += summary.task_minutes;
-      totalUnallocatedMinutes += summary.unallocated_minutes;
-
-      if (summary.attendance_minutes > 0) {
-        presentDays += 1;
-      } else {
-        absentDays += 1;
-      }
-
-      if (summary.gross_office_minutes > 0) {
-        workingDays += 1;
-      }
-
-      current.setUTCDate(current.getUTCDate() + 1);
+    const isOwner = targetId === user.id;
+    const canViewTeam = this.hasRole(user, ['MANAGER', 'ADMIN', 'SUPER_ADMIN', 'TECH_LEAD']);
+    if (!isOwner && !canViewTeam) {
+      throw new Error('Forbidden: you cannot view another user\'s timesheet');
     }
 
+    await this.autoClockExpiredSessions(orgId, targetId);
+
+    let targetUserInfo: any = null;
+    if (!isOwner) {
+      targetUserInfo = await prisma.user.findUnique({
+        where: { id: targetId },
+        select: {
+          id: true,
+          name: true,
+          email: true,
+          user_code: true,
+          batch: true,
+          subbatch: true,
+          organization_id: true,
+          cohort: { select: { id: true, name: true, code: true } },
+        },
+      });
+      if (!targetUserInfo) {
+        throw new Error('User not found');
+      }
+      const isSuperAdmin = this.hasRole(user, ['SUPER_ADMIN']);
+      if (!isSuperAdmin && targetUserInfo.organization_id !== orgId) {
+        throw new Error('Forbidden: target user is outside your organization scope');
+      }
+    }
+
+    const referenceDate = dateValue ? new Date(dateValue) : new Date();
+    if (isNaN(referenceDate.getTime())) {
+      throw new Error('Invalid date provided');
+    }
+
+    const year = referenceDate.getUTCFullYear();
+    const month = referenceDate.getUTCMonth();
+
+    const startOfMonth = new Date(Date.UTC(year, month, 1, 0, 0, 0, 0));
+    const endOfMonth = new Date(Date.UTC(year, month + 1, 0, 23, 59, 59, 999));
+
+    const startOfMonthIso = startOfMonth.toISOString().slice(0, 10);
+    const endOfMonthIso = endOfMonth.toISOString().slice(0, 10);
+
+    // Compute calendar-week groups starting Monday of week containing day 1
+    const firstDow = startOfMonth.getUTCDay();
+    const diffToMonday = (firstDow + 6) % 7;
+    const firstWeekMonday = new Date(Date.UTC(year, month, 1 - diffToMonday, 0, 0, 0, 0));
+
+    const weekGroups: Array<{
+      week_number: number;
+      start_date: string;
+      end_date: string;
+      label: string;
+      total_minutes: number;
+      total_formatted: string;
+      days: Array<{
+        date: string;
+        dayName: string;
+        dayNumber: number;
+        in_month: boolean;
+        isWeekend: boolean;
+        isToday: boolean;
+        total_minutes: number;
+      }>;
+      task_rows: any[];
+    }> = [];
+
+    const dayNames = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+    const monthNamesShort = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+    const monthNamesFull = [
+      'January', 'February', 'March', 'April', 'May', 'June',
+      'July', 'August', 'September', 'October', 'November', 'December'
+    ];
+
+    const todayIso = new Date().toISOString().slice(0, 10);
+
+    let curMonday = new Date(firstWeekMonday);
+    let weekIndex = 1;
+
+    while (curMonday <= endOfMonth) {
+      const curSunday = new Date(curMonday);
+      curSunday.setUTCDate(curMonday.getUTCDate() + 6);
+      curSunday.setUTCHours(23, 59, 59, 999);
+
+      const weekDays = [];
+      let firstInMonthDay: Date | null = null;
+      let lastInMonthDay: Date | null = null;
+
+      for (let i = 0; i < 7; i++) {
+        const d = new Date(curMonday);
+        d.setUTCDate(curMonday.getUTCDate() + i);
+        const dIso = d.toISOString().slice(0, 10);
+        const dow = d.getUTCDay();
+        const inMonth = d >= startOfMonth && d <= endOfMonth;
+
+        if (inMonth) {
+          if (!firstInMonthDay) firstInMonthDay = d;
+          lastInMonthDay = d;
+        }
+
+        weekDays.push({
+          date: dIso,
+          dayName: dayNames[dow],
+          dayNumber: d.getUTCDate(),
+          in_month: inMonth,
+          isWeekend: dow === 0 || dow === 6,
+          isToday: dIso === todayIso,
+          total_minutes: 0,
+        });
+      }
+
+      let label = `Week ${weekIndex}`;
+      if (firstInMonthDay && lastInMonthDay) {
+        const sM = monthNamesShort[firstInMonthDay.getUTCMonth()];
+        const eM = monthNamesShort[lastInMonthDay.getUTCMonth()];
+        if (sM === eM) {
+          label = `Week ${weekIndex} (${sM} ${firstInMonthDay.getUTCDate()}–${lastInMonthDay.getUTCDate()})`;
+        } else {
+          label = `Week ${weekIndex} (${sM} ${firstInMonthDay.getUTCDate()} – ${eM} ${lastInMonthDay.getUTCDate()})`;
+        }
+      }
+
+      weekGroups.push({
+        week_number: weekIndex,
+        start_date: curMonday.toISOString().slice(0, 10),
+        end_date: curSunday.toISOString().slice(0, 10),
+        label,
+        total_minutes: 0,
+        total_formatted: '0h 0m',
+        days: weekDays,
+        task_rows: [],
+      });
+
+      curMonday = new Date(curMonday);
+      curMonday.setUTCDate(curMonday.getUTCDate() + 7);
+      weekIndex++;
+    }
+
+    // Query time entries strictly within the month
+    const entries = await prisma.timeEntry.findMany({
+      where: {
+        user_id: targetId,
+        organization_id: orgId,
+        date: {
+          gte: startOfMonth,
+          lte: endOfMonth,
+        },
+      },
+      include: {
+        task: {
+          select: {
+            id: true,
+            title: true,
+            status: true,
+            priority: true,
+            type: true,
+            story_points: true,
+            project_id: true,
+            project: { select: { id: true, name: true } },
+            sprint: { select: { id: true, name: true } },
+          },
+        },
+        project: { select: { id: true, name: true } },
+      },
+      orderBy: { start_time: 'asc' },
+    });
+
+    const assignedTasks = await prisma.workItem.findMany({
+      where: {
+        assignees: { some: { user_id: targetId } },
+        organization_id: orgId,
+      },
+      include: {
+        project: { select: { id: true, name: true } },
+        sprint: { select: { id: true, name: true } },
+      },
+      orderBy: [{ updated_at: 'desc' }],
+      take: 100,
+    });
+
+    // Build monthly task map
+    const taskMap = new Map<string, any>();
+    for (const t of assignedTasks) {
+      taskMap.set(t.id, {
+        id: t.id,
+        key: t.id,
+        title: t.title,
+        status: t.status,
+        priority: t.priority,
+        type: t.type,
+        story_points: t.story_points,
+        project: t.project,
+        cycle: t.sprint,
+        weeks: Object.fromEntries(weekGroups.map((w) => [w.week_number, { minutes: 0, formatted: '0h 0m' }])),
+        days: {} as Record<string, { minutes: number; formatted: string }>,
+        total_minutes: 0,
+        total_formatted: '0h 0m',
+      });
+    }
+
+    let grandTotalMinutes = 0;
+    const daysWithTime = new Set<string>();
+
+    for (const entry of entries) {
+      const entryDateStr = entry.date ? new Date(entry.date).toISOString().slice(0, 10) : '';
+      if (!entryDateStr || entryDateStr < startOfMonthIso || entryDateStr > endOfMonthIso) continue;
+
+      const duration = Number(entry.duration_minutes) || 0;
+      if (duration > 0) {
+        daysWithTime.add(entryDateStr);
+      }
+      grandTotalMinutes += duration;
+
+      // Find which week group this entry belongs to
+      for (const wg of weekGroups) {
+        const dayInGroup = wg.days.find((d) => d.date === entryDateStr && d.in_month);
+        if (dayInGroup) {
+          dayInGroup.total_minutes += duration;
+          wg.total_minutes += duration;
+          break;
+        }
+      }
+
+      const taskId = entry.task_id;
+      if (taskId) {
+        if (!taskMap.has(taskId)) {
+          taskMap.set(taskId, {
+            id: taskId,
+            key: taskId,
+            title: entry.task?.title || 'Untitled Task',
+            status: entry.task?.status || 'TODO',
+            priority: entry.task?.priority || 'MEDIUM',
+            type: entry.task?.type || 'TASK',
+            story_points: entry.task?.story_points || 0,
+            project: entry.task?.project || entry.project || null,
+            cycle: entry.task?.sprint || null,
+            weeks: Object.fromEntries(weekGroups.map((w) => [w.week_number, { minutes: 0, formatted: '0h 0m' }])),
+            days: {} as Record<string, { minutes: number; formatted: string }>,
+            total_minutes: 0,
+            total_formatted: '0h 0m',
+          });
+        }
+
+        const taskRow = taskMap.get(taskId);
+        taskRow.total_minutes += duration;
+        taskRow.total_formatted = `${Math.floor(taskRow.total_minutes / 60)}h ${taskRow.total_minutes % 60}m`;
+
+        if (!taskRow.days[entryDateStr]) {
+          taskRow.days[entryDateStr] = { minutes: 0, formatted: '0h 0m' };
+        }
+        taskRow.days[entryDateStr].minutes += duration;
+        taskRow.days[entryDateStr].formatted = `${Math.floor(taskRow.days[entryDateStr].minutes / 60)}h ${taskRow.days[entryDateStr].minutes % 60}m`;
+
+        for (const wg of weekGroups) {
+          if (entryDateStr >= wg.start_date && entryDateStr <= wg.end_date) {
+            taskRow.weeks[wg.week_number].minutes += duration;
+            const wM = taskRow.weeks[wg.week_number].minutes;
+            taskRow.weeks[wg.week_number].formatted = `${Math.floor(wM / 60)}h ${wM % 60}m`;
+            break;
+          }
+        }
+      }
+    }
+
+    for (const wg of weekGroups) {
+      wg.total_formatted = `${Math.floor(wg.total_minutes / 60)}h ${wg.total_minutes % 60}m`;
+    }
+
+    let task_rows = Array.from(taskMap.values());
+    const all_task_rows_count = task_rows.length;
+
+    if (filters.status && filters.status !== 'ALL') {
+      const s = filters.status.toUpperCase();
+      task_rows = task_rows.filter((r) => (r.status || 'TODO').toUpperCase() === s);
+    }
+    if (filters.priority && filters.priority !== 'ALL') {
+      const p = filters.priority.toUpperCase();
+      task_rows = task_rows.filter((r) => (r.priority || 'MEDIUM').toUpperCase() === p);
+    }
+    if (filters.time_filter === 'LOGGED') {
+      task_rows = task_rows.filter((r) => (r.total_minutes || 0) > 0);
+    } else if (filters.time_filter === 'NO_LOGGED') {
+      task_rows = task_rows.filter((r) => (r.total_minutes || 0) === 0);
+    }
+    if (filters.search && filters.search.trim()) {
+      const q = filters.search.trim().toLowerCase();
+      task_rows = task_rows.filter((r) => {
+        const titleMatch = (r.title || '').toLowerCase().includes(q);
+        const keyMatch = (r.key || r.id || '').toLowerCase().includes(q);
+        const projMatch = (r.project?.name || '').toLowerCase().includes(q);
+        return titleMatch || keyMatch || projMatch;
+      });
+    }
+
+    // Embed task rows into week groups for expandable weekly breakdown
+    for (const wg of weekGroups) {
+      wg.task_rows = task_rows
+        .map((t) => {
+          const weekMins = t.weeks[wg.week_number]?.minutes || 0;
+          return {
+            ...t,
+            week_minutes: weekMins,
+            week_formatted: `${Math.floor(weekMins / 60)}h ${weekMins % 60}m`,
+          };
+        })
+        .filter((t) => filters.time_filter === 'NO_LOGGED' ? t.week_minutes === 0 : t.week_minutes > 0);
+    }
+
+    const activeTasksCount = task_rows.filter((r) => (r.total_minutes || 0) > 0).length;
+    const activeDaysCount = daysWithTime.size;
+    const avgDailyMinutes = activeDaysCount > 0 ? Math.round(grandTotalMinutes / activeDaysCount) : 0;
+
+    const activeSession = await prisma.workSession.findFirst({
+      where: {
+        user_id: targetId,
+        organization_id: orgId,
+        ended_at: null,
+      },
+      include: {
+        task: {
+          select: {
+            id: true,
+            title: true,
+            status: true,
+            priority: true,
+            project: { select: { id: true, name: true } },
+          },
+        },
+      },
+      orderBy: { started_at: 'desc' },
+    });
+
     return {
+      user: targetUserInfo || { id: user.id, name: user.name, email: user.email },
       month: referenceDate.toISOString().slice(0, 7),
-      working_days: workingDays,
-      present_days: presentDays,
-      absent_days: absentDays,
-      total_official_minutes: totalOfficialMinutes,
-      total_actual_minutes: totalActualMinutes,
-      total_task_minutes: totalTaskMinutes,
-      average_hours_per_day: workingDays > 0 ? Number(((totalActualMinutes / workingDays) / 60).toFixed(2)) : 0,
-      total_unallocated_minutes: totalUnallocatedMinutes,
-      days: calendarDays,
+      month_name: `${monthNamesFull[month]} ${year}`,
+      start_date: startOfMonthIso,
+      end_date: endOfMonthIso,
+      total_minutes: grandTotalMinutes,
+      total_formatted: `${Math.floor(grandTotalMinutes / 60)}h ${grandTotalMinutes % 60}m`,
+      active_tasks_count: activeTasksCount,
+      active_days_count: activeDaysCount,
+      avg_daily_minutes: avgDailyMinutes,
+      avg_daily_formatted: `${Math.floor(avgDailyMinutes / 60)}h ${avgDailyMinutes % 60}m`,
+      weeks: weekGroups,
+      task_rows,
+      all_task_rows_count,
+      available_statuses: [
+        { id: 'ALL', label: 'All Statuses' },
+        { id: 'TODO', label: 'To Do' },
+        { id: 'IN_PROGRESS', label: 'In Progress' },
+        { id: 'IN_REVIEW', label: 'In Review' },
+        { id: 'BLOCKED', label: 'Blocked' },
+        { id: 'COMPLETED', label: 'Completed' },
+      ],
+      available_priorities: [
+        { id: 'ALL', label: 'All Priorities' },
+        { id: 'URGENT', label: 'Urgent' },
+        { id: 'HIGH', label: 'High' },
+        { id: 'MEDIUM', label: 'Medium' },
+        { id: 'LOW', label: 'Low' },
+      ],
+      available_tasks: assignedTasks.map((t) => ({
+        id: t.id,
+        title: t.title,
+        key: t.id,
+        status: t.status,
+        project: t.project,
+      })),
+      active_session: activeSession,
+      // Backward-compat keys for getInternReport/getManagerReport:
+      working_days: activeDaysCount,
+      present_days: activeDaysCount,
+      absent_days: 0,
+      total_official_minutes: grandTotalMinutes,
+      total_actual_minutes: grandTotalMinutes,
+      total_task_minutes: grandTotalMinutes,
+      average_hours_per_day: activeDaysCount > 0 ? Number(((grandTotalMinutes / activeDaysCount) / 60).toFixed(2)) : 0,
+      total_unallocated_minutes: 0,
+      days: [],
     };
   }
 

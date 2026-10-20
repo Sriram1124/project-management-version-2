@@ -137,6 +137,7 @@ export class TimesheetController {
       const targetUserId = req.query.user_id as string | undefined;
       const dateParam = req.query.date as string | undefined;
       const statusParam = req.query.status as string | undefined;
+      const priorityParam = req.query.priority as string | undefined;
       const timeFilterParam = req.query.time_filter as string | undefined;
       const searchParam = req.query.search as string | undefined;
 
@@ -146,6 +147,7 @@ export class TimesheetController {
         dateParam ? new Date(dateParam) : new Date(),
         {
           status: statusParam,
+          priority: priorityParam,
           time_filter: timeFilterParam,
           search: searchParam,
         }
@@ -160,7 +162,23 @@ export class TimesheetController {
     try {
       const user = (req as any).fullUser;
       const targetUserId = req.query.user_id as string | undefined;
-      const summary = await TimesheetService.getMonthlyTimesheet(user, targetUserId || user.id, new Date());
+      const dateParam = req.query.date as string | undefined;
+      const statusParam = req.query.status as string | undefined;
+      const priorityParam = req.query.priority as string | undefined;
+      const timeFilterParam = req.query.time_filter as string | undefined;
+      const searchParam = req.query.search as string | undefined;
+
+      const summary = await TimesheetService.getMonthlyTimesheet(
+        user,
+        targetUserId || user.id,
+        dateParam ? new Date(dateParam) : new Date(),
+        {
+          status: statusParam,
+          priority: priorityParam,
+          time_filter: timeFilterParam,
+          search: searchParam,
+        }
+      );
       res.status(200).json({ timesheet: summary });
     } catch (error) {
       TimesheetController.handleError(res, error);
