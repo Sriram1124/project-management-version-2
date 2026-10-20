@@ -458,6 +458,7 @@ export class ProjectHealthService {
     // 6. Evaluate Health Separately from Progress:
     const criticalReasons: string[] = [];
     const atRiskReasons: string[] = [];
+    const needsAttentionReasons: string[] = [];
 
     // --- CRITICAL THRESHOLDS ---
 
@@ -482,9 +483,15 @@ export class ProjectHealthService {
     } else if (critOverdueTasks.length > 0 || critOverdueStories.length > 0) {
       // Moderate/single high-priority overdue task affects score as AT_RISK or NEEDS_ATTENTION rather than forcing CRITICAL
       const count = Math.max(critOverdueStories.length, critOverdueTasks.length);
-      atRiskReasons.push(
-        `${count} high-priority deliverable(s) overdue (${overdue_sp} SP · ${maxTaskOverdueDays}d delay)`
-      );
+      if (maxTaskOverdueDays >= 7 || overdue_sp_percentage >= 15) {
+        atRiskReasons.push(
+          `${count} high-priority deliverable(s) overdue (${overdue_sp} SP · ${maxTaskOverdueDays}d delay)`
+        );
+      } else {
+        needsAttentionReasons.push(
+          `${count} high-priority deliverable(s) overdue (${overdue_sp} SP · ${maxTaskOverdueDays}d delay)`
+        );
+      }
     }
 
     // Rule 2: Severe Blocker / High-Priority Deliverable Blocked
@@ -629,9 +636,9 @@ export class ProjectHealthService {
       warnings.push(`${overdue_tasks} non-critical deliverable(s) overdue (${maxTaskOverdueDays}d delay) · Low delivery impact`);
     }
 
-    // Rule E: Imminent project deadline (< 7 days) with low progress (< 40%)
-    if (daysUntilDeadline !== null && daysUntilDeadline <= 7 && (progress_percentage ?? 0) < 40 && remaining_sp > 0) {
-      atRiskReasons.push(`Upcoming deadline in ${daysUntilDeadline}d with ${remaining_sp} SP remaining`);
+    // Rule E: Imminent project deadline (< 7 days) with low progress (< 50%)
+    if (daysUntilDeadline !== null && daysUntilDeadline <= 7 && (progress_percentage ?? 0) < 50 && remaining_sp > 0) {
+      needsAttentionReasons.push(`Upcoming deadline in ${daysUntilDeadline}d with ${remaining_sp} SP remaining`);
     }
 
     // --- HEALTHY REASON ---
@@ -652,147 +659,91 @@ export class ProjectHealthService {
     let schedule_health: ScheduleHealth = 'ON_TRACK';
     let schedule_variance_days: number | null = null;
     let schedule_variance_percentage: number | null = null;
-    let schedulePoints = 35;
 
     if (projectOverdueDays > 0) {
       schedule_health = 'BEHIND';
       schedule_variance_days = -projectOverdueDays;
-      if (projectOverdueDays >= 14) {
-        schedulePoints = 0;
-      } else if (projectOverdueDays >= 7) {
-        schedulePoints = 8;
-      } else {
-        schedulePoints = 16;
-      }
     } else if (project.start_date && project.end_date) {
       const startMs = new Date(project.start_date).getTime();
       const endMs = new Date(project.end_date).getTime();
       const nowMs = now.getTime();
       const totalDurationDays = Math.max(1, (endMs - startMs) / (1000 * 60 * 60 * 24));
       const elapsedDays = (nowMs - startMs) / (1000 * 60 * 60 * 24);
-      const elapsedPct = Math.min(100, Math.max(0, Math.round((elapsedDays / totalDurationDays) * 100)));
+      const elapsedPct = nowMs < startMs ? 0 : nowMs > endMs ? 100 : Math.min(100, Math.max(0, Math.round((elapsedDays / totalDurationDays) * 100)));
       const workPct = progress_percentage ?? (total_tasks > 0 ? Math.round((completed_tasks / total_tasks) * 100) : 0);
       schedule_variance_percentage = workPct - elapsedPct;
       schedule_variance_days = daysUntilDeadline;
 
       if (nowMs > endMs) {
         schedule_health = 'BEHIND';
-        schedulePoints = 12;
       } else if (schedule_variance_percentage >= 10) {
         schedule_health = 'AHEAD';
-        schedulePoints = 35;
-      } else if (schedule_variance_percentage < -15) {
+      } else if (schedule_variance_percentage <= -25) {
         schedule_health = 'BEHIND';
-        schedulePoints = Math.max(10, 30 - Math.round(Math.abs(schedule_variance_percentage) * 0.5));
+        atRiskReasons.push(`Delivery significantly behind schedule (${Math.abs(Math.round(schedule_variance_percentage))}% variance)`);
+      } else if (schedule_variance_percentage < -10) {
+        schedule_health = 'BEHIND';
+        needsAttentionReasons.push(`Delivery behind expected schedule (${Math.abs(Math.round(schedule_variance_percentage))}% variance)`);
       } else {
         schedule_health = 'ON_TRACK';
-        schedulePoints = 35;
       }
     } else if (activeSprint?.end_date) {
       const sEnd = new Date(activeSprint.end_date);
       if (sEnd < now) {
         schedule_health = 'BEHIND';
-        schedulePoints = 16;
         schedule_variance_days = -Math.max(1, Math.floor((now.getTime() - sEnd.getTime()) / (1000 * 60 * 60 * 24)));
       } else {
         schedule_health = 'ON_TRACK';
-        schedulePoints = 35;
         schedule_variance_days = Math.floor((sEnd.getTime() - now.getTime()) / (1000 * 60 * 60 * 24));
       }
     } else if (overdue_tasks > 0) {
       schedule_health = 'BEHIND';
       schedule_variance_days = -maxTaskOverdueDays;
-      schedulePoints = 20;
     } else if (completed_tasks === total_tasks && total_tasks > 0) {
       schedule_health = 'ON_TRACK';
-      schedulePoints = 35;
     } else {
       schedule_health = 'NO_SCHEDULE';
-      schedulePoints = 25;
     }
 
-    // Task overdue penalty inside schedule score
-    if (overdue_tasks >= 4 || (total_tasks > 0 && overdue_tasks / total_tasks >= 0.4)) {
-      schedulePoints = Math.min(schedulePoints, 5);
+    if (overdue_tasks > 0) {
       schedule_health = 'BEHIND';
-    } else if (overdue_tasks >= 2 || (total_tasks > 0 && overdue_tasks / total_tasks >= 0.2)) {
-      schedulePoints = Math.min(schedulePoints, 15);
-      schedule_health = 'BEHIND';
-    } else if (overdue_tasks === 1) {
-      schedulePoints = Math.min(schedulePoints, 25);
     }
 
-    // --- BLOCKERS COMPONENT (0-35 points) ---
-    let blockersPoints = 35;
-    const effectiveBlockedRatio = remaining_sp > 0
-      ? (blocked_sp / remaining_sp)
-      : (total_tasks > 0 ? (blocked_tasks / Math.max(1, total_tasks - completed_tasks)) : 0);
-    const effectiveBlockedPct = effectiveBlockedRatio * 100;
-
-    if (blocked_tasks > 0) {
-      if (effectiveBlockedPct >= BLOCKED_RISK_THRESHOLDS.HIGH_RISK_MIN) {
-        blockersPoints = 6;
-      } else if (effectiveBlockedPct >= BLOCKED_RISK_THRESHOLDS.POTENTIAL_RISK_MIN) {
-        blockersPoints = 18;
-      } else {
-        blockersPoints = 26;
-      }
-      if (severeBlockedDeliverables.length > 0) {
-        blockersPoints = Math.max(0, blockersPoints - 8);
-      }
-    }
-
-    // --- PROGRESS COMPONENT (0-20 points) ---
     const completion_rate = total_tasks > 0 ? Math.round((completed_tasks / total_tasks) * 100) : 0;
     const overdue_percentage = total_tasks > 0 ? Math.round((overdue_tasks / total_tasks) * 100) : 0;
     const blocked_percentage = total_tasks > 0 ? Math.round((blocked_tasks / total_tasks) * 100) : 0;
-    const effectiveProgress = (has_estimated_work && progress_percentage !== null)
-      ? progress_percentage
-      : completion_rate;
-    let progressPoints = Math.round((effectiveProgress / 100) * 20);
-    if (remaining_sp === 0 && has_estimated_work) {
-      progressPoints = 20;
-    }
 
-    // --- ACTIVE RISKS & STABILITY COMPONENT (0-10 points) ---
-    let stabilityPoints = 10;
-    if (critOverdueTasks.length > 0) stabilityPoints -= 4;
-    if (sprintOverdue) stabilityPoints -= 3;
-    if (unestimated_blockers_count > 0) stabilityPoints -= 3;
-    stabilityPoints = Math.max(0, stabilityPoints);
-
-    const rawScore = schedulePoints + blockersPoints + progressPoints + stabilityPoints;
+    // Baseline health score is strictly based on story-point completion against total estimated story points
+    // Formula: Completion Percentage = (Completed Story Points / Total Estimated Story Points) * 100
+    const finalScore: number | null = has_estimated_work ? progress_percentage : null;
 
     let finalHealth: HealthStatus;
-    let finalScore: number | null;
     let finalRisk: RiskLevel;
     let finalReasons: string[];
 
-    if (criticalReasons.length > 0) {
+    if (!has_estimated_work) {
+      finalHealth = 'NOT_ASSESSED';
+      finalRisk = 'INSUFFICIENT_DATA';
+      finalReasons = ['No estimated work defined for this project'];
+    } else if (remaining_sp === 0) {
+      finalHealth = 'HEALTHY';
+      finalRisk = 'LOW';
+      finalReasons = ['All deliverables completed'];
+    } else if (criticalReasons.length > 0) {
       finalHealth = 'CRITICAL';
       finalRisk = 'CRITICAL';
-      finalScore = Math.min(34, Math.max(5, rawScore));
       finalReasons = criticalReasons;
     } else if (atRiskReasons.length > 0) {
+      finalHealth = 'AT_RISK';
+      finalRisk = 'HIGH';
       finalReasons = atRiskReasons;
-      if (rawScore >= 55) {
-        finalHealth = 'NEEDS_ATTENTION';
-        finalRisk = 'MODERATE';
-        finalScore = Math.min(74, Math.max(55, rawScore));
-      } else {
-        finalHealth = 'AT_RISK';
-        finalRisk = 'HIGH';
-        finalScore = Math.min(54, Math.max(35, rawScore));
-      }
-    } else if (!hasExplicitSchedule && remaining_sp > 0 && overdue_tasks === 0 && blocked_tasks === 0 && !project.start_date && !project.end_date && !activeSprint) {
-      finalHealth = 'INSUFFICIENT_DATA';
-      finalRisk = 'INSUFFICIENT_DATA';
-      finalScore = null;
-      finalReasons = ['Schedule dates not set: Project lacks start date, end date, and sprint milestones'];
+    } else if (needsAttentionReasons.length > 0) {
+      finalHealth = 'NEEDS_ATTENTION';
+      finalRisk = 'MODERATE';
+      finalReasons = needsAttentionReasons;
     } else {
       finalHealth = 'HEALTHY';
       finalRisk = 'LOW';
-      finalScore = remaining_sp === 0 ? 100 : Math.min(100, Math.max(75, rawScore));
       finalReasons = [healthyReason];
     }
 
@@ -1017,14 +968,13 @@ export class ProjectHealthService {
     const healthyCount = classifiedProjects.filter((p) => p.health === 'HEALTHY').length;
     const needsAttentionCount = classifiedProjects.filter((p) => p.health === 'NEEDS_ATTENTION').length;
     const atRiskOnlyCount = classifiedProjects.filter((p) => p.health === 'AT_RISK').length;
-    const atRiskCount = classifiedProjects.filter((p) => p.health === 'AT_RISK' || p.health === 'NEEDS_ATTENTION').length;
     const criticalCount = classifiedProjects.filter((p) => p.health === 'CRITICAL').length;
     const notAssessedCount = classifiedProjects.filter(
       (p) => p.health === 'NOT_ASSESSED' || (p.health as any) === 'INSUFFICIENT_DATA'
     ).length;
 
-    const assessedCount = healthyCount + atRiskCount + criticalCount;
-    const attentionRequiredCount = atRiskCount + criticalCount;
+    const assessedCount = healthyCount + needsAttentionCount + atRiskOnlyCount + criticalCount;
+    const attentionRequiredCount = needsAttentionCount + atRiskOnlyCount + criticalCount;
 
     const roundPct = (num: number, den: number) => {
       if (den <= 0) return 0;
@@ -1037,7 +987,7 @@ export class ProjectHealthService {
       healthy: healthyCount,
       needs_attention: needsAttentionCount,
       at_risk_only: atRiskOnlyCount,
-      at_risk: atRiskCount,
+      at_risk: atRiskOnlyCount + needsAttentionCount,
       critical: criticalCount,
       not_assessed: notAssessedCount,
       insufficient_data: notAssessedCount,
@@ -1055,8 +1005,8 @@ export class ProjectHealthService {
         percentage: roundPct(needsAttentionCount, assessedCount),
       },
       at_risk: {
-        count: atRiskCount,
-        percentage: roundPct(atRiskCount, assessedCount),
+        count: atRiskOnlyCount,
+        percentage: roundPct(atRiskOnlyCount, assessedCount),
       },
       critical: {
         count: criticalCount,

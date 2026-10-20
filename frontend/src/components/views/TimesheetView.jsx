@@ -178,27 +178,83 @@ export default function TimesheetView({
   const [correctionSubmitting, setCorrectionSubmitting] = useState(false);
   const [correctionError, setCorrectionError] = useState('');
 
+  // Week Details Modal in Month View
+  const [weekModalData, setWeekModalData] = useState(null); // { task, weekGroup, weekMins }
+  const [weekFormDate, setWeekFormDate] = useState('');
+  const [weekFormHours, setWeekFormHours] = useState('');
+  const [weekFormMinutes, setWeekFormMinutes] = useState('30');
+  const [weekFormNotes, setWeekFormNotes] = useState('');
+
   // Pagination & Compact Layout
-  const [pageSize, setPageSize] = useState(15);
+  const [pageSize, setPageSize] = useState(() => {
+    try {
+      const stored = sessionStorage.getItem('internhub_timesheet_page_size');
+      if (stored === 'ALL') return 'ALL';
+      const num = parseInt(stored, 10);
+      if (!isNaN(num) && num > 0) return num;
+    } catch {}
+    return 15;
+  });
+  const [isCustomPageSize, setIsCustomPageSize] = useState(() => {
+    try {
+      const stored = sessionStorage.getItem('internhub_timesheet_page_size');
+      if (stored && stored !== 'ALL' && ![15, 30, 50].includes(Number(stored))) return true;
+    } catch {}
+    return false;
+  });
+  const [customPageSizeInput, setCustomPageSizeInput] = useState(() => {
+    try {
+      const stored = sessionStorage.getItem('internhub_timesheet_page_size');
+      if (stored && stored !== 'ALL' && ![15, 30, 50].includes(Number(stored))) return String(stored);
+    } catch {}
+    return '20';
+  });
+  const [pageSizeError, setPageSizeError] = useState('');
   const [currentPage, setCurrentPage] = useState(1);
 
   // Authoritative date range objects
   const weekInfo = useMemo(() => getCalendarWeekRange(selectedDate), [selectedDate]);
   const monthInfo = useMemo(() => getCalendarMonthRange(selectedDate), [selectedDate]);
 
-  // Persist selected date and view mode
+  // Persist selected date, view mode, and page size
   useEffect(() => {
     try {
       sessionStorage.setItem('internhub_timesheet_selected_date', toLocalDateString(selectedDate));
       sessionStorage.setItem('internhub_timesheet_view_mode', viewMode);
+      sessionStorage.setItem('internhub_timesheet_page_size', String(pageSize));
     } catch {}
     onDateChange?.(selectedDate);
-  }, [selectedDate, viewMode, onDateChange]);
+  }, [selectedDate, viewMode, pageSize, onDateChange]);
 
   // Reset pagination on filter or page size changes
   useEffect(() => {
     setCurrentPage(1);
   }, [statusFilter, priorityFilter, timeFilter, taskSearchQuery, pageSize]);
+
+  const handleCustomPageSizeChange = (val) => {
+    setCustomPageSizeInput(val);
+    const trimmed = val.trim();
+    if (!trimmed) {
+      setPageSizeError('Enter rows');
+      return;
+    }
+    if (!/^\d+$/.test(trimmed)) {
+      setPageSizeError('Positive integer only');
+      return;
+    }
+    const num = parseInt(trimmed, 10);
+    if (num <= 0) {
+      setPageSizeError('Must be > 0');
+      return;
+    }
+    if (num > 200) {
+      setPageSizeError('Max 200 rows');
+      return;
+    }
+    setPageSizeError('');
+    setPageSize(num);
+    setCurrentPage(1);
+  };
 
   const handleResetFilters = () => {
     setStatusFilter('ALL');
@@ -477,6 +533,52 @@ export default function TimesheetView({
     setCellFormNotes('');
   };
 
+  // Open Week Cell Drawer / Modal (Month View)
+  const handleOpenWeekCell = (task, wg) => {
+    const weekNum = wg.week_number ?? wg.weekNumber;
+    const weekMins = task.weeks?.[weekNum]?.minutes || 0;
+    setWeekModalData({
+      task,
+      weekGroup: wg,
+      weekMins,
+    });
+    setWeekFormDate(wg.days?.[0] || wg.start_date || '');
+    setWeekFormHours('');
+    setWeekFormMinutes('30');
+    setWeekFormNotes('');
+  };
+
+  // Submit time entry inside Week Modal
+  const handleAddWeekEntry = async (e) => {
+    e.preventDefault();
+    if (!weekModalData || !weekFormDate) return;
+    const hours = parseInt(weekFormHours, 10) || 0;
+    const minutes = parseInt(weekFormMinutes, 10) || 0;
+    const totalMins = hours * 60 + minutes;
+
+    if (totalMins <= 0) {
+      alert('Please enter a duration greater than 0 minutes.');
+      return;
+    }
+
+    try {
+      setActionLoading(true);
+      await timesheetService.createEntry({
+        task_id: weekModalData.task.id,
+        date: weekFormDate,
+        duration_minutes: totalMins,
+        notes: weekFormNotes.trim() || null,
+      });
+      onToast?.(`Logged ${formatMinutes(totalMins)} on ${weekModalData.task.title}`);
+      setWeekModalData(null);
+      await loadTimesheet();
+    } catch (err) {
+      alert(err.message || 'Failed to save time entry');
+    } finally {
+      setActionLoading(false);
+    }
+  };
+
   // Submit time entry inside Cell Modal
   const handleAddCellEntry = async (e) => {
     e.preventDefault();
@@ -508,7 +610,7 @@ export default function TimesheetView({
     }
   };
 
-  // Delete an entry from cell modal
+  // Delete an entry from cell modal or week modal
   const handleDeleteEntry = async (entryId) => {
     if (!window.confirm('Are you sure you want to delete this time entry?')) return;
     try {
@@ -516,6 +618,7 @@ export default function TimesheetView({
       await timesheetService.deleteEntry(entryId);
       onToast?.('Time entry deleted');
       setCellModalData(null);
+      setWeekModalData(null);
       await loadTimesheet();
     } catch (err) {
       onToast?.(err.message || 'Failed to delete time entry');
@@ -677,212 +780,215 @@ export default function TimesheetView({
   }, [filteredTaskRows, currentPage, pageSize]);
 
   return (
-    <div className="space-y-5 text-xs text-slate-800">
+    <div className="space-y-6 text-xs text-slate-800">
       {/* 1. TOP HEADER & NAVIGATION CONTROLS */}
-      <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4 bg-white p-5 sm:p-6 rounded-2xl border border-slate-200/80 shadow-xs">
-        <div>
-          {onBack && (
+      <div className="bg-white p-5 sm:p-6 rounded-2xl border border-slate-200/80 shadow-xs space-y-4">
+        {onBack && (
+          <div className="pb-3.5 border-b border-slate-100">
             <button
               type="button"
               onClick={onBack}
-              className="inline-flex items-center gap-1.5 text-xs font-semibold text-purple-700 hover:text-purple-900 mb-3 transition-colors cursor-pointer group"
+              className="inline-flex items-center gap-1.5 text-xs font-semibold text-purple-700 hover:text-purple-900 transition-colors cursor-pointer group"
             >
               <ChevronLeft className="w-4 h-4 transition-transform group-hover:-translate-x-0.5" />
               <span>Back to Intern Timesheets Directory</span>
             </button>
-          )}
+          </div>
+        )}
 
-          <div className="flex items-center gap-2 flex-wrap">
-            <span className="p-1.5 rounded-lg bg-purple-100 text-purple-700">
-              <Calendar className="w-4 h-4" />
-            </span>
-            <span className="text-[11px] font-bold uppercase tracking-wider text-purple-700">
-              Time Tracking & Attendance
-            </span>
-            {readOnly && (
-              <span className="px-2 py-0.5 text-[10px] font-bold bg-amber-50 text-amber-700 border border-amber-200 rounded-full uppercase tracking-wider">
-                Review Mode (Read-Only)
+        <div className="flex flex-col xl:flex-row xl:items-center justify-between gap-5">
+          {/* Left: Title & Intern Metadata */}
+          <div>
+            <div className="flex items-center gap-2 flex-wrap">
+              <span className="p-1.5 rounded-lg bg-purple-100 text-purple-700">
+                <Calendar className="w-4 h-4" />
               </span>
-            )}
-          </div>
-
-          <h1 className="text-xl sm:text-2xl font-bold text-slate-900 tracking-tight mt-1.5">
-            {currentIntern
-              ? `${currentIntern.name}'s ${viewMode === 'MONTH' ? 'Monthly' : 'Weekly'} Timesheet`
-              : `${viewMode === 'MONTH' ? 'Monthly' : 'Weekly'} Timesheet`}
-          </h1>
-
-          <div className="flex flex-wrap items-center gap-x-2.5 gap-y-1 text-xs text-slate-500 mt-1">
-            {currentIntern ? (
-              <>
-                <span className="text-slate-700 font-medium">{currentIntern.email}</span>
-                {currentIntern.cohort?.name && (
-                  <>
-                    <span>•</span>
-                    <span className="font-semibold text-purple-700 bg-purple-50 px-2 py-0.5 rounded border border-purple-200/60">
-                      {currentIntern.cohort.name}
-                    </span>
-                  </>
-                )}
-                {currentIntern.batch && (
-                  <>
-                    <span>•</span>
-                    <span>{currentIntern.batch} {currentIntern.subbatch || ''}</span>
-                  </>
-                )}
-              </>
-            ) : (
-              <span>Log, track, and review real task effort across work days</span>
-            )}
-          </div>
-        </div>
-
-        {/* Action Buttons & Nav */}
-        <div className="flex flex-wrap items-center gap-2.5 sm:gap-3">
-          {/* View Mode Selector: Week vs Month */}
-          <div className="flex items-center bg-slate-100 p-1 rounded-xl border border-slate-200 text-xs font-semibold">
-            <button
-              type="button"
-              onClick={() => setViewMode('WEEK')}
-              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg transition-all cursor-pointer ${
-                viewMode === 'WEEK'
-                  ? 'bg-white text-purple-700 font-bold shadow-2xs'
-                  : 'text-slate-600 hover:text-slate-900'
-              }`}
-            >
-              <Clock className="w-3.5 h-3.5" />
-              <span>Week</span>
-            </button>
-            <button
-              type="button"
-              onClick={() => setViewMode('MONTH')}
-              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg transition-all cursor-pointer ${
-                viewMode === 'MONTH'
-                  ? 'bg-white text-purple-700 font-bold shadow-2xs'
-                  : 'text-slate-600 hover:text-slate-900'
-              }`}
-            >
-              <Calendar className="w-3.5 h-3.5" />
-              <span>Month</span>
-            </button>
-          </div>
-
-          {/* Period Nav Buttons */}
-          <div className="flex items-center bg-slate-100 p-1 rounded-xl border border-slate-200 text-slate-700">
-            <button
-              type="button"
-              onClick={handlePrevPeriod}
-              className="p-1.5 rounded-lg hover:bg-white hover:text-slate-900 transition-colors cursor-pointer"
-              title={viewMode === 'MONTH' ? 'Previous Month' : 'Previous Week'}
-            >
-              <ChevronLeft className="w-4 h-4" />
-            </button>
-            <div className="px-3 py-1 font-bold text-xs text-slate-800 whitespace-nowrap min-w-[125px] text-center">
-              {viewMode === 'MONTH' ? monthInfo.monthName : weekInfo.formattedRange}
+              <span className="text-[11px] font-bold uppercase tracking-wider text-purple-700">
+                Time Tracking & Attendance
+              </span>
+              {readOnly && (
+                <span className="px-2 py-0.5 text-[10px] font-bold bg-amber-50 text-amber-700 border border-amber-200 rounded-full uppercase tracking-wider">
+                  Review Mode (Read-Only)
+                </span>
+              )}
             </div>
-            <button
-              type="button"
-              onClick={handleNextPeriod}
-              className="p-1.5 rounded-lg hover:bg-white hover:text-slate-900 transition-colors cursor-pointer"
-              title={viewMode === 'MONTH' ? 'Next Month' : 'Next Week'}
-            >
-              <ChevronRight className="w-4 h-4" />
-            </button>
+
+            <h1 className="text-xl sm:text-2xl font-bold text-slate-900 tracking-tight mt-1.5">
+              {currentIntern
+                ? `${currentIntern.name}'s ${viewMode === 'MONTH' ? 'Monthly' : 'Weekly'} Timesheet`
+                : `${viewMode === 'MONTH' ? 'Monthly' : 'Weekly'} Timesheet`}
+            </h1>
+
+            <div className="flex flex-wrap items-center gap-x-2.5 gap-y-1 text-xs text-slate-500 mt-1.5">
+              {currentIntern ? (
+                <>
+                  <span className="text-slate-700 font-medium">{currentIntern.email}</span>
+                  {currentIntern.cohort?.name && (
+                    <>
+                      <span>•</span>
+                      <span className="font-semibold text-purple-700 bg-purple-50 px-2 py-0.5 rounded border border-purple-200/60">
+                        {currentIntern.cohort.name}
+                      </span>
+                    </>
+                  )}
+                  {currentIntern.batch && (
+                    <>
+                      <span>•</span>
+                      <span>{currentIntern.batch} {currentIntern.subbatch || ''}</span>
+                    </>
+                  )}
+                </>
+              ) : (
+                <span>Log, track, and review real task effort across work days</span>
+              )}
+            </div>
           </div>
 
-          {/* Jump to Current Period Button */}
-          <button
-            type="button"
-            onClick={handleCurrentPeriod}
-            className={`px-3 py-2 text-xs font-semibold rounded-xl border transition-colors cursor-pointer whitespace-nowrap ${
-              (viewMode === 'MONTH' ? monthInfo.isCurrentMonth : weekInfo.isCurrentWeek)
-                ? 'bg-purple-100 text-purple-800 border-purple-300 font-bold'
-                : 'bg-slate-100 hover:bg-purple-50 hover:text-purple-700 border-slate-200 text-slate-700'
-            }`}
-            title={viewMode === 'MONTH' ? 'Jump to Current Month' : 'Jump to Current Calendar Week'}
-          >
-            {viewMode === 'MONTH' ? 'This Month' : 'This Week'}
-          </button>
-
-          {/* 5-Day vs 7-Day Toggle (Week view only) */}
-          {viewMode === 'WEEK' && (
+          {/* Right: Action Buttons & Nav */}
+          <div className="flex flex-wrap items-center gap-2.5 sm:gap-3 self-start xl:self-auto">
+            {/* View Mode Selector: Week vs Month */}
             <div className="flex items-center bg-slate-100 p-1 rounded-xl border border-slate-200 text-xs font-semibold">
               <button
                 type="button"
-                onClick={() => setShowWeekends(false)}
-                className={`px-2.5 py-1 rounded-lg transition-all cursor-pointer ${
-                  !showWeekends
+                onClick={() => setViewMode('WEEK')}
+                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg transition-all cursor-pointer ${
+                  viewMode === 'WEEK'
                     ? 'bg-white text-purple-700 font-bold shadow-2xs'
                     : 'text-slate-600 hover:text-slate-900'
                 }`}
               >
-                Mon–Fri
+                <Clock className="w-3.5 h-3.5" />
+                <span>Week</span>
               </button>
               <button
                 type="button"
-                onClick={() => setShowWeekends(true)}
-                className={`px-2.5 py-1 rounded-lg transition-all cursor-pointer ${
-                  showWeekends
+                onClick={() => setViewMode('MONTH')}
+                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg transition-all cursor-pointer ${
+                  viewMode === 'MONTH'
                     ? 'bg-white text-purple-700 font-bold shadow-2xs'
                     : 'text-slate-600 hover:text-slate-900'
                 }`}
               >
-                7 Days
+                <Calendar className="w-3.5 h-3.5" />
+                <span>Month</span>
               </button>
             </div>
-          )}
 
-          {/* Refresh */}
-          <button
-            type="button"
-            onClick={loadTimesheet}
-            disabled={loading}
-            className="p-2 rounded-xl border border-slate-200 bg-white hover:bg-slate-50 text-slate-600 transition-colors cursor-pointer disabled:opacity-50"
-            title="Refresh Timesheet"
-          >
-            <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} />
-          </button>
+            {/* Period Nav Buttons */}
+            <div className="flex items-center bg-slate-100 p-1 rounded-xl border border-slate-200 text-slate-700">
+              <button
+                type="button"
+                onClick={handlePrevPeriod}
+                className="p-1.5 rounded-lg hover:bg-white hover:text-slate-900 transition-colors cursor-pointer"
+                title={viewMode === 'MONTH' ? 'Previous Month' : 'Previous Week'}
+              >
+                <ChevronLeft className="w-4 h-4" />
+              </button>
+              <div className="px-3 py-1 font-bold text-xs text-slate-800 whitespace-nowrap min-w-[125px] text-center">
+                {viewMode === 'MONTH' ? monthInfo.monthName : weekInfo.formattedRange}
+              </div>
+              <button
+                type="button"
+                onClick={handleNextPeriod}
+                className="p-1.5 rounded-lg hover:bg-white hover:text-slate-900 transition-colors cursor-pointer"
+                title={viewMode === 'MONTH' ? 'Next Month' : 'Next Week'}
+              >
+                <ChevronRight className="w-4 h-4" />
+              </button>
+            </div>
 
-          {/* Start Timer Button (Intern Only, when no timer is active) */}
-          {!readOnly && !isManager && !activeSession && (
+            {/* Jump to Current Period Button */}
             <button
               type="button"
-              disabled={Boolean(timerActionTaskId)}
-              onClick={() => {
-                if (availableTasks.length > 0 && !startTimerTaskId) {
-                  setStartTimerTaskId(availableTasks[0].id);
-                }
-                setIsStartTimerModalOpen(true);
-              }}
-              className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-semibold transition-colors cursor-pointer shadow-xs disabled:opacity-50"
+              onClick={handleCurrentPeriod}
+              className={`px-3 py-2 text-xs font-semibold rounded-xl border transition-colors cursor-pointer whitespace-nowrap ${
+                (viewMode === 'MONTH' ? monthInfo.isCurrentMonth : weekInfo.isCurrentWeek)
+                  ? 'bg-purple-100 text-purple-800 border-purple-300 font-bold'
+                  : 'bg-slate-100 hover:bg-purple-50 hover:text-purple-700 border-slate-200 text-slate-700'
+              }`}
+              title={viewMode === 'MONTH' ? 'Jump to Current Month' : 'Jump to Current Calendar Week'}
             >
-              {timerActionTaskId ? (
-                <RefreshCw className="w-3.5 h-3.5 animate-spin" />
-              ) : (
-                <Play className="w-3.5 h-3.5 fill-current" />
-              )}
-              <span>Start Timer</span>
+              {viewMode === 'MONTH' ? 'This Month' : 'This Week'}
             </button>
-          )}
 
+            {/* 5-Day vs 7-Day Toggle (Week view only) */}
+            {viewMode === 'WEEK' && (
+              <div className="flex items-center bg-slate-100 p-1 rounded-xl border border-slate-200 text-xs font-semibold">
+                <button
+                  type="button"
+                  onClick={() => setShowWeekends(false)}
+                  className={`px-2.5 py-1 rounded-lg transition-all cursor-pointer ${
+                    !showWeekends
+                      ? 'bg-white text-purple-700 font-bold shadow-2xs'
+                      : 'text-slate-600 hover:text-slate-900'
+                  }`}
+                >
+                  Mon–Fri
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setShowWeekends(true)}
+                  className={`px-2.5 py-1 rounded-lg transition-all cursor-pointer ${
+                    showWeekends
+                      ? 'bg-white text-purple-700 font-bold shadow-2xs'
+                      : 'text-slate-600 hover:text-slate-900'
+                  }`}
+                >
+                  7 Days
+                </button>
+              </div>
+            )}
 
-
-          {/* Log Time Button (Intern Only) */}
-          {!readOnly && (
+            {/* Refresh */}
             <button
               type="button"
-              onClick={() => {
-                if (availableTasks.length > 0 && !manualTaskId) {
-                  setManualTaskId(availableTasks[0].id);
-                }
-                setIsLogModalOpen(true);
-              }}
-              className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-purple-600 hover:bg-purple-700 text-white font-semibold transition-colors cursor-pointer shadow-xs"
+              onClick={loadTimesheet}
+              disabled={loading}
+              className="p-2 rounded-xl border border-slate-200 bg-white hover:bg-slate-50 text-slate-600 transition-colors cursor-pointer disabled:opacity-50"
+              title="Refresh Timesheet"
             >
-              <Plus className="w-3.5 h-3.5" />
-              <span>Log Time</span>
+              <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} />
             </button>
-          )}
+
+            {/* Start Timer Button (Intern Only, when no timer is active) */}
+            {!readOnly && !isManager && !activeSession && (
+              <button
+                type="button"
+                disabled={Boolean(timerActionTaskId)}
+                onClick={() => {
+                  if (availableTasks.length > 0 && !startTimerTaskId) {
+                    setStartTimerTaskId(availableTasks[0].id);
+                  }
+                  setIsStartTimerModalOpen(true);
+                }}
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-semibold transition-colors cursor-pointer shadow-xs disabled:opacity-50"
+              >
+                {timerActionTaskId ? (
+                  <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                ) : (
+                  <Play className="w-3.5 h-3.5 fill-current" />
+                )}
+                <span>Start Timer</span>
+              </button>
+            )}
+
+            {/* Log Time Button (Intern Only) */}
+            {!readOnly && (
+              <button
+                type="button"
+                onClick={() => {
+                  if (availableTasks.length > 0 && !manualTaskId) {
+                    setManualTaskId(availableTasks[0].id);
+                  }
+                  setIsLogModalOpen(true);
+                }}
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-purple-600 hover:bg-purple-700 text-white font-semibold transition-colors cursor-pointer shadow-xs"
+              >
+                <Plus className="w-3.5 h-3.5" />
+                <span>Log Time</span>
+              </button>
+            )}
+          </div>
         </div>
       </div>
 
@@ -904,75 +1010,81 @@ export default function TimesheetView({
       )}
 
       {/* 2. SUMMARY STAT CARDS */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3.5 sm:gap-4">
-        <div className="bg-white p-4.5 rounded-2xl border border-slate-200/80 shadow-2xs">
-          <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider block">
-            {viewMode === 'MONTH' ? 'Month Period' : 'Week Period'}
-          </span>
-          <div className="text-sm sm:text-base font-bold text-slate-900 mt-1 truncate">
-            {viewMode === 'MONTH' ? monthInfo.monthName : weekInfo.formattedRange}
-          </div>
-          <span className="text-[11px] text-purple-600 font-semibold block mt-0.5">
-            {viewMode === 'MONTH'
-              ? `${timesheet?.weeks?.length || monthInfo.weeks.length} calendar weeks · ${monthInfo.daysInMonth} days`
-              : showWeekends ? '7 calendar days' : 'Monday – Friday'}
-          </span>
-        </div>
-
-        <div className="bg-white p-4.5 rounded-2xl border border-slate-200/80 shadow-2xs">
-          <div className="flex items-center justify-between gap-1">
-            <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider block">
-              {isFiltered ? 'Total Logged (Filtered)' : 'Total Logged'}
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+        <div className="bg-white p-5 rounded-2xl border border-slate-200/80 shadow-xs flex flex-col justify-between min-h-[115px]">
+          <div className="flex items-center justify-between text-slate-500 text-[11px] font-bold uppercase tracking-wider">
+            <span>{viewMode === 'MONTH' ? 'Month Period' : 'Week Period'}</span>
+            <span className="p-1.5 rounded-lg bg-purple-50 text-purple-600">
+              <Calendar className="w-4 h-4" />
             </span>
-            {isFiltered && (
-              <span className="px-1.5 py-0.2 rounded text-[9px] font-bold bg-purple-100 text-purple-700 border border-purple-200">
-                Filtered
-              </span>
-            )}
           </div>
-          <div className="text-xl sm:text-2xl font-extrabold text-purple-700 mt-1">
-            {(loading && !timesheet) ? '...' : (isFiltered ? filteredTotals.totalFormatted : summaryStats.totalFormatted)}
+          <div className="mt-2">
+            <div className="text-xl sm:text-2xl font-extrabold text-slate-900 tracking-tight truncate">
+              {viewMode === 'MONTH' ? monthInfo.monthName : weekInfo.formattedRange}
+            </div>
+            <div className="text-[11px] text-purple-600 font-semibold mt-0.5 truncate">
+              {viewMode === 'MONTH'
+                ? `${timesheet?.weeks?.length || monthInfo.weeks.length} calendar weeks · ${monthInfo.daysInMonth} days`
+                : showWeekends ? '7 calendar days' : 'Monday – Friday'}
+            </div>
           </div>
-          <span className="text-[11px] text-slate-500 font-medium block mt-0.5">
-            {viewMode === 'MONTH'
-              ? 'Recorded task effort (excl. boundary days)'
-              : isFiltered
-              ? `Filtered total (${summaryStats.totalFormatted} overall)`
-              : 'Recorded task effort'}
-          </span>
         </div>
 
-        <div className="bg-white p-4.5 rounded-2xl border border-slate-200/80 shadow-2xs">
-          <div className="flex items-center justify-between gap-1">
-            <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider block">
-              {isFiltered ? 'Active Tasks (Filtered)' : 'Active Tasks'}
+        <div className="bg-white p-5 rounded-2xl border border-slate-200/80 shadow-xs flex flex-col justify-between min-h-[115px]">
+          <div className="flex items-center justify-between text-slate-500 text-[11px] font-bold uppercase tracking-wider">
+            <span>{isFiltered ? 'Total Logged (Filtered)' : 'Total Logged'}</span>
+            <span className="p-1.5 rounded-lg bg-indigo-50 text-indigo-600">
+              <Clock className="w-4 h-4" />
             </span>
-            {isFiltered && (
-              <span className="px-1.5 py-0.2 rounded text-[9px] font-bold bg-purple-100 text-purple-700 border border-purple-200">
-                Filtered
-              </span>
-            )}
           </div>
-          <div className="text-xl sm:text-2xl font-extrabold text-slate-900 mt-1">
-            {(loading && !timesheet) ? '...' : (isFiltered ? filteredTotals.activeTasksCount : summaryStats.activeTasksCount)}
+          <div className="mt-2">
+            <div className="text-xl sm:text-2xl font-extrabold text-purple-700 tracking-tight">
+              {(loading && !timesheet) ? '...' : (isFiltered ? filteredTotals.totalFormatted : summaryStats.totalFormatted)}
+            </div>
+            <div className="text-[11px] text-slate-400 mt-0.5 truncate">
+              {viewMode === 'MONTH'
+                ? 'Recorded task effort in month'
+                : isFiltered
+                ? `Filtered total (${summaryStats.totalFormatted} overall)`
+                : 'Recorded task effort'}
+            </div>
           </div>
-          <span className="text-[11px] text-slate-500 font-medium block mt-0.5">
-            {isFiltered
-              ? `Of ${filteredTaskRows.length} filtered (${taskRows.length} overall)`
-              : `Of ${taskRows.length} assigned tasks`}
-          </span>
         </div>
 
-        <div className="bg-white p-4.5 rounded-2xl border border-slate-200/80 shadow-2xs">
-          <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider block">
-            Daily Average
-          </span>
-          <div className="text-xl sm:text-2xl font-extrabold text-slate-900 mt-1">
-            {(loading && !timesheet) ? '...' : summaryStats.avgDailyFormatted}
+        <div className="bg-white p-5 rounded-2xl border border-slate-200/80 shadow-xs flex flex-col justify-between min-h-[115px]">
+          <div className="flex items-center justify-between text-slate-500 text-[11px] font-bold uppercase tracking-wider">
+            <span>{isFiltered ? 'Active Tasks (Filtered)' : 'Active Tasks'}</span>
+            <span className="p-1.5 rounded-lg bg-emerald-50 text-emerald-600">
+              <CheckSquare className="w-4 h-4" />
+            </span>
           </div>
-          <span className="text-[11px] text-slate-500 font-medium block mt-0.5">
-            Across {summaryStats.activeDaysCount} active work days
-          </span>
+          <div className="mt-2">
+            <div className="text-xl sm:text-2xl font-extrabold text-slate-900 tracking-tight">
+              {(loading && !timesheet) ? '...' : (isFiltered ? filteredTotals.activeTasksCount : summaryStats.activeTasksCount)}
+            </div>
+            <div className="text-[11px] text-slate-400 mt-0.5 truncate">
+              {isFiltered
+                ? `Of ${filteredTaskRows.length} filtered (${taskRows.length} overall)`
+                : `Of ${taskRows.length} assigned tasks`}
+            </div>
+          </div>
+        </div>
+
+        <div className="bg-white p-5 rounded-2xl border border-slate-200/80 shadow-xs flex flex-col justify-between min-h-[115px]">
+          <div className="flex items-center justify-between text-slate-500 text-[11px] font-bold uppercase tracking-wider">
+            <span>Daily Average</span>
+            <span className="p-1.5 rounded-lg bg-amber-50 text-amber-600">
+              <Timer className="w-4 h-4" />
+            </span>
+          </div>
+          <div className="mt-2">
+            <div className="text-xl sm:text-2xl font-extrabold text-slate-900 tracking-tight">
+              {(loading && !timesheet) ? '...' : summaryStats.avgDailyFormatted}
+            </div>
+            <div className="text-[11px] text-slate-400 mt-0.5 truncate">
+              Across {summaryStats.activeDaysCount} active work {summaryStats.activeDaysCount === 1 ? 'day' : 'days'}
+            </div>
+          </div>
         </div>
       </div>
 
@@ -1174,340 +1286,8 @@ export default function TimesheetView({
               <span>Reset All Filters</span>
             </button>
           </div>
-        ) : viewMode === 'MONTH' ? (
-          /* MONTH VIEW: Calendar-Week Breakdown & Monthly Comparison Matrix */
-          <div className="p-4 sm:p-5 space-y-6">
-            {/* 1. Expandable Calendar-Week Breakdown */}
-            <div className="space-y-3">
-              <div className="flex items-center justify-between flex-wrap gap-2 pb-1">
-                <div>
-                  <h3 className="text-xs sm:text-sm font-bold text-slate-900 flex items-center gap-2">
-                    <Calendar className="w-4 h-4 text-purple-600" />
-                    <span>Calendar-Week Breakdown</span>
-                    <span className="text-[11px] font-normal text-slate-500 font-mono">
-                      ({timesheet?.weeks?.length || monthInfo.weeks.length} calendar weeks)
-                    </span>
-                  </h3>
-                  <p className="text-[11px] text-slate-500 mt-0.5">
-                    Click any day cell to add or review task time entries. Out-of-month days are shaded and excluded from monthly totals.
-                  </p>
-                </div>
-                <div className="flex items-center gap-2">
-                  <button
-                    type="button"
-                    onClick={() => toggleAllWeeks(true)}
-                    className="px-2.5 py-1 text-[11px] font-semibold text-purple-700 bg-purple-50 hover:bg-purple-100 border border-purple-200 rounded-lg transition-colors cursor-pointer"
-                  >
-                    Expand All
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => toggleAllWeeks(false)}
-                    className="px-2.5 py-1 text-[11px] font-semibold text-slate-600 bg-slate-100 hover:bg-slate-200 border border-slate-200 rounded-lg transition-colors cursor-pointer"
-                  >
-                    Collapse All
-                  </button>
-                </div>
-              </div>
-
-              {/* Week Group Accordions */}
-              <div className="space-y-3">
-                {(timesheet?.weeks || []).map((wg) => {
-                  const isExpanded = expandedWeeks[wg.week_number] !== false;
-                  // Filter task rows for this week group
-                  const weekFilteredTasks = (wg.task_rows || []).filter((task) => {
-                    if (statusFilter !== 'ALL' && (task.status || 'TODO').toUpperCase() !== statusFilter) return false;
-                    if (priorityFilter !== 'ALL' && (task.priority || 'MEDIUM').toUpperCase() !== priorityFilter) return false;
-                    if (timeFilter === 'LOGGED' && (task.week_minutes || 0) <= 0) return false;
-                    if (timeFilter === 'NO_LOGGED' && (task.week_minutes || 0) > 0) return false;
-                    if (taskSearchQuery.trim()) {
-                      const q = taskSearchQuery.trim().toLowerCase();
-                      const titleMatch = (task.title || '').toLowerCase().includes(q);
-                      const keyMatch = (task.key || task.id || '').toLowerCase().includes(q);
-                      const projMatch = (task.project?.name || '').toLowerCase().includes(q);
-                      if (!titleMatch && !keyMatch && !projMatch) return false;
-                    }
-                    return true;
-                  });
-
-                  return (
-                    <div
-                      key={wg.week_number}
-                      className="border border-slate-200/90 rounded-xl overflow-hidden bg-white shadow-2xs"
-                    >
-                      <div
-                        onClick={() => toggleWeekExpanded(wg.week_number)}
-                        className="px-4 py-3 bg-slate-50/90 hover:bg-slate-100/80 transition-colors flex items-center justify-between gap-3 cursor-pointer select-none"
-                      >
-                        <div className="flex items-center gap-3">
-                          <span className="p-1.5 rounded-lg bg-purple-100 text-purple-700">
-                            <Clock className="w-3.5 h-3.5" />
-                          </span>
-                          <div>
-                            <div className="font-bold text-slate-900 text-xs sm:text-sm flex items-center gap-2 flex-wrap">
-                              <span>{wg.label}</span>
-                              <span className="text-[10px] font-mono text-slate-400 font-normal">
-                                ({wg.start_date} – {wg.end_date})
-                              </span>
-                            </div>
-                            <div className="text-[11px] text-slate-500 mt-0.5">
-                              {weekFilteredTasks.length} {weekFilteredTasks.length === 1 ? 'task' : 'tasks'} worked · {wg.total_formatted} logged
-                            </div>
-                          </div>
-                        </div>
-
-                        <div className="flex items-center gap-3">
-                          <span className="font-mono font-extrabold text-xs sm:text-sm text-purple-700 bg-purple-50 px-2.5 py-1 rounded-lg border border-purple-200">
-                            {wg.total_formatted}
-                          </span>
-                          <button
-                            type="button"
-                            className="p-1 rounded-lg text-slate-400 hover:text-slate-600"
-                            aria-label={isExpanded ? 'Collapse week' : 'Expand week'}
-                          >
-                            {isExpanded ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
-                          </button>
-                        </div>
-                      </div>
-
-                      {isExpanded && (
-                        <div className="border-t border-slate-200/80 overflow-x-auto">
-                          <table className="w-full text-left border-collapse text-xs">
-                            <thead className="bg-slate-50/80 text-slate-600 font-bold text-[11px] border-b border-slate-200">
-                              <tr>
-                                <th className="py-2.5 px-4 min-w-[240px]">Task & Deliverable</th>
-                                {wg.days.map((d) => (
-                                  <th
-                                    key={d.date}
-                                    className={`py-2 px-2 text-center min-w-[75px] ${
-                                      !d.in_month
-                                        ? 'bg-slate-100/70 text-slate-400'
-                                        : d.isToday
-                                        ? 'bg-purple-100/60 text-purple-900 font-extrabold'
-                                        : ''
-                                    }`}
-                                  >
-                                    <span className="block text-[10px] uppercase">{d.dayName}</span>
-                                    <span className="text-xs font-bold">{d.dayNumber}</span>
-                                    {!d.in_month && (
-                                      <span className="block text-[9px] font-medium text-slate-400 uppercase tracking-tighter">
-                                        Excl.
-                                      </span>
-                                    )}
-                                  </th>
-                                ))}
-                                <th className="py-2.5 px-4 text-right min-w-[90px] bg-slate-100/80 font-bold">
-                                  Week Total
-                                </th>
-                              </tr>
-                            </thead>
-                            <tbody className="divide-y divide-slate-100">
-                              {weekFilteredTasks.length === 0 ? (
-                                <tr>
-                                  <td colSpan={wg.days.length + 2} className="py-6 text-center text-slate-400 italic">
-                                    No time logged for this week matching current filters.
-                                  </td>
-                                </tr>
-                              ) : (
-                                weekFilteredTasks.map((task) => {
-                                  const statusBadge = getStatusBadge(task.status);
-                                  const priorityBadge = getPriorityBadge(task.priority);
-                                  return (
-                                    <tr key={task.id} className="hover:bg-purple-50/20">
-                                      <td className="py-2.5 px-4">
-                                        <div className="flex items-center gap-1.5 flex-wrap">
-                                          <span className={`text-[9px] font-bold px-1.5 py-0.2 rounded border uppercase inline-flex items-center gap-1 ${statusBadge.bg}`}>
-                                            <span className={`w-1.5 h-1.5 rounded-full ${statusBadge.dot}`}></span>
-                                            <span>{statusBadge.label}</span>
-                                          </span>
-                                          <span className={`text-[9px] font-bold px-1.5 py-0.2 rounded border uppercase inline-flex items-center gap-1 ${priorityBadge.bg}`}>
-                                            <span className={`w-1.5 h-1.5 rounded-full ${priorityBadge.dot}`}></span>
-                                            <span>{priorityBadge.label}</span>
-                                          </span>
-                                          {task.project?.name && (
-                                            <span className="text-[10px] text-slate-400 font-medium">
-                                              {task.project.name}
-                                            </span>
-                                          )}
-                                        </div>
-                                        <div className="font-semibold text-slate-900 mt-1 truncate max-w-sm">
-                                          {task.title}
-                                        </div>
-                                      </td>
-                                      {wg.days.map((d) => {
-                                        const cellMins = task.days?.[d.date]?.minutes || 0;
-                                        return (
-                                          <td
-                                            key={d.date}
-                                            onClick={() => handleOpenCell(task, d.date, d)}
-                                            className={`py-2 px-2 text-center cursor-pointer transition-colors ${
-                                              !d.in_month
-                                                ? 'bg-slate-50/50 text-slate-300 opacity-60'
-                                                : cellMins > 0
-                                                ? 'bg-purple-50/60 hover:bg-purple-100 font-mono font-bold text-purple-900'
-                                                : 'hover:bg-slate-50 text-slate-300'
-                                            }`}
-                                            title={
-                                              !d.in_month
-                                                ? `${d.date} is outside ${monthInfo.monthName}`
-                                                : `Click to log or inspect entries for ${task.title} on ${d.date}`
-                                            }
-                                          >
-                                            {cellMins > 0 ? (
-                                              <span className="inline-block px-1.5 py-0.5 rounded bg-purple-100/80 text-purple-900 border border-purple-200/80 font-mono text-xs">
-                                                {formatMinutes(cellMins)}
-                                              </span>
-                                            ) : (
-                                              '—'
-                                            )}
-                                          </td>
-                                        );
-                                      })}
-                                      <td className="py-2.5 px-4 text-right font-mono font-bold text-slate-900 bg-slate-50/50">
-                                        {formatMinutes(task.week_minutes || 0)}
-                                      </td>
-                                    </tr>
-                                  );
-                                })
-                              )}
-                            </tbody>
-                            <tfoot>
-                              <tr className="bg-slate-50/90 font-bold border-t border-slate-200 text-slate-800">
-                                <td className="py-2.5 px-4 font-bold text-slate-700">Daily Total</td>
-                                {wg.days.map((d) => (
-                                  <td
-                                    key={d.date}
-                                    className={`py-2 px-2 text-center font-mono font-extrabold ${
-                                      !d.in_month ? 'text-slate-400 bg-slate-100/50' : 'text-purple-900'
-                                    }`}
-                                  >
-                                    {d.total_minutes > 0 ? formatMinutes(d.total_minutes) : '—'}
-                                  </td>
-                                ))}
-                                <td className="py-2.5 px-4 text-right font-mono font-extrabold text-purple-900 bg-purple-100/60">
-                                  {wg.total_formatted}
-                                </td>
-                              </tr>
-                            </tfoot>
-                          </table>
-                        </div>
-                      )}
-                    </div>
-                  );
-                })}
-              </div>
-            </div>
-
-            {/* 2. Monthly Task Comparison Matrix */}
-            <div className="border border-slate-200/90 rounded-2xl overflow-hidden bg-white shadow-xs">
-              <div className="p-4 border-b border-slate-100 bg-slate-50/70 flex items-center justify-between flex-wrap gap-2">
-                <div>
-                  <h3 className="font-bold text-slate-900 text-sm flex items-center gap-2">
-                    <Layers className="w-4 h-4 text-purple-600" />
-                    <span>Monthly Task Comparison Matrix</span>
-                  </h3>
-                  <p className="text-[11px] text-slate-500 mt-0.5">
-                    Consolidated effort per task across calendar weeks in {monthInfo.monthName}
-                  </p>
-                </div>
-                <span className="text-[11px] text-slate-500 font-mono">
-                  Showing {paginatedTaskRows.length} of {filteredTaskRows.length} tasks
-                </span>
-              </div>
-
-              <div className="overflow-x-auto">
-                <table className="w-full text-left border-collapse text-xs">
-                  <thead className="bg-slate-50 text-slate-600 font-bold text-[11px] border-b border-slate-200">
-                    <tr>
-                      <th className="py-3 px-4 min-w-[260px]">Task & Deliverable</th>
-                      {(timesheet?.weeks || []).map((wg) => (
-                        <th key={wg.week_number} className="py-3 px-3 text-center min-w-[100px]">
-                          <span className="block text-slate-800 font-bold">Week {wg.week_number}</span>
-                          <span className="block text-[9px] text-slate-400 font-normal">
-                            {wg.label.replace(`Week ${wg.week_number}`, '').replace(/[()]/g, '').trim()}
-                          </span>
-                        </th>
-                      ))}
-                      <th className="py-3 px-4 text-right min-w-[110px] bg-slate-100/80 font-extrabold text-slate-900">
-                        Month Total
-                      </th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-slate-100">
-                    {paginatedTaskRows.map((task) => {
-                      const statusBadge = getStatusBadge(task.status);
-                      const priorityBadge = getPriorityBadge(task.priority);
-
-                      return (
-                        <tr key={task.id} className="hover:bg-purple-50/20">
-                          <td className="py-3 px-4">
-                            <div className="flex items-center gap-1.5 flex-wrap">
-                              <span className={`text-[9px] font-bold px-1.5 py-0.2 rounded border uppercase inline-flex items-center gap-1 ${statusBadge.bg}`}>
-                                <span className={`w-1.5 h-1.5 rounded-full ${statusBadge.dot}`}></span>
-                                <span>{statusBadge.label}</span>
-                              </span>
-                              <span className={`text-[9px] font-bold px-1.5 py-0.2 rounded border uppercase inline-flex items-center gap-1 ${priorityBadge.bg}`}>
-                                <span className={`w-1.5 h-1.5 rounded-full ${priorityBadge.dot}`}></span>
-                                <span>{priorityBadge.label}</span>
-                              </span>
-                              {task.project?.name && (
-                                <span className="text-[10px] text-slate-400 font-medium">
-                                  {task.project.name}
-                                </span>
-                              )}
-                            </div>
-                            <div className="font-semibold text-slate-900 mt-1 truncate max-w-sm" title={task.title}>
-                              {task.title}
-                            </div>
-                          </td>
-
-                          {(timesheet?.weeks || []).map((wg) => {
-                            const weekMins = task.weeks?.[wg.week_number]?.minutes || 0;
-                            return (
-                              <td key={wg.week_number} className="py-3 px-3 text-center font-mono">
-                                {weekMins > 0 ? (
-                                  <span className="px-2 py-0.5 rounded bg-purple-50 text-purple-900 font-bold border border-purple-200/60">
-                                    {formatMinutes(weekMins)}
-                                  </span>
-                                ) : (
-                                  <span className="text-slate-300">—</span>
-                                )}
-                              </td>
-                            );
-                          })}
-
-                          <td className="py-3 px-4 text-right font-mono font-bold text-slate-900 bg-slate-50/50">
-                            {task.total_minutes > 0 ? (
-                              <span className="px-2.5 py-1 rounded bg-slate-100 text-slate-800 border border-slate-200 font-extrabold">
-                                {formatMinutes(task.total_minutes)}
-                              </span>
-                            ) : (
-                              <span className="text-slate-300">—</span>
-                            )}
-                          </td>
-                        </tr>
-                      );
-                    })}
-                  </tbody>
-                  <tfoot>
-                    <tr className="bg-slate-50 border-t-2 border-slate-200 font-bold text-slate-800">
-                      <td className="py-3.5 px-4 font-bold text-slate-700">Weekly Total</td>
-                      {(timesheet?.weeks || []).map((wg) => (
-                        <td key={wg.week_number} className="py-3.5 px-3 text-center font-mono font-extrabold text-purple-900">
-                          {wg.total_formatted}
-                        </td>
-                      ))}
-                      <td className="py-3.5 px-4 text-right font-mono font-extrabold text-sm text-purple-700 bg-purple-100/50">
-                        {timesheet?.total_formatted || '0h 0m'}
-                      </td>
-                    </tr>
-                  </tfoot>
-                </table>
-              </div>
-            </div>
-          </div>
         ) : (
-          /* Table Matrix (Week) */
+          /* Main Table Matrix (Handles both Week and Month Views) */
           <div className="overflow-x-auto max-h-[70vh] overflow-y-auto">
             <table className="w-full text-left border-collapse text-xs">
               <thead className="sticky top-0 z-10 bg-slate-50/95 backdrop-blur-xs border-b border-slate-200 text-slate-600 font-bold text-[11px] shadow-2xs">
@@ -1517,27 +1297,52 @@ export default function TimesheetView({
                     Task & Deliverable
                   </th>
 
-                  {/* Day Columns */}
-                  {displayedDays.map((d) => (
-                    <th
-                      key={d.date}
-                      className={`py-3 px-3 text-center min-w-[90px] ${
-                        d.isToday ? 'bg-purple-50/90 text-purple-900 border-x border-purple-200/60' : ''
-                      }`}
-                    >
-                      <span className="block uppercase text-[10px] tracking-wider text-slate-400">
-                        {d.dayName}
-                      </span>
-                      <span className={`text-xs font-extrabold ${d.isToday ? 'text-purple-700' : 'text-slate-700'}`}>
-                        {new Date(d.date).getUTCDate()}
-                      </span>
-                    </th>
-                  ))}
+                  {viewMode === 'MONTH' ? (
+                    /* Month View: Month-relative Week Columns */
+                    <>
+                      {(timesheet?.weeks || monthInfo.weeks).map((wg) => {
+                        const weekNum = wg.week_number ?? wg.weekNumber;
+                        const label = wg.label || `Week ${weekNum}`;
+                        const sub = label.includes('(')
+                          ? label.slice(label.indexOf('(') + 1, label.lastIndexOf(')'))
+                          : `${wg.start_date} – ${wg.end_date}`;
 
-                  {/* Task Total Header */}
-                  <th className="py-3 px-4 text-right min-w-[100px] bg-slate-100/80 font-extrabold text-slate-800">
-                    Total
-                  </th>
+                        return (
+                          <th key={weekNum} className="py-3 px-3 text-center min-w-[105px]">
+                            <span className="block text-slate-800 font-bold">Week {weekNum}</span>
+                            <span className="block text-[10px] text-slate-400 font-normal mt-0.5 whitespace-nowrap">
+                              ({sub})
+                            </span>
+                          </th>
+                        );
+                      })}
+                      <th className="py-3 px-4 text-right min-w-[100px] bg-slate-100/80 font-extrabold text-slate-800">
+                        Total
+                      </th>
+                    </>
+                  ) : (
+                    /* Week View: Weekday Columns */
+                    <>
+                      {displayedDays.map((d) => (
+                        <th
+                          key={d.date}
+                          className={`py-3 px-3 text-center min-w-[90px] ${
+                            d.isToday ? 'bg-purple-50/90 text-purple-900 border-x border-purple-200/60' : ''
+                          }`}
+                        >
+                          <span className="block uppercase text-[10px] tracking-wider text-slate-400">
+                            {d.dayName}
+                          </span>
+                          <span className={`text-xs font-extrabold ${d.isToday ? 'text-purple-700' : 'text-slate-700'}`}>
+                            {new Date(d.date).getUTCDate()}
+                          </span>
+                        </th>
+                      ))}
+                      <th className="py-3 px-4 text-right min-w-[100px] bg-slate-100/80 font-extrabold text-slate-800">
+                        Total
+                      </th>
+                    </>
+                  )}
                 </tr>
               </thead>
 
@@ -1621,7 +1426,7 @@ export default function TimesheetView({
                                   )}
                                 </button>
                               </div>
-                            ) : !isManager ? (
+                            ) : !isManager && !readOnly ? (
                               <button
                                 type="button"
                                 onClick={() => handleStartTimer(task.id)}
@@ -1640,65 +1445,131 @@ export default function TimesheetView({
                         </div>
                       </td>
 
-                      {/* Day Cells */}
-                      {displayedDays.map((d) => {
-                        const cellData = task.days[d.date] || { minutes: 0, entries: [] };
-                        const mins = cellData.minutes || 0;
-                        const hasEntries = cellData.entries?.length > 0;
-                        const isToday = d.isToday;
+                      {viewMode === 'MONTH' ? (
+                        /* Month View: Week cells */
+                        <>
+                          {(timesheet?.weeks || monthInfo.weeks).map((wg) => {
+                            const weekNum = wg.week_number ?? wg.weekNumber;
+                            const weekMins = task.weeks?.[weekNum]?.minutes || 0;
+                            return (
+                              <td
+                                key={weekNum}
+                                onClick={() => handleOpenWeekCell(task, wg)}
+                                className={`py-2 px-3 text-center cursor-pointer transition-colors relative group/cell ${
+                                  weekMins > 0 ? 'bg-purple-50/40 hover:bg-purple-100/70 font-mono font-bold text-purple-900' : 'hover:bg-slate-50 text-slate-300'
+                                }`}
+                                title={`Click to view or manage entries for ${task.title} during ${wg.label || `Week ${weekNum}`}`}
+                              >
+                                {weekMins > 0 ? (
+                                  <span className="inline-block px-2 py-0.5 rounded-lg bg-purple-100 text-purple-900 font-bold border border-purple-200/80 text-xs">
+                                    {formatMinutes(weekMins)}
+                                  </span>
+                                ) : (
+                                  <span className="text-slate-300 font-mono text-xs group-hover/cell:hidden">—</span>
+                                )}
+                                <span className="hidden group-hover/cell:inline-flex items-center justify-center p-1 rounded-md text-purple-600 hover:bg-purple-200/60 transition-colors">
+                                  <Eye className="w-3 h-3" />
+                                </span>
+                              </td>
+                            );
+                          })}
 
-                        return (
-                          <td
-                            key={d.date}
-                            onClick={() => handleOpenCell(task, d.date, d)}
-                            className={`py-2 px-2 text-center cursor-pointer transition-colors relative group/cell ${
-                              isToday ? 'bg-purple-50/30 hover:bg-purple-100/50' : 'hover:bg-slate-100/70'
-                            }`}
-                            title={`Click to view or add entries for ${task.title} on ${d.date}`}
-                          >
-                            {mins > 0 ? (
-                              <div className="inline-flex flex-col items-center justify-center px-2 py-1 rounded-lg bg-purple-100/80 text-purple-900 font-mono font-bold text-xs border border-purple-200/80 hover:scale-105 transition-transform shadow-2xs">
-                                <span>{formatMinutes(mins)}</span>
-                                {hasEntries && (
-                                  <span className="text-[9px] font-sans font-normal text-purple-600">
-                                    {cellData.entries.length} {cellData.entries.length === 1 ? 'log' : 'logs'}
+                          <td className="py-3 px-4 text-right font-mono font-bold text-slate-900 bg-slate-50/50">
+                            {task.total_minutes > 0 ? (
+                              <span className="px-2.5 py-1 rounded bg-slate-100 text-slate-800 border border-slate-200 font-extrabold">
+                                {formatMinutes(task.total_minutes)}
+                              </span>
+                            ) : (
+                              <span className="text-slate-300">—</span>
+                            )}
+                          </td>
+                        </>
+                      ) : (
+                        /* Week View: Day Cells */
+                        <>
+                          {displayedDays.map((d) => {
+                            const cellData = task.days?.[d.date] || { minutes: 0, entries: [] };
+                            const mins = cellData.minutes || 0;
+                            const hasEntries = cellData.entries?.length > 0;
+                            const isToday = d.isToday;
+
+                            return (
+                              <td
+                                key={d.date}
+                                onClick={() => handleOpenCell(task, d.date, d)}
+                                className={`py-2 px-2 text-center cursor-pointer transition-colors relative group/cell ${
+                                  isToday ? 'bg-purple-50/30 hover:bg-purple-100/50' : 'hover:bg-slate-100/70'
+                                }`}
+                                title={`Click to view or add entries for ${task.title} on ${d.date}`}
+                              >
+                                {mins > 0 ? (
+                                  <div className="inline-flex flex-col items-center justify-center px-2 py-1 rounded-lg bg-purple-100/80 text-purple-900 font-mono font-bold text-xs border border-purple-200/80 hover:scale-105 transition-transform shadow-2xs">
+                                    <span>{formatMinutes(mins)}</span>
+                                    {hasEntries && (
+                                      <span className="text-[9px] font-sans font-normal text-purple-600">
+                                        {cellData.entries.length} {cellData.entries.length === 1 ? 'log' : 'logs'}
+                                      </span>
+                                    )}
+                                  </div>
+                                ) : (
+                                  <span className="text-slate-300 font-mono text-xs group-hover/cell:hidden">
+                                    —
                                   </span>
                                 )}
-                              </div>
-                            ) : (
-                              <span className="text-slate-300 font-mono text-xs group-hover/cell:hidden">
-                                —
+
+                                <span className="hidden group-hover/cell:inline-flex items-center justify-center p-1 rounded-md text-purple-600 hover:bg-purple-200/60 transition-colors">
+                                  <Plus className="w-3 h-3" />
+                                </span>
+                              </td>
+                            );
+                          })}
+
+                          <td className="py-3 px-4 text-right font-mono font-bold text-slate-900 bg-slate-50/50">
+                            {task.total_minutes > 0 ? (
+                              <span className="px-2 py-0.5 rounded bg-slate-100 text-slate-800 border border-slate-200">
+                                {formatMinutes(task.total_minutes)}
                               </span>
+                            ) : (
+                              <span className="text-slate-300">—</span>
                             )}
-
-                            {/* Hover Plus Quick Action */}
-                            <span className="hidden group-hover/cell:inline-flex items-center justify-center p-1 rounded-md text-purple-600 hover:bg-purple-200/60 transition-colors">
-                              <Plus className="w-3 h-3" />
-                            </span>
                           </td>
-                        );
-                      })}
-
-                      {/* Row Total */}
-                      <td className="py-3 px-4 text-right font-mono font-bold text-slate-900 bg-slate-50/50">
-                        {task.total_minutes > 0 ? (
-                          <span className="px-2 py-0.5 rounded bg-slate-100 text-slate-800 border border-slate-200">
-                            {formatMinutes(task.total_minutes)}
-                          </span>
-                        ) : (
-                          <span className="text-slate-300">—</span>
-                        )}
-                      </td>
+                        </>
+                      )}
                     </tr>
                   );
                 })}
               </tbody>
 
-              {/* TABLE FOOTER: DAILY TOTALS & GRAND TOTAL */}
+              {/* TABLE FOOTER */}
               <tfoot>
-                {isFiltered ? (
+                {viewMode === 'MONTH' ? (
+                  <tr className="bg-slate-50/90 border-t-2 border-slate-200 text-slate-800 font-bold">
+                    <td className="py-3.5 px-4 font-bold text-slate-700">
+                      Weekly Total
+                    </td>
+                    {(timesheet?.weeks || monthInfo.weeks).map((wg) => {
+                      const weekNum = wg.week_number ?? wg.weekNumber;
+                      let weekTotal = 0;
+                      if (isFiltered) {
+                        filteredTaskRows.forEach((t) => {
+                          weekTotal += (t.weeks?.[weekNum]?.minutes || 0);
+                        });
+                      } else {
+                        weekTotal = wg.total_minutes || 0;
+                      }
+                      return (
+                        <td key={weekNum} className="py-3.5 px-3 text-center font-mono font-extrabold text-purple-900">
+                          {weekTotal > 0 ? formatMinutes(weekTotal) : '—'}
+                        </td>
+                      );
+                    })}
+                    <td className="py-3.5 px-4 text-right font-mono font-extrabold text-sm text-purple-700 bg-purple-100/50">
+                      {isFiltered ? filteredTotals.totalFormatted : (timesheet?.total_formatted || '0h 0m')}
+                    </td>
+                  </tr>
+                ) : isFiltered ? (
                   <>
-                    {/* 1. Filtered Tasks Total */}
+                    {/* Filtered Tasks Total */}
                     <tr className="bg-purple-50/70 border-t-2 border-purple-200 text-slate-800 font-bold">
                       <td className="py-3 px-4 font-bold text-purple-900">
                         <div className="flex items-center gap-1.5 flex-wrap">
@@ -1708,7 +1579,6 @@ export default function TimesheetView({
                           </span>
                         </div>
                       </td>
-
                       {displayedDays.map((d) => {
                         const dayTotal = filteredTotals.dailyTotals[d.date] || 0;
                         return (
@@ -1722,13 +1592,11 @@ export default function TimesheetView({
                           </td>
                         );
                       })}
-
                       <td className="py-3 px-4 text-right font-mono font-extrabold text-sm text-purple-800 bg-purple-200/60">
                         {filteredTotals.totalFormatted}
                       </td>
                     </tr>
-
-                    {/* 2. Overall Intern Weekly Total */}
+                    {/* Overall Weekly Total */}
                     <tr className="bg-slate-100/90 border-t border-slate-200 text-slate-700 font-semibold text-[11px]">
                       <td className="py-2.5 px-4 font-semibold text-slate-600">
                         <div className="flex items-center gap-1.5 flex-wrap">
@@ -1738,19 +1606,14 @@ export default function TimesheetView({
                           </span>
                         </div>
                       </td>
-
                       {displayedDays.map((d) => {
                         const dayTotal = timesheet?.daily_totals?.[d.date] || 0;
                         return (
-                          <td
-                            key={d.date}
-                            className="py-2.5 px-2 text-center font-mono font-bold text-slate-700"
-                          >
+                          <td key={d.date} className="py-2.5 px-2 text-center font-mono font-bold text-slate-700">
                             {dayTotal > 0 ? formatMinutes(dayTotal) : '—'}
                           </td>
                         );
                       })}
-
                       <td className="py-2.5 px-4 text-right font-mono font-bold text-slate-900 bg-slate-200/60">
                         {timesheet?.total_formatted || '0h 0m'}
                       </td>
@@ -1761,7 +1624,6 @@ export default function TimesheetView({
                     <td className="py-3.5 px-4 font-bold text-slate-700">
                       Daily Total
                     </td>
-
                     {displayedDays.map((d) => {
                       const dayTotal = timesheet?.daily_totals?.[d.date] || 0;
                       return (
@@ -1775,7 +1637,6 @@ export default function TimesheetView({
                         </td>
                       );
                     })}
-
                     <td className="py-3.5 px-4 text-right font-mono font-extrabold text-sm text-purple-700 bg-purple-100/50">
                       {timesheet?.total_formatted || '0h 0m'}
                     </td>
@@ -1786,34 +1647,68 @@ export default function TimesheetView({
           </div>
         )}
 
-        {/* PAGINATION / EXPANDABLE TASK LIST CONTROLS */}
+        {/* PAGINATION / EDITABLE ROWS PER PAGE CONTROLS */}
         {!loading && taskRows.length > 0 && filteredTaskRows.length > 0 && (
           <div className="p-3 sm:px-4 border-t border-slate-200/80 bg-slate-50/60 flex flex-wrap items-center justify-between gap-3 text-[11px] text-slate-600">
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-2 flex-wrap">
               <span>Rows per page:</span>
               <select
-                value={pageSize}
+                value={isCustomPageSize || (![15, 30, 50, 'ALL'].includes(pageSize)) ? 'CUSTOM' : pageSize}
                 onChange={(e) => {
-                  const val = e.target.value === 'ALL' ? 'ALL' : Number(e.target.value);
-                  setPageSize(val);
-                  setCurrentPage(1);
+                  const val = e.target.value;
+                  if (val === 'CUSTOM') {
+                    setIsCustomPageSize(true);
+                    const fallback = typeof pageSize === 'number' && pageSize > 0 ? pageSize : 20;
+                    setCustomPageSizeInput(String(fallback));
+                    setPageSize(fallback);
+                    setPageSizeError('');
+                    setCurrentPage(1);
+                  } else {
+                    setIsCustomPageSize(false);
+                    setPageSizeError('');
+                    const numVal = val === 'ALL' ? 'ALL' : Number(val);
+                    setPageSize(numVal);
+                    setCurrentPage(1);
+                  }
                 }}
-                className="px-2 py-1 rounded-lg border border-slate-200 bg-white font-medium text-slate-800 focus:outline-none focus:border-purple-600 cursor-pointer"
+                className="px-2.5 py-1 rounded-lg border border-slate-200 bg-white font-medium text-slate-800 focus:outline-none focus:border-purple-600 cursor-pointer shadow-2xs"
               >
                 <option value={15}>15</option>
                 <option value={30}>30</option>
                 <option value={50}>50</option>
                 <option value="ALL">All ({filteredTaskRows.length})</option>
+                <option value="CUSTOM">Custom...</option>
               </select>
-              <span className="text-slate-400">|</span>
+
+              {isCustomPageSize && (
+                <div className="inline-flex items-center gap-1.5">
+                  <input
+                    type="number"
+                    min="1"
+                    max="200"
+                    value={customPageSizeInput}
+                    onChange={(e) => handleCustomPageSizeChange(e.target.value)}
+                    className={`w-16 px-2 py-1 rounded-lg border text-xs font-semibold text-slate-800 focus:outline-none shadow-2xs ${
+                      pageSizeError ? 'border-rose-400 bg-rose-50/50 ring-1 ring-rose-400/30' : 'border-purple-300 bg-white ring-1 ring-purple-600/20'
+                    }`}
+                    placeholder="1–200"
+                    title="Custom rows per page (1–200)"
+                  />
+                  {pageSizeError && (
+                    <span className="text-[10px] text-rose-600 font-semibold">{pageSizeError}</span>
+                  )}
+                </div>
+              )}
+
+              <span className="text-slate-300">|</span>
               <span>
                 Showing{' '}
                 <span className="font-bold text-slate-800">
                   {filteredTaskRows.length === 0
                     ? 0
                     : pageSize === 'ALL'
-                    ? `1 - ${filteredTaskRows.length}`
-                    : `${(currentPage - 1) * Number(pageSize) + 1} - ${Math.min(currentPage * Number(pageSize), filteredTaskRows.length)}`}
+                    ? `1 – ${filteredTaskRows.length}`
+                    : `${(currentPage - 1) * Number(pageSize) + 1} – ${Math.min(currentPage * Number(pageSize), filteredTaskRows.length)}`}
                 </span>{' '}
                 of <span className="font-bold text-slate-800">{filteredTaskRows.length}</span>
               </span>
@@ -1848,6 +1743,227 @@ export default function TimesheetView({
           </div>
         )}
       </div>
+
+      {/* 4B. EXPANDABLE CALENDAR-WEEK BREAKDOWN (Month View Only) */}
+      {viewMode === 'MONTH' && !loading && taskRows.length > 0 && (
+        <div className="bg-white rounded-2xl border border-slate-200/80 shadow-xs p-5 space-y-4">
+          <div className="flex items-center justify-between flex-wrap gap-2 pb-1 border-b border-slate-100">
+            <div>
+              <h3 className="text-sm font-bold text-slate-900 flex items-center gap-2">
+                <Calendar className="w-4 h-4 text-purple-600" />
+                <span>Calendar-Week Breakdown</span>
+                <span className="text-[11px] font-normal text-slate-500 font-mono">
+                  ({timesheet?.weeks?.length || monthInfo.weeks.length} calendar weeks)
+                </span>
+              </h3>
+              <p className="text-[11px] text-slate-500 mt-0.5">
+                Click any day cell to add or review task time entries. Out-of-month days are shaded and excluded from monthly totals.
+              </p>
+            </div>
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={() => toggleAllWeeks(true)}
+                className="px-2.5 py-1 text-[11px] font-semibold text-purple-700 bg-purple-50 hover:bg-purple-100 border border-purple-200 rounded-lg transition-colors cursor-pointer"
+              >
+                Expand All
+              </button>
+              <button
+                type="button"
+                onClick={() => toggleAllWeeks(false)}
+                className="px-2.5 py-1 text-[11px] font-semibold text-slate-600 bg-slate-100 hover:bg-slate-200 border border-slate-200 rounded-lg transition-colors cursor-pointer"
+              >
+                Collapse All
+              </button>
+            </div>
+          </div>
+
+          <div className="space-y-3">
+            {(timesheet?.weeks || []).map((wg) => {
+              const isExpanded = expandedWeeks[wg.week_number] !== false;
+              const weekFilteredTasks = (wg.task_rows || []).filter((task) => {
+                if (statusFilter !== 'ALL' && (task.status || 'TODO').toUpperCase() !== statusFilter) return false;
+                if (priorityFilter !== 'ALL' && (task.priority || 'MEDIUM').toUpperCase() !== priorityFilter) return false;
+                if (timeFilter === 'LOGGED' && (task.week_minutes || 0) <= 0) return false;
+                if (timeFilter === 'NO_LOGGED' && (task.week_minutes || 0) > 0) return false;
+                if (taskSearchQuery.trim()) {
+                  const q = taskSearchQuery.trim().toLowerCase();
+                  const titleMatch = (task.title || '').toLowerCase().includes(q);
+                  const keyMatch = (task.key || task.id || '').toLowerCase().includes(q);
+                  const projMatch = (task.project?.name || '').toLowerCase().includes(q);
+                  if (!titleMatch && !keyMatch && !projMatch) return false;
+                }
+                return true;
+              });
+
+              return (
+                <div
+                  key={wg.week_number}
+                  className="border border-slate-200/90 rounded-xl overflow-hidden bg-white shadow-2xs"
+                >
+                  <div
+                    onClick={() => toggleWeekExpanded(wg.week_number)}
+                    className="px-4 py-3 bg-slate-50/90 hover:bg-slate-100/80 transition-colors flex items-center justify-between gap-3 cursor-pointer select-none"
+                  >
+                    <div className="flex items-center gap-3">
+                      <span className="p-1.5 rounded-lg bg-purple-100 text-purple-700">
+                        <Clock className="w-3.5 h-3.5" />
+                      </span>
+                      <div>
+                        <div className="font-bold text-slate-900 text-xs sm:text-sm flex items-center gap-2 flex-wrap">
+                          <span>{wg.label}</span>
+                          <span className="text-[10px] font-mono text-slate-400 font-normal">
+                            ({wg.start_date} – {wg.end_date})
+                          </span>
+                        </div>
+                        <div className="text-[11px] text-slate-500 mt-0.5">
+                          {weekFilteredTasks.length} {weekFilteredTasks.length === 1 ? 'task' : 'tasks'} worked · {wg.total_formatted} logged
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="flex items-center gap-3">
+                      <span className="font-mono font-extrabold text-xs sm:text-sm text-purple-700 bg-purple-50 px-2.5 py-1 rounded-lg border border-purple-200">
+                        {wg.total_formatted}
+                      </span>
+                      <button
+                        type="button"
+                        className="p-1 rounded-lg text-slate-400 hover:text-slate-600"
+                        aria-label={isExpanded ? 'Collapse week' : 'Expand week'}
+                      >
+                        {isExpanded ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
+                      </button>
+                    </div>
+                  </div>
+
+                  {isExpanded && (
+                    <div className="border-t border-slate-200/80 overflow-x-auto">
+                      <table className="w-full text-left border-collapse text-xs">
+                        <thead className="bg-slate-50/80 text-slate-600 font-bold text-[11px] border-b border-slate-200">
+                          <tr>
+                            <th className="py-2.5 px-4 min-w-[240px]">Task & Deliverable</th>
+                            {wg.days.map((d) => (
+                              <th
+                                key={d.date}
+                                className={`py-2 px-2 text-center min-w-[75px] ${
+                                  !d.in_month
+                                    ? 'bg-slate-100/70 text-slate-400'
+                                    : d.isToday
+                                    ? 'bg-purple-100/60 text-purple-900 font-extrabold'
+                                    : ''
+                                }`}
+                              >
+                                <span className="block text-[10px] uppercase">{d.dayName}</span>
+                                <span className="text-xs font-bold">{d.dayNumber}</span>
+                                {!d.in_month && (
+                                  <span className="block text-[9px] font-medium text-slate-400 uppercase tracking-tighter">
+                                    Excl.
+                                  </span>
+                                )}
+                              </th>
+                            ))}
+                            <th className="py-2.5 px-4 text-right min-w-[90px] bg-slate-100/80 font-bold">
+                              Week Total
+                            </th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-slate-100">
+                          {weekFilteredTasks.length === 0 ? (
+                            <tr>
+                              <td colSpan={wg.days.length + 2} className="py-6 text-center text-slate-400 italic">
+                                No time logged for this week matching current filters.
+                              </td>
+                            </tr>
+                          ) : (
+                            weekFilteredTasks.map((task) => {
+                              const statusBadge = getStatusBadge(task.status);
+                              const priorityBadge = getPriorityBadge(task.priority);
+                              return (
+                                <tr key={task.id} className="hover:bg-purple-50/20">
+                                  <td className="py-2.5 px-4">
+                                    <div className="flex items-center gap-1.5 flex-wrap">
+                                      <span className={`text-[9px] font-bold px-1.5 py-0.2 rounded border uppercase inline-flex items-center gap-1 ${statusBadge.bg}`}>
+                                        <span className={`w-1.5 h-1.5 rounded-full ${statusBadge.dot}`}></span>
+                                        <span>{statusBadge.label}</span>
+                                      </span>
+                                      <span className={`text-[9px] font-bold px-1.5 py-0.2 rounded border uppercase inline-flex items-center gap-1 ${priorityBadge.bg}`}>
+                                        <span className={`w-1.5 h-1.5 rounded-full ${priorityBadge.dot}`}></span>
+                                        <span>{priorityBadge.label}</span>
+                                      </span>
+                                      {task.project?.name && (
+                                        <span className="text-[10px] text-slate-400 font-medium">
+                                          {task.project.name}
+                                        </span>
+                                      )}
+                                    </div>
+                                    <div className="font-semibold text-slate-900 mt-1 truncate max-w-sm">
+                                      {task.title}
+                                    </div>
+                                  </td>
+                                  {wg.days.map((d) => {
+                                    const cellMins = task.days?.[d.date]?.minutes || 0;
+                                    return (
+                                      <td
+                                        key={d.date}
+                                        onClick={() => handleOpenCell(task, d.date, d)}
+                                        className={`py-2 px-2 text-center cursor-pointer transition-colors ${
+                                          !d.in_month
+                                            ? 'bg-slate-50/50 text-slate-300 opacity-60'
+                                            : cellMins > 0
+                                            ? 'bg-purple-50/60 hover:bg-purple-100 font-mono font-bold text-purple-900'
+                                            : 'hover:bg-slate-50 text-slate-300'
+                                        }`}
+                                        title={
+                                          !d.in_month
+                                            ? `${d.date} is outside ${monthInfo.monthName}`
+                                            : `Click to log or inspect entries for ${task.title} on ${d.date}`
+                                        }
+                                      >
+                                        {cellMins > 0 ? (
+                                          <span className="inline-block px-1.5 py-0.5 rounded bg-purple-100/80 text-purple-900 border border-purple-200/80 font-mono text-xs">
+                                            {formatMinutes(cellMins)}
+                                          </span>
+                                        ) : (
+                                          '—'
+                                        )}
+                                      </td>
+                                    );
+                                  })}
+                                  <td className="py-2.5 px-4 text-right font-mono font-bold text-slate-900 bg-slate-50/50">
+                                    {formatMinutes(task.week_minutes || 0)}
+                                  </td>
+                                </tr>
+                              );
+                            })
+                          )}
+                        </tbody>
+                        <tfoot>
+                          <tr className="bg-slate-50/90 font-bold border-t border-slate-200 text-slate-800">
+                            <td className="py-2.5 px-4 font-bold text-slate-700">Daily Total</td>
+                            {wg.days.map((d) => (
+                              <td
+                                key={d.date}
+                                className={`py-2 px-2 text-center font-mono font-extrabold ${
+                                  !d.in_month ? 'text-slate-400 bg-slate-100/50' : 'text-purple-900'
+                                }`}
+                              >
+                                {d.total_minutes > 0 ? formatMinutes(d.total_minutes) : '—'}
+                              </td>
+                            ))}
+                            <td className="py-2.5 px-4 text-right font-mono font-extrabold text-purple-900 bg-purple-100/60">
+                              {wg.total_formatted}
+                            </td>
+                          </tr>
+                        </tfoot>
+                      </table>
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
 
       {/* 5. CELL DETAIL & MANAGEMENT DRAWER / MODAL */}
       {cellModalData && (
@@ -2018,6 +2134,259 @@ export default function TimesheetView({
                   <button
                     type="button"
                     onClick={() => setCellModalData(null)}
+                    className="px-4 py-1.5 rounded-xl bg-slate-100 hover:bg-slate-200 font-semibold text-slate-700 cursor-pointer"
+                  >
+                    Close
+                  </button>
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* 5B. MONTH VIEW: WEEK DETAIL MODAL */}
+      {weekModalData && (
+        <div className="fixed inset-0 z-50 bg-black/40 backdrop-blur-2xs flex items-center justify-center p-4 animate-in fade-in duration-150">
+          <div className="bg-white rounded-2xl shadow-2xl border border-slate-200 max-w-lg w-full overflow-hidden text-xs flex flex-col max-h-[90vh]">
+            {/* Header */}
+            <div className="flex items-center justify-between p-4 border-b border-slate-100 bg-slate-50/70">
+              <div className="min-w-0 pr-2">
+                <div className="flex items-center gap-1.5 text-[11px] font-bold text-purple-700 uppercase tracking-wider">
+                  <Calendar className="w-3.5 h-3.5" />
+                  <span>
+                    {weekModalData.weekGroup.label || `Week ${weekModalData.weekGroup.week_number ?? weekModalData.weekGroup.weekNumber}`}
+                    {' • '}
+                    {weekModalData.weekGroup.start_date} to {weekModalData.weekGroup.end_date}
+                  </span>
+                </div>
+                <div className="flex items-center gap-2 mt-1">
+                  <h3 className="text-sm font-bold text-slate-900 truncate">
+                    {weekModalData.task.title}
+                  </h3>
+                  {weekModalData.task.project?.name && (
+                    <span className="shrink-0 px-2 py-0.5 rounded-full bg-slate-100 text-slate-600 font-semibold text-[10px]">
+                      {weekModalData.task.project.name}
+                    </span>
+                  )}
+                </div>
+              </div>
+              <div className="flex items-center gap-2">
+                <span className="px-2.5 py-1 rounded-xl bg-purple-100 text-purple-900 font-extrabold font-mono text-xs border border-purple-200">
+                  {formatMinutes(weekModalData.weekMins)}
+                </span>
+                <button
+                  type="button"
+                  onClick={() => setWeekModalData(null)}
+                  className="p-1 rounded-lg text-slate-400 hover:text-slate-700 hover:bg-slate-100"
+                >
+                  <X className="w-4 h-4" />
+                </button>
+              </div>
+            </div>
+
+            {/* Content Body */}
+            <div className="p-4 space-y-4 overflow-y-auto flex-1">
+              <div>
+                <h4 className="text-[11px] font-bold uppercase tracking-wider text-slate-400 mb-2">
+                  Daily Breakdown & Logged Entries
+                </h4>
+
+                {weekModalData.weekMins === 0 ? (
+                  <p className="text-slate-400 italic py-3 text-center bg-slate-50 rounded-xl border border-slate-100">
+                    No effort logged for this task during this week.
+                  </p>
+                ) : (
+                  <div className="space-y-3">
+                    {(weekModalData.weekGroup?.days || []).map((dStr) => {
+                      const dayData = weekModalData.task.days?.[dStr] || { minutes: 0, entries: [] };
+                      if (dayData.minutes === 0 && (!dayData.entries || dayData.entries.length === 0)) {
+                        return null;
+                      }
+                      const dObj = new Date(dStr + 'T00:00:00');
+                      const dayLabel = dObj.toLocaleDateString('en-US', {
+                        weekday: 'short',
+                        month: 'short',
+                        day: 'numeric',
+                      });
+
+                      return (
+                        <div
+                          key={dStr}
+                          className="rounded-xl border border-slate-200/80 bg-slate-50/50 p-2.5 space-y-2"
+                        >
+                          <div className="flex items-center justify-between text-xs font-semibold text-slate-700">
+                            <span>{dayLabel}</span>
+                            <span className="font-mono font-bold text-purple-900 bg-purple-50 px-2 py-0.5 rounded border border-purple-100">
+                              {formatMinutes(dayData.minutes)}
+                            </span>
+                          </div>
+
+                          {dayData.entries && dayData.entries.length > 0 ? (
+                            <div className="space-y-1.5 pt-1">
+                              {dayData.entries.map((entry) => (
+                                <div
+                                  key={entry.id}
+                                  className="p-2 rounded-lg bg-white border border-slate-200/60 flex items-center justify-between gap-2"
+                                >
+                                  <div className="min-w-0 flex-1">
+                                    <div className="flex items-center gap-1.5">
+                                      <span className="font-mono font-bold text-slate-900 text-xs">
+                                        {formatMinutes(entry.duration_minutes)}
+                                      </span>
+                                      <span
+                                        className={`text-[9px] font-bold px-1.5 py-0.2 rounded border uppercase ${
+                                          entry.source === 'TIMER'
+                                            ? 'bg-purple-100 text-purple-800 border-purple-200'
+                                            : 'bg-slate-100 text-slate-700 border-slate-200'
+                                        }`}
+                                      >
+                                        {entry.source || 'MANUAL'}
+                                      </span>
+                                    </div>
+                                    {entry.notes && (
+                                      <p className="text-slate-600 mt-0.5 italic text-[11px] truncate">
+                                        &quot;{entry.notes}&quot;
+                                      </p>
+                                    )}
+                                  </div>
+
+                                  {!readOnly && (
+                                    <div className="flex items-center gap-1 shrink-0">
+                                      <button
+                                        type="button"
+                                        onClick={() => handleOpenCorrectionModal(entry, weekModalData.task)}
+                                        title="Request correction for this entry"
+                                        className="px-2 py-0.5 rounded text-amber-700 bg-amber-50 hover:bg-amber-100 border border-amber-200/80 transition-colors flex items-center gap-1 text-[10px] font-bold cursor-pointer"
+                                      >
+                                        <RotateCcw className="w-2.5 h-2.5 text-amber-600" />
+                                        <span>Correct</span>
+                                      </button>
+                                      <button
+                                        type="button"
+                                        onClick={() => handleDeleteEntry(entry.id)}
+                                        disabled={actionLoading}
+                                        title="Delete entry"
+                                        className="p-1 rounded text-slate-400 hover:text-rose-600 hover:bg-rose-50 transition-colors cursor-pointer"
+                                      >
+                                        <Trash2 className="w-3.5 h-3.5" />
+                                      </button>
+                                    </div>
+                                  )}
+                                </div>
+                              ))}
+                            </div>
+                          ) : (
+                            <p className="text-[11px] text-slate-400 italic">No entry details recorded.</p>
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+
+              {/* Add New Entry Form (Intern Only) */}
+              {!readOnly ? (
+                <form onSubmit={handleAddWeekEntry} className="pt-3 border-t border-slate-100 space-y-3">
+                  <h4 className="text-[11px] font-bold uppercase tracking-wider text-slate-700">
+                    + Add Time Entry for this Week
+                  </h4>
+
+                  <div className="grid grid-cols-3 gap-2">
+                    <div>
+                      <label className="block text-[11px] font-semibold text-slate-600 mb-1">
+                        Select Date *
+                      </label>
+                      <select
+                        value={weekFormDate}
+                        onChange={(e) => setWeekFormDate(e.target.value)}
+                        required
+                        className="w-full px-2 py-1.5 rounded-xl border border-slate-200 focus:outline-none focus:border-purple-600 text-slate-900 text-xs bg-white"
+                      >
+                        {(weekModalData.weekGroup?.days || []).map((dStr) => {
+                          const dObj = new Date(dStr + 'T00:00:00');
+                          const dLabel = dObj.toLocaleDateString('en-US', {
+                            weekday: 'short',
+                            month: 'short',
+                            day: 'numeric',
+                          });
+                          return (
+                            <option key={dStr} value={dStr}>
+                              {dLabel}
+                            </option>
+                          );
+                        })}
+                      </select>
+                    </div>
+
+                    <div>
+                      <label className="block text-[11px] font-semibold text-slate-600 mb-1">
+                        Hours
+                      </label>
+                      <input
+                        type="number"
+                        min="0"
+                        max="24"
+                        placeholder="0"
+                        value={weekFormHours}
+                        onChange={(e) => setWeekFormHours(e.target.value)}
+                        className="w-full px-3 py-1.5 rounded-xl border border-slate-200 focus:outline-none focus:border-purple-600 text-slate-900 font-mono"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="block text-[11px] font-semibold text-slate-600 mb-1">
+                        Minutes
+                      </label>
+                      <input
+                        type="number"
+                        min="0"
+                        max="59"
+                        step="5"
+                        placeholder="30"
+                        value={weekFormMinutes}
+                        onChange={(e) => setWeekFormMinutes(e.target.value)}
+                        className="w-full px-3 py-1.5 rounded-xl border border-slate-200 focus:outline-none focus:border-purple-600 text-slate-900 font-mono"
+                      />
+                    </div>
+                  </div>
+
+                  <div>
+                    <label className="block text-[11px] font-semibold text-slate-600 mb-1">
+                      Notes (Optional)
+                    </label>
+                    <textarea
+                      rows={2}
+                      value={weekFormNotes}
+                      onChange={(e) => setWeekFormNotes(e.target.value)}
+                      placeholder="What did you work on?"
+                      className="w-full px-3 py-1.5 rounded-xl border border-slate-200 focus:outline-none focus:border-purple-600 text-slate-900 resize-none"
+                    />
+                  </div>
+
+                  <div className="flex items-center justify-end gap-2 pt-2">
+                    <button
+                      type="button"
+                      onClick={() => setWeekModalData(null)}
+                      className="px-3 py-1.5 rounded-xl border border-slate-200 hover:bg-slate-50 font-semibold text-slate-600"
+                    >
+                      Cancel
+                    </button>
+                    <button
+                      type="submit"
+                      disabled={actionLoading}
+                      className="px-4 py-1.5 rounded-xl bg-purple-600 hover:bg-purple-700 text-white font-semibold transition-colors disabled:opacity-50"
+                    >
+                      {actionLoading ? 'Saving...' : 'Save Log'}
+                    </button>
+                  </div>
+                </form>
+              ) : (
+                <div className="pt-3 border-t border-slate-100 flex justify-end">
+                  <button
+                    type="button"
+                    onClick={() => setWeekModalData(null)}
                     className="px-4 py-1.5 rounded-xl bg-slate-100 hover:bg-slate-200 font-semibold text-slate-700 cursor-pointer"
                   >
                     Close

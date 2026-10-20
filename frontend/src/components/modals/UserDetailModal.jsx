@@ -181,17 +181,17 @@ export default function UserDetailModal({
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs">
-      <div className="bg-white rounded-2xl border border-slate-200 shadow-2xl max-w-xl w-full max-h-[90vh] overflow-y-auto animate-in fade-in zoom-in-95 duration-200">
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 sm:p-6 bg-slate-900/60 backdrop-blur-xs">
+      <div className="bg-white rounded-2xl border border-slate-200 shadow-2xl max-w-[800px] w-full max-h-[90vh] flex flex-col overflow-hidden animate-in fade-in zoom-in-95 duration-200">
         
         {/* Header */}
-        <div className="p-5 border-b border-slate-100 flex items-center justify-between gap-4 bg-slate-50/50">
-          <div className="flex items-center gap-3 min-w-0">
-            <div className="w-10 h-10 rounded-xl bg-purple-100 text-purple-700 flex items-center justify-center font-bold text-sm shadow-xs shrink-0">
+        <div className="p-5 sm:px-7 sm:py-6 border-b border-slate-100 flex flex-col sm:flex-row sm:items-center justify-between gap-4 bg-slate-50/60 shrink-0">
+          <div className="flex items-center gap-3.5 min-w-0">
+            <div className="w-11 h-11 rounded-xl bg-purple-100 text-purple-700 flex items-center justify-center font-bold text-sm shadow-xs shrink-0">
               {(currentUser.name || currentUser.email || 'U').charAt(0).toUpperCase()}
             </div>
             <div className="min-w-0">
-              <h2 className="text-base font-bold text-slate-900 tracking-tight truncate">
+              <h2 className="text-base sm:text-lg font-bold text-slate-900 tracking-tight truncate">
                 {isEditing ? 'Edit Member Details' : 'Member Details'}
               </h2>
               <p className="text-xs text-slate-500 mt-0.5 truncate">
@@ -200,12 +200,12 @@ export default function UserDetailModal({
             </div>
           </div>
           
-          <div className="flex items-center gap-2 shrink-0">
+          <div className="flex flex-wrap items-center gap-2.5 sm:gap-3 shrink-0">
             {!isEditing && (
               <button
                 type="button"
                 onClick={handlePerformanceReport}
-                className="px-3 py-1.5 rounded-lg border border-purple-200 hover:bg-purple-50 text-purple-700 font-semibold text-xs flex items-center gap-1.5 transition-colors shadow-2xs cursor-pointer whitespace-nowrap"
+                className="px-3.5 py-2 rounded-xl border border-purple-200 hover:bg-purple-50 text-purple-700 font-semibold text-xs flex items-center gap-2 transition-colors shadow-2xs cursor-pointer whitespace-nowrap"
                 title="View Performance Report"
               >
                 <BarChart3 className="w-3.5 h-3.5 text-purple-600 shrink-0" />
@@ -216,7 +216,7 @@ export default function UserDetailModal({
               <button
                 type="button"
                 onClick={() => setIsPermissionsOpen(true)}
-                className="px-3 py-1.5 rounded-lg border border-purple-200 hover:bg-purple-50 text-purple-700 font-semibold text-xs flex items-center gap-1.5 transition-colors shadow-2xs cursor-pointer whitespace-nowrap"
+                className="px-3.5 py-2 rounded-xl border border-purple-200 hover:bg-purple-50 text-purple-700 font-semibold text-xs flex items-center gap-2 transition-colors shadow-2xs cursor-pointer whitespace-nowrap"
                 title="Manage Permissions"
               >
                 <Shield className="w-3.5 h-3.5 text-purple-600 shrink-0" />
@@ -227,7 +227,7 @@ export default function UserDetailModal({
               <button
                 type="button"
                 onClick={handleStartEdit}
-                className="px-3 py-1.5 rounded-lg border border-purple-200 hover:bg-purple-50 text-purple-700 font-semibold text-xs flex items-center gap-1.5 transition-colors shadow-2xs cursor-pointer whitespace-nowrap"
+                className="px-3.5 py-2 rounded-xl border border-purple-200 hover:bg-purple-50 text-purple-700 font-semibold text-xs flex items-center gap-2 transition-colors shadow-2xs cursor-pointer whitespace-nowrap"
               >
                 <Edit3 className="w-3.5 h-3.5 text-purple-600 shrink-0" />
                 <span>Edit Details</span>
@@ -236,7 +236,7 @@ export default function UserDetailModal({
             <button
               type="button"
               onClick={handleClose}
-              className="w-8 h-8 rounded-lg text-slate-400 hover:text-slate-600 hover:bg-slate-100 flex items-center justify-center transition-colors cursor-pointer shrink-0"
+              className="w-9 h-9 rounded-xl text-slate-400 hover:text-slate-600 hover:bg-slate-100 flex items-center justify-center transition-colors cursor-pointer shrink-0 ml-1"
               title="Close"
             >
               <X className="w-4 h-4" />
@@ -245,25 +245,29 @@ export default function UserDetailModal({
         </div>
 
         {/* Content Details */}
-        <div className="p-6 space-y-4 text-xs">
+        <div className="p-6 sm:p-7 space-y-6 text-xs overflow-y-auto flex-1">
           
           {/* Success Banner */}
           {successMsg && !isEditing && (
-            <div className="p-3 rounded-xl bg-emerald-50 border border-emerald-200 text-emerald-800 text-xs flex items-center gap-2 font-medium animate-in fade-in duration-150">
+            <div className="p-3.5 rounded-xl bg-emerald-50 border border-emerald-200 text-emerald-800 text-xs flex items-center gap-2.5 font-medium animate-in fade-in duration-150">
               <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
               <span>{successMsg}</span>
             </div>
           )}
 
-          {/* Status Banner */}
-          <div className="flex items-center justify-between p-3 rounded-xl bg-slate-50 border border-slate-200/80">
-            <span className="font-semibold text-slate-600">Account Status</span>
-            <span className={`px-2.5 py-0.5 rounded-full text-[11px] font-bold ${
+          {/* Account Status Card */}
+          <div className="flex items-center justify-between px-5 py-4 rounded-xl bg-slate-50/80 border border-slate-200/80 shadow-2xs">
+            <div className="space-y-0.5">
+              <span className="text-xs font-bold text-slate-700 block">Account Status</span>
+              <span className="text-[11px] text-slate-400 block">Current portal access eligibility and sign-in status</span>
+            </div>
+            <span className={`px-3 py-1 rounded-full text-xs font-bold tracking-wide flex items-center gap-1.5 shadow-2xs ${
               currentUser.is_active !== false
                 ? 'bg-emerald-50 text-emerald-700 border border-emerald-200'
                 : 'bg-rose-50 text-rose-700 border border-rose-200'
             }`}>
-              {currentUser.is_active !== false ? '● Active' : '○ Inactive'}
+              <span className={`w-1.5 h-1.5 rounded-full ${currentUser.is_active !== false ? 'bg-emerald-500' : 'bg-rose-500'}`} />
+              <span>{currentUser.is_active !== false ? 'Active' : 'Inactive'}</span>
             </span>
           </div>
 
@@ -271,7 +275,7 @@ export default function UserDetailModal({
           {isEditing ? (
             <form onSubmit={handleSaveChanges} className="space-y-4 pt-1">
               {editError && (
-                <div className="p-3 rounded-xl bg-rose-50 border border-rose-200 text-rose-700 text-xs font-medium animate-in fade-in duration-150">
+                <div className="p-3.5 rounded-xl bg-rose-50 border border-rose-200 text-rose-700 text-xs font-medium animate-in fade-in duration-150">
                   {editError}
                 </div>
               )}
@@ -286,7 +290,7 @@ export default function UserDetailModal({
                   onChange={(e) => setFormData((prev) => ({ ...prev, name: e.target.value }))}
                   placeholder="Enter intern's full name"
                   required
-                  className="w-full px-3 py-2 text-xs rounded-lg border border-slate-200 text-slate-900 font-medium focus:outline-none focus:border-purple-600 focus:ring-1 focus:ring-purple-600 shadow-2xs"
+                  className="w-full px-3.5 py-2 text-xs rounded-lg border border-slate-200 text-slate-900 font-medium focus:outline-none focus:border-purple-600 focus:ring-1 focus:ring-purple-600 shadow-2xs"
                 />
               </div>
 
@@ -297,7 +301,7 @@ export default function UserDetailModal({
                 <select
                   value={formData.cohort_id}
                   onChange={(e) => setFormData((prev) => ({ ...prev, cohort_id: e.target.value }))}
-                  className="w-full px-3 py-2 text-xs rounded-lg border border-slate-200 text-slate-900 font-medium bg-white focus:outline-none focus:border-purple-600 focus:ring-1 focus:ring-purple-600 shadow-2xs cursor-pointer"
+                  className="w-full px-3.5 py-2 text-xs rounded-lg border border-slate-200 text-slate-900 font-medium bg-white focus:outline-none focus:border-purple-600 focus:ring-1 focus:ring-purple-600 shadow-2xs cursor-pointer"
                 >
                   <option value="">-- No Cohort Assigned --</option>
                   {cohorts.map((c) => (
@@ -308,7 +312,7 @@ export default function UserDetailModal({
                 </select>
               </div>
 
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div className="space-y-1">
                   <label className="block text-slate-700 font-bold text-xs">
                     Batch <span className="text-rose-500">*</span>
@@ -316,7 +320,7 @@ export default function UserDetailModal({
                   <select
                     value={formData.batch}
                     onChange={(e) => handleBatchChange(e.target.value)}
-                    className="w-full px-3 py-2 text-xs rounded-lg border border-slate-200 text-slate-900 font-medium bg-white focus:outline-none focus:border-purple-600 focus:ring-1 focus:ring-purple-600 shadow-2xs cursor-pointer"
+                    className="w-full px-3.5 py-2 text-xs rounded-lg border border-slate-200 text-slate-900 font-medium bg-white focus:outline-none focus:border-purple-600 focus:ring-1 focus:ring-purple-600 shadow-2xs cursor-pointer"
                   >
                     {BATCH_OPTIONS.map((b) => (
                       <option key={b} value={b}>
@@ -333,7 +337,7 @@ export default function UserDetailModal({
                   <select
                     value={formData.subbatch}
                     onChange={(e) => setFormData((prev) => ({ ...prev, subbatch: e.target.value }))}
-                    className="w-full px-3 py-2 text-xs rounded-lg border border-slate-200 text-slate-900 font-medium bg-white focus:outline-none focus:border-purple-600 focus:ring-1 focus:ring-purple-600 shadow-2xs cursor-pointer"
+                    className="w-full px-3.5 py-2 text-xs rounded-lg border border-slate-200 text-slate-900 font-medium bg-white focus:outline-none focus:border-purple-600 focus:ring-1 focus:ring-purple-600 shadow-2xs cursor-pointer"
                   >
                     {(SUBBATCH_OPTIONS[formData.batch] || []).map((sb) => (
                       <option key={sb} value={sb}>
@@ -348,7 +352,7 @@ export default function UserDetailModal({
                 <label className="block text-slate-500 font-medium text-[11px]">
                   Email (Read-only)
                 </label>
-                <div className="w-full px-3 py-2 text-xs rounded-lg border border-slate-200 bg-slate-50 font-mono text-slate-600 select-all">
+                <div className="w-full px-3.5 py-2 text-xs rounded-lg border border-slate-200 bg-slate-50 font-mono text-slate-600 select-all">
                   {currentUser.email}
                 </div>
                 <p className="text-[10px] text-slate-400">
@@ -360,8 +364,8 @@ export default function UserDetailModal({
                 <label className="block text-slate-500 font-medium text-[11px]">
                   Role / Type (Read-only)
                 </label>
-                <div className="w-full px-3 py-2 text-xs rounded-lg border border-slate-200 bg-slate-50 text-slate-700">
-                  <span className={`px-2 py-0.5 rounded text-[10px] font-bold ${
+                <div className="w-full px-3.5 py-2 text-xs rounded-lg border border-slate-200 bg-slate-50 text-slate-700">
+                  <span className={`px-2.5 py-0.5 rounded text-[10px] font-bold ${
                     currentUser.type === 'INTERN'
                       ? 'bg-purple-100 text-purple-700'
                       : currentUser.type === 'EMPLOYEE'
@@ -376,23 +380,23 @@ export default function UserDetailModal({
           ) : (
             /* READ-ONLY VIEW */
             <>
-              <div className="divide-y divide-slate-100">
+              <div className="divide-y divide-slate-100 rounded-xl border border-slate-200/70 bg-white overflow-hidden shadow-2xs">
                 
-                <div className="py-2.5 flex items-center justify-between">
-                  <span className="text-slate-500 font-medium flex items-center gap-1.5">
-                    <User className="w-3.5 h-3.5 text-slate-400" />
-                    Name
+                <div className="py-3.5 px-4 sm:px-5 flex items-center justify-between hover:bg-slate-50/50 transition-colors">
+                  <span className="text-slate-500 font-medium flex items-center gap-2.5 text-xs">
+                    <User className="w-4 h-4 text-purple-600/70 shrink-0" />
+                    <span>Name</span>
                   </span>
-                  <span className="font-bold text-slate-900">{currentUser.name || '—'}</span>
+                  <span className="font-bold text-slate-900 text-xs">{currentUser.name || '—'}</span>
                 </div>
 
-                <div className="py-2.5 flex items-center justify-between">
-                  <span className="text-slate-500 font-medium flex items-center gap-1.5">
-                    <GraduationCap className="w-3.5 h-3.5 text-slate-400" />
-                    Cohort
+                <div className="py-3.5 px-4 sm:px-5 flex items-center justify-between hover:bg-slate-50/50 transition-colors">
+                  <span className="text-slate-500 font-medium flex items-center gap-2.5 text-xs">
+                    <GraduationCap className="w-4 h-4 text-purple-600/70 shrink-0" />
+                    <span>Cohort</span>
                   </span>
                   {currentUser.cohort?.name || currentUser.cohort_name ? (
-                    <span className="font-semibold text-xs text-slate-800">
+                    <span className="font-semibold text-xs text-purple-700 bg-purple-50 px-2.5 py-0.5 rounded-full border border-purple-200/80">
                       {currentUser.cohort?.name || currentUser.cohort_name}
                     </span>
                   ) : (
@@ -400,17 +404,17 @@ export default function UserDetailModal({
                   )}
                 </div>
 
-                <div className="py-2.5 flex items-center justify-between">
-                  <span className="text-slate-500 font-medium flex items-center gap-1.5">
-                    <Layers className="w-3.5 h-3.5 text-slate-400" />
-                    Batch / Subbatch
+                <div className="py-3.5 px-4 sm:px-5 flex items-center justify-between hover:bg-slate-50/50 transition-colors">
+                  <span className="text-slate-500 font-medium flex items-center gap-2.5 text-xs">
+                    <Layers className="w-4 h-4 text-purple-600/70 shrink-0" />
+                    <span>Batch / Subbatch</span>
                   </span>
                   {currentUser.batch && currentUser.subbatch ? (
-                    <span className="font-mono text-[11px] font-bold text-purple-700 bg-purple-50 px-2.5 py-0.5 rounded border border-purple-200">
+                    <span className="font-mono text-xs font-bold text-purple-700 bg-purple-50 px-3 py-1 rounded-lg border border-purple-200/80">
                       {currentUser.batch} / {currentUser.subbatch}
                     </span>
                   ) : currentUser.batch || currentUser.subbatch ? (
-                    <span className="font-mono text-[11px] font-bold text-purple-700 bg-purple-50 px-2.5 py-0.5 rounded border border-purple-200">
+                    <span className="font-mono text-xs font-bold text-purple-700 bg-purple-50 px-3 py-1 rounded-lg border border-purple-200/80">
                       {currentUser.batch || currentUser.subbatch}
                     </span>
                   ) : (
@@ -418,47 +422,49 @@ export default function UserDetailModal({
                   )}
                 </div>
 
-                <div className="py-2.5 flex items-center justify-between">
-                  <span className="text-slate-500 font-medium flex items-center gap-1.5">
-                    <Mail className="w-3.5 h-3.5 text-slate-400" />
-                    Email
+                <div className="py-3.5 px-4 sm:px-5 flex items-center justify-between hover:bg-slate-50/50 transition-colors">
+                  <span className="text-slate-500 font-medium flex items-center gap-2.5 text-xs">
+                    <Mail className="w-4 h-4 text-purple-600/70 shrink-0" />
+                    <span>Email</span>
                   </span>
-                  <span className="font-mono text-slate-700">{currentUser.email}</span>
+                  <span className="font-mono text-xs text-slate-800 bg-slate-50 px-2.5 py-1 rounded-lg border border-slate-200/70 select-all">
+                    {currentUser.email}
+                  </span>
                 </div>
 
-                <div className="py-2.5 flex items-center justify-between">
-                  <span className="text-slate-500 font-medium flex items-center gap-1.5">
-                    <Shield className="w-3.5 h-3.5 text-slate-400" />
-                    Role / Type
+                <div className="py-3.5 px-4 sm:px-5 flex items-center justify-between hover:bg-slate-50/50 transition-colors">
+                  <span className="text-slate-500 font-medium flex items-center gap-2.5 text-xs">
+                    <Shield className="w-4 h-4 text-purple-600/70 shrink-0" />
+                    <span>Role / Type</span>
                   </span>
-                  <span className={`px-2 py-0.5 rounded text-[10px] font-bold ${
+                  <span className={`px-2.5 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider ${
                     currentUser.type === 'INTERN'
-                      ? 'bg-purple-100 text-purple-700'
+                      ? 'bg-purple-100 text-purple-700 border border-purple-200'
                       : currentUser.type === 'EMPLOYEE'
-                      ? 'bg-indigo-100 text-indigo-700'
-                      : 'bg-slate-100 text-slate-700'
+                      ? 'bg-indigo-100 text-indigo-700 border border-indigo-200'
+                      : 'bg-slate-100 text-slate-700 border border-slate-200'
                   }`}>
                     {currentUser.type || 'MEMBER'}
                   </span>
                 </div>
 
-                <div className="py-2.5 flex items-center justify-between">
-                  <span className="text-slate-500 font-medium flex items-center gap-1.5">
-                    <Calendar className="w-3.5 h-3.5 text-slate-400" />
-                    Created Date
+                <div className="py-3.5 px-4 sm:px-5 flex items-center justify-between hover:bg-slate-50/50 transition-colors">
+                  <span className="text-slate-500 font-semibold flex items-center gap-2.5 text-xs">
+                    <Calendar className="w-4 h-4 text-purple-600/70 shrink-0" />
+                    <span>Created Date</span>
                   </span>
-                  <span className="text-slate-700">
+                  <span className="text-slate-700 font-medium text-xs">
                     {currentUser.created_at ? new Date(currentUser.created_at).toLocaleDateString(undefined, { dateStyle: 'medium' }) : '—'}
                   </span>
                 </div>
 
                 {currentUser.updated_at && (
-                  <div className="py-2.5 flex items-center justify-between">
-                    <span className="text-slate-500 font-medium flex items-center gap-1.5">
-                      <Clock className="w-3.5 h-3.5 text-slate-400" />
-                      Last Updated
+                  <div className="py-3.5 px-4 sm:px-5 flex items-center justify-between hover:bg-slate-50/50 transition-colors">
+                    <span className="text-slate-500 font-semibold flex items-center gap-2.5 text-xs">
+                      <Clock className="w-4 h-4 text-purple-600/70 shrink-0" />
+                      <span>Last Updated</span>
                     </span>
-                    <span className="text-slate-700">
+                    <span className="text-slate-700 font-medium text-xs">
                       {new Date(currentUser.updated_at).toLocaleDateString(undefined, { dateStyle: 'medium' })}
                     </span>
                   </div>
@@ -469,14 +475,14 @@ export default function UserDetailModal({
         </div>
 
         {/* Action Buttons Footer */}
-        <div className="p-4 bg-slate-50 border-t border-slate-100 flex items-center justify-between gap-2">
+        <div className="px-6 py-4 sm:px-7 sm:py-5 bg-slate-50/80 border-t border-slate-100 flex items-center justify-between gap-3 shrink-0">
           {isEditing ? (
-            <div className="flex items-center justify-end gap-2 w-full">
+            <div className="flex items-center justify-end gap-3 w-full">
               <button
                 type="button"
                 disabled={saving}
                 onClick={handleCancelEdit}
-                className="px-4 py-1.5 rounded-lg border border-slate-200 hover:bg-slate-100 text-slate-700 font-semibold text-xs transition-colors cursor-pointer disabled:opacity-50"
+                className="px-4 py-2 rounded-xl border border-slate-200 bg-white hover:bg-slate-50 text-slate-700 font-semibold text-xs transition-colors cursor-pointer disabled:opacity-50"
               >
                 Cancel
               </button>
@@ -484,25 +490,25 @@ export default function UserDetailModal({
                 type="button"
                 disabled={saving}
                 onClick={handleSaveChanges}
-                className="px-4 py-1.5 rounded-lg bg-purple-600 hover:bg-purple-700 text-white font-bold text-xs flex items-center gap-1.5 transition-colors shadow-xs cursor-pointer disabled:opacity-50"
+                className="px-5 py-2 rounded-xl bg-purple-600 hover:bg-purple-700 text-white font-bold text-xs flex items-center gap-2 transition-colors shadow-xs cursor-pointer disabled:opacity-50"
               >
                 {saving && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
-                Save Changes
+                <span>Save Changes</span>
               </button>
             </div>
           ) : (
             <>
-              <div className="flex items-center gap-2">
+              <div className="flex items-center gap-2.5 sm:gap-3">
                 <button
                   type="button"
                   onClick={() => {
                     handleClose();
                     onOpenResetPassword(currentUser);
                   }}
-                  className="px-3 py-1.5 rounded-lg border border-purple-200 hover:bg-purple-50 text-purple-700 font-bold text-xs flex items-center gap-1.5 transition-colors shadow-2xs cursor-pointer"
+                  className="px-3.5 py-2 rounded-xl border border-purple-200 hover:bg-purple-50 text-purple-700 font-bold text-xs flex items-center gap-2 transition-colors shadow-2xs cursor-pointer"
                 >
-                  <KeyRound className="w-3.5 h-3.5" />
-                  Reset Password
+                  <KeyRound className="w-3.5 h-3.5 text-purple-600" />
+                  <span>Reset Password</span>
                 </button>
 
                 {currentUser.is_active !== false && (
@@ -512,10 +518,10 @@ export default function UserDetailModal({
                       handleClose();
                       onOpenDeactivate(currentUser);
                     }}
-                    className="px-3 py-1.5 rounded-lg border border-rose-200 hover:bg-rose-50 text-rose-700 font-bold text-xs flex items-center gap-1.5 transition-colors shadow-2xs cursor-pointer"
+                    className="px-3.5 py-2 rounded-xl border border-rose-200 hover:bg-rose-50 text-rose-700 font-bold text-xs flex items-center gap-2 transition-colors shadow-2xs cursor-pointer"
                   >
-                    <UserX className="w-3.5 h-3.5" />
-                    Deactivate
+                    <UserX className="w-3.5 h-3.5 text-rose-600" />
+                    <span>Deactivate</span>
                   </button>
                 )}
               </div>
@@ -523,7 +529,7 @@ export default function UserDetailModal({
               <button
                 type="button"
                 onClick={handleClose}
-                className="px-4 py-1.5 rounded-lg text-slate-600 hover:bg-slate-200/60 font-semibold text-xs transition-colors cursor-pointer"
+                className="px-5 py-2 rounded-xl bg-white hover:bg-slate-100 text-slate-700 border border-slate-200/90 font-semibold text-xs transition-colors cursor-pointer"
               >
                 Close
               </button>

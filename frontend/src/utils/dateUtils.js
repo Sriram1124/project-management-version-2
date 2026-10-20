@@ -209,7 +209,11 @@ export const getCalendarMonthRange = (referenceDate = new Date()) => {
       const sM = MONTH_SHORT[firstInMonthDate.getMonth()];
       const eM = MONTH_SHORT[lastInMonthDate.getMonth()];
       if (sM === eM) {
-        weekLabel = `Week ${weekIndex} (${sM} ${firstInMonthDate.getDate()}–${lastInMonthDate.getDate()})`;
+        if (firstInMonthDate.getDate() === lastInMonthDate.getDate()) {
+          weekLabel = `Week ${weekIndex} (${sM} ${firstInMonthDate.getDate()})`;
+        } else {
+          weekLabel = `Week ${weekIndex} (${sM} ${firstInMonthDate.getDate()}–${lastInMonthDate.getDate()})`;
+        }
       } else {
         weekLabel = `Week ${weekIndex} (${sM} ${firstInMonthDate.getDate()} – ${eM} ${lastInMonthDate.getDate()})`;
       }

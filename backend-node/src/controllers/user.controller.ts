@@ -1,4 +1,5 @@
 import { Request, Response } from 'express';
+import * as argon2 from 'argon2';
 import { UserService } from '../services/user.service';
 import { prisma } from '../lib/prisma';
 
@@ -221,6 +222,69 @@ export class UserController {
         reason: error.message || 'An error occurred during bulk import.',
         conflicts: error.conflicts || [],
       });
+    }
+  }
+
+  /**
+   * POST /api/users/bulk/delete
+   * Manager bulk deletes selected organization members with password verification
+   */
+  static async deleteBulk(req: Request, res: Response): Promise<void> {
+    try {
+      const fullUser = (req as any).fullUser;
+      let managerOrgId = fullUser?.organization_id;
+
+      if (!managerOrgId && (fullUser?.roles?.some((r: any) => (r.role?.name || r.name) === 'SUPER_ADMIN') || (req as any).user?.role === 'SUPER_ADMIN')) {
+        const firstOrg = await prisma.organization.findFirst({ where: { is_active: true } });
+        managerOrgId = firstOrg?.id;
+      }
+
+      if (!managerOrgId) {
+        res.status(403).json({ error: 'Manager organization context required' });
+        return;
+      }
+
+      const { userIds, password } = req.body;
+
+      if (!Array.isArray(userIds) || userIds.length === 0) {
+        res.status(400).json({ error: 'At least one member must be selected for deletion.' });
+        return;
+      }
+
+      if (!password || typeof password !== 'string' || !password.trim()) {
+        res.status(400).json({ error: 'Account password is required for confirmation.' });
+        return;
+      }
+
+      // Verify manager password using argon2
+      const managerId = (req as any).user?.userId || fullUser?.id;
+      if (!managerId) {
+        res.status(401).json({ error: 'Authenticated session is invalid.' });
+        return;
+      }
+
+      const manager = await prisma.user.findUnique({
+        where: { id: managerId },
+        select: { id: true, password_hash: true, is_active: true },
+      });
+
+      if (!manager || !manager.is_active) {
+        res.status(401).json({ error: 'Authenticated user session is invalid or inactive.' });
+        return;
+      }
+
+      const isPasswordValid = await argon2.verify(manager.password_hash, password);
+      if (!isPasswordValid) {
+        res.status(401).json({ error: 'Incorrect password. Verification failed.' });
+        return;
+      }
+
+      const result = await UserService.deleteUsersBulk(managerOrgId, managerId, userIds, fullUser);
+
+      res.status(200).json(result);
+    } catch (error: any) {
+      const statusCode = error.statusCode || 500;
+      res.status(statusCode).json({ error: error.message || 'Failed to delete users' });
     }
   }
 

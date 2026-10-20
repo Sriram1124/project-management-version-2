@@ -75,4 +75,11 @@ export const usersService = {
   async updateUserPermissions(userId, permissions) {
     return await api.put(`/users/${encodeURIComponent(userId)}/permissions`, { permissions });
   },
+
+  /**
+   * Manager bulk deletes selected organization members with password verification
+   */
+  async deleteUsersBulk({ userIds, password }) {
+    return await api.post('/users/bulk/delete', { userIds, password });
+  },
 };

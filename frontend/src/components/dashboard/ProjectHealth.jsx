@@ -33,12 +33,12 @@ const HEALTH_CONFIG = {
   AT_RISK: {
     label: 'AT RISK',
     icon: AlertTriangle,
-    badgeBg: 'bg-amber-50 text-amber-700 border-amber-200/90 shadow-2xs',
-    iconBg: 'bg-amber-100 text-amber-600 border-amber-200/80',
-    borderAccent: 'border-l-amber-500',
-    barColor: 'bg-amber-500',
-    percentColor: 'text-amber-700',
-    dotColor: 'bg-amber-500',
+    badgeBg: 'bg-orange-50 text-orange-700 border-orange-200/90 shadow-2xs',
+    iconBg: 'bg-orange-100 text-orange-600 border-orange-200/80',
+    borderAccent: 'border-l-orange-500',
+    barColor: 'bg-orange-500',
+    percentColor: 'text-orange-700',
+    dotColor: 'bg-orange-500',
   },
   CRITICAL: {
     label: 'CRITICAL',

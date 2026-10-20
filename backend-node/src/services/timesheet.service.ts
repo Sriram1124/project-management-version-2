@@ -1675,7 +1675,11 @@ export class TimesheetService {
         const sM = monthNamesShort[firstInMonthDay.getUTCMonth()];
         const eM = monthNamesShort[lastInMonthDay.getUTCMonth()];
         if (sM === eM) {
-          label = `Week ${weekIndex} (${sM} ${firstInMonthDay.getUTCDate()}–${lastInMonthDay.getUTCDate()})`;
+          if (firstInMonthDay.getUTCDate() === lastInMonthDay.getUTCDate()) {
+            label = `Week ${weekIndex} (${sM} ${firstInMonthDay.getUTCDate()})`;
+          } else {
+            label = `Week ${weekIndex} (${sM} ${firstInMonthDay.getUTCDate()}–${lastInMonthDay.getUTCDate()})`;
+          }
         } else {
           label = `Week ${weekIndex} (${sM} ${firstInMonthDay.getUTCDate()} – ${eM} ${lastInMonthDay.getUTCDate()})`;
         }
@@ -1807,10 +1811,21 @@ export class TimesheetService {
         taskRow.total_formatted = `${Math.floor(taskRow.total_minutes / 60)}h ${taskRow.total_minutes % 60}m`;
 
         if (!taskRow.days[entryDateStr]) {
-          taskRow.days[entryDateStr] = { minutes: 0, formatted: '0h 0m' };
+          taskRow.days[entryDateStr] = { minutes: 0, formatted: '0h 0m', entries: [] };
         }
         taskRow.days[entryDateStr].minutes += duration;
         taskRow.days[entryDateStr].formatted = `${Math.floor(taskRow.days[entryDateStr].minutes / 60)}h ${taskRow.days[entryDateStr].minutes % 60}m`;
+        if (!taskRow.days[entryDateStr].entries) {
+          taskRow.days[entryDateStr].entries = [];
+        }
+        taskRow.days[entryDateStr].entries.push({
+          id: entry.id,
+          duration_minutes: duration,
+          start_time: entry.start_time,
+          end_time: entry.end_time,
+          notes: entry.notes,
+          source: entry.work_session_id ? 'TIMER' : 'MANUAL',
+        });
 
         for (const wg of weekGroups) {
           if (entryDateStr >= wg.start_date && entryDateStr <= wg.end_date) {

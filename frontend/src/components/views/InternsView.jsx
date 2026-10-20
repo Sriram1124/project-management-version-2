@@ -10,7 +10,9 @@ import {
   UserX,
   Eye,
   CheckCircle2,
-  XCircle
+  XCircle,
+  Trash2,
+  AlertCircle
 } from 'lucide-react';
 import { usersService } from '../../services/users.service';
 import AddMemberModal from '../modals/AddMemberModal';
@@ -19,6 +21,8 @@ import BulkImportModal from '../modals/BulkImportModal';
 import UserDetailModal from '../modals/UserDetailModal';
 import ResetPasswordModal from '../modals/ResetPasswordModal';
 import DeactivateUserModal from '../modals/DeactivateUserModal';
+import BulkDeleteInternsModal from '../modals/BulkDeleteInternsModal';
+import BulkDeleteResultsModal from '../modals/BulkDeleteResultsModal';
 
 const BATCH_GROUPS = [
   { batch: 'Batch A', subbatches: ['A1', 'A2'] },
@@ -40,6 +44,13 @@ export default function InternsView({ cohorts = [], selectedCohortId = null }) {
   const [isFilterOpen, setIsFilterOpen] = useState(false);
   const filterRef = useRef(null);
 
+  // Bulk selection & pagination state
+  const [selectedUserIds, setSelectedUserIds] = useState(new Set());
+  const [isAllAcrossPagesSelected, setIsAllAcrossPagesSelected] = useState(false);
+  const [pageSize, setPageSize] = useState(15);
+  const [currentPage, setCurrentPage] = useState(1);
+  const headerCheckboxRef = useRef(null);
+
   // Modals state
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
   const [isBulkModalOpen, setIsBulkModalOpen] = useState(false);
@@ -49,6 +60,10 @@ export default function InternsView({ cohorts = [], selectedCohortId = null }) {
   const [selectedUserForDetail, setSelectedUserForDetail] = useState(null);
   const [selectedUserForReset, setSelectedUserForReset] = useState(null);
   const [selectedUserForDeactivate, setSelectedUserForDeactivate] = useState(null);
+
+  // Bulk deletion modals
+  const [isBulkDeleteModalOpen, setIsBulkDeleteModalOpen] = useState(false);
+  const [deletionResult, setDeletionResult] = useState(null);
 
   // Close filter popover on outside click
   useEffect(() => {
@@ -76,6 +91,11 @@ export default function InternsView({ cohorts = [], selectedCohortId = null }) {
   useEffect(() => {
     fetchUsers();
   }, [activeTab]);
+
+  // Reset pagination when search, activeTab, or subbatch filters change
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [search, activeTab, selectedSubbatches]);
 
   const handleCreatedSuccess = (result) => {
     setIsAddModalOpen(false);
@@ -144,7 +164,85 @@ export default function InternsView({ cohorts = [], selectedCohortId = null }) {
     return true;
   });
 
-  // Exactly 4 tabs: All, Active, Inactive, Interns (Employees removed)
+  // Pagination calculations
+  const totalPages = pageSize === 'All' ? 1 : Math.max(1, Math.ceil(filteredUsers.length / Number(pageSize)));
+  const paginatedUsers = pageSize === 'All'
+    ? filteredUsers
+    : filteredUsers.slice((currentPage - 1) * Number(pageSize), currentPage * Number(pageSize));
+
+  // Sync indeterminate state for header checkbox
+  useEffect(() => {
+    if (!headerCheckboxRef.current) return;
+    const visibleIds = paginatedUsers.map((u) => u.id);
+    const selectedOnPage = visibleIds.filter((id) => selectedUserIds.has(id)).length;
+
+    if (visibleIds.length === 0 || selectedOnPage === 0) {
+      headerCheckboxRef.current.checked = false;
+      headerCheckboxRef.current.indeterminate = false;
+    } else if (selectedOnPage === visibleIds.length) {
+      headerCheckboxRef.current.checked = true;
+      headerCheckboxRef.current.indeterminate = false;
+    } else {
+      headerCheckboxRef.current.checked = false;
+      headerCheckboxRef.current.indeterminate = true;
+    }
+  }, [paginatedUsers, selectedUserIds]);
+
+  // Bulk Selection Handlers
+  const handleToggleSelectPage = () => {
+    const visibleIds = paginatedUsers.map((u) => u.id);
+    const allVisibleSelected = visibleIds.length > 0 && visibleIds.every((id) => selectedUserIds.has(id));
+
+    setSelectedUserIds((prev) => {
+      const next = new Set(prev);
+      if (allVisibleSelected) {
+        visibleIds.forEach((id) => next.delete(id));
+      } else {
+        visibleIds.forEach((id) => next.add(id));
+      }
+      return next;
+    });
+    setIsAllAcrossPagesSelected(false);
+  };
+
+  const handleToggleUser = (userId) => {
+    setSelectedUserIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(userId)) {
+        next.delete(userId);
+      } else {
+        next.add(userId);
+      }
+      return next;
+    });
+    setIsAllAcrossPagesSelected(false);
+  };
+
+  const handleSelectAllAcrossPages = () => {
+    const allMatchingIds = filteredUsers.map((u) => u.id);
+    setSelectedUserIds(new Set(allMatchingIds));
+    setIsAllAcrossPagesSelected(true);
+  };
+
+  const handleClearSelection = () => {
+    setSelectedUserIds(new Set());
+    setIsAllAcrossPagesSelected(false);
+  };
+
+  const handleBulkDeleteSuccess = (result) => {
+    handleClearSelection();
+    fetchUsers();
+    setDeletionResult(result);
+  };
+
+  const selectedUserObjects = users.filter((u) => selectedUserIds.has(u.id));
+
+  // Check if all visible members on current page are selected and more exist across pages
+  const isPageFullySelected =
+    paginatedUsers.length > 0 && paginatedUsers.every((u) => selectedUserIds.has(u.id));
+  const hasMultiplePages = pageSize !== 'All' && filteredUsers.length > paginatedUsers.length;
+
+  // Exactly 4 tabs: All, Active, Inactive, Interns
   const tabOptions = [
     { key: 'ALL', label: 'All' },
     { key: 'ACTIVE', label: 'Active' },
@@ -190,7 +288,6 @@ export default function InternsView({ cohorts = [], selectedCohortId = null }) {
 
       {/* Filter Tabs and Search Bar + Subbatch Filter */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-white p-3 rounded-xl border border-slate-200 shadow-2xs">
-        
         {/* Type & Status Filter Tabs: All, Active, Inactive, Interns */}
         <div className="flex items-center gap-1 bg-slate-100 p-1 rounded-lg overflow-x-auto">
           {tabOptions.map((tab) => (
@@ -307,6 +404,71 @@ export default function InternsView({ cohorts = [], selectedCohortId = null }) {
         </div>
       </div>
 
+      {/* Bulk Selection Action Toolbar */}
+      {selectedUserIds.size > 0 && (
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-purple-50/90 border border-purple-200/90 p-3 rounded-xl shadow-2xs animate-in fade-in slide-in-from-top-1 duration-150">
+          <div className="flex items-center gap-2.5">
+            <span className="w-6 h-6 rounded-lg bg-purple-600 text-white flex items-center justify-center font-bold text-xs shadow-2xs">
+              {selectedUserIds.size}
+            </span>
+            <span className="text-xs font-bold text-purple-950">
+              {selectedUserIds.size} {selectedUserIds.size === 1 ? 'member' : 'members'} selected
+            </span>
+            <span className="text-purple-300">|</span>
+            <button
+              type="button"
+              onClick={handleClearSelection}
+              className="text-xs font-semibold text-purple-700 hover:text-purple-900 underline cursor-pointer"
+            >
+              Clear selection
+            </button>
+          </div>
+
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={() => setIsBulkDeleteModalOpen(true)}
+              className="px-3.5 py-1.5 rounded-lg bg-rose-600 hover:bg-rose-700 text-white text-xs font-bold flex items-center gap-1.5 transition-colors shadow-xs cursor-pointer"
+            >
+              <Trash2 className="w-3.5 h-3.5" />
+              <span>Delete Selected ({selectedUserIds.size})</span>
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Explicit Cross-Page Selection Banner */}
+      {isPageFullySelected && hasMultiplePages && (
+        <div className="p-3 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-700 flex items-center justify-between gap-3 animate-in fade-in">
+          <div className="flex items-center gap-2">
+            <AlertCircle className="w-4 h-4 text-purple-600 shrink-0" />
+            {!isAllAcrossPagesSelected ? (
+              <span>
+                All <strong className="font-bold text-slate-900">{paginatedUsers.length}</strong> members on this page are selected.{' '}
+                <button
+                  type="button"
+                  onClick={handleSelectAllAcrossPages}
+                  className="font-bold text-purple-700 hover:text-purple-900 underline cursor-pointer ml-1"
+                >
+                  Select all {filteredUsers.length} matching members across every page
+                </button>
+              </span>
+            ) : (
+              <span>
+                All <strong className="font-bold text-slate-900">{filteredUsers.length}</strong> matching members across all pages are selected.
+              </span>
+            )}
+          </div>
+          <button
+            type="button"
+            onClick={handleClearSelection}
+            className="text-[11px] font-semibold text-slate-500 hover:text-slate-800 underline cursor-pointer shrink-0"
+          >
+            Clear selection
+          </button>
+        </div>
+      )}
+
       {/* Enterprise Data Table: Member List */}
       <div className="bg-white rounded-xl border border-slate-200 shadow-2xs overflow-hidden">
         {loading ? (
@@ -329,6 +491,16 @@ export default function InternsView({ cohorts = [], selectedCohortId = null }) {
             <table className="w-full text-left text-xs border-collapse">
               <thead className="bg-slate-50/80 border-b border-slate-200 text-slate-500 font-bold uppercase tracking-wider text-[10px]">
                 <tr>
+                  <th className="py-3 px-3.5 w-10 text-center">
+                    <input
+                      ref={headerCheckboxRef}
+                      type="checkbox"
+                      checked={paginatedUsers.length > 0 && paginatedUsers.every((u) => selectedUserIds.has(u.id))}
+                      onChange={handleToggleSelectPage}
+                      className="w-3.5 h-3.5 rounded text-purple-600 focus:ring-purple-500 cursor-pointer accent-purple-600 align-middle"
+                      title="Select all members on this page"
+                    />
+                  </th>
                   <th className="py-3 px-4">Member Name</th>
                   <th className="py-3 px-4">Batch / Subbatch</th>
                   <th className="py-3 px-4">Email</th>
@@ -339,110 +511,188 @@ export default function InternsView({ cohorts = [], selectedCohortId = null }) {
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100 font-medium">
-                {filteredUsers.map((user) => (
-                  <tr key={user.id} className="hover:bg-slate-50/80 transition-colors">
-                    <td className="py-2.5 px-4">
-                      <div className="flex items-center gap-2.5">
-                        <div className="w-7 h-7 rounded-full bg-purple-100 text-purple-700 font-bold flex items-center justify-center text-xs shrink-0 shadow-2xs">
-                          {(user.name || user.email || 'U').charAt(0).toUpperCase()}
+                {paginatedUsers.map((user) => {
+                  const isSelected = selectedUserIds.has(user.id);
+                  return (
+                    <tr
+                      key={user.id}
+                      className={`transition-colors ${
+                        isSelected ? 'bg-purple-50/50 hover:bg-purple-50/80' : 'hover:bg-slate-50/80'
+                      }`}
+                    >
+                      <td className="py-2.5 px-3.5 text-center">
+                        <input
+                          type="checkbox"
+                          checked={isSelected}
+                          onChange={() => handleToggleUser(user.id)}
+                          className="w-3.5 h-3.5 rounded text-purple-600 focus:ring-purple-500 cursor-pointer accent-purple-600 align-middle"
+                          title={`Select ${user.name || user.email}`}
+                        />
+                      </td>
+
+                      <td className="py-2.5 px-4">
+                        <div className="flex items-center gap-2.5">
+                          <div className="w-7 h-7 rounded-full bg-purple-100 text-purple-700 font-bold flex items-center justify-center text-xs shrink-0 shadow-2xs">
+                            {(user.name || user.email || 'U').charAt(0).toUpperCase()}
+                          </div>
+                          <div className="font-bold text-slate-900">{user.name || 'Member'}</div>
                         </div>
-                        <div className="font-bold text-slate-900">{user.name || 'Member'}</div>
-                      </div>
-                    </td>
+                      </td>
 
-                    <td className="py-2.5 px-4">
-                      {user.batch && user.subbatch ? (
-                        <span className="font-mono text-[11px] font-bold text-purple-700 bg-purple-50 px-2.5 py-0.5 rounded border border-purple-200">
-                          {user.batch} / {user.subbatch}
-                        </span>
-                      ) : user.batch || user.subbatch ? (
-                        <span className="font-mono text-[11px] font-bold text-purple-700 bg-purple-50 px-2.5 py-0.5 rounded border border-purple-200">
-                          {user.batch || user.subbatch}
-                        </span>
-                      ) : (
-                        <span className="text-slate-400 text-[11px] font-medium">—</span>
-                      )}
-                    </td>
-
-                    <td className="py-2.5 px-4 text-slate-600 font-mono text-[11px]">
-                      {user.email}
-                    </td>
-
-                    <td className="py-2.5 px-4">
-                      <span className={`px-2 py-0.5 rounded text-[10px] font-bold ${
-                        user.type === 'INTERN'
-                          ? 'bg-purple-100 text-purple-700'
-                          : user.type === 'EMPLOYEE'
-                          ? 'bg-indigo-100 text-indigo-700'
-                          : 'bg-slate-100 text-slate-700'
-                      }`}>
-                        {user.type || 'MEMBER'}
-                      </span>
-                    </td>
-
-                    <td className="py-2.5 px-4">
-                      <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-bold ${
-                        user.is_active !== false
-                          ? 'bg-emerald-50 text-emerald-700 border border-emerald-200'
-                          : 'bg-rose-50 text-rose-700 border border-rose-200'
-                      }`}>
-                        {user.is_active !== false ? (
-                          <>
-                            <CheckCircle2 className="w-3 h-3 text-emerald-600" />
-                            Active
-                          </>
+                      <td className="py-2.5 px-4">
+                        {user.batch && user.subbatch ? (
+                          <span className="font-mono text-[11px] font-bold text-purple-700 bg-purple-50 px-2.5 py-0.5 rounded border border-purple-200">
+                            {user.batch} / {user.subbatch}
+                          </span>
+                        ) : user.batch || user.subbatch ? (
+                          <span className="font-mono text-[11px] font-bold text-purple-700 bg-purple-50 px-2.5 py-0.5 rounded border border-purple-200">
+                            {user.batch || user.subbatch}
+                          </span>
                         ) : (
-                          <>
-                            <XCircle className="w-3 h-3 text-rose-600" />
-                            Inactive
-                          </>
+                          <span className="text-slate-400 text-[11px] font-medium">—</span>
                         )}
-                      </span>
-                    </td>
+                      </td>
 
-                    <td className="py-2.5 px-4 text-slate-400 text-[11px]">
-                      {user.created_at ? new Date(user.created_at).toLocaleDateString() : '—'}
-                    </td>
+                      <td className="py-2.5 px-4 text-slate-600 font-mono text-[11px]">
+                        {user.email}
+                      </td>
 
-                    <td className="py-2.5 px-4 text-right">
-                      <div className="flex items-center justify-end gap-1">
-                        <button
-                          type="button"
-                          onClick={() => setSelectedUserForDetail(user)}
-                          className="px-2 py-1 rounded text-slate-600 hover:text-slate-900 hover:bg-slate-100 font-medium text-[11px] flex items-center gap-1 transition-colors cursor-pointer"
-                          title="View Details"
-                        >
-                          <Eye className="w-3.5 h-3.5 text-slate-500" />
-                          <span>Details</span>
-                        </button>
+                      <td className="py-2.5 px-4">
+                        <span className={`px-2 py-0.5 rounded text-[10px] font-bold ${
+                          user.type === 'INTERN'
+                            ? 'bg-purple-100 text-purple-700'
+                            : user.type === 'EMPLOYEE'
+                            ? 'bg-indigo-100 text-indigo-700'
+                            : 'bg-slate-100 text-slate-700'
+                        }`}>
+                          {user.type || 'MEMBER'}
+                        </span>
+                      </td>
 
-                        <button
-                          type="button"
-                          onClick={() => setSelectedUserForReset(user)}
-                          className="px-2 py-1 rounded text-purple-700 hover:bg-purple-50 font-medium text-[11px] flex items-center gap-1 transition-colors cursor-pointer"
-                          title="Reset Password"
-                        >
-                          <KeyRound className="w-3.5 h-3.5 text-purple-600" />
-                          <span>Reset</span>
-                        </button>
+                      <td className="py-2.5 px-4">
+                        <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-bold ${
+                          user.is_active !== false
+                            ? 'bg-emerald-50 text-emerald-700 border border-emerald-200'
+                            : 'bg-rose-50 text-rose-700 border border-rose-200'
+                        }`}>
+                          {user.is_active !== false ? (
+                            <>
+                              <CheckCircle2 className="w-3 h-3 text-emerald-600" />
+                              Active
+                            </>
+                          ) : (
+                            <>
+                              <XCircle className="w-3 h-3 text-rose-600" />
+                              Inactive
+                            </>
+                          )}
+                        </span>
+                      </td>
 
-                        {user.is_active !== false && (
+                      <td className="py-2.5 px-4 text-slate-400 text-[11px]">
+                        {user.created_at ? new Date(user.created_at).toLocaleDateString() : '—'}
+                      </td>
+
+                      <td className="py-2.5 px-4 text-right">
+                        <div className="flex items-center justify-end gap-1">
                           <button
                             type="button"
-                            onClick={() => setSelectedUserForDeactivate(user)}
-                            className="px-2 py-1 rounded text-rose-700 hover:bg-rose-50 font-medium text-[11px] flex items-center gap-1 transition-colors cursor-pointer"
-                            title="Deactivate User"
+                            onClick={() => setSelectedUserForDetail(user)}
+                            className="px-2 py-1 rounded text-slate-600 hover:text-slate-900 hover:bg-slate-100 font-medium text-[11px] flex items-center gap-1 transition-colors cursor-pointer"
+                            title="View Details"
                           >
-                            <UserX className="w-3.5 h-3.5 text-rose-600" />
-                            <span>Deactivate</span>
+                            <Eye className="w-3.5 h-3.5 text-slate-500" />
+                            <span>Details</span>
                           </button>
-                        )}
-                      </div>
-                    </td>
-                  </tr>
-                ))}
+
+                          <button
+                            type="button"
+                            onClick={() => setSelectedUserForReset(user)}
+                            className="px-2 py-1 rounded text-purple-700 hover:bg-purple-50 font-medium text-[11px] flex items-center gap-1 transition-colors cursor-pointer"
+                            title="Reset Password"
+                          >
+                            <KeyRound className="w-3.5 h-3.5 text-purple-600" />
+                            <span>Reset</span>
+                          </button>
+
+                          {user.is_active !== false && (
+                            <button
+                              type="button"
+                              onClick={() => setSelectedUserForDeactivate(user)}
+                              className="px-2 py-1 rounded text-rose-700 hover:bg-rose-50 font-medium text-[11px] flex items-center gap-1 transition-colors cursor-pointer"
+                              title="Deactivate User"
+                            >
+                              <UserX className="w-3.5 h-3.5 text-rose-600" />
+                              <span>Deactivate</span>
+                            </button>
+                          )}
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })}
               </tbody>
             </table>
+          </div>
+        )}
+
+        {/* Pagination Toolbar */}
+        {!loading && filteredUsers.length > 0 && (
+          <div className="px-4 py-3 bg-slate-50/70 border-t border-slate-200 flex flex-col sm:flex-row items-center justify-between gap-3 text-xs text-slate-600">
+            <div className="flex items-center gap-2">
+              <span className="text-[11px] font-medium text-slate-500">Rows per page:</span>
+              <select
+                value={pageSize}
+                onChange={(e) => {
+                  setPageSize(e.target.value === 'All' ? 'All' : Number(e.target.value));
+                  setCurrentPage(1);
+                }}
+                className="px-2 py-1 rounded-md border border-slate-200 bg-white text-xs font-semibold text-slate-700 shadow-2xs focus:outline-none focus:border-purple-600 cursor-pointer"
+              >
+                <option value={10}>10</option>
+                <option value={15}>15</option>
+                <option value={25}>25</option>
+                <option value={50}>50</option>
+                <option value="All">All</option>
+              </select>
+              <span className="text-slate-400">|</span>
+              <span className="text-[11px] font-medium text-slate-500">
+                Showing{' '}
+                <span className="font-bold text-slate-800">
+                  {pageSize === 'All'
+                    ? filteredUsers.length
+                    : `${Math.min((currentPage - 1) * Number(pageSize) + 1, filteredUsers.length)} - ${Math.min(
+                        currentPage * Number(pageSize),
+                        filteredUsers.length
+                      )}`}
+                </span>{' '}
+                of <span className="font-bold text-slate-800">{filteredUsers.length}</span> members
+              </span>
+            </div>
+
+            {pageSize !== 'All' && totalPages > 1 && (
+              <div className="flex items-center gap-1.5">
+                <button
+                  type="button"
+                  onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
+                  disabled={currentPage <= 1}
+                  className="px-2.5 py-1 rounded-md border border-slate-200 bg-white hover:bg-slate-50 disabled:opacity-40 disabled:cursor-not-allowed font-medium text-xs text-slate-700 shadow-2xs transition-colors cursor-pointer"
+                >
+                  Previous
+                </button>
+                <span className="px-2 text-xs font-bold text-slate-700">
+                  Page {currentPage} of {totalPages}
+                </span>
+                <button
+                  type="button"
+                  onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
+                  disabled={currentPage >= totalPages}
+                  className="px-2.5 py-1 rounded-md border border-slate-200 bg-white hover:bg-slate-50 disabled:opacity-40 disabled:cursor-not-allowed font-medium text-xs text-slate-700 shadow-2xs transition-colors cursor-pointer"
+                >
+                  Next
+                </button>
+              </div>
+            )}
           </div>
         )}
       </div>
@@ -490,6 +740,22 @@ export default function InternsView({ cohorts = [], selectedCohortId = null }) {
         user={selectedUserForDeactivate}
         onClose={() => setSelectedUserForDeactivate(null)}
         onSuccess={fetchUsers}
+      />
+
+      {/* Bulk Delete Modal with Password Verification */}
+      <BulkDeleteInternsModal
+        isOpen={isBulkDeleteModalOpen}
+        selectedCount={selectedUserIds.size}
+        selectedUsers={selectedUserObjects}
+        onClose={() => setIsBulkDeleteModalOpen(false)}
+        onSuccess={handleBulkDeleteSuccess}
+      />
+
+      {/* Bulk Delete Results Report Modal */}
+      <BulkDeleteResultsModal
+        isOpen={!!deletionResult}
+        result={deletionResult}
+        onClose={() => setDeletionResult(null)}
       />
     </div>
   );

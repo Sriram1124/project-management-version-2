@@ -1676,6 +1676,226 @@ export class UserService {
   }
 
   /**
+   * Manager bulk deletes organization members with retention and foreign key safety checks
+   */
+  static async deleteUsersBulk(
+    managerOrgId: string,
+    managerId: string,
+    userIds: string[],
+    fullUser?: any
+  ) {
+    if (!managerOrgId) {
+      const err: any = new Error('Manager organization context required.');
+      err.statusCode = 403;
+      throw err;
+    }
+    if (!Array.isArray(userIds) || userIds.length === 0) {
+      const err: any = new Error('At least one member ID is required for deletion.');
+      err.statusCode = 400;
+      throw err;
+    }
+
+    // Deduplicate IDs
+    const uniqueIds = Array.from(new Set(userIds.filter((id) => typeof id === 'string' && id.trim().length > 0)));
+    if (uniqueIds.length === 0) {
+      const err: any = new Error('No valid user IDs provided.');
+      err.statusCode = 400;
+      throw err;
+    }
+
+    const isCallerSuperAdmin =
+      fullUser?.roles?.some((r: any) => (r.role?.name || r.name) === 'SUPER_ADMIN') ||
+      (fullUser as any)?.role === 'SUPER_ADMIN';
+
+    // Query target users within the manager's organization along with foreign-key relations
+    const targetUsers = await prisma.user.findMany({
+      where: {
+        id: { in: uniqueIds },
+        organization_id: managerOrgId,
+      },
+      include: {
+        roles: {
+          include: { role: true },
+        },
+        owned_projects: {
+          select: { id: true, name: true },
+          take: 5,
+        },
+        created_forms: {
+          select: { id: true, title: true },
+          take: 5,
+        },
+        form_submissions: {
+          select: { id: true },
+          take: 5,
+        },
+        created_work_items: {
+          select: { id: true, title: true },
+          take: 5,
+        },
+        time_entries: {
+          select: { id: true },
+          take: 1,
+        },
+        work_sessions: {
+          select: { id: true },
+          take: 1,
+        },
+      },
+    });
+
+    const targetUserMap = new Map(targetUsers.map((u) => [u.id, u]));
+    const safeToDeleteUsers: any[] = [];
+    const failures: { id: string; name: string; email: string; reason: string }[] = [];
+
+    for (const id of uniqueIds) {
+      const targetUser = targetUserMap.get(id);
+
+      if (!targetUser) {
+        failures.push({
+          id,
+          name: 'Unknown',
+          email: '',
+          reason: 'User not found or does not belong to your organization.',
+        });
+        continue;
+      }
+
+      // 1. Cannot delete own account
+      if (targetUser.id === managerId) {
+        failures.push({
+          id: targetUser.id,
+          name: targetUser.name,
+          email: targetUser.email,
+          reason: 'You cannot delete your own account.',
+        });
+        continue;
+      }
+
+      // 2. Cannot delete Super Admin or Admin (unless authorized)
+      const isTargetSuperAdmin = targetUser.roles.some((r: any) => r.role?.name === 'SUPER_ADMIN');
+      const isTargetAdmin = targetUser.roles.some((r: any) => r.role?.name === 'ADMIN');
+
+      if (isTargetSuperAdmin) {
+        failures.push({
+          id: targetUser.id,
+          name: targetUser.name,
+          email: targetUser.email,
+          reason: 'Cannot delete Super Admin account.',
+        });
+        continue;
+      }
+
+      if (isTargetAdmin && !isCallerSuperAdmin) {
+        failures.push({
+          id: targetUser.id,
+          name: targetUser.name,
+          email: targetUser.email,
+          reason: 'Insufficient permissions to delete an administrator account.',
+        });
+        continue;
+      }
+
+      // 3. Project ownership check (foreign key constraint & retention)
+      if (targetUser.owned_projects && targetUser.owned_projects.length > 0) {
+        const pNames = targetUser.owned_projects.map((p: any) => `"${p.name}"`).join(', ');
+        failures.push({
+          id: targetUser.id,
+          name: targetUser.name,
+          email: targetUser.email,
+          reason: `Cannot delete member: user is the primary owner of active project(s) (${pNames}). Reassign project ownership first.`,
+        });
+        continue;
+      }
+
+      // 4. Timesheet retention check (historical compliance / payroll records)
+      if (
+        (targetUser.time_entries && targetUser.time_entries.length > 0) ||
+        (targetUser.work_sessions && targetUser.work_sessions.length > 0)
+      ) {
+        failures.push({
+          id: targetUser.id,
+          name: targetUser.name,
+          email: targetUser.email,
+          reason: 'Cannot delete member with logged timesheet records subject to data retention policy. Deactivate the account instead to preserve attendance history.',
+        });
+        continue;
+      }
+
+      // 5. Form creator check
+      if (targetUser.created_forms && targetUser.created_forms.length > 0) {
+        failures.push({
+          id: targetUser.id,
+          name: targetUser.name,
+          email: targetUser.email,
+          reason: 'Cannot delete member: user created forms that must be retained for compliance.',
+        });
+        continue;
+      }
+
+      // 6. Form submissions check
+      if (targetUser.form_submissions && targetUser.form_submissions.length > 0) {
+        failures.push({
+          id: targetUser.id,
+          name: targetUser.name,
+          email: targetUser.email,
+          reason: 'Cannot delete member: user has submitted evaluation forms that must be retained for compliance.',
+        });
+        continue;
+      }
+
+      // 7. Work item creator check
+      if (targetUser.created_work_items && targetUser.created_work_items.length > 0) {
+        failures.push({
+          id: targetUser.id,
+          name: targetUser.name,
+          email: targetUser.email,
+          reason: 'Cannot delete member: user created work items in projects. Reassign or delete work items before removing the member.',
+        });
+        continue;
+      }
+
+      safeToDeleteUsers.push(targetUser);
+    }
+
+    const deletedIds: string[] = [];
+
+    if (safeToDeleteUsers.length > 0) {
+      await prisma.$transaction(async (tx) => {
+        for (const user of safeToDeleteUsers) {
+          // Delete user (cascades UserRole, UserSession, UserPermission, ProjectMember, ProjectOwner, WorkItemAssignee, WorkItemComment, Notification, NotificationRecipient)
+          await tx.user.delete({
+            where: { id: user.id },
+          });
+          invalidateUserSessionCache(user.id);
+          deletedIds.push(user.id);
+        }
+      });
+    }
+
+    const deletedCount = deletedIds.length;
+    const failedCount = failures.length;
+
+    let message = '';
+    if (deletedCount > 0 && failedCount === 0) {
+      message = `Successfully deleted ${deletedCount} member${deletedCount === 1 ? '' : 's'}.`;
+    } else if (deletedCount > 0 && failedCount > 0) {
+      message = `Successfully deleted ${deletedCount} member${deletedCount === 1 ? '' : 's'}. ${failedCount} member${failedCount === 1 ? '' : 's'} could not be deleted due to retention or safety policies.`;
+    } else {
+      message = `No members were deleted. ${failedCount} member${failedCount === 1 ? '' : 's'} could not be deleted.`;
+    }
+
+    return {
+      success: deletedCount > 0,
+      message,
+      deletedCount,
+      failedCount,
+      deletedIds,
+      failures,
+    };
+  }
+
+  /**
    * Authenticated user changes temporary password on first login
    */
   static async changePassword(userId: string, currentPassword: string, newPassword: string) {

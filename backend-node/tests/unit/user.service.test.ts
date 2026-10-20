@@ -1031,4 +1031,248 @@ describe('UserService Unit Tests', () => {
       expect(res.cohort_id).toBe('c-valid');
     });
   });
+
+  describe('deleteUsersBulk', () => {
+    it('should validate inputs and reject empty userIds or missing managerOrgId', async () => {
+      await expect(UserService.deleteUsersBulk('', 'mgr-1', ['u-1'])).rejects.toThrow(
+        'Manager organization context required.'
+      );
+      await expect(UserService.deleteUsersBulk('org-1', 'mgr-1', [])).rejects.toThrow(
+        'At least one member ID is required for deletion.'
+      );
+    });
+
+    it('should prevent manager from deleting own account', async () => {
+      (prisma.user.findMany as jest.Mock).mockResolvedValueOnce([
+        {
+          id: 'mgr-1',
+          name: 'Manager Self',
+          email: 'mgr@example.com',
+          roles: [{ role: { name: 'MANAGER' } }],
+          owned_projects: [],
+          created_forms: [],
+          form_submissions: [],
+          created_work_items: [],
+          time_entries: [],
+          work_sessions: [],
+        },
+      ]);
+
+      const res = await UserService.deleteUsersBulk('org-1', 'mgr-1', ['mgr-1']);
+      expect(res.success).toBe(false);
+      expect(res.deletedCount).toBe(0);
+      expect(res.failedCount).toBe(1);
+      expect(res.failures[0].reason).toContain('You cannot delete your own account.');
+    });
+
+    it('should reject deleting Super Admin or Admin account by non-superadmin', async () => {
+      (prisma.user.findMany as jest.Mock).mockResolvedValueOnce([
+        {
+          id: 'u-super',
+          name: 'Root Admin',
+          email: 'root@example.com',
+          roles: [{ role: { name: 'SUPER_ADMIN' } }],
+          owned_projects: [],
+          created_forms: [],
+          form_submissions: [],
+          created_work_items: [],
+          time_entries: [],
+          work_sessions: [],
+        },
+        {
+          id: 'u-admin',
+          name: 'Org Admin',
+          email: 'admin@example.com',
+          roles: [{ role: { name: 'ADMIN' } }],
+          owned_projects: [],
+          created_forms: [],
+          form_submissions: [],
+          created_work_items: [],
+          time_entries: [],
+          work_sessions: [],
+        },
+      ]);
+
+      const res = await UserService.deleteUsersBulk(
+        'org-1',
+        'mgr-1',
+        ['u-super', 'u-admin'],
+        { roles: [{ role: { name: 'MANAGER' } }] }
+      );
+      expect(res.success).toBe(false);
+      expect(res.failedCount).toBe(2);
+      expect(res.failures[0].reason).toContain('Cannot delete Super Admin account.');
+      expect(res.failures[1].reason).toContain('Insufficient permissions to delete an administrator account.');
+    });
+
+    it('should block deletion of user with logged timesheet records (retention policy)', async () => {
+      (prisma.user.findMany as jest.Mock).mockResolvedValueOnce([
+        {
+          id: 'u-intern-timesheet',
+          name: 'Timesheet Intern',
+          email: 'ts@example.com',
+          roles: [{ role: { name: 'INTERN' } }],
+          owned_projects: [],
+          created_forms: [],
+          form_submissions: [],
+          created_work_items: [],
+          time_entries: [{ id: 'te-1' }],
+          work_sessions: [],
+        },
+      ]);
+
+      const res = await UserService.deleteUsersBulk('org-1', 'mgr-1', ['u-intern-timesheet']);
+      expect(res.success).toBe(false);
+      expect(res.deletedCount).toBe(0);
+      expect(res.failedCount).toBe(1);
+      expect(res.failures[0].reason).toContain('data retention policy');
+      expect(res.failures[0].reason).toContain('Deactivate the account instead');
+    });
+
+    it('should block deletion of user who is primary owner of active project(s)', async () => {
+      (prisma.user.findMany as jest.Mock).mockResolvedValueOnce([
+        {
+          id: 'u-lead',
+          name: 'Project Lead',
+          email: 'lead@example.com',
+          roles: [{ role: { name: 'EMPLOYEE' } }],
+          owned_projects: [{ id: 'proj-1', name: 'Alpha Project' }],
+          created_forms: [],
+          form_submissions: [],
+          created_work_items: [],
+          time_entries: [],
+          work_sessions: [],
+        },
+      ]);
+
+      const res = await UserService.deleteUsersBulk('org-1', 'mgr-1', ['u-lead']);
+      expect(res.success).toBe(false);
+      expect(res.failedCount).toBe(1);
+      expect(res.failures[0].reason).toContain('primary owner of active project(s)');
+      expect(res.failures[0].reason).toContain('Alpha Project');
+    });
+
+    it('should block deletion of user who created forms or submitted evaluations', async () => {
+      (prisma.user.findMany as jest.Mock).mockResolvedValueOnce([
+        {
+          id: 'u-form-creator',
+          name: 'Form Creator',
+          email: 'fc@example.com',
+          roles: [{ role: { name: 'MANAGER' } }],
+          owned_projects: [],
+          created_forms: [{ id: 'form-1', title: 'Survey' }],
+          form_submissions: [],
+          created_work_items: [],
+          time_entries: [],
+          work_sessions: [],
+        },
+        {
+          id: 'u-submitter',
+          name: 'Form Submitter',
+          email: 'fs@example.com',
+          roles: [{ role: { name: 'INTERN' } }],
+          owned_projects: [],
+          created_forms: [],
+          form_submissions: [{ id: 'sub-1' }],
+          created_work_items: [],
+          time_entries: [],
+          work_sessions: [],
+        },
+      ]);
+
+      const res = await UserService.deleteUsersBulk('org-1', 'mgr-1', ['u-form-creator', 'u-submitter']);
+      expect(res.success).toBe(false);
+      expect(res.failedCount).toBe(2);
+      expect(res.failures[0].reason).toContain('user created forms that must be retained');
+      expect(res.failures[1].reason).toContain('user has submitted evaluation forms');
+    });
+
+    it('should successfully delete eligible unencumbered members and report partial failures', async () => {
+      (prisma.user.findMany as jest.Mock).mockResolvedValueOnce([
+        {
+          id: 'u-safe-1',
+          name: 'Safe Intern 1',
+          email: 'safe1@example.com',
+          roles: [{ role: { name: 'INTERN' } }],
+          owned_projects: [],
+          created_forms: [],
+          form_submissions: [],
+          created_work_items: [],
+          time_entries: [],
+          work_sessions: [],
+        },
+        {
+          id: 'u-blocked',
+          name: 'Blocked Intern',
+          email: 'blocked@example.com',
+          roles: [{ role: { name: 'INTERN' } }],
+          owned_projects: [],
+          created_forms: [],
+          form_submissions: [],
+          created_work_items: [],
+          time_entries: [{ id: 'te-1' }],
+          work_sessions: [],
+        },
+      ]);
+
+      const mockDelete = jest.fn().mockResolvedValue({ id: 'u-safe-1' });
+      (prisma.$transaction as jest.Mock).mockImplementation(async (callback) => {
+        return await callback({
+          user: { delete: mockDelete },
+        });
+      });
+
+      const res = await UserService.deleteUsersBulk('org-1', 'mgr-1', ['u-safe-1', 'u-blocked']);
+      expect(res.success).toBe(true);
+      expect(res.deletedCount).toBe(1);
+      expect(res.failedCount).toBe(1);
+      expect(res.deletedIds).toEqual(['u-safe-1']);
+      expect(mockDelete).toHaveBeenCalledWith({ where: { id: 'u-safe-1' } });
+      expect(res.failures[0].id).toBe('u-blocked');
+      expect(res.failures[0].reason).toContain('data retention policy');
+    });
+
+    it('should successfully delete all members when all are eligible', async () => {
+      (prisma.user.findMany as jest.Mock).mockResolvedValueOnce([
+        {
+          id: 'u-safe-1',
+          name: 'Safe Intern 1',
+          email: 'safe1@example.com',
+          roles: [{ role: { name: 'INTERN' } }],
+          owned_projects: [],
+          created_forms: [],
+          form_submissions: [],
+          created_work_items: [],
+          time_entries: [],
+          work_sessions: [],
+        },
+        {
+          id: 'u-safe-2',
+          name: 'Safe Intern 2',
+          email: 'safe2@example.com',
+          roles: [{ role: { name: 'INTERN' } }],
+          owned_projects: [],
+          created_forms: [],
+          form_submissions: [],
+          created_work_items: [],
+          time_entries: [],
+          work_sessions: [],
+        },
+      ]);
+
+      const mockDelete = jest.fn();
+      (prisma.$transaction as jest.Mock).mockImplementation(async (callback) => {
+        return await callback({
+          user: { delete: mockDelete },
+        });
+      });
+
+      const res = await UserService.deleteUsersBulk('org-1', 'mgr-1', ['u-safe-1', 'u-safe-2']);
+      expect(res.success).toBe(true);
+      expect(res.deletedCount).toBe(2);
+      expect(res.failedCount).toBe(0);
+      expect(res.deletedIds).toEqual(['u-safe-1', 'u-safe-2']);
+      expect(mockDelete).toHaveBeenCalledTimes(2);
+    });
+  });
 });

@@ -27,14 +27,6 @@ import { getCalendarWeekRange, toLocalDateString, formatMinutes } from '../../ut
 export default function ManagerTimesheetsView({ onToast, cohorts: propCohorts = [], selectedCohortId: propCohortId = null }) {
   // Navigation / Selection State
   const [selectedIntern, setSelectedIntern] = useState(null);
-  const [activeTab, setActiveTab] = useState('DIRECTORY'); // 'DIRECTORY' | 'CORRECTIONS'
-
-  // Time Corrections State
-  const [corrections, setCorrections] = useState([]);
-  const [loadingCorrections, setLoadingCorrections] = useState(false);
-  const [correctionFilter, setCorrectionFilter] = useState('ALL'); // 'ALL' | 'PENDING' | 'APPROVED' | 'REJECTED'
-  const [reviewActionLoading, setReviewActionLoading] = useState(false);
-  const [reviewNotes, setReviewNotes] = useState({});
 
   // Filters State
   const [search, setSearch] = useState('');
@@ -208,50 +200,6 @@ export default function ManagerTimesheetsView({ onToast, cohorts: propCohorts = 
     loadReviewDirectory();
   }, [loadReviewDirectory]);
 
-  // Load Time Correction requests
-  const loadCorrections = useCallback(async () => {
-    try {
-      setLoadingCorrections(true);
-      const res = await timesheetService.getTimeCorrections();
-      setCorrections(res?.requests || []);
-    } catch (err) {
-      console.error('Failed to load time corrections:', err);
-    } finally {
-      setLoadingCorrections(false);
-    }
-  }, []);
-
-  useEffect(() => {
-    loadCorrections();
-  }, [loadCorrections]);
-
-  const pendingCount = useMemo(() => {
-    return corrections.filter((c) => c.status === 'PENDING').length;
-  }, [corrections]);
-
-  const filteredCorrections = useMemo(() => {
-    if (correctionFilter === 'ALL') return corrections;
-    return corrections.filter((c) => c.status === correctionFilter);
-  }, [corrections, correctionFilter]);
-
-  const handleReviewCorrection = async (requestId, status) => {
-    try {
-      setReviewActionLoading(true);
-      const note = reviewNotes[requestId] || '';
-      await timesheetService.reviewTimeCorrection(requestId, {
-        status,
-        reviewNotes: note.trim() || undefined,
-      });
-      onToast?.(`Correction request ${status.toLowerCase()} successfully`);
-      await loadCorrections();
-      await loadReviewDirectory();
-    } catch (err) {
-      onToast?.(err.message || `Failed to ${status.toLowerCase()} request`);
-    } finally {
-      setReviewActionLoading(false);
-    }
-  };
-
   // Week Navigation handlers
   const handlePrevWeek = () => {
     const next = new Date(selectedDate);
@@ -315,9 +263,9 @@ export default function ManagerTimesheetsView({ onToast, cohorts: propCohorts = 
   };
 
   return (
-    <div className="space-y-5 text-xs text-slate-800">
+    <div className="space-y-6 text-xs text-slate-800">
       {/* 1. TOP HEADER & METRICS */}
-      <div className="bg-white p-5 rounded-2xl border border-slate-200/80 shadow-xs flex flex-col md:flex-row md:items-center justify-between gap-4">
+      <div className="bg-white p-5 sm:p-6 rounded-2xl border border-slate-200/80 shadow-xs flex flex-col md:flex-row md:items-center justify-between gap-5">
         <div>
           <div className="flex items-center gap-2">
             <span className="p-1.5 rounded-lg bg-purple-100 text-purple-700">
@@ -327,16 +275,16 @@ export default function ManagerTimesheetsView({ onToast, cohorts: propCohorts = 
               Management & Oversight
             </span>
           </div>
-          <h1 className="text-xl sm:text-2xl font-bold text-slate-900 tracking-tight mt-1">
+          <h1 className="text-xl sm:text-2xl font-bold text-slate-900 tracking-tight mt-1.5">
             Intern Timesheets Review
           </h1>
-          <p className="text-xs text-slate-500 mt-0.5">
+          <p className="text-xs text-slate-500 mt-1">
             Search, filter, and review weekly timesheets and work distribution across your cohorts
           </p>
         </div>
 
         {/* Week Selector */}
-        <div className="flex items-center gap-2 self-start md:self-auto">
+        <div className="flex flex-wrap items-center gap-2.5 self-start md:self-auto">
           <div className="flex items-center bg-slate-100 p-1 rounded-xl border border-slate-200 text-slate-700">
             <button
               type="button"
@@ -386,54 +334,70 @@ export default function ManagerTimesheetsView({ onToast, cohorts: propCohorts = 
 
 
       {/* 2. KPI SUMMARY CARDS */}
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3.5">
-        <div className="bg-white p-4 rounded-xl border border-slate-200/80 shadow-2xs">
-          <div className="flex items-center justify-between text-slate-500 text-[11px] font-semibold">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+        <div className="bg-white p-5 rounded-2xl border border-slate-200/80 shadow-xs flex flex-col justify-between min-h-[115px]">
+          <div className="flex items-center justify-between text-slate-500 text-[11px] font-bold uppercase tracking-wider">
             <span>Total Interns</span>
-            <Users className="w-4 h-4 text-purple-600" />
+            <span className="p-1.5 rounded-lg bg-purple-50 text-purple-600">
+              <Users className="w-4 h-4" />
+            </span>
           </div>
-          <div className="mt-1 text-2xl font-extrabold text-slate-900">
-            {summary.total_interns}
+          <div className="mt-2">
+            <div className="text-2xl font-extrabold text-slate-900 tracking-tight">
+              {summary.total_interns}
+            </div>
+            <div className="text-[11px] text-slate-400 mt-0.5">In current filter scope</div>
           </div>
-          <div className="text-[10px] text-slate-400 mt-0.5">In current filter scope</div>
         </div>
 
-        <div className="bg-white p-4 rounded-xl border border-slate-200/80 shadow-2xs">
-          <div className="flex items-center justify-between text-slate-500 text-[11px] font-semibold">
+        <div className="bg-white p-5 rounded-2xl border border-slate-200/80 shadow-xs flex flex-col justify-between min-h-[115px]">
+          <div className="flex items-center justify-between text-slate-500 text-[11px] font-bold uppercase tracking-wider">
             <span>Active Contributors</span>
-            <CheckCircle2 className="w-4 h-4 text-emerald-600" />
+            <span className="p-1.5 rounded-lg bg-emerald-50 text-emerald-600">
+              <CheckCircle2 className="w-4 h-4" />
+            </span>
           </div>
-          <div className="mt-1 text-2xl font-extrabold text-emerald-600">
-            {summary.active_interns}
+          <div className="mt-2">
+            <div className="text-2xl font-extrabold text-emerald-600 tracking-tight">
+              {summary.active_interns}
+            </div>
+            <div className="text-[11px] text-slate-400 mt-0.5">Logged hours this week</div>
           </div>
-          <div className="text-[10px] text-slate-400 mt-0.5">Logged hours this week</div>
         </div>
 
-        <div className="bg-white p-4 rounded-xl border border-slate-200/80 shadow-2xs">
-          <div className="flex items-center justify-between text-slate-500 text-[11px] font-semibold">
+        <div className="bg-white p-5 rounded-2xl border border-slate-200/80 shadow-xs flex flex-col justify-between min-h-[115px]">
+          <div className="flex items-center justify-between text-slate-500 text-[11px] font-bold uppercase tracking-wider">
             <span>Total Logged Time</span>
-            <Clock className="w-4 h-4 text-indigo-600" />
+            <span className="p-1.5 rounded-lg bg-indigo-50 text-indigo-600">
+              <Clock className="w-4 h-4" />
+            </span>
           </div>
-          <div className="mt-1 text-2xl font-extrabold text-indigo-900">
-            {summary.total_logged_hours}h
+          <div className="mt-2">
+            <div className="text-2xl font-extrabold text-indigo-900 tracking-tight">
+              {summary.total_logged_hours}h
+            </div>
+            <div className="text-[11px] text-slate-400 mt-0.5">Team combined effort</div>
           </div>
-          <div className="text-[10px] text-slate-400 mt-0.5">Team combined effort</div>
         </div>
 
-        <div className="bg-white p-4 rounded-xl border border-slate-200/80 shadow-2xs">
-          <div className="flex items-center justify-between text-slate-500 text-[11px] font-semibold">
+        <div className="bg-white p-5 rounded-2xl border border-slate-200/80 shadow-xs flex flex-col justify-between min-h-[115px]">
+          <div className="flex items-center justify-between text-slate-500 text-[11px] font-bold uppercase tracking-wider">
             <span>Avg Active Hours</span>
-            <Calendar className="w-4 h-4 text-amber-600" />
+            <span className="p-1.5 rounded-lg bg-amber-50 text-amber-600">
+              <Calendar className="w-4 h-4" />
+            </span>
           </div>
-          <div className="mt-1 text-2xl font-extrabold text-slate-900">
-            {formatMinutes(summary.avg_logged_minutes_per_active)}
+          <div className="mt-2">
+            <div className="text-2xl font-extrabold text-slate-900 tracking-tight">
+              {formatMinutes(summary.avg_logged_minutes_per_active)}
+            </div>
+            <div className="text-[11px] text-slate-400 mt-0.5">Per active intern</div>
           </div>
-          <div className="text-[10px] text-slate-400 mt-0.5">Per active intern</div>
         </div>
       </div>
 
       {/* 3. SEARCH & FILTERS BAR */}
-      <div className="bg-white p-4 rounded-2xl border border-slate-200/80 shadow-xs space-y-3">
+      <div className="bg-white p-4 rounded-2xl border border-slate-200/80 shadow-xs">
         <div className="flex flex-col md:flex-row md:items-center gap-3">
           {/* Search Input */}
           <div className="relative flex-1">
@@ -463,7 +427,7 @@ export default function ManagerTimesheetsView({ onToast, cohorts: propCohorts = 
           </div>
 
           {/* Cohort Dropdown */}
-          <div className="w-full md:w-56">
+          <div className="w-full md:w-64">
             <select
               value={selectedCohort}
               onChange={(e) => {
@@ -476,25 +440,6 @@ export default function ManagerTimesheetsView({ onToast, cohorts: propCohorts = 
               {cohorts.map((c) => (
                 <option key={c.id} value={c.id}>
                   {c.name} ({c.code})
-                </option>
-              ))}
-            </select>
-          </div>
-
-          {/* Project Dropdown */}
-          <div className="w-full md:w-56">
-            <select
-              value={selectedProject}
-              onChange={(e) => {
-                setSelectedProject(e.target.value);
-                setPage(1);
-              }}
-              className="w-full px-3 py-2 rounded-xl border border-slate-200 bg-white text-xs font-medium text-slate-800 focus:outline-none focus:border-purple-600 cursor-pointer"
-            >
-              <option value="ALL">All Projects</option>
-              {projects.map((p) => (
-                <option key={p.id} value={p.id}>
-                  {p.name}
                 </option>
               ))}
             </select>

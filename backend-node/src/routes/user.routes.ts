@@ -28,6 +28,9 @@ router.post('/bulk/validate', requireRoleOrPermission(['MANAGER', 'ADMIN', 'SUPE
 // Manager confirms bulk creation
 router.post('/bulk', requireRoleOrPermission(['MANAGER', 'ADMIN', 'SUPER_ADMIN'], 'USER_BULK_CREATE', 'USER_CREATE'), upload.any(), UserController.createBulk);
 
+// Manager confirms bulk deletion with password verification
+router.post('/bulk/delete', requireRoleOrPermission(['MANAGER', 'ADMIN', 'SUPER_ADMIN'], 'USER_DELETE'), UserController.deleteBulk);
+
 // User updates own profile
 router.patch('/profile', UserController.updateProfile);
 

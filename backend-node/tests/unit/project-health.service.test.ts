@@ -214,8 +214,7 @@ describe('ProjectHealthService Unit Tests', () => {
 
       // 3 of 10 remaining SP blocked = 30% blocked
       expect(['NEEDS_ATTENTION', 'AT_RISK']).toContain(res.health);
-      expect(res.health_score).toBeGreaterThanOrEqual(35);
-      expect(res.health_score).toBeLessThanOrEqual(74);
+      expect(res.health_score).toBe(33); // 5 completed SP / 15 total SP * 100
       expect(['MODERATE', 'HIGH']).toContain(res.risk_level);
       expect(res.recommended_actions.length).toBeGreaterThan(0);
       expect(res.recommended_actions[0]).toContain('blocked deliverable');
@@ -493,6 +492,85 @@ describe('ProjectHealthService Unit Tests', () => {
           }),
         })
       );
+    });
+
+    it('Scenario 1 & 2: 20 total SP, 10 completed SP, remaining not overdue => 50% completion score and HEALTHY', () => {
+      const futureDate = new Date();
+      futureDate.setDate(futureDate.getDate() + 15);
+
+      const res = ProjectHealthService.classifyProjectHealth({
+        id: 'p-scenario-1',
+        name: 'Scenario Project',
+        status: 'ACTIVE',
+        work_items: [
+          {
+            id: 't-1',
+            type: WorkItemType.TASK,
+            status: WorkItemStatus.COMPLETED,
+            priority: WorkItemPriority.MEDIUM,
+            story_points: 10,
+          },
+          {
+            id: 't-2',
+            type: WorkItemType.TASK,
+            status: WorkItemStatus.IN_PROGRESS,
+            priority: WorkItemPriority.MEDIUM,
+            due_date: futureDate,
+            story_points: 10,
+          },
+        ],
+      });
+
+      expect(res.total_sp).toBe(20);
+      expect(res.completed_sp).toBe(10);
+      expect(res.remaining_sp).toBe(10);
+      expect(res.completion_percentage).toBe(50);
+      expect(res.health_score).toBe(50);
+      expect(res.health).toBe('HEALTHY');
+      expect(res.risk_level).toBe('LOW');
+    });
+
+    it('Scenario 3: all estimated story points completed receives 100% completion score and HEALTHY', () => {
+      const res = ProjectHealthService.classifyProjectHealth({
+        id: 'p-scenario-3',
+        name: 'Completed Project',
+        status: 'ACTIVE',
+        work_items: [
+          {
+            id: 't-1',
+            type: WorkItemType.TASK,
+            status: WorkItemStatus.COMPLETED,
+            priority: WorkItemPriority.MEDIUM,
+            story_points: 15,
+          },
+        ],
+      });
+
+      expect(res.completion_percentage).toBe(100);
+      expect(res.health_score).toBe(100);
+      expect(res.health).toBe('HEALTHY');
+    });
+
+    it('Scenario 4: project with zero or missing estimates is NOT_ASSESSED with null health score', () => {
+      const res = ProjectHealthService.classifyProjectHealth({
+        id: 'p-scenario-4',
+        name: 'Zero Estimates Project',
+        status: 'ACTIVE',
+        work_items: [
+          {
+            id: 't-1',
+            type: WorkItemType.TASK,
+            status: WorkItemStatus.IN_PROGRESS,
+            priority: WorkItemPriority.MEDIUM,
+            story_points: 0,
+          },
+        ],
+      });
+
+      expect(res.has_estimated_work).toBe(false);
+      expect(res.completion_percentage).toBeNull();
+      expect(res.health_score).toBeNull();
+      expect(res.health).toBe('NOT_ASSESSED');
     });
   });
 });
