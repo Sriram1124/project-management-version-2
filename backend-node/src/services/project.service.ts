@@ -1325,7 +1325,22 @@ export class ProjectService {
       },
       TECH_LEAD: {
         label: 'Tech Lead',
-        perms: ['PROJECT_READ', 'PROJECT_UPDATE', 'TASK_READ', 'TASK_CREATE', 'TASK_UPDATE', 'TASK_ASSIGN', 'FORM_READ', 'DOCUMENT_UPLOAD'],
+        perms: [
+          'PROJECT_READ',
+          'PROJECT_UPDATE',
+          'TASK_READ',
+          'TASK_CREATE',
+          'TASK_UPDATE',
+          'TASK_ASSIGN',
+          'FORM_READ',
+          'DOCUMENT_UPLOAD',
+          'ROLE_ASSIGN',
+          'CYCLE_ACTIVATE',
+          'CYCLE_UPDATE',
+          'CYCLE_CREATE',
+          'ACTION_ITEM_CREATE',
+          'ACTION_ITEM_DELETE',
+        ],
       },
       UI_UX_DESIGNER: {
         label: 'UI/UX Designer',
@@ -1346,28 +1361,51 @@ export class ProjectService {
     };
 
     for (const [roleName, config] of Object.entries(BUILTIN_ROLES)) {
-      const existing = await prisma.role.findFirst({
+      let roleRecord = await prisma.role.findFirst({
         where: { name: roleName },
       });
-      if (!existing) {
+      if (!roleRecord) {
         try {
-          const created = await prisma.role.create({
+          roleRecord = await prisma.role.create({
             data: {
               name: roleName,
               description: config.label,
               is_custom: false,
             },
           });
-          for (const permName of config.perms) {
-            const p = await prisma.permission.findFirst({ where: { name: permName } });
-            if (p) {
-              await prisma.rolePermission.create({
-                data: { role_id: created.id, permission_id: p.id },
-              }).catch(() => {});
-            }
-          }
         } catch (e) {
           // Ignore concurrent seed collision
+          roleRecord = await prisma.role.findFirst({ where: { name: roleName } });
+        }
+      }
+
+      if (roleRecord) {
+        for (const permName of config.perms) {
+          let p = await prisma.permission.findFirst({ where: { name: permName } });
+          if (!p) {
+            try {
+              p = await prisma.permission.create({
+                data: {
+                  name: permName,
+                  description: this.PERMISSION_METADATA[permName]?.description || permName,
+                },
+              });
+            } catch (e) {
+              p = await prisma.permission.findFirst({ where: { name: permName } });
+            }
+          }
+          if (p) {
+            await prisma.rolePermission.upsert({
+              where: {
+                role_id_permission_id: {
+                  role_id: roleRecord.id,
+                  permission_id: p.id,
+                },
+              },
+              update: {},
+              create: { role_id: roleRecord.id, permission_id: p.id },
+            }).catch(() => {});
+          }
         }
       }
     }

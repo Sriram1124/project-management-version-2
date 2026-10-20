@@ -62,7 +62,8 @@ async function main() {
 
   const techLeadPerms = [
     'PROJECT_READ', 'PROJECT_UPDATE', 'TASK_READ', 'TASK_CREATE', 'TASK_UPDATE', 'TASK_ASSIGN',
-    'FORM_READ', 'DOCUMENT_UPLOAD'
+    'FORM_READ', 'DOCUMENT_UPLOAD', 'ROLE_ASSIGN', 'CYCLE_ACTIVATE', 'CYCLE_UPDATE', 'CYCLE_CREATE',
+    'ACTION_ITEM_CREATE', 'ACTION_ITEM_DELETE'
   ];
 
   const internPerms = [

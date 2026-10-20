@@ -83,3 +83,8 @@ backend-node/coverage/
 credentials_exports/
 backend-node/credentials_exports/
 *.csv
+
+# Temporary inspection and sync scripts
+backend-node/inspect_tech_lead.js
+backend-node/sync_tech_lead_role.js
+

@@ -47,9 +47,45 @@ export default function IssueDetailDrawer({
   const authRole = String(
     authUser?.role?.name || authUser?.role || authUser?.type || authUser?.user_type || ''
   ).toUpperCase();
-  const isManager = authRole === 'MANAGER';
-  const isIntern = authRole === 'INTERN';
   const currentUserId = authUser?.id || authUser?.user_id;
+
+  // Resolve project membership and lead/management permissions
+  const currentMember = useMemo(() => {
+    if (!currentUserId || !Array.isArray(members)) return null;
+    return members.find((m) => (m.user_id || m.id) === currentUserId);
+  }, [members, currentUserId]);
+
+  const memberRole = String(
+    currentMember?.project_role || currentMember?.role || ''
+  ).toUpperCase();
+
+  const isTechLead =
+    authRole === 'TECH_LEAD' ||
+    Boolean(authUser?.is_tech_lead) ||
+    memberRole === 'TECH_LEAD' ||
+    Boolean(currentMember?.is_tech_lead);
+
+  const isManagerOrAdmin =
+    authRole === 'MANAGER' ||
+    authRole === 'ADMIN' ||
+    authRole === 'SUPER_ADMIN' ||
+    Boolean(authUser?.is_admin) ||
+    Boolean(authUser?.is_super_admin);
+
+  const canManageProject = isManagerOrAdmin || isTechLead;
+
+  const memberPerms = useMemo(() => {
+    const list = currentMember?.role_details?.permissions || currentMember?.permissions || [];
+    return new Set(list.map((p) => String(p).toUpperCase()));
+  }, [currentMember]);
+
+  const hasTaskCreate = canManageProject || memberPerms.has('TASK_CREATE');
+  const hasTaskUpdate = canManageProject || memberPerms.has('TASK_UPDATE');
+  const hasTaskDelete = canManageProject || memberPerms.has('TASK_DELETE') || memberPerms.has('TASK_UPDATE');
+
+  const isManager = authRole === 'MANAGER';
+  // User is a restricted intern only if they have INTERN role and cannot manage the project
+  const isIntern = authRole === 'INTERN' && !canManageProject;
 
   const isAssignedToMe = useMemo(() => {
     if (!issue || !currentUserId) return false;
@@ -89,15 +125,21 @@ export default function IssueDetailDrawer({
     return null;
   }, [issue, currentAssigneeId, members]);
 
-  const canDelete = !isIntern;
-  const canEditTitleAndDesc = !isIntern;
-  const canChangeStatus = !isIntern || isAssignedToMe;
-  const canChangePriority = !isIntern;
-  const canChangeAssignee = !isIntern;
-  const canChangeSprint = !isIntern;
-  const canChangeEpic = !isIntern;
-  const canChangeStoryPoints = !isIntern;
-  const canChangeDueDate = !isIntern;
+  const isCreator = Boolean(
+    currentUserId &&
+    (issue?.created_by === currentUserId || issue?.creator_id === currentUserId || issue?.creator?.id === currentUserId)
+  );
+
+  const canDelete = canManageProject || hasTaskDelete || isCreator;
+  const canEditTitleAndDesc = canManageProject || hasTaskUpdate || !isIntern;
+  const canChangeStatus = canManageProject || hasTaskUpdate || isAssignedToMe || !isIntern;
+  const canChangePriority = canManageProject || hasTaskUpdate || !isIntern;
+  const canChangeAssignee = canManageProject || hasTaskUpdate || memberPerms.has('ROLE_ASSIGN') || !isIntern;
+  const canChangeSprint = canManageProject || hasTaskUpdate || !isIntern;
+  const canChangeEpic = canManageProject || hasTaskUpdate || !isIntern;
+  const canChangeStoryPoints = canManageProject || hasTaskUpdate || !isIntern;
+  const canChangeDueDate = canManageProject || hasTaskUpdate || !isIntern;
+  const canAddChildItems = canManageProject || hasTaskCreate || !isIntern;
 
   const [updatingField, setUpdatingField] = useState(null); // 'assignee' | 'status' | 'priority' | 'sprint' | 'epic' | 'storyPoints' | 'dueDate' | 'title' | 'description'
   const [activeTab, setActiveTab] = useState('comments'); // 'comments' | 'worklog' | 'history'
@@ -224,16 +266,17 @@ export default function IssueDetailDrawer({
 
   const allowedChildTypes = React.useMemo(() => {
     const t = String(issue?.type || '').toUpperCase();
-    if (isIntern) {
-      if (t === 'STORY') return ['TASK', 'BUG'];
-      if (t === 'TASK') return ['SUBTASK'];
-      return [];
+    if (t === 'EPIC') {
+      return ['STORY', 'BUG', 'TASK'];
     }
-    if (t === 'EPIC') return ['STORY', 'BUG'];
-    if (t === 'STORY') return ['TASK', 'BUG'];
-    if (t === 'TASK') return ['SUBTASK'];
+    if (t === 'STORY') {
+      return ['TASK', 'BUG', 'SUBTASK'];
+    }
+    if (t === 'TASK' || t === 'BUG') {
+      return ['SUBTASK'];
+    }
     return [];
-  }, [issue?.type, isIntern]);
+  }, [issue?.type]);
 
   useEffect(() => {
     if (allowedChildTypes.length > 0) {
@@ -749,8 +792,14 @@ export default function IssueDetailDrawer({
         <div className="flex items-center gap-1.5">
           {canDelete && (
             <button
-              onClick={() => onDeleteIssue?.(issue.id)}
-              title="Delete Issue"
+              onClick={() => {
+                const itemTypeName = issue.type ? issue.type.toLowerCase() : 'item';
+                const itemTitle = issue.title ? `"${issue.title}"` : '';
+                if (window.confirm(`Are you sure you want to delete this ${itemTypeName} ${itemTitle}? This action cannot be undone.`)) {
+                  onDeleteIssue?.(issue.id);
+                }
+              }}
+              title={`Delete ${issue.type || 'Issue'}`}
               className="p-1 rounded text-slate-400 hover:text-rose-600 hover:bg-rose-50 transition-colors cursor-pointer"
             >
               <Trash2 className="w-3.5 h-3.5" />
@@ -1282,67 +1331,73 @@ export default function IssueDetailDrawer({
 
             {/* Context-Sensitive Add Child Item */}
             {allowedChildTypes.length > 0 ? (
-              <form onSubmit={handleAddChildSubmit} className="flex flex-col gap-1.5 pt-1">
-                <div className="flex items-center gap-1.5">
-                  {allowedChildTypes.length > 1 && (
-                    <select
-                      value={childType}
-                      onChange={(e) => setChildType(e.target.value)}
-                      className="px-1.5 py-1 text-[11px] font-bold rounded border border-purple-200 bg-purple-50 text-purple-800"
+              canAddChildItems ? (
+                <form onSubmit={handleAddChildSubmit} className="flex flex-col gap-1.5 pt-1">
+                  <div className="flex items-center gap-1.5">
+                    {allowedChildTypes.length > 1 && (
+                      <select
+                        value={childType}
+                        onChange={(e) => setChildType(e.target.value)}
+                        className="px-1.5 py-1 text-[11px] font-bold rounded border border-purple-200 bg-purple-50 text-purple-800"
+                      >
+                        {allowedChildTypes.map((t) => (
+                          <option key={t} value={t}>{t}</option>
+                        ))}
+                      </select>
+                    )}
+                    <input
+                      type="text"
+                      value={newSubtaskTitle}
+                      onChange={(e) => setNewSubtaskTitle(e.target.value)}
+                      placeholder={`+ Add new ${childType.toLowerCase()}...`}
+                      className="flex-1 px-2 py-1 text-xs rounded border border-slate-200 focus:outline-none focus:border-purple-600"
+                    />
+                    {['TASK', 'SUBTASK', 'BUG', 'STORY'].includes(childType) && (
+                      <div className="flex items-center gap-1 shrink-0" title="Story Points (mandatory for work items)">
+                        <input
+                          type="number"
+                          min={1}
+                          max={999}
+                          value={childPoints}
+                          onChange={(e) => setChildPoints(e.target.value)}
+                          className="w-12 px-1 py-1 text-center text-xs font-mono font-semibold rounded border border-purple-200 bg-purple-50 text-purple-800 focus:outline-none focus:border-purple-600"
+                          placeholder="SP"
+                          required
+                        />
+                        <span className="text-[10px] text-purple-700 font-bold">SP</span>
+                      </div>
+                    )}
+                    <button
+                      type="submit"
+                      disabled={!newSubtaskTitle.trim()}
+                      className="px-2.5 py-1 rounded bg-purple-600 hover:bg-purple-700 disabled:opacity-40 text-white text-xs font-medium transition-colors cursor-pointer"
                     >
-                      {allowedChildTypes.map((t) => (
-                        <option key={t} value={t}>{t}</option>
-                      ))}
-                    </select>
-                  )}
-                  <input
-                    type="text"
-                    value={newSubtaskTitle}
-                    onChange={(e) => setNewSubtaskTitle(e.target.value)}
-                    placeholder={`+ Add new ${childType.toLowerCase()}...`}
-                    className="flex-1 px-2 py-1 text-xs rounded border border-slate-200 focus:outline-none focus:border-purple-600"
-                  />
-                  {['TASK', 'SUBTASK', 'BUG', 'STORY'].includes(childType) && (
-                    <div className="flex items-center gap-1 shrink-0" title="Story Points (mandatory for work items)">
-                      <input
-                        type="number"
-                        min={1}
-                        max={999}
-                        value={childPoints}
-                        onChange={(e) => setChildPoints(e.target.value)}
-                        className="w-12 px-1 py-1 text-center text-xs font-mono font-semibold rounded border border-purple-200 bg-purple-50 text-purple-800 focus:outline-none focus:border-purple-600"
-                        placeholder="SP"
-                        required
-                      />
-                      <span className="text-[10px] text-purple-700 font-bold">SP</span>
+                      Add
+                    </button>
+                  </div>
+
+                  {/* Sprint Selection (Scrum only) */}
+                  {!isKanban && sprints.length > 0 && (
+                    <div className="flex items-center gap-1.5 text-[11px] text-slate-500 pl-1">
+                      <span>Assign to:</span>
+                      <select
+                        value={childSprintId}
+                        onChange={(e) => setChildSprintId(e.target.value)}
+                        className="px-1.5 py-0.5 text-[11px] rounded border border-slate-200 bg-white text-slate-700 focus:outline-none focus:border-purple-600"
+                      >
+                        <option value="">Backlog (No Sprint)</option>
+                        {sprints.map((s) => (
+                          <option key={s.id} value={s.id}>{s.name} ({s.status})</option>
+                        ))}
+                      </select>
                     </div>
                   )}
-                  <button
-                    type="submit"
-                    disabled={!newSubtaskTitle.trim()}
-                    className="px-2.5 py-1 rounded bg-purple-600 hover:bg-purple-700 disabled:opacity-40 text-white text-xs font-medium transition-colors cursor-pointer"
-                  >
-                    Add
-                  </button>
+                </form>
+              ) : (
+                <div className="text-[11px] text-slate-400 italic py-1">
+                  You do not have permission to add child items to this {issue?.type ? issue.type.toLowerCase() : 'item'}
                 </div>
-
-                {/* Sprint Selection (Scrum only) */}
-                {!isKanban && sprints.length > 0 && (
-                  <div className="flex items-center gap-1.5 text-[11px] text-slate-500 pl-1">
-                    <span>Assign to:</span>
-                    <select
-                      value={childSprintId}
-                      onChange={(e) => setChildSprintId(e.target.value)}
-                      className="px-1.5 py-0.5 text-[11px] rounded border border-slate-200 bg-white text-slate-700 focus:outline-none focus:border-purple-600"
-                    >
-                      <option value="">Backlog (No Sprint)</option>
-                      {sprints.map((s) => (
-                        <option key={s.id} value={s.id}>{s.name} ({s.status})</option>
-                      ))}
-                    </select>
-                  </div>
-                )}
-              </form>
+              )
             ) : (
               <div className="text-[11px] text-slate-400 italic py-1">
                 Leaf item · Cannot have child items

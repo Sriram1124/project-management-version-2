@@ -993,8 +993,8 @@ export default function ProjectBacklogTab({ projectId, project = null, isKanbanP
           }}
           onAddSubtask={async (parentIssueId, subtaskTitle, childType = 'SUBTASK', sprintId = null, storyPoints = 3) => {
             try {
-              const isTaskLike = ['TASK', 'SUBTASK', 'BUG'].includes(childType);
-              const spVal = isTaskLike ? (Number(storyPoints) > 0 ? Number(storyPoints) : 3) : Number(storyPoints) || 0;
+              const isSpApplicable = ['TASK', 'SUBTASK', 'BUG', 'STORY'].includes(childType);
+              const spVal = isSpApplicable ? (Number(storyPoints) > 0 ? Number(storyPoints) : 3) : Number(storyPoints) || 0;
               const created = await workItemsService.createWorkItem({
                 project_id: projectId,
                 parent_id: parentIssueId,

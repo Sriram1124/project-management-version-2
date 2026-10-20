@@ -84,21 +84,38 @@ export default function EditMemberPermissionsModal({
       const perms = new Set();
       const existingList = member.role_details?.permissions || [];
       const validProjectKeys = new Set(NINE_PROJECT_CAPABILITIES.map((c) => c.key));
-      existingList.forEach((p) => {
-        // Map any aliases
-        let mapped = p;
-        if (p === 'PROJECT_ROLE_ASSIGN') mapped = 'ROLE_ASSIGN';
-        else if (p === 'SPRINT_ACTIVATE') mapped = 'CYCLE_ACTIVATE';
-        else if (p === 'SPRINT_UPDATE') mapped = 'CYCLE_UPDATE';
-        else if (p === 'SPRINT_CREATE') mapped = 'CYCLE_CREATE';
 
-        if (validProjectKeys.has(mapped)) {
-          perms.add(mapped);
-        }
-      });
-      setSelectedPerms(perms);
+      const isTechLead =
+        currentRole === 'TECH_LEAD' ||
+        member.project_role === 'TECH_LEAD' ||
+        member.role === 'TECH_LEAD' ||
+        Boolean(member.is_tech_lead);
+      const hasCustomPermissions = Boolean(
+        member.has_custom_permissions ||
+        member.role_details?.is_custom ||
+        (member.role_id && member.role_details?.is_custom)
+      );
+
+      // If Tech Lead without custom overrides, default to having all 9 capabilities ticked
+      if (isTechLead && !hasCustomPermissions) {
+        setSelectedPerms(new Set(NINE_PROJECT_CAPABILITIES.map((c) => c.key)));
+      } else {
+        existingList.forEach((p) => {
+          // Map any aliases
+          let mapped = p;
+          if (p === 'PROJECT_ROLE_ASSIGN') mapped = 'ROLE_ASSIGN';
+          else if (p === 'SPRINT_ACTIVATE') mapped = 'CYCLE_ACTIVATE';
+          else if (p === 'SPRINT_UPDATE') mapped = 'CYCLE_UPDATE';
+          else if (p === 'SPRINT_CREATE') mapped = 'CYCLE_CREATE';
+
+          if (validProjectKeys.has(mapped)) {
+            perms.add(mapped);
+          }
+        });
+        setSelectedPerms(perms);
+      }
     }
-  }, [isOpen, member]);
+  }, [isOpen, member, currentRole]);
 
   // Focus trap, Escape key handling, and background scroll prevention
   useEffect(() => {

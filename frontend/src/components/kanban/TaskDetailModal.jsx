@@ -501,13 +501,26 @@ export default function TaskDetailModal({
     ...(liveTask.assignee_ids || liveTask.assigneeIds || []),
   ].filter(Boolean).map(String);
   const isAssignedIntern = ['INTERN', 'EMPLOYEE'].includes(authRole) && Boolean(authUserId) && assignedUserIds.includes(String(authUserId));
-  const isIntern = authRole === 'INTERN';
-  const isManagerOrAdmin = authUser?.role === 'MANAGER' || authUser?.role === 'ADMIN' || authUser?.role === 'TECH_LEAD';
+  const effectivePid = projectId || task?.project_id || liveTask?.project_id;
+  const isTechLead =
+    authRole === 'TECH_LEAD' ||
+    Boolean(authUser?.is_tech_lead) ||
+    Boolean(authUser?.lead_project_ids?.includes(effectivePid));
+  const isManagerOrAdmin =
+    authUser?.role === 'MANAGER' ||
+    authUser?.role === 'ADMIN' ||
+    authUser?.role === 'TECH_LEAD' ||
+    authRole === 'MANAGER' ||
+    authRole === 'ADMIN' ||
+    authRole === 'SUPER_ADMIN' ||
+    isTechLead;
   const isManagerOrLead = isManagerOrAdmin;
-  const canDelete = !isIntern && Boolean(liveTask?.id) && isManagerOrAdmin;
-  const canEditFields = !isIntern;
-  const canUpdateStatus = !isIntern || isAssignedIntern;
-  const canAssignOrReassign = !isIntern;
+  const isIntern = authRole === 'INTERN' && !isTechLead;
+  const isCreator = Boolean(authUserId && (liveTask.created_by === authUserId || liveTask.creator_id === authUserId));
+  const canDelete = Boolean(liveTask?.id) && (isManagerOrAdmin || !isIntern || isCreator);
+  const canEditFields = !isIntern || isManagerOrAdmin;
+  const canUpdateStatus = !isIntern || isAssignedIntern || isManagerOrAdmin;
+  const canAssignOrReassign = !isIntern || isManagerOrAdmin;
 
   // Story-level aggregated task story points
   const childTasks = children.filter((c) => c.type === 'TASK' || c.type === 'BUG');
@@ -1035,7 +1048,7 @@ export default function TaskDetailModal({
                 </span>
 
                 {/* Context-Sensitive Actions based on Jira Hierarchy */}
-                {!isIntern && liveTask.type === 'EPIC' && (
+                {(!isIntern || isManagerOrAdmin) && liveTask.type === 'EPIC' && (
                   <div className="flex items-center gap-1.5">
                     <button
                       type="button"
