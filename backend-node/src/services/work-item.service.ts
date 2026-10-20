@@ -2039,6 +2039,7 @@ export class WorkItemService {
           id: true,
           task_id: true,
           status: true,
+          requester_id: true,
           original_due_date: true,
           requested_due_date: true,
         },
@@ -2374,6 +2375,18 @@ export class WorkItemService {
       taskExtensionsMap.set(req.task_id, list);
     }
 
+    const userExtensionsMap = new Map<string, { total: number; pending: number; approved: number; rejected: number }>();
+    for (const req of scopedExtensions) {
+      const uid = req.requester_id;
+      if (!uid) continue;
+      const stats = userExtensionsMap.get(uid) || { total: 0, pending: 0, approved: 0, rejected: 0 };
+      stats.total += 1;
+      if (req.status === ExtensionRequestStatus.PENDING) stats.pending += 1;
+      else if (req.status === ExtensionRequestStatus.APPROVED) stats.approved += 1;
+      else if (req.status === ExtensionRequestStatus.REJECTED) stats.rejected += 1;
+      userExtensionsMap.set(uid, stats);
+    }
+
     // Formatted work item details for individual performance records
     const task_breakdown = items.map((w) => {
       const exts = taskExtensionsMap.get(w.id) || [];
@@ -2521,6 +2534,7 @@ export class WorkItemService {
         const isLead =
           pm.project_role === 'TECH_LEAD' ||
           (pm.user as any).roles?.some((r: any) => r.role?.name === 'TECH_LEAD');
+        const extStats = userExtensionsMap.get(pm.user.id) || { total: 0, pending: 0, approved: 0, rejected: 0 };
         membersMap.set(pm.user.id, {
           id: pm.user.id,
           user_id: pm.user.id,
@@ -2530,6 +2544,8 @@ export class WorkItemService {
           roleLabel: isLead ? 'Tech Lead' : 'Intern',
           project_role: pm.project_role,
           is_tech_lead: isLead,
+          extensions_count: extStats.total,
+          extension_stats: extStats,
         });
       }
     }
@@ -2632,7 +2648,10 @@ export class WorkItemService {
         batch: targetUserRecord.batch,
         subbatch: targetUserRecord.subbatch,
         is_tech_lead: targetUserRecord.roles?.some((r: any) => r.role?.name === 'TECH_LEAD') || targetUserRecord.project_memberships?.some((pm: any) => pm.project_role === 'TECH_LEAD'),
+        extensions_count: userExtensionsMap.get(targetUserRecord.id)?.total || 0,
+        extension_stats: userExtensionsMap.get(targetUserRecord.id) || { total: 0, pending: 0, approved: 0, rejected: 0 },
       } : null,
+      user_extensions: Object.fromEntries(userExtensionsMap),
       filters: {
         projects: accessibleProjects,
         sprints: accessibleSprints,

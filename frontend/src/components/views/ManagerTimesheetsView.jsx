@@ -300,6 +300,27 @@ export default function ManagerTimesheetsView({
   // Authoritative date period calculations
   const weekInfo = useMemo(() => getCalendarWeekRange(selectedDate), [selectedDate]);
 
+  // Immediate client-side filtering on current intern list for responsive searching
+  const filteredInterns = useMemo(() => {
+    const list = reviewData?.interns || [];
+    const q = search.trim().toLowerCase();
+    if (!q) return list;
+    return list.filter((intern) => {
+      return (
+        intern.name?.toLowerCase().includes(q) ||
+        intern.email?.toLowerCase().includes(q) ||
+        intern.user_code?.toLowerCase().includes(q)
+      );
+    });
+  }, [reviewData?.interns, search]);
+
+  const summary = cohortSummary || reviewData?.summary || {
+    total_interns: 0,
+    active_interns: 0,
+    total_logged_hours: 0,
+    avg_logged_minutes_per_active: 0,
+  };
+
   // If an intern is selected, render their full read-only timesheet
   if (selectedIntern) {
     return (
@@ -314,27 +335,6 @@ export default function ManagerTimesheetsView({
       />
     );
   }
-
-  const summary = cohortSummary || reviewData?.summary || {
-    total_interns: 0,
-    active_interns: 0,
-    total_logged_hours: 0,
-    avg_logged_minutes_per_active: 0,
-  };
-
-  // Immediate client-side filtering on current intern list for responsive searching
-  const filteredInterns = useMemo(() => {
-    const list = reviewData?.interns || [];
-    const q = search.trim().toLowerCase();
-    if (!q) return list;
-    return list.filter((intern) => {
-      return (
-        intern.name?.toLowerCase().includes(q) ||
-        intern.email?.toLowerCase().includes(q) ||
-        intern.user_code?.toLowerCase().includes(q)
-      );
-    });
-  }, [reviewData?.interns, search]);
 
   return (
     <div className="space-y-6 text-xs text-slate-800">

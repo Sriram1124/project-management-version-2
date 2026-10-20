@@ -26,11 +26,11 @@ export default function Sidebar({
 }) {
   const { user: authUser } = useAuth();
   const currentUser = user || authUser;
-  const userName = currentUser?.name || 'Postman Manager Profile';
+  const userName = currentUser?.name || currentUser?.full_name || (currentUser?.email ? currentUser.email.split('@')[0] : 'Manager');
   const userRole = (currentUser?.role || 'MANAGER').toUpperCase();
 
   const getInitials = (name) => {
-    if (!name) return 'PP';
+    if (!name) return 'M';
     const parts = name.trim().split(/\s+/);
     if (parts.length >= 2) {
       return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();

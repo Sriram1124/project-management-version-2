@@ -125,6 +125,19 @@ export default function KanbanBoard({ projectId, project = null, isKanbanProject
     return sprints.filter((s) => s.status === 'PLANNED');
   }, [sprints]);
 
+  const activeSprintTasks = useMemo(() => {
+    if (!activeSprint?.id) return [];
+    return workItems.filter((w) => w.sprint_id === activeSprint.id);
+  }, [workItems, activeSprint?.id]);
+
+  const completedCount = useMemo(() => {
+    return activeSprintTasks.filter((t) => t.status === 'COMPLETED' || t.status === 'DONE').length;
+  }, [activeSprintTasks]);
+
+  const incompleteCount = useMemo(() => {
+    return Math.max(0, activeSprintTasks.length - completedCount);
+  }, [activeSprintTasks.length, completedCount]);
+
   // Epics list for filtering
   const epics = useMemo(() => {
     return workItems
@@ -658,7 +671,7 @@ export default function KanbanBoard({ projectId, project = null, isKanbanProject
         upcomingSprints={upcomingSprints}
         completedCount={completedCount}
         incompleteCount={incompleteCount}
-        tasks={workItems.filter((w) => w.sprint_id === activeSprint?.id)}
+        tasks={activeSprintTasks}
         isKanban={true}
         onConfirmComplete={handleConfirmCompleteSprint}
       />

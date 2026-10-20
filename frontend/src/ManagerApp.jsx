@@ -363,7 +363,7 @@ export default function ManagerApp() {
       />
 
       {/* Main Content Area */}
-      <div className="flex-1 flex flex-col min-w-0 min-h-0 overflow-hidden">
+      <div className="flex-1 flex flex-col min-w-0 min-h-0 overflow-hidden bg-[#F7F8FC]">
         {/* Header */}
         <Header
           breadcrumbs={getBreadcrumbs()}
@@ -391,7 +391,7 @@ export default function ManagerApp() {
               ? 'p-3 sm:p-4 md:p-5 flex flex-col overflow-hidden h-full'
               : (currentView === 'projects' && activeProjectId)
               ? 'px-4 sm:px-6 pb-4 sm:pb-6 pt-0 overflow-y-auto overflow-x-hidden'
-              : 'p-4 sm:p-6 overflow-y-auto overflow-x-hidden'
+              : 'p-4 sm:p-6 pb-12 sm:pb-16 overflow-y-auto overflow-x-hidden bg-[#F7F8FC]'
           }`}
         >
           {currentRole === 'intern' ? (

@@ -38,7 +38,7 @@ export default function Header({
   const currentCohort = cohorts.find((c) => c.id === selectedCohortId) || cohorts[0];
 
   return (
-    <header className="h-14 bg-white px-6 flex items-center justify-between border-b border-slate-200 select-none">
+    <header className="h-14 shrink-0 bg-white px-6 flex items-center justify-between border-b border-slate-200 select-none z-10">
       {/* Left: Breadcrumbs & Context Title */}
       <div className="flex items-center gap-2.5">
         {onBackClick && (

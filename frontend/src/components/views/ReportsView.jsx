@@ -30,6 +30,12 @@ import {
 import { projectsService } from '../../services/projects.service';
 import { workItemsService } from '../../services/workItems.service';
 
+const formatHealthLabel = (val) => {
+  if (!val) return '';
+  const str = String(val).replace(/_/g, ' ').toLowerCase();
+  return str.replace(/\b\w/g, (c) => c.toUpperCase());
+};
+
 export default function ReportsView({ onToast, selectedCohort, selectedCohortId }) {
   const [searchParams] = useSearchParams();
   const location = useLocation();
@@ -257,11 +263,32 @@ export default function ReportsView({ onToast, selectedCohort, selectedCohortId 
   const memberPerformanceMap = useMemo(() => {
     const map = new Map();
 
+    // Build quick lookup of user extensions from backend analytics and members
+    const userExtensionsLookup = new Map();
+    if (analytics?.user_extensions) {
+      Object.entries(analytics.user_extensions).forEach(([uid, stats]) => {
+        userExtensionsLookup.set(uid, stats);
+      });
+    }
+    members.forEach((m) => {
+      const uid = m.id || m.userId || m.user_id;
+      if (!uid) return;
+      if (m.extensions_count !== undefined || m.extension_stats) {
+        userExtensionsLookup.set(uid, {
+          total: m.extensions_count ?? m.extension_stats?.total ?? 0,
+          pending: m.extension_stats?.pending ?? 0,
+          approved: m.extension_stats?.approved ?? 0,
+          rejected: m.extension_stats?.rejected ?? 0,
+        });
+      }
+    });
+
     // 1. Seed from organization/cohort members
     members.forEach((m) => {
       const uid = m.id || m.userId || m.user_id;
       if (!uid) return;
       const isLead = m.role === 'TECH_LEAD' || m.type === 'TECH_LEAD' || m.project_role === 'TECH_LEAD' || Boolean(m.is_tech_lead);
+      const extStats = userExtensionsLookup.get(uid) || m.extension_stats || { total: m.extensions_count || 0, pending: 0, approved: 0, rejected: 0 };
       map.set(uid, {
         userId: uid,
         name: m.name || m.email || 'Member',
@@ -269,6 +296,8 @@ export default function ReportsView({ onToast, selectedCohort, selectedCohortId 
         role: isLead ? 'TECH_LEAD' : (m.role || m.type || 'INTERN'),
         roleLabel: isLead ? 'Tech Lead' : (m.role || m.type || 'Intern'),
         isTechLead: isLead,
+        extensionsCount: extStats.total || 0,
+        extensionStats: extStats,
         totalAssigned: 0,
         completed: 0,
         inProgress: 0,
@@ -288,6 +317,7 @@ export default function ReportsView({ onToast, selectedCohort, selectedCohortId 
         const uid = m.id || m.userId || m.user_id;
         if (!uid) return;
         const isLead = m.role === 'TECH_LEAD' || m.type === 'TECH_LEAD' || m.project_role === 'TECH_LEAD' || Boolean(m.is_tech_lead);
+        const extStats = userExtensionsLookup.get(uid) || m.extension_stats || { total: m.extensions_count || 0, pending: 0, approved: 0, rejected: 0 };
         if (!map.has(uid)) {
           map.set(uid, {
             userId: uid,
@@ -296,6 +326,8 @@ export default function ReportsView({ onToast, selectedCohort, selectedCohortId 
             role: isLead ? 'TECH_LEAD' : (m.role || m.type || 'INTERN'),
             roleLabel: isLead ? 'Tech Lead' : (m.role || m.type || 'Intern'),
             isTechLead: isLead,
+            extensionsCount: extStats.total || 0,
+            extensionStats: extStats,
             totalAssigned: 0,
             completed: 0,
             inProgress: 0,
@@ -322,6 +354,12 @@ export default function ReportsView({ onToast, selectedCohort, selectedCohortId 
       const uid = tu.id || tu.userId || tu.user_id;
       if (uid && !map.has(uid)) {
         const isLead = tu.role === 'TECH_LEAD' || tu.type === 'TECH_LEAD' || tu.project_role === 'TECH_LEAD' || Boolean(tu.is_tech_lead);
+        const tuExtStats = userExtensionsLookup.get(uid) || tu.extension_stats || (analytics.extension_metrics?.total_requests ? {
+          total: analytics.extension_metrics.total_requests,
+          pending: analytics.extension_metrics.pending_requests || 0,
+          approved: analytics.extension_metrics.approved_requests || 0,
+          rejected: analytics.extension_metrics.rejected_requests || 0,
+        } : { total: 0, pending: 0, approved: 0, rejected: 0 });
         map.set(uid, {
           userId: uid,
           name: tu.name || tu.email || 'Member',
@@ -329,6 +367,8 @@ export default function ReportsView({ onToast, selectedCohort, selectedCohortId 
           role: isLead ? 'TECH_LEAD' : 'INTERN',
           roleLabel: isLead ? 'Tech Lead' : 'Intern',
           isTechLead: isLead,
+          extensionsCount: tuExtStats.total || 0,
+          extensionStats: tuExtStats,
           totalAssigned: 0,
           completed: 0,
           inProgress: 0,
@@ -955,7 +995,7 @@ export default function ReportsView({ onToast, selectedCohort, selectedCohortId 
                         }
                       >
                         <Shield className="w-3.5 h-3.5" />
-                        <span>Project Health: {analytics.project_health || analytics.delivery_risk}</span>
+                        <span>Project Health: {formatHealthLabel(analytics.project_health || analytics.delivery_risk)}</span>
                       </div>
                     )}
 
@@ -1848,6 +1888,7 @@ export default function ReportsView({ onToast, selectedCohort, selectedCohortId 
                           <th className="py-3 px-3 text-center">Completed</th>
                           <th className="py-3 px-3 text-center">Active Work</th>
                           <th className="py-3 px-3 text-center">Past Due</th>
+                          <th className="py-3 px-3 text-center">Extensions</th>
                           <th className="py-3 px-3 text-center">On-Time</th>
                           <th className="py-3 px-4 text-right">Completion Rate</th>
                         </tr>
@@ -1916,6 +1957,25 @@ export default function ReportsView({ onToast, selectedCohort, selectedCohortId 
                                   </span>
                                 ) : (
                                   <span className="text-slate-300">0</span>
+                                )}
+                              </td>
+
+                              <td className="py-3 px-3 text-center">
+                                {mem.extensionsCount > 0 ? (
+                                  <span
+                                    className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-semibold bg-amber-50 text-amber-700 border border-amber-200"
+                                    title={`${mem.extensionsCount} Extension Requests (${mem.extensionStats?.approved || 0} approved, ${mem.extensionStats?.pending || 0} pending, ${mem.extensionStats?.rejected || 0} rejected)`}
+                                  >
+                                    <Clock className="w-3 h-3 text-amber-600 shrink-0" />
+                                    <span>{mem.extensionsCount}</span>
+                                    {mem.extensionStats && (
+                                      <span className="text-[9px] text-amber-600/80 font-normal">
+                                        ({mem.extensionStats.approved}a/{mem.extensionStats.pending}p/{mem.extensionStats.rejected}r)
+                                      </span>
+                                    )}
+                                  </span>
+                                ) : (
+                                  <span className="text-slate-400 font-mono text-[11px]" title="0 extension requests">0</span>
                                 )}
                               </td>
 
