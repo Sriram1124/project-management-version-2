@@ -89,6 +89,7 @@ export default function ReportsView({ onToast, selectedCohort, selectedCohortId 
   // Task filter tab in breakdown table: 'ALL' | 'COMPLETED' | 'IN_PROGRESS' | 'BLOCKED' | 'PAST_DUE'
   const [taskFilter, setTaskFilter] = useState('ALL');
   const [taskSearchQuery, setTaskSearchQuery] = useState('');
+  const [selectedRoleFilter, setSelectedRoleFilter] = useState('ALL'); // 'ALL' | 'TECH_LEAD' | 'INTERN'
 
   // Load analytics scoped to current filters
   const loadAnalytics = useCallback(async (filters = {}) => {
@@ -99,7 +100,7 @@ export default function ReportsView({ onToast, selectedCohort, selectedCohortId 
       if (filters.project_id && filters.project_id !== 'ALL') {
         params.project_id = filters.project_id;
       }
-      if (filters.user_id && filters.user_id !== 'ALL' && filters.user_id !== 'TECH_LEADS') {
+      if (filters.user_id && filters.user_id !== 'ALL' && filters.user_id !== 'TECH_LEADS' && filters.user_id !== 'INTERNS') {
         params.user_id = filters.user_id;
       }
 
@@ -160,7 +161,7 @@ export default function ReportsView({ onToast, selectedCohort, selectedCohortId 
       const initialFilters = {};
       if (selectedProjectId !== 'ALL') initialFilters.project_id = selectedProjectId;
       const targetScope = queryUserId || selectedScope;
-      if (targetScope !== 'ALL' && targetScope !== 'TECH_LEADS') initialFilters.user_id = targetScope;
+      if (targetScope !== 'ALL' && targetScope !== 'TECH_LEADS' && targetScope !== 'INTERNS') initialFilters.user_id = targetScope;
       await loadAnalytics(initialFilters);
 
       // Reset cached project health when cohort context initializes
@@ -212,7 +213,7 @@ export default function ReportsView({ onToast, selectedCohort, selectedCohortId 
       // Refresh active analytics
       const activeFilters = {};
       if (selectedProjectId !== 'ALL') activeFilters.project_id = selectedProjectId;
-      if (selectedScope !== 'ALL' && selectedScope !== 'TECH_LEADS') activeFilters.user_id = selectedScope;
+      if (selectedScope !== 'ALL' && selectedScope !== 'TECH_LEADS' && selectedScope !== 'INTERNS') activeFilters.user_id = selectedScope;
       await loadAnalytics(activeFilters);
 
       // If project health was already fetched or is currently active, refresh it as well
@@ -240,10 +241,13 @@ export default function ReportsView({ onToast, selectedCohort, selectedCohortId 
     setSelectedScope(scopeId);
     setIsScopeDropdownOpen(false);
     setScopeSearchQuery('');
+    if (scopeId !== 'ALL' && scopeId !== 'TECH_LEADS' && scopeId !== 'INTERNS') {
+      setAnalyticsTab('WORK_ITEMS');
+    }
 
     const filters = {};
     if (selectedProjectId !== 'ALL') filters.project_id = selectedProjectId;
-    if (scopeId !== 'ALL' && scopeId !== 'TECH_LEADS') filters.user_id = scopeId;
+    if (scopeId !== 'ALL' && scopeId !== 'TECH_LEADS' && scopeId !== 'INTERNS') filters.user_id = scopeId;
     loadAnalytics(filters);
   };
 
@@ -255,7 +259,7 @@ export default function ReportsView({ onToast, selectedCohort, selectedCohortId 
 
     const filters = {};
     if (projId !== 'ALL') filters.project_id = projId;
-    if (selectedScope !== 'ALL' && selectedScope !== 'TECH_LEADS') filters.user_id = selectedScope;
+    if (selectedScope !== 'ALL' && selectedScope !== 'TECH_LEADS' && selectedScope !== 'INTERNS') filters.user_id = selectedScope;
     loadAnalytics(filters);
   };
 
@@ -465,14 +469,44 @@ export default function ReportsView({ onToast, selectedCohort, selectedCohortId 
         return nameA.localeCompare(nameB, undefined, { sensitivity: 'base' });
       });
     }
+    if (selectedScope === 'INTERNS') {
+      return list.filter((m) => !m.isTechLead && m.role !== 'TECH_LEAD').sort((a, b) => {
+        const nameA = a.name || a.email || '';
+        const nameB = b.name || b.email || '';
+        return nameA.localeCompare(nameB, undefined, { sensitivity: 'base' });
+      });
+    }
     return list.filter((m) => m.userId === selectedScope);
   }, [memberPerformanceMap, selectedScope]);
 
+  // Filter performance rows by directory role pill filter
+  const displayedPerformanceRows = useMemo(() => {
+    if (selectedRoleFilter === 'ALL') return performanceRows;
+    if (selectedRoleFilter === 'TECH_LEAD') {
+      return performanceRows.filter((r) => r.isTechLead || r.role === 'TECH_LEAD');
+    }
+    if (selectedRoleFilter === 'INTERN') {
+      return performanceRows.filter((r) => !r.isTechLead && r.role !== 'TECH_LEAD');
+    }
+    return performanceRows.filter((r) => r.role === selectedRoleFilter);
+  }, [performanceRows, selectedRoleFilter]);
+
+  const techLeadCount = useMemo(() => {
+    return performanceRows.filter((r) => r.isTechLead || r.role === 'TECH_LEAD').length;
+  }, [performanceRows]);
+
+  const internCount = useMemo(() => {
+    return performanceRows.filter((r) => !r.isTechLead && r.role !== 'TECH_LEAD').length;
+  }, [performanceRows]);
+
   // Current scope member object
   const selectedScopeMember = useMemo(() => {
-    if (selectedScope === 'ALL' || selectedScope === 'TECH_LEADS') return null;
+    if (selectedScope === 'ALL' || selectedScope === 'TECH_LEADS' || selectedScope === 'INTERNS') return null;
     return memberPerformanceMap.get(selectedScope) || members.find((m) => (m.id || m.userId || m.user_id) === selectedScope) || analytics?.target_user || null;
   }, [selectedScope, memberPerformanceMap, members, analytics?.target_user]);
+
+  // Whether the report is focused on an individual intern/lead
+  const isIndividualScope = selectedScope !== 'ALL' && selectedScope !== 'TECH_LEADS' && selectedScope !== 'INTERNS';
 
   // Current selected project object
   const selectedProjectObj = useMemo(() => {
@@ -508,6 +542,9 @@ export default function ReportsView({ onToast, selectedCohort, selectedCohortId 
     if (selectedScope === 'TECH_LEADS') {
       const leadIds = new Set(Array.from(memberPerformanceMap.values()).filter((m) => m.isTechLead).map((m) => m.userId));
       list = list.filter((t) => t.assignees?.some((a) => leadIds.has(a.user_id || a.id)));
+    } else if (selectedScope === 'INTERNS') {
+      const internIds = new Set(Array.from(memberPerformanceMap.values()).filter((m) => !m.isTechLead && m.role !== 'TECH_LEAD').map((m) => m.userId));
+      list = list.filter((t) => t.assignees?.some((a) => internIds.has(a.user_id || a.id)));
     }
 
     if (taskFilter === 'COMPLETED') list = list.filter((t) => t.status === 'COMPLETED');
@@ -650,6 +687,8 @@ export default function ReportsView({ onToast, selectedCohort, selectedCohortId 
                   ? 'All Scope'
                   : selectedScope === 'TECH_LEADS'
                   ? 'Tech Leads'
+                  : selectedScope === 'INTERNS'
+                  ? 'Interns'
                   : selectedScopeMember?.name || 'Member'}
               </span>
               {selectedScope !== 'ALL' ? (
@@ -707,6 +746,24 @@ export default function ReportsView({ onToast, selectedCohort, selectedCohortId 
                       <div className="text-left">
                         <span className="block leading-none">Tech Leads Only</span>
                         <span className="text-[10px] text-slate-400 font-normal">Filter by tech lead contributors</span>
+                      </div>
+                    </div>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => handleSelectScope('INTERNS')}
+                    className={`w-full flex items-center justify-between px-2.5 py-2 rounded-lg text-xs font-semibold transition-colors cursor-pointer ${
+                      selectedScope === 'INTERNS'
+                        ? 'bg-purple-100 text-purple-900 font-bold'
+                        : 'hover:bg-slate-50 text-slate-700'
+                    }`}
+                  >
+                    <div className="flex items-center gap-2">
+                      <Users className="w-4 h-4 text-purple-600" />
+                      <div className="text-left">
+                        <span className="block leading-none">Interns Only</span>
+                        <span className="text-[10px] text-slate-400 font-normal">Filter by intern contributors</span>
                       </div>
                     </div>
                   </button>
@@ -976,8 +1033,8 @@ export default function ReportsView({ onToast, selectedCohort, selectedCohortId 
                       <span>{analytics?.completion_rate || 0}% Completion</span>
                     </div>
 
-                    {/* Project Health / Schedule Risk Pill (Requirement 3) */}
-                    {(analytics?.project_health || analytics?.delivery_risk) && (
+                    {/* Project Health / Schedule Risk Pill - only shown when viewing overall project scope */}
+                    {!isIndividualScope && (analytics?.project_health || analytics?.delivery_risk) && (
                       <div
                         className={`px-3 py-1.5 rounded-xl border text-xs font-semibold flex items-center gap-1.5 ${
                           (analytics.project_health === 'CRITICAL' || analytics.delivery_risk === 'CRITICAL' || analytics.delivery_risk === 'HIGH')
@@ -1123,38 +1180,40 @@ export default function ReportsView({ onToast, selectedCohort, selectedCohortId 
                 </div>
               </div>
 
-              {/* Analytics Section with Two-Tab Selector: Work Item Performance & Project Health */}
+              {/* Analytics Section: Work Item Performance & Project Health */}
               <div className="space-y-4">
-                {/* Two-Tab Selector */}
-                <div className="w-full grid grid-cols-2 p-1 rounded-xl bg-slate-100 border border-slate-200/80 text-xs font-semibold shadow-2xs">
-                  <button
-                    type="button"
-                    onClick={() => handleTabSwitch('WORK_ITEMS')}
-                    className={`w-full py-2.5 flex items-center justify-center gap-2 rounded-lg transition-all cursor-pointer ${
-                      analyticsTab === 'WORK_ITEMS'
-                        ? 'bg-white text-purple-700 font-bold shadow-xs'
-                        : 'text-slate-600 hover:text-slate-900'
-                    }`}
-                  >
-                    <BarChart3 className="w-4 h-4 text-purple-600 shrink-0" />
-                    <span>Work Item Performance</span>
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => handleTabSwitch('PROJECT_HEALTH')}
-                    className={`w-full py-2.5 flex items-center justify-center gap-2 rounded-lg transition-all cursor-pointer ${
-                      analyticsTab === 'PROJECT_HEALTH'
-                        ? 'bg-white text-purple-700 font-bold shadow-xs'
-                        : 'text-slate-600 hover:text-slate-900'
-                    }`}
-                  >
-                    <Activity className="w-4 h-4 text-purple-600 shrink-0" />
-                    <span>Project Health</span>
-                  </button>
-                </div>
+                {/* Two-Tab Selector: Hidden when viewing an individual intern */}
+                {!isIndividualScope && (
+                  <div className="w-full grid grid-cols-2 p-1 rounded-xl bg-slate-100 border border-slate-200/80 text-xs font-semibold shadow-2xs">
+                    <button
+                      type="button"
+                      onClick={() => handleTabSwitch('WORK_ITEMS')}
+                      className={`w-full py-2.5 flex items-center justify-center gap-2 rounded-lg transition-all cursor-pointer ${
+                        analyticsTab === 'WORK_ITEMS'
+                          ? 'bg-white text-purple-700 font-bold shadow-xs'
+                          : 'text-slate-600 hover:text-slate-900'
+                      }`}
+                    >
+                      <BarChart3 className="w-4 h-4 text-purple-600 shrink-0" />
+                      <span>Work Item Performance</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => handleTabSwitch('PROJECT_HEALTH')}
+                      className={`w-full py-2.5 flex items-center justify-center gap-2 rounded-lg transition-all cursor-pointer ${
+                        analyticsTab === 'PROJECT_HEALTH'
+                          ? 'bg-white text-purple-700 font-bold shadow-xs'
+                          : 'text-slate-600 hover:text-slate-900'
+                      }`}
+                    >
+                      <Activity className="w-4 h-4 text-purple-600 shrink-0" />
+                      <span>Project Health</span>
+                    </button>
+                  </div>
+                )}
 
                 {/* TAB 1: Work Item Performance Content */}
-                {analyticsTab === 'WORK_ITEMS' && (
+                {(isIndividualScope || analyticsTab === 'WORK_ITEMS') && (
                   <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 animate-in fade-in duration-150">
                     {/* Status Distribution Doughnut Chart */}
                     <div className="lg:col-span-2 bg-white rounded-2xl p-5 sm:p-6 border border-slate-200/80 shadow-card flex flex-col justify-between">
@@ -1331,8 +1390,8 @@ export default function ReportsView({ onToast, selectedCohort, selectedCohortId 
                   </div>
                 )}
 
-                {/* TAB 2: Project Health Content */}
-                {analyticsTab === 'PROJECT_HEALTH' && (
+                {/* TAB 2: Project Health Content - only when not viewing individual member */}
+                {!isIndividualScope && analyticsTab === 'PROJECT_HEALTH' && (
                   isLoadingHealth ? (
                     <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 animate-pulse">
                       <div className="lg:col-span-2 bg-white rounded-2xl p-6 border border-slate-200/80 shadow-card h-72 flex flex-col justify-between">
@@ -1888,7 +1947,6 @@ export default function ReportsView({ onToast, selectedCohort, selectedCohortId 
                           <th className="py-3 px-3 text-center">Completed</th>
                           <th className="py-3 px-3 text-center">Active Work</th>
                           <th className="py-3 px-3 text-center">Past Due</th>
-                          <th className="py-3 px-3 text-center">Extensions</th>
                           <th className="py-3 px-3 text-center">On-Time</th>
                           <th className="py-3 px-4 text-right">Completion Rate</th>
                         </tr>
@@ -1957,25 +2015,6 @@ export default function ReportsView({ onToast, selectedCohort, selectedCohortId 
                                   </span>
                                 ) : (
                                   <span className="text-slate-300">0</span>
-                                )}
-                              </td>
-
-                              <td className="py-3 px-3 text-center">
-                                {mem.extensionsCount > 0 ? (
-                                  <span
-                                    className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-semibold bg-amber-50 text-amber-700 border border-amber-200"
-                                    title={`${mem.extensionsCount} Extension Requests (${mem.extensionStats?.approved || 0} approved, ${mem.extensionStats?.pending || 0} pending, ${mem.extensionStats?.rejected || 0} rejected)`}
-                                  >
-                                    <Clock className="w-3 h-3 text-amber-600 shrink-0" />
-                                    <span>{mem.extensionsCount}</span>
-                                    {mem.extensionStats && (
-                                      <span className="text-[9px] text-amber-600/80 font-normal">
-                                        ({mem.extensionStats.approved}a/{mem.extensionStats.pending}p/{mem.extensionStats.rejected}r)
-                                      </span>
-                                    )}
-                                  </span>
-                                ) : (
-                                  <span className="text-slate-400 font-mono text-[11px]" title="0 extension requests">0</span>
                                 )}
                               </td>
 

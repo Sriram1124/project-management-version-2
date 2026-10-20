@@ -31,6 +31,16 @@ export const formsService = {
     return res.form;
   },
 
+  revertForm: async (id) => {
+    try {
+      const res = await api.post(`/forms/${id}/revert`);
+      return res.form || res;
+    } catch (e) {
+      const res = await api.patch(`/forms/${id}`, { status: 'DRAFT' });
+      return res.form || res;
+    }
+  },
+
   archiveForm: async (id) => {
     const res = await api.post(`/forms/${id}/archive`);
     return res.form;

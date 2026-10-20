@@ -121,6 +121,22 @@ export class FormController {
     }
   }
 
+  static async revertForm(req: Request, res: Response): Promise<void> {
+    try {
+      const formId = req.params.formId || req.params.id;
+      const orgId = (req as any).fullUser?.organization_id || (req as any).user?.organization_id;
+      const form = await FormService.updateStatus(formId, 'DRAFT' as any, orgId);
+      res.status(200).json({
+        ...form,
+        form,
+        id: form.id,
+        status: form.status,
+      });
+    } catch (err: any) {
+      FormController.handleError(res, err);
+    }
+  }
+
   static async archiveForm(req: Request, res: Response): Promise<void> {
     try {
       const formId = req.params.formId || req.params.id;

@@ -39,6 +39,16 @@ export default function FormsView({ onToast }) {
     }
   };
 
+  const handleRevert = async (id, title) => {
+    try {
+      await formsService.revertForm(id);
+      onToast?.(`Form "${title}" reverted to draft successfully`);
+      loadForms();
+    } catch (e) {
+      onToast?.('Failed to revert form');
+    }
+  };
+
   return (
     <div className="space-y-6">
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
@@ -113,6 +123,14 @@ export default function FormsView({ onToast }) {
                   className="mt-3 w-full py-2 bg-slate-50 hover:bg-purple-50 text-purple-700 font-bold text-xs rounded-lg transition-colors border border-purple-100"
                 >
                   Publish Form
+                </button>
+              )}
+              {form.status === 'PUBLISHED' && (
+                <button
+                  onClick={() => handleRevert(form.id, form.title)}
+                  className="mt-3 w-full py-2 bg-amber-50 hover:bg-amber-100 text-amber-800 font-bold text-xs rounded-lg transition-colors border border-amber-200"
+                >
+                  Revert to Draft
                 </button>
               )}
             </div>

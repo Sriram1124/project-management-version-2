@@ -21,6 +21,8 @@ router.patch('/:id', requireAnyPermission('FORM_UPDATE', 'PROJECT_UPDATE'), Form
 
 // Status changes
 router.post('/:id/publish', requireAnyPermission('FORM_UPDATE', 'PROJECT_UPDATE'), FormController.publishForm);
+router.post('/:id/revert', requireAnyPermission('FORM_UPDATE', 'PROJECT_UPDATE'), FormController.revertForm);
+router.post('/:id/unpublish', requireAnyPermission('FORM_UPDATE', 'PROJECT_UPDATE'), FormController.revertForm);
 router.post('/:id/archive', requireAnyPermission('FORM_UPDATE', 'PROJECT_UPDATE'), FormController.archiveForm);
 
 // Questions

@@ -35,16 +35,14 @@ export default function BroadcastAlert({
   const [selectedIds, setSelectedIds] = useState(() => new Set());
   const [isSending, setIsSending] = useState(false);
 
-  // Strictly identify interns within organization
+  // Strictly identify interns within organization (excluding tech leads and management)
   const internUsers = useMemo(() => {
     if (!Array.isArray(users)) return [];
     return users.filter((u) => {
-      const type = (u.type || u.role || '').toUpperCase();
-      const hasInternRole = Array.isArray(u.roles) && u.roles.some((r) => {
-        const rName = (r.role?.name || r.name || '').toUpperCase();
-        return rName.includes('INTERN');
-      });
-      return type === 'INTERN' || type.includes('INTERN') || hasInternRole;
+      const isLead = Boolean(u.is_tech_lead) || u.type === 'TECH_LEAD' || u.role === 'TECH_LEAD' || u.project_role === 'TECH_LEAD';
+      const isManagement = u.type === 'MANAGER' || u.role === 'MANAGER' || u.type === 'ADMIN' || u.type === 'SUPER_ADMIN';
+      if (isLead || isManagement) return false;
+      return true;
     });
   }, [users]);
 

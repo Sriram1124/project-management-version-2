@@ -19,7 +19,8 @@ import {
   ShieldCheck,
   ChevronRight,
   Download,
-  AlertTriangle
+  AlertTriangle,
+  RotateCcw
 } from 'lucide-react';
 import PostFormModal from './PostFormModal';
 import FillFormModal from './FillFormModal';
@@ -160,6 +161,23 @@ export default function TeamsChannelView({
     setChatMessage('');
   };
 
+  const handleRevertForm = async (form) => {
+    if (
+      !window.confirm(
+        `Are you sure you want to revert "${form.title}" to draft? Interns will no longer be able to see or submit responses to this form.`
+      )
+    ) {
+      return;
+    }
+    try {
+      await formsService.revertForm(form.id);
+      onToast?.(`Form "${form.title}" reverted to draft successfully.`);
+      loadForms();
+    } catch (err) {
+      onToast?.(err.message || 'Failed to revert form');
+    }
+  };
+
   const handleRemindPending = (form) => {
     onToast?.(`Sent submission reminder ping for "${form.title}" to pending interns`);
   };
@@ -221,18 +239,6 @@ export default function TeamsChannelView({
                   );
                 })}
               </nav>
-            </div>
-
-            {/* Target Cohort Info */}
-            <div className="p-2.5 bg-white rounded-xl border border-slate-200/80 shadow-2xs space-y-1">
-              <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Channel Audience</span>
-              <div className="flex items-center gap-1.5 text-xs text-slate-700 font-semibold">
-                <Users className="w-3.5 h-3.5 text-purple-600 shrink-0" />
-                <span className="truncate">{selectedCohort?.name || 'All Cohort Members'}</span>
-              </div>
-              <p className="text-[10px] text-slate-500 leading-normal">
-                Forms posted by the Manager are visible to active {selectedCohort?.name || 'organization'} members for submission.
-              </p>
             </div>
           </div>
         </div>
@@ -341,7 +347,22 @@ export default function TeamsChannelView({
                 : form.dueDate || 'No deadline';
 
               const category = form.category || 'General Form';
-              const targetAudience = form.targetAudience || (form.target_roles?.length > 0 ? form.target_roles.join(', ') : 'All Members');
+              let targetAudience = form.targetAudience;
+              if (!targetAudience) {
+                const roles = form.target_roles || [];
+                const cohortTags = roles
+                  .filter((r) => r.startsWith('COHORT:'))
+                  .map((r) => r.replace('COHORT:', ''));
+                if (roles.includes('ALL_COHORTS') || cohortTags.length === 0) {
+                  targetAudience = 'All Cohorts';
+                } else {
+                  const names = cohortTags.map((cid) => {
+                    const c = (cohorts || []).find((ch) => ch.id === cid);
+                    return c?.name || c?.code || cid;
+                  });
+                  targetAudience = names.join(', ');
+                }
+              }
 
               const overdueForThisForm = (overdueStats.details || []).filter((d) => d.formId === form.id);
               const isFormPastDeadline = Boolean(form.deadline && new Date(form.deadline) < new Date());
@@ -484,6 +505,16 @@ export default function TeamsChannelView({
 
                         {form.status !== 'DRAFT' && (
                           <>
+                            {form.status === 'PUBLISHED' && (
+                              <button
+                                onClick={() => handleRevertForm(form)}
+                                className="h-7 px-2.5 rounded-md text-xs font-semibold text-amber-700 bg-amber-50 hover:bg-amber-100 border border-amber-200/80 flex items-center gap-1.5 transition-colors shadow-2xs cursor-pointer"
+                                title={`Revert "${form.title}" to draft so interns cannot view or submit it`}
+                              >
+                                <RotateCcw className="w-3 h-3 text-amber-600" />
+                                <span>Revert Form</span>
+                              </button>
+                            )}
                             <button
                               onClick={() => setSelectedFormForView(form)}
                               className="h-7 px-2.5 rounded-md text-xs font-semibold text-slate-700 bg-white border border-slate-200 hover:bg-slate-100 flex items-center gap-1.5 transition-colors shadow-2xs cursor-pointer"
@@ -584,6 +615,7 @@ export default function TeamsChannelView({
       {/* Modals */}
       {isPostModalOpen && (
         <CreateFormModal
+          cohorts={cohorts}
           onClose={() => setIsPostModalOpen(false)}
           onSuccess={() => {
             setIsPostModalOpen(false);
@@ -595,6 +627,7 @@ export default function TeamsChannelView({
 
       {selectedFormForEdit && (
         <CreateFormModal
+          cohorts={cohorts}
           form={selectedFormForEdit}
           onClose={() => setSelectedFormForEdit(null)}
           onSuccess={() => {

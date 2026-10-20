@@ -22,7 +22,7 @@ import { timesheetService } from '../../services/timesheet.service';
 import { projectsService } from '../../services/projects.service';
 import { cohortsService } from '../../services/cohorts.service';
 import TimesheetView from './TimesheetView';
-import { getCalendarWeekRange, toLocalDateString, formatMinutes } from '../../utils/dateUtils';
+import { getCalendarWeekRange, getCalendarMonthRange, toLocalDateString, formatMinutes } from '../../utils/dateUtils';
 
 export default function ManagerTimesheetsView({
   onToast,
@@ -32,6 +32,9 @@ export default function ManagerTimesheetsView({
 }) {
   // Navigation / Selection State
   const [selectedIntern, setSelectedIntern] = useState(null);
+
+  // Period / View Mode State: 'WEEK' | 'MONTH' | 'ALL_TIME'
+  const [period, setPeriod] = useState('WEEK');
 
   // Filters State
   const [search, setSearch] = useState('');
@@ -124,6 +127,7 @@ export default function ManagerTimesheetsView({
       setError('');
 
       const response = await timesheetService.getManagerReview({
+        period,
         date: selectedDate.toISOString(),
         search: debouncedSearch.trim() || undefined,
         cohort_id: selectedCohort !== 'ALL' ? selectedCohort : undefined,
@@ -215,6 +219,14 @@ export default function ManagerTimesheetsView({
                 hours: 0,
                 formatted: '—',
               })),
+              weekly_breakdown: (monthInfo.weeks || []).map((w, idx) => ({
+                weekNumber: idx + 1,
+                label: `W${idx + 1}`,
+                fullLabel: w.periodTitle || `Week ${idx + 1}`,
+                minutes: 0,
+                hours: 0,
+                formatted: '—',
+              })),
             }));
 
           const fallbackSummary = {
@@ -254,7 +266,7 @@ export default function ManagerTimesheetsView({
         setLoading(false);
       }
     }
-  }, [selectedDate, debouncedSearch, selectedCohort, selectedProject, page, limit]);
+  }, [period, selectedDate, debouncedSearch, selectedCohort, selectedProject, page, limit]);
 
   useEffect(() => {
     loadReviewDirectory();
@@ -280,6 +292,28 @@ export default function ManagerTimesheetsView({
     setPage(1);
   };
 
+  // Month Navigation handlers
+  const handlePrevMonth = () => {
+    const next = new Date(selectedDate);
+    next.setDate(1);
+    next.setMonth(next.getMonth() - 1);
+    setSelectedDate(next);
+    setPage(1);
+  };
+
+  const handleNextMonth = () => {
+    const next = new Date(selectedDate);
+    next.setDate(1);
+    next.setMonth(next.getMonth() + 1);
+    setSelectedDate(next);
+    setPage(1);
+  };
+
+  const handleCurrentMonth = () => {
+    setSelectedDate(new Date());
+    setPage(1);
+  };
+
   // Reset all filters (restores active cohort)
   const handleClearFilters = () => {
     setSearch('');
@@ -287,6 +321,7 @@ export default function ManagerTimesheetsView({
     setSelectedCohort(propCohortId || 'ALL');
     setSelectedProject('ALL');
     setSelectedDate(new Date());
+    setPeriod('WEEK');
     setPage(1);
     onToast?.('Timesheet filters reset to defaults');
   };
@@ -294,11 +329,13 @@ export default function ManagerTimesheetsView({
   const isFiltered = Boolean(
     search.trim() || 
     (propCohortId ? selectedCohort !== propCohortId : selectedCohort !== 'ALL') || 
-    selectedProject !== 'ALL'
+    selectedProject !== 'ALL' ||
+    period !== 'WEEK'
   );
 
   // Authoritative date period calculations
   const weekInfo = useMemo(() => getCalendarWeekRange(selectedDate), [selectedDate]);
+  const monthInfo = useMemo(() => getCalendarMonthRange(selectedDate), [selectedDate]);
 
   // Immediate client-side filtering on current intern list for responsive searching
   const filteredInterns = useMemo(() => {
@@ -329,6 +366,7 @@ export default function ManagerTimesheetsView({
         readOnly={true}
         internInfo={selectedIntern}
         initialDate={selectedDate}
+        initialViewMode={period === 'MONTH' ? 'MONTH' : 'WEEK'}
         onDateChange={(d) => setSelectedDate(d)}
         onBack={() => setSelectedIntern(null)}
         onToast={onToast}
@@ -353,55 +391,153 @@ export default function ManagerTimesheetsView({
             Intern Timesheets Review
           </h1>
           <p className="text-xs text-slate-500 mt-1">
-            Search, filter, and review weekly timesheets and work distribution across your cohorts
+            Search, filter, and review {period === 'WEEK' ? 'weekly' : period === 'MONTH' ? 'monthly' : 'all-time'} timesheets and work distribution across your cohorts
           </p>
         </div>
 
-        {/* Week Selector */}
-        <div className="flex flex-wrap items-center gap-2.5 self-start md:self-auto">
-          <div className="flex items-center bg-slate-100 p-1 rounded-xl border border-slate-200 text-slate-700">
+        {/* Period Selector & Navigation Controls */}
+        <div className="flex flex-col sm:flex-row items-start sm:items-center gap-2.5 self-start md:self-auto">
+          {/* Period Mode Selector Tabs */}
+          <div className="flex items-center p-1 rounded-xl bg-slate-100 border border-slate-200 text-xs font-semibold">
             <button
               type="button"
-              onClick={handlePrevWeek}
-              className="p-1.5 rounded-lg hover:bg-white hover:text-slate-900 transition-colors cursor-pointer"
-              title="Previous Week"
+              onClick={() => {
+                setPeriod('WEEK');
+                setPage(1);
+              }}
+              className={`px-3 py-1.5 rounded-lg transition-all cursor-pointer whitespace-nowrap ${
+                period === 'WEEK'
+                  ? 'bg-white text-purple-700 font-bold shadow-xs'
+                  : 'text-slate-600 hover:text-slate-900'
+              }`}
             >
-              <ChevronLeft className="w-4 h-4" />
+              This Week
             </button>
-            <div className="px-3 py-1 text-xs font-bold text-slate-800 whitespace-nowrap min-w-[130px] text-center">
-              {weekInfo.formattedRange}
-            </div>
             <button
               type="button"
-              onClick={handleNextWeek}
-              className="p-1.5 rounded-lg hover:bg-white hover:text-slate-900 transition-colors cursor-pointer"
-              title="Next Week"
+              onClick={() => {
+                setPeriod('MONTH');
+                setPage(1);
+              }}
+              className={`px-3 py-1.5 rounded-lg transition-all cursor-pointer whitespace-nowrap ${
+                period === 'MONTH'
+                  ? 'bg-white text-purple-700 font-bold shadow-xs'
+                  : 'text-slate-600 hover:text-slate-900'
+              }`}
             >
-              <ChevronRight className="w-4 h-4" />
+              This Month
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                setPeriod('ALL_TIME');
+                setPage(1);
+              }}
+              className={`px-3 py-1.5 rounded-lg transition-all cursor-pointer whitespace-nowrap ${
+                period === 'ALL_TIME'
+                  ? 'bg-white text-purple-700 font-bold shadow-xs'
+                  : 'text-slate-600 hover:text-slate-900'
+              }`}
+            >
+              All Time
             </button>
           </div>
 
-          <button
-            type="button"
-            onClick={handleCurrentWeek}
-            className={`px-3 py-2 text-xs font-semibold rounded-xl border transition-colors cursor-pointer whitespace-nowrap ${
-              weekInfo.isCurrentWeek
-                ? 'bg-purple-100 text-purple-800 border-purple-300 font-bold'
-                : 'bg-slate-100 hover:bg-purple-50 hover:text-purple-700 border-slate-200 text-slate-700'
-            }`}
-          >
-            This Week
-          </button>
+          {/* Stepper & Date Controls */}
+          <div className="flex items-center gap-2">
+            {period === 'WEEK' && (
+              <>
+                <div className="flex items-center bg-slate-100 p-1 rounded-xl border border-slate-200 text-slate-700">
+                  <button
+                    type="button"
+                    onClick={handlePrevWeek}
+                    className="p-1.5 rounded-lg hover:bg-white hover:text-slate-900 transition-colors cursor-pointer"
+                    title="Previous Week"
+                  >
+                    <ChevronLeft className="w-4 h-4" />
+                  </button>
+                  <div className="px-3 py-1 text-xs font-bold text-slate-800 whitespace-nowrap min-w-[130px] text-center">
+                    {weekInfo.formattedRange}
+                  </div>
+                  <button
+                    type="button"
+                    onClick={handleNextWeek}
+                    className="p-1.5 rounded-lg hover:bg-white hover:text-slate-900 transition-colors cursor-pointer"
+                    title="Next Week"
+                  >
+                    <ChevronRight className="w-4 h-4" />
+                  </button>
+                </div>
 
-          <button
-            type="button"
-            onClick={loadReviewDirectory}
-            disabled={loading}
-            className="p-2 rounded-xl border border-slate-200 bg-white hover:bg-slate-50 text-slate-600 transition-colors cursor-pointer disabled:opacity-50"
-            title="Refresh"
-          >
-            <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} />
-          </button>
+                <button
+                  type="button"
+                  onClick={handleCurrentWeek}
+                  className={`px-3 py-2 text-xs font-semibold rounded-xl border transition-colors cursor-pointer whitespace-nowrap ${
+                    weekInfo.isCurrentWeek
+                      ? 'bg-purple-100 text-purple-800 border-purple-300 font-bold'
+                      : 'bg-slate-100 hover:bg-purple-50 hover:text-purple-700 border-slate-200 text-slate-700'
+                  }`}
+                >
+                  This Week
+                </button>
+              </>
+            )}
+
+            {period === 'MONTH' && (
+              <>
+                <div className="flex items-center bg-slate-100 p-1 rounded-xl border border-slate-200 text-slate-700">
+                  <button
+                    type="button"
+                    onClick={handlePrevMonth}
+                    className="p-1.5 rounded-lg hover:bg-white hover:text-slate-900 transition-colors cursor-pointer"
+                    title="Previous Month"
+                  >
+                    <ChevronLeft className="w-4 h-4" />
+                  </button>
+                  <div className="px-3 py-1 text-xs font-bold text-slate-800 whitespace-nowrap min-w-[130px] text-center">
+                    {monthInfo.monthName}
+                  </div>
+                  <button
+                    type="button"
+                    onClick={handleNextMonth}
+                    className="p-1.5 rounded-lg hover:bg-white hover:text-slate-900 transition-colors cursor-pointer"
+                    title="Next Month"
+                  >
+                    <ChevronRight className="w-4 h-4" />
+                  </button>
+                </div>
+
+                <button
+                  type="button"
+                  onClick={handleCurrentMonth}
+                  className={`px-3 py-2 text-xs font-semibold rounded-xl border transition-colors cursor-pointer whitespace-nowrap ${
+                    monthInfo.isCurrentMonth
+                      ? 'bg-purple-100 text-purple-800 border-purple-300 font-bold'
+                      : 'bg-slate-100 hover:bg-purple-50 hover:text-purple-700 border-slate-200 text-slate-700'
+                  }`}
+                >
+                  This Month
+                </button>
+              </>
+            )}
+
+            {period === 'ALL_TIME' && (
+              <div className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-purple-50 border border-purple-200 text-purple-800 text-xs font-bold whitespace-nowrap">
+                <Calendar className="w-3.5 h-3.5 text-purple-600" />
+                <span>All-Time Records</span>
+              </div>
+            )}
+
+            <button
+              type="button"
+              onClick={loadReviewDirectory}
+              disabled={loading}
+              className="p-2 rounded-xl border border-slate-200 bg-white hover:bg-slate-50 text-slate-600 transition-colors cursor-pointer disabled:opacity-50"
+              title="Refresh"
+            >
+              <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} />
+            </button>
+          </div>
         </div>
       </div>
 
@@ -435,7 +571,13 @@ export default function ManagerTimesheetsView({
             <div className="text-2xl font-extrabold text-emerald-600 tracking-tight">
               {summary.active_interns}
             </div>
-            <div className="text-[11px] text-slate-400 mt-0.5">Logged hours this week</div>
+            <div className="text-[11px] text-slate-400 mt-0.5">
+              {period === 'WEEK'
+                ? 'Logged hours this week'
+                : period === 'MONTH'
+                ? 'Logged hours this month'
+                : 'Logged hours all time'}
+            </div>
           </div>
         </div>
 
@@ -564,9 +706,21 @@ export default function ManagerTimesheetsView({
               <tr className="bg-slate-50/90 text-[11px] font-bold text-slate-600 uppercase tracking-wider border-b border-slate-200">
                 <th className="py-3.5 px-4">Intern</th>
                 <th className="py-3.5 px-3">Cohort</th>
-                <th className="py-3.5 px-3">Weekly Total</th>
+                <th className="py-3.5 px-3">
+                  {period === 'WEEK'
+                    ? 'Weekly Total'
+                    : period === 'MONTH'
+                    ? 'Monthly Total'
+                    : 'All-Time Total'}
+                </th>
                 <th className="py-3.5 px-3">Tasks</th>
-                <th className="py-3.5 px-3">Daily Breakdown (Mon–Sun)</th>
+                <th className="py-3.5 px-3">
+                  {period === 'WEEK'
+                    ? 'Daily Breakdown (Mon–Sun)'
+                    : period === 'MONTH'
+                    ? 'Weekly Breakdown'
+                    : 'Activity Overview'}
+                </th>
                 <th className="py-3.5 px-4 text-right">Action</th>
               </tr>
             </thead>
@@ -717,31 +871,67 @@ export default function ManagerTimesheetsView({
                         </span>
                       </td>
 
-                      {/* Daily Breakdown Pills */}
+                      {/* Period Breakdown Pills / Activity */}
                       <td className="py-3.5 px-3">
-                        <div className="flex items-center gap-1">
-                          {intern.daily_breakdown?.map((day) => {
-                            const dayHasTime = day.minutes > 0;
-                            return (
-                              <div
-                                key={day.date}
-                                title={`${day.dayName} (${day.date}): ${day.formatted}`}
-                                className={`flex flex-col items-center justify-center px-1.5 py-0.5 rounded text-[10px] min-w-[28px] border ${
-                                  dayHasTime
-                                    ? 'bg-purple-100 text-purple-900 border-purple-300 font-bold'
-                                    : 'bg-slate-50 text-slate-400 border-slate-200/60 font-normal'
-                                }`}
-                              >
-                                <span className="text-[9px] uppercase tracking-tighter opacity-80">
-                                  {day.dayName.slice(0, 1)}
-                                </span>
-                                <span className="font-mono text-[9px] leading-tight">
-                                  {dayHasTime ? `${day.hours}h` : '0'}
-                                </span>
-                              </div>
-                            );
-                          })}
-                        </div>
+                        {period === 'WEEK' ? (
+                          <div className="flex items-center gap-1">
+                            {intern.daily_breakdown?.map((day) => {
+                              const dayHasTime = day.minutes > 0;
+                              return (
+                                <div
+                                  key={day.date}
+                                  title={`${day.dayName} (${day.date}): ${day.formatted}`}
+                                  className={`flex flex-col items-center justify-center px-1.5 py-0.5 rounded text-[10px] min-w-[28px] border ${
+                                    dayHasTime
+                                      ? 'bg-purple-100 text-purple-900 border-purple-300 font-bold'
+                                      : 'bg-slate-50 text-slate-400 border-slate-200/60 font-normal'
+                                  }`}
+                                >
+                                  <span className="text-[9px] uppercase tracking-tighter opacity-80">
+                                    {day.dayName.slice(0, 1)}
+                                  </span>
+                                  <span className="font-mono text-[9px] leading-tight">
+                                    {dayHasTime ? `${day.hours}h` : '0'}
+                                  </span>
+                                </div>
+                              );
+                            })}
+                          </div>
+                        ) : period === 'MONTH' ? (
+                          <div className="flex items-center gap-1">
+                            {intern.weekly_breakdown?.map((wk) => {
+                              const wkHasTime = wk.minutes > 0;
+                              return (
+                                <div
+                                  key={wk.weekNumber}
+                                  title={`${wk.fullLabel}: ${wk.formatted}`}
+                                  className={`flex flex-col items-center justify-center px-2 py-0.5 rounded text-[10px] min-w-[32px] border ${
+                                    wkHasTime
+                                      ? 'bg-purple-100 text-purple-900 border-purple-300 font-bold'
+                                      : 'bg-slate-50 text-slate-400 border-slate-200/60 font-normal'
+                                  }`}
+                                >
+                                  <span className="text-[9px] font-semibold opacity-90">{wk.label}</span>
+                                  <span className="font-mono text-[9px] leading-tight">
+                                    {wkHasTime ? `${wk.hours}h` : '0'}
+                                  </span>
+                                </div>
+                              );
+                            })}
+                          </div>
+                        ) : (
+                          <div className="flex items-center gap-2">
+                            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-semibold bg-slate-100 text-slate-700 border border-slate-200">
+                              <Calendar className="w-3 h-3 text-slate-500" />
+                              <span>{intern.active_days_count || 0} active days</span>
+                            </span>
+                            {intern.task_count > 0 && (
+                              <span className="text-[10px] text-slate-400 font-medium">
+                                across {intern.task_count} tasks
+                              </span>
+                            )}
+                          </div>
+                        )}
                       </td>
 
                       {/* View Action */}

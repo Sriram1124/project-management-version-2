@@ -2274,6 +2274,7 @@ export class TimesheetService {
     user: any,
     options: {
       date?: Date | string;
+      period?: 'WEEK' | 'MONTH' | 'ALL_TIME' | string;
       search?: string;
       cohort_id?: string;
       project_id?: string;
@@ -2288,11 +2289,13 @@ export class TimesheetService {
     const orgId = this.resolveOrganizationId(user, user.organization_id) || await this.getDefaultOrganizationId();
     await this.autoClockExpiredSessions(orgId);
 
+    const period = (options.period || 'WEEK').toUpperCase();
     const today = options.date ? new Date(options.date) : new Date();
     if (isNaN(today.getTime())) {
       throw new Error('Invalid date provided');
     }
 
+    // 1. Week period calculations
     const startOfWeek = new Date(today);
     startOfWeek.setUTCHours(0, 0, 0, 0);
     const day = startOfWeek.getUTCDay();
@@ -2310,6 +2313,52 @@ export class TimesheetService {
       cur.setUTCDate(startOfWeek.getUTCDate() + i);
       dayDateStrings.push(cur.toISOString().slice(0, 10));
     }
+
+    // 2. Month period calculations
+    const startOfMonth = new Date(Date.UTC(today.getUTCFullYear(), today.getUTCMonth(), 1, 0, 0, 0, 0));
+    const endOfMonth = new Date(Date.UTC(today.getUTCFullYear(), today.getUTCMonth() + 1, 0, 23, 59, 59, 999));
+
+    const firstDayDow = startOfMonth.getUTCDay();
+    const diffToMondayMonth = (firstDayDow + 6) % 7;
+    const firstWeekMonday = new Date(Date.UTC(startOfMonth.getUTCFullYear(), startOfMonth.getUTCMonth(), 1 - diffToMondayMonth, 0, 0, 0, 0));
+
+    const weeks: Array<{
+      weekNumber: number;
+      label: string;
+      fullLabel: string;
+      startDate: Date;
+      endDate: Date;
+      startDateStr: string;
+      endDateStr: string;
+    }> = [];
+
+    let currentMonday = new Date(firstWeekMonday);
+    let weekIndex = 1;
+    while (currentMonday <= endOfMonth) {
+      const weekSunday = new Date(Date.UTC(currentMonday.getUTCFullYear(), currentMonday.getUTCMonth(), currentMonday.getUTCDate() + 6, 23, 59, 59, 999));
+      const inMonthStart = currentMonday < startOfMonth ? startOfMonth : currentMonday;
+      const inMonthEnd = weekSunday > endOfMonth ? endOfMonth : weekSunday;
+
+      weeks.push({
+        weekNumber: weekIndex,
+        label: `W${weekIndex}`,
+        fullLabel: `Week ${weekIndex} (${inMonthStart.toISOString().slice(5, 10)} – ${inMonthEnd.toISOString().slice(5, 10)})`,
+        startDate: currentMonday,
+        endDate: weekSunday,
+        startDateStr: inMonthStart.toISOString().slice(0, 10),
+        endDateStr: inMonthEnd.toISOString().slice(0, 10),
+      });
+
+      currentMonday = new Date(Date.UTC(currentMonday.getUTCFullYear(), currentMonday.getUTCMonth(), currentMonday.getUTCDate() + 7, 0, 0, 0, 0));
+      weekIndex++;
+    }
+
+    // Query date boundaries based on selected period
+    const dateQueryFilter = period === 'ALL_TIME'
+      ? {}
+      : period === 'MONTH'
+      ? { date: { gte: startOfMonth, lte: endOfMonth } }
+      : { date: { gte: startOfWeek, lte: endOfWeek } };
 
     const whereClause: any = {
       organization_id: orgId,
@@ -2401,10 +2450,7 @@ export class TimesheetService {
           where: {
             user_id: { in: cohortInternIds },
             organization_id: orgId,
-            date: {
-              gte: startOfWeek,
-              lte: endOfWeek,
-            },
+            ...dateQueryFilter,
             ...(options.project_id && options.project_id !== 'ALL' ? { project_id: options.project_id.trim() } : {}),
           },
           select: {
@@ -2465,10 +2511,7 @@ export class TimesheetService {
           where: {
             user_id: { in: internIds },
             organization_id: orgId,
-            date: {
-              gte: startOfWeek,
-              lte: endOfWeek,
-            },
+            ...dateQueryFilter,
             ...(options.project_id && options.project_id !== 'ALL' ? { project_id: options.project_id.trim() } : {}),
           },
           select: {
@@ -2483,7 +2526,13 @@ export class TimesheetService {
 
     const internMetricsMap = new Map<
       string,
-      { total_minutes: number; taskIds: Set<string>; daily: Record<string, number> }
+      {
+        total_minutes: number;
+        taskIds: Set<string>;
+        daily: Record<string, number>;
+        weekly: Record<number, number>;
+        activeDates: Set<string>;
+      }
     >();
 
     for (const id of internIds) {
@@ -2491,6 +2540,8 @@ export class TimesheetService {
         total_minutes: 0,
         taskIds: new Set<string>(),
         daily: Object.fromEntries(dayDateStrings.map((d) => [d, 0])),
+        weekly: Object.fromEntries(weeks.map((w) => [w.weekNumber, 0])),
+        activeDates: new Set<string>(),
       });
     }
 
@@ -2503,9 +2554,23 @@ export class TimesheetService {
       if (entry.task_id) {
         metrics.taskIds.add(entry.task_id);
       }
-      const entryDateStr = entry.date ? new Date(entry.date).toISOString().slice(0, 10) : '';
-      if (entryDateStr && metrics.daily[entryDateStr] !== undefined) {
-        metrics.daily[entryDateStr] += dur;
+      if (entry.date) {
+        const entryDate = new Date(entry.date);
+        const entryDateStr = entryDate.toISOString().slice(0, 10);
+        if (dur > 0) {
+          metrics.activeDates.add(entryDateStr);
+        }
+        if (metrics.daily[entryDateStr] !== undefined) {
+          metrics.daily[entryDateStr] += dur;
+        }
+        if (period === 'MONTH') {
+          for (const w of weeks) {
+            if (entryDate >= w.startDate && entryDate <= w.endDate) {
+              metrics.weekly[w.weekNumber] = (metrics.weekly[w.weekNumber] || 0) + dur;
+              break;
+            }
+          }
+        }
       }
     }
 
@@ -2517,6 +2582,8 @@ export class TimesheetService {
         total_minutes: 0,
         taskIds: new Set(),
         daily: {},
+        weekly: {},
+        activeDates: new Set(),
       };
 
       const totalMins = metrics.total_minutes;
@@ -2538,6 +2605,7 @@ export class TimesheetService {
         total_hours: Number((totalMins / 60).toFixed(1)),
         total_formatted: `${hours}h ${mins}m`,
         task_count: metrics.taskIds.size,
+        active_days_count: metrics.activeDates.size,
         daily_breakdown: dayDateStrings.map((d, idx) => {
           const dMins = metrics.daily[d] || 0;
           return {
@@ -2548,14 +2616,35 @@ export class TimesheetService {
             formatted: `${Math.floor(dMins / 60)}h ${dMins % 60}m`,
           };
         }),
+        weekly_breakdown: weeks.map((w) => {
+          const wMins = metrics.weekly[w.weekNumber] || 0;
+          return {
+            weekNumber: w.weekNumber,
+            label: w.label,
+            fullLabel: w.fullLabel,
+            startDateStr: w.startDateStr,
+            endDateStr: w.endDateStr,
+            minutes: wMins,
+            hours: Number((wMins / 60).toFixed(1)),
+            formatted: `${Math.floor(wMins / 60)}h ${wMins % 60}m`,
+          };
+        }),
       };
     });
 
     return {
       period: {
-        start_date: startOfWeek.toISOString().slice(0, 10),
-        end_date: endOfWeek.toISOString().slice(0, 10),
+        type: period,
+        start_date: period === 'ALL_TIME' ? null : (period === 'MONTH' ? startOfMonth.toISOString().slice(0, 10) : startOfWeek.toISOString().slice(0, 10)),
+        end_date: period === 'ALL_TIME' ? null : (period === 'MONTH' ? endOfMonth.toISOString().slice(0, 10) : endOfWeek.toISOString().slice(0, 10)),
         day_dates: dayDateStrings,
+        weeks: weeks.map((w) => ({
+          weekNumber: w.weekNumber,
+          label: w.label,
+          fullLabel: w.fullLabel,
+          startDateStr: w.startDateStr,
+          endDateStr: w.endDateStr,
+        })),
       },
       summary: {
         total_interns: totalCohortCount,

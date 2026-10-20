@@ -132,11 +132,46 @@ export class ProjectService {
     }
 
     const owners = Array.from(ownersMap.values());
+
+    // Authoritative real-time progress computation
+    let healthEval: any = null;
+    if (Array.isArray(project.work_items)) {
+      try {
+        healthEval = ProjectHealthService.classifyProjectHealth(project);
+      } catch (err) {
+        console.warn(`[ProjectService] Failed to classify project health for ${project.id}:`, err);
+      }
+    }
+
+    const totalTasks = healthEval ? healthEval.total_tasks : (project.total_tasks ?? 0);
+    const completedTasks = healthEval ? healthEval.completed_tasks : (project.completed_tasks ?? 0);
+    const completionRate = healthEval ? healthEval.completion_rate : (totalTasks > 0 ? Math.round((completedTasks / totalTasks) * 100) : 0);
+    const totalSp = healthEval ? healthEval.total_sp : (project.total_sp ?? 0);
+    const completedSp = healthEval ? healthEval.completed_sp : (project.completed_sp ?? 0);
+    const deliveryProgressPercentage = healthEval?.delivery_progress_percentage ?? healthEval?.progress_percentage ?? null;
+
+    const progressVal = project.status === 'COMPLETED'
+      ? 100
+      : (deliveryProgressPercentage !== null ? deliveryProgressPercentage : completionRate);
+
+    // Keep payload clean if work_items or sprints were included solely for computation
+    const { work_items: _wi, sprints: _sp, ...cleanProject } = project;
+
     return {
-      ...project,
+      ...cleanProject,
       owners,
       owner_ids: owners.map((o) => o.id),
       owner: project.owner || (owners.length > 0 ? owners[0] : null),
+      progress: progressVal,
+      progress_percentage: progressVal,
+      delivery_progress_percentage: deliveryProgressPercentage,
+      completion_rate: completionRate,
+      total_tasks: totalTasks,
+      completed_tasks: completedTasks,
+      total_sp: totalSp,
+      completed_sp: completedSp,
+      health_score: healthEval?.health_score ?? null,
+      health: healthEval?.health ?? 'NOT_ASSESSED',
     };
   }
 
@@ -202,6 +237,28 @@ export class ProjectService {
             storage_key: true,
             created_at: true,
             updated_at: true,
+          },
+        },
+        work_items: {
+          select: {
+            id: true,
+            parent_id: true,
+            title: true,
+            type: true,
+            status: true,
+            priority: true,
+            story_points: true,
+            due_date: true,
+            sprint_id: true,
+          },
+        },
+        sprints: {
+          select: {
+            id: true,
+            name: true,
+            status: true,
+            start_date: true,
+            end_date: true,
           },
         },
         _count: {
@@ -270,6 +327,28 @@ export class ProjectService {
         },
         documents: {
           orderBy: { created_at: 'desc' },
+        },
+        work_items: {
+          select: {
+            id: true,
+            parent_id: true,
+            title: true,
+            type: true,
+            status: true,
+            priority: true,
+            story_points: true,
+            due_date: true,
+            sprint_id: true,
+          },
+        },
+        sprints: {
+          select: {
+            id: true,
+            name: true,
+            status: true,
+            start_date: true,
+            end_date: true,
+          },
         },
         _count: {
           select: {

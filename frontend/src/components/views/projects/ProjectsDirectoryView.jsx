@@ -145,7 +145,15 @@ export default function ProjectsDirectoryView({ onSelectProject, isIntern = fals
   useEffect(() => {
     fetchProjects();
     fetchOrgUsers();
-  }, []);
+
+    const handleSync = () => {
+      projectsService.getProjects(isIntern ? { my: true } : {})
+        .then((data) => setProjects(data))
+        .catch(() => {});
+    };
+    window.addEventListener('work-items-updated', handleSync);
+    return () => window.removeEventListener('work-items-updated', handleSync);
+  }, [isIntern]);
 
   // Show ONLY interns in the project member pickers
   const internUsers = orgUsers.filter((u) => u.type === 'INTERN' || u.role === 'INTERN');
@@ -644,7 +652,8 @@ export default function ProjectsDirectoryView({ onSelectProject, isIntern = fals
                       const memberCount = proj._count?.members ?? (proj.members?.length ?? 0);
                       const startDateStr = proj.start_date ? new Date(proj.start_date).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : 'TBD';
                       const endDateStr = proj.end_date ? new Date(proj.end_date).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : 'TBD';
-                      const progressVal = proj.status === 'COMPLETED' ? 100 : (proj.status === 'ACTIVE' ? 75 : 0);
+                      const rawProgress = proj.progress ?? proj.progress_percentage ?? proj.delivery_progress_percentage ?? proj.completion_rate;
+                      const progressVal = proj.status === 'COMPLETED' ? 100 : (Number.isFinite(rawProgress) ? rawProgress : 0);
 
                       return (
                         <tr 
@@ -735,7 +744,11 @@ export default function ProjectsDirectoryView({ onSelectProject, isIntern = fals
                               <div className="w-full bg-slate-100 rounded-full h-1.5 overflow-hidden">
                                 <div
                                   className={`h-full rounded-full ${
-                                    proj.status === 'COMPLETED' ? 'bg-purple-600' : (proj.status === 'ACTIVE' ? 'bg-emerald-500' : 'bg-slate-300')
+                                    proj.status === 'COMPLETED' || progressVal === 100
+                                      ? 'bg-purple-600'
+                                      : progressVal > 0
+                                      ? 'bg-emerald-500'
+                                      : 'bg-slate-300'
                                   }`}
                                   style={{ width: `${progressVal}%` }}
                                 />
@@ -820,7 +833,8 @@ export default function ProjectsDirectoryView({ onSelectProject, isIntern = fals
                   const memberCount = proj._count?.members ?? (proj.members?.length ?? 0);
                   const startDateStr = proj.start_date ? new Date(proj.start_date).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : 'TBD';
                   const endDateStr = proj.end_date ? new Date(proj.end_date).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : 'TBD';
-                  const progressVal = proj.status === 'COMPLETED' ? 100 : (proj.status === 'ACTIVE' ? 75 : 0);
+                  const rawProgress = proj.progress ?? proj.progress_percentage ?? proj.delivery_progress_percentage ?? proj.completion_rate;
+                  const progressVal = proj.status === 'COMPLETED' ? 100 : (Number.isFinite(rawProgress) ? rawProgress : 0);
 
                   return (
                     <div
@@ -879,7 +893,11 @@ export default function ProjectsDirectoryView({ onSelectProject, isIntern = fals
                         <div className="w-full bg-slate-100 rounded-full h-1.5 overflow-hidden">
                           <div
                             className={`h-full rounded-full ${
-                              proj.status === 'COMPLETED' ? 'bg-purple-600' : (proj.status === 'ACTIVE' ? 'bg-emerald-500' : 'bg-slate-300')
+                              proj.status === 'COMPLETED' || progressVal === 100
+                                ? 'bg-purple-600'
+                                : progressVal > 0
+                                ? 'bg-emerald-500'
+                                : 'bg-slate-300'
                             }`}
                             style={{ width: `${progressVal}%` }}
                           />

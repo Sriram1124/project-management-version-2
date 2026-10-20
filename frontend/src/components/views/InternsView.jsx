@@ -14,7 +14,6 @@ import {
   XCircle,
   Trash2,
   AlertCircle,
-  Clock,
   CheckSquare
 } from 'lucide-react';
 import { usersService } from '../../services/users.service';
@@ -637,7 +636,6 @@ export default function InternsView({ cohorts = [], selectedCohortId = null }) {
                   <th className="py-3 px-4">Email</th>
                   <th className="py-3 px-4">Role / Type</th>
                   <th className="py-3 px-4">Status</th>
-                  <th className="py-3 px-4">Extensions</th>
                   <th className="py-3 px-4">Created Date</th>
                   <th className="py-3 px-4 text-right">Actions</th>
                 </tr>
@@ -721,25 +719,6 @@ export default function InternsView({ cohorts = [], selectedCohortId = null }) {
                             </>
                           )}
                         </span>
-                      </td>
-
-                      <td className="py-2.5 px-4">
-                        {user.extensions_count > 0 ? (
-                          <span
-                            className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-amber-50 text-amber-800 border border-amber-200 font-mono text-[11px] font-bold cursor-help whitespace-nowrap shadow-2xs"
-                            title={`${user.extensions_count} Total Requests (${user.extension_stats?.approved || 0} approved, ${user.extension_stats?.pending || 0} pending, ${user.extension_stats?.rejected || 0} rejected)`}
-                          >
-                            <Clock className="w-3 h-3 text-amber-600 shrink-0" />
-                            <span>{user.extensions_count}</span>
-                            {user.extension_stats && (
-                              <span className="text-[10px] font-medium text-amber-600/80">
-                                ({user.extension_stats.approved}a/{user.extension_stats.pending}p/{user.extension_stats.rejected}r)
-                              </span>
-                            )}
-                          </span>
-                        ) : (
-                          <span className="font-mono text-[11px] font-medium text-slate-400" title="0 extension requests">0</span>
-                        )}
                       </td>
 
                       <td className="py-2.5 px-4 text-slate-400 text-[11px]">

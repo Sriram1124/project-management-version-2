@@ -69,5 +69,38 @@ describe('Intern Portal Header & Protected Routes Regression Suite', () => {
       'ProtectedRoute must allow users whose role is in allowedRoles'
     );
   });
+
+  test('4. InternApp header uses back arrow and simple "Projects / {project}" breadcrumbs like manager dashboard', () => {
+    // Intern Portal text must not be hardcoded in header
+    assert.doesNotMatch(
+      internAppContent,
+      /<span>Intern Portal<\/span>/,
+      'InternApp header must not display hardcoded "Intern Portal" text'
+    );
+
+    // Must render ArrowLeft back button when viewing a selected project
+    assert.match(
+      internAppContent,
+      /<ArrowLeft\s+className="w-4 h-4 stroke-\[2\]"/,
+      'Must render ArrowLeft icon with stroke-[2] matching manager dashboard'
+    );
+    assert.match(
+      internAppContent,
+      /title="Back to Projects"/,
+      'Must have title tooltip "Back to Projects"'
+    );
+    assert.match(
+      internAppContent,
+      /handleSelectInternProject\(null\)/,
+      'Back button must navigate back by resetting selected project to null'
+    );
+
+    // Must render simple "Projects / {projectName}" breadcrumbs
+    assert.match(
+      internAppContent,
+      /<button[^>]*onClick=\{\(\)\s*=>\s*handleSelectInternProject\(null\)\}[^>]*>\s*Projects\s*<\/button>/,
+      'Must render clickable "Projects" breadcrumb linking back to projects list'
+    );
+  });
 });
 

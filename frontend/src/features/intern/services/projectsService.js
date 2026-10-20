@@ -16,7 +16,7 @@ export const normalizeProject = (p) => {
     status: p.status || 'ACTIVE',
     startDate: p.start_date ? new Date(p.start_date).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : 'TBD',
     endDate: p.end_date ? new Date(p.end_date).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : 'TBD',
-    progress: null,
+    progress: p.status === 'COMPLETED' ? 100 : (p.progress ?? p.progress_percentage ?? p.delivery_progress_percentage ?? p.completion_rate ?? null),
     lead: {
       id: p.owner?.id || 'owner',
       name: ownerName,

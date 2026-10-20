@@ -86,14 +86,41 @@ export class FormService {
         orderBy: { created_at: 'desc' }
       });
 
-      return forms.map((f) => ({
+      let userCohortId: string | null = null;
+      if (userId) {
+        const u = await prisma.user.findUnique({
+          where: { id: userId },
+          select: { cohort_id: true }
+        });
+        userCohortId = u?.cohort_id || null;
+      }
+
+      const eligibleForms = forms.filter((f) => {
+        const roles = f.target_roles || [];
+        const hasCohortTags = roles.some((r: string) => r.startsWith('COHORT:'));
+        const hasAllCohorts = roles.includes('ALL_COHORTS') || roles.includes('COHORT:ALL');
+
+        // If not restricted to specific cohorts or includes ALL_COHORTS, visible to all interns
+        if (!hasCohortTags || hasAllCohorts) {
+          return true;
+        }
+
+        // If restricted to specific cohorts, intern must belong to one of those cohorts
+        if (userCohortId && (roles.includes(`COHORT:${userCohortId}`) || roles.includes(userCohortId))) {
+          return true;
+        }
+
+        return false;
+      });
+
+      return eligibleForms.map((f) => ({
         ...f,
         totalTarget,
         total_target: totalTarget,
       }));
     }
 
-    const forms = await prisma.form.findMany({
+    let forms = await prisma.form.findMany({
       where,
       include: {
         creator: { select: { id: true, name: true, email: true } },
@@ -102,6 +129,17 @@ export class FormService {
       },
       orderBy: { created_at: 'desc' }
     });
+
+    if (cohortId && cohortId !== 'ALL' && cohortId !== 'null' && cohortId !== 'undefined') {
+      forms = forms.filter((f) => {
+        const roles = f.target_roles || [];
+        const hasCohortTags = roles.some((r: string) => r.startsWith('COHORT:'));
+        const hasAllCohorts = roles.includes('ALL_COHORTS') || roles.includes('COHORT:ALL');
+
+        if (!hasCohortTags || hasAllCohorts) return true;
+        return roles.includes(`COHORT:${cohortId}`) || roles.includes(cohortId);
+      });
+    }
 
     return forms.map((f) => ({
       ...f,

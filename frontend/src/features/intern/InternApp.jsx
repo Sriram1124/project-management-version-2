@@ -274,9 +274,9 @@ export default function InternApp({ onLogout, onSelectProject, onToast }) {
       case 'projects':
         if (selectedProjectId) {
           const p = projectsService.getProjectById(selectedProjectId);
-          return `My Assigned Projects / ${p?.name || 'Workspace'}`;
+          return p?.name || new URLSearchParams(location.search).get('project') || 'Workspace';
         }
-        return 'My Assigned Projects';
+        return 'Projects';
       case 'tasks':
         return 'Task & Subtask Board';
       case 'timesheet':
@@ -483,10 +483,35 @@ export default function InternApp({ onLogout, onSelectProject, onToast }) {
         {/* Header */}
         <header className="h-14 bg-white px-6 flex items-center justify-between border-b border-slate-200 select-none">
           {/* Breadcrumbs */}
-          <div className="flex items-center gap-2 text-sm text-slate-500 font-medium">
-            <span>Intern Portal</span>
-            <span className="text-slate-300">/</span>
-            <span className="text-slate-900 font-bold">{getBreadcrumbTitle()}</span>
+          <div className="flex items-center gap-2.5 text-sm text-slate-500 font-medium">
+            {selectedProjectId && currentTab === 'projects' ? (
+              <>
+                <button
+                  type="button"
+                  onClick={() => handleSelectInternProject(null)}
+                  className="text-slate-400 hover:text-slate-700 transition-colors p-0 cursor-pointer flex items-center justify-center select-none"
+                  title="Back to Projects"
+                  aria-label="Back to Projects"
+                >
+                  <ArrowLeft className="w-4 h-4 stroke-[2]" />
+                </button>
+                <nav aria-label="Breadcrumb" className="flex items-center gap-1.5 text-sm text-slate-500 font-medium">
+                  <button
+                    type="button"
+                    onClick={() => handleSelectInternProject(null)}
+                    className="text-slate-500 hover:text-purple-700 hover:underline transition-colors font-medium cursor-pointer"
+                  >
+                    Projects
+                  </button>
+                  <span className="text-slate-400 select-none">/</span>
+                  <span className="text-slate-900 font-semibold" aria-current="page">
+                    {getBreadcrumbTitle()}
+                  </span>
+                </nav>
+              </>
+            ) : (
+              <span className="text-slate-900 font-bold">{getBreadcrumbTitle()}</span>
+            )}
           </div>
 
           {/* Right Header Actions */}

@@ -136,13 +136,31 @@ export default function ManagerDashboardView({
     );
   }
 
+  const internUsers = React.useMemo(() => {
+    return users.filter((u) => {
+      const isLead = Boolean(u.is_tech_lead) || u.type === 'TECH_LEAD' || u.role === 'TECH_LEAD' || u.project_role === 'TECH_LEAD';
+      const isManagement = u.type === 'MANAGER' || u.role === 'MANAGER' || u.type === 'ADMIN' || u.type === 'SUPER_ADMIN';
+      if (isLead || isManagement) return false;
+      if (selectedCohort?.id && selectedCohort.id !== 'ALL') {
+        const matchesCohort =
+          u.cohort_id === selectedCohort.id ||
+          u.cohort?.id === selectedCohort.id ||
+          u.cohort?.code === selectedCohort.id ||
+          u.cohort?.code === selectedCohort?.code ||
+          u.cohort?.name === selectedCohort?.name;
+        if (!matchesCohort) return false;
+      }
+      return true;
+    });
+  }, [users, selectedCohort]);
+
   const activeProjectsCount = projects.filter((p) => p.status === 'ACTIVE' || p.status === 'PLANNED').length;
-  const activeUsersCount = users.filter((u) => u.is_active !== false).length;
+  const activeInternsCount = internUsers.filter((u) => u.is_active !== false).length;
 
   const dynamicMetrics = {
     totalInterns: {
-      value: users.length,
-      change: `${activeUsersCount} Active Members`,
+      value: internUsers.length,
+      change: `${activeInternsCount} Active Members`,
     },
     activeProjects: {
       value: projects.length,

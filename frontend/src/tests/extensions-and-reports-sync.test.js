@@ -20,43 +20,20 @@ describe('Extensions Column, Performance Report Navigation & Tech Lead Sync Suit
   const backendUserServiceContent = fs.readFileSync(backendUserServicePath, 'utf8');
   const backendWorkItemServiceContent = fs.readFileSync(backendWorkItemServicePath, 'utf8');
 
-  describe('1. Extensions Column on Interns Page', () => {
-    test('Interns table header includes Extensions column', () => {
-      assert.match(
+  describe('1. Extensions Column Removed from Interns and Reports Tables', () => {
+    test('Interns table header does not include Extensions column', () => {
+      assert.doesNotMatch(
         internsViewContent,
         /<th[^>]*>Extensions<\/th>/,
-        'Interns table header must include an Extensions column'
+        'Interns table header must not include an Extensions column'
       );
     });
 
-    test('Interns table row displays 0 when no extension requests exist', () => {
-      assert.match(
-        internsViewContent,
-        /user\.extensions_count > 0 \? \(/,
-        'Interns table must check user.extensions_count > 0'
-      );
-      assert.match(
-        internsViewContent,
-        /<span[^>]*title="0 extension requests"[^>]*>0<\/span>/,
-        'Interns table must display "0" when no extensions exist, not blank'
-      );
-    });
-
-    test('Interns table row renders total count and status breakdown when extensions exist', () => {
-      assert.match(
-        internsViewContent,
-        /title=\{`\$\{user\.extensions_count\} Total Requests/,
-        'Must display tooltip with status breakdown breakdown for extension requests'
-      );
-      assert.match(
-        internsViewContent,
-        /user\.extension_stats\.approved/,
-        'Must reflect approved extension count in breakdown'
-      );
-      assert.match(
-        internsViewContent,
-        /user\.extension_stats\.pending/,
-        'Must reflect pending extension count in breakdown'
+    test('Reports table header does not include Extensions column', () => {
+      assert.doesNotMatch(
+        reportsViewContent,
+        /<th[^>]*>Extensions<\/th>/,
+        'Reports table header must not include an Extensions column'
       );
     });
 
@@ -223,6 +200,35 @@ describe('Extensions Column, Performance Report Navigation & Tech Lead Sync Suit
         reportsViewContent,
         /onClick=\{\(\) => handleSelectScope\(isSelected \? 'ALL' : mem\.userId\)\}/,
         'Tech lead row must be clickable to focus report on that individual lead'
+      );
+    });
+  });
+
+  describe('4. Individual Scope Excludes Project Health in Performance Reports', () => {
+    test('ReportsView computes isIndividualScope when scope is an individual intern or lead', () => {
+      const freshReports = fs.readFileSync(reportsViewPath, 'utf8');
+      assert.match(
+        freshReports,
+        /const isIndividualScope = selectedScope !== 'ALL' && selectedScope !== 'TECH_LEADS'/,
+        'ReportsView must derive isIndividualScope accurately'
+      );
+    });
+
+    test('ReportsView hides Project Health badge pill for individual member scopes', () => {
+      const freshReports = fs.readFileSync(reportsViewPath, 'utf8');
+      assert.match(
+        freshReports,
+        /{!isIndividualScope && \(analytics\?\.project_health \|\| analytics\?\.delivery_risk\) && \(/,
+        'Project health pill must be wrapped with !isIndividualScope'
+      );
+    });
+
+    test('ReportsView hides Project Health tab switcher for individual member scopes', () => {
+      const freshReports = fs.readFileSync(reportsViewPath, 'utf8');
+      assert.match(
+        freshReports,
+        /{!isIndividualScope && \(\s*<div className="w-full grid grid-cols-2/,
+        'Project health tab switcher must only show when not in individual member scope'
       );
     });
   });

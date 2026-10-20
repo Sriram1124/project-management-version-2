@@ -1,7 +1,6 @@
 import React, { useState, useMemo } from 'react';
 import { 
   Hash, 
-  Users, 
   FileText, 
   Clock, 
   CheckCircle2, 
@@ -22,12 +21,6 @@ export default function AssignedFormsTab({
   const [activeChannel, setActiveChannel] = useState('forms-and-surveys');
   const [filterTab, setFilterTab] = useState('all'); // 'all' | 'active' | 'completed'
 
-  const cohortName = useMemo(() => {
-    return (
-      authUser?.cohort?.name ||
-      (authUser?.batch ? `Cohort ${authUser.batch}` : 'Cohort 1')
-    );
-  }, [authUser]);
 
   const isFormOverdue = (form) => {
     if (!form?.deadline) return false;
@@ -109,18 +102,6 @@ export default function AssignedFormsTab({
                   );
                 })}
               </nav>
-            </div>
-
-            {/* Target Cohort Info */}
-            <div className="p-2.5 bg-white rounded-xl border border-slate-200/80 shadow-2xs space-y-1">
-              <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Channel Audience</span>
-              <div className="flex items-center gap-1.5 text-xs text-slate-700 font-semibold">
-                <Users className="w-3.5 h-3.5 text-purple-600 shrink-0" />
-                <span className="truncate">{cohortName}</span>
-              </div>
-              <p className="text-[10px] text-slate-500 leading-normal">
-                Forms posted by the Manager are visible to active {cohortName} members for submission.
-              </p>
             </div>
           </div>
         </div>

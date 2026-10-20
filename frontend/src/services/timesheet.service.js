@@ -114,6 +114,7 @@ export const timesheetService = {
 
   getManagerReview(filters = {}) {
     const params = new URLSearchParams();
+    if (filters.period) params.set('period', filters.period);
     if (filters.date) params.set('date', filters.date);
     if (filters.search) params.set('search', filters.search);
     if (filters.cohort_id && filters.cohort_id !== 'ALL') params.set('cohort_id', filters.cohort_id);
