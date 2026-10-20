@@ -356,11 +356,24 @@ export default function ProjectBacklogTab({ projectId, project = null, isKanbanP
     try {
       await workItemsService.deleteWorkItem(issueId);
       if (selectedIssue?.id === issueId) setSelectedIssue(null);
-      setWorkItems((prev) => prev.filter((item) => item.id !== issueId && item.parent_id !== issueId));
+      setWorkItems((prev) => {
+        const toRemove = new Set([issueId]);
+        let sizeBefore = 0;
+        while (toRemove.size !== sizeBefore) {
+          sizeBefore = toRemove.size;
+          for (const item of prev) {
+            if (item.parent_id && toRemove.has(item.parent_id)) {
+              toRemove.add(item.id);
+            }
+          }
+        }
+        return prev.filter((item) => !toRemove.has(item.id));
+      });
       onToast?.('Issue deleted successfully');
     } catch (err) {
       console.error('Failed to delete issue:', err);
-      onToast?.(err.message || 'Failed to delete issue');
+      alert(err?.response?.data?.error || err.message || 'Failed to delete issue');
+      onToast?.(err?.response?.data?.error || err.message || 'Failed to delete issue');
     }
   };
 

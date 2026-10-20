@@ -87,4 +87,5 @@ backend-node/credentials_exports/
 # Temporary inspection and sync scripts
 backend-node/inspect_tech_lead.js
 backend-node/sync_tech_lead_role.js
+backend-node/inspect_item.js
 

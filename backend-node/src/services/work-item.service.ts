@@ -1498,31 +1498,39 @@ export class WorkItemService {
 
       const permInfo = await this.getMemberProjectPermissions(user.id, item.project_id);
       if (!isMgr && !permInfo.isOwner) {
-        if (permInfo.isCustomRole) {
-          if (!permInfo.permissions.has('TASK_DELETE')) {
-            throw new Error('Forbidden: your role does not have permission to delete work items in this project');
-          }
-        } else {
-          const canManage = await this.canManageProject(user, item.project_id, orgId);
-          if (!canManage && item.created_by !== user.id) {
-            throw new Error('Forbidden: you do not have permission to delete this work item');
-          }
+        const canManage = await this.canManageProject(user, item.project_id, orgId);
+        const hasTaskDeletePerm =
+          permInfo.permissions.has('TASK_DELETE') ||
+          permInfo.permissions.has('TASK_UPDATE') ||
+          canManage;
+        const isCreator = item.created_by === user.id;
+
+        if (!canManage && !hasTaskDeletePerm && !isCreator) {
+          throw new Error('Forbidden: you do not have permission to delete this work item');
         }
       }
     } else {
-      if (this.isIntern(user)) {
-        throw new Error('Forbidden: interns do not have permission to delete work items');
+      if (this.isIntern(user) && !this.isManagerOrAdmin(user)) {
+        if (item.created_by !== user.id) {
+          throw new Error('Forbidden: only the creator can delete this personal task');
+        }
       }
       if (item.created_by !== user.id && !isMgr) {
         throw new Error('Forbidden: only the creator can delete this personal task');
       }
     }
 
-    // Hierarchy safe deletion: reject if children exist
+    // Cascade delete any child items if this work item has children
     if (item.children && item.children.length > 0) {
-      throw new Error(
-        'Cannot delete work item with child items. Please reassign or delete children first.'
-      );
+      const childIds = item.children.map((c: any) => c.id);
+      // Recursively delete sub-children (e.g. subtasks under stories under this epic)
+      await prisma.workItem.deleteMany({
+        where: { parent_id: { in: childIds } },
+      });
+      // Delete child items
+      await prisma.workItem.deleteMany({
+        where: { parent_id: id },
+      });
     }
 
     await prisma.workItem.delete({

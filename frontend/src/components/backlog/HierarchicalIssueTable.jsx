@@ -325,8 +325,45 @@ function HierarchicalRow({
   const Term = isKanban ? 'Cycle' : 'Sprint';
   const term = isKanban ? 'cycle' : 'sprint';
   const { user: authUser } = useAuth();
-  const isIntern = authUser?.role === 'INTERN';
+  const authRole = String(
+    authUser?.role?.name || authUser?.role || authUser?.type || authUser?.user_type || ''
+  ).toUpperCase();
   const currentUserId = authUser?.id || authUser?.user_id;
+
+  const currentMember = useMemo(() => {
+    if (!currentUserId || !Array.isArray(members)) return null;
+    return members.find((m) => (m.user_id || m.id) === currentUserId);
+  }, [members, currentUserId]);
+
+  const memberRole = String(
+    currentMember?.project_role || currentMember?.role || ''
+  ).toUpperCase();
+
+  const isTechLead =
+    authRole === 'TECH_LEAD' ||
+    Boolean(authUser?.is_tech_lead) ||
+    memberRole === 'TECH_LEAD' ||
+    Boolean(currentMember?.is_tech_lead);
+
+  const isManagerOrAdmin =
+    authRole === 'MANAGER' ||
+    authRole === 'ADMIN' ||
+    authRole === 'SUPER_ADMIN' ||
+    Boolean(authUser?.is_admin) ||
+    Boolean(authUser?.is_super_admin);
+
+  const canManageProject = isManagerOrAdmin || isTechLead;
+
+  const memberPerms = useMemo(() => {
+    const list = currentMember?.role_details?.permissions || currentMember?.permissions || [];
+    return new Set(list.map((p) => String(p).toUpperCase()));
+  }, [currentMember]);
+
+  const hasTaskCreate = canManageProject || memberPerms.has('TASK_CREATE');
+  const hasTaskUpdate = canManageProject || memberPerms.has('TASK_UPDATE');
+  const hasTaskDelete = canManageProject || memberPerms.has('TASK_DELETE') || memberPerms.has('TASK_UPDATE');
+
+  const isIntern = authRole === 'INTERN' && !canManageProject;
 
   const isAssignedToMe = useMemo(() => {
     if (!item || !currentUserId) return false;
@@ -338,14 +375,19 @@ function HierarchicalRow({
     return false;
   }, [item, currentUserId]);
 
-  const canDrag = !isIntern || isAssignedToMe;
-  const canChangeStatus = !isIntern || isAssignedToMe;
-  const canChangePriority = !isIntern;
-  const canChangeAssignee = !isIntern;
-  const canChangeSprint = !isIntern;
-  const canChangeStoryPoints = !isIntern;
-  const canChangeDueDate = !isIntern;
-  const canDelete = !isIntern;
+  const isCreator = Boolean(
+    currentUserId &&
+    (item?.created_by === currentUserId || item?.creator_id === currentUserId || item?.creator?.id === currentUserId)
+  );
+
+  const canDrag = canManageProject || hasTaskUpdate || isAssignedToMe || !isIntern;
+  const canChangeStatus = canManageProject || hasTaskUpdate || isAssignedToMe || !isIntern;
+  const canChangePriority = canManageProject || hasTaskUpdate || !isIntern;
+  const canChangeAssignee = canManageProject || hasTaskUpdate || memberPerms.has('ROLE_ASSIGN') || !isIntern;
+  const canChangeSprint = canManageProject || hasTaskUpdate || !isIntern;
+  const canChangeStoryPoints = canManageProject || hasTaskUpdate || !isIntern;
+  const canChangeDueDate = canManageProject || hasTaskUpdate || !isIntern;
+  const canDelete = canManageProject || hasTaskDelete || isCreator || !isIntern;
 
   const [menuOpen, setMenuOpen] = useState(null); // 'status' | 'priority' | 'assignee' | 'sprint' | 'points' | 'date' | 'more' | 'epicSprint'
   const [editingPoints, setEditingPoints] = useState(false);
@@ -936,8 +978,8 @@ function HierarchicalRow({
 
         {/* COL 9: CONTEXT-SENSITIVE ACTIONS (+ child, ...) */}
         <div className="flex items-center justify-end gap-1 shrink-0" onClick={(e) => e.stopPropagation()}>
-          {/* Quick Add Child Button (Only for non-leaf items: Epic, Story, Task; Interns cannot create stories on Epics) */}
-          {!isLeaf && (!isIntern || isStory || isTask) && (
+          {/* Quick Add Child Button (Only for non-leaf items: Epic, Story, Task) */}
+          {!isLeaf && (canManageProject || hasTaskCreate || !isIntern || isStory || isTask) && (
             <button
               type="button"
               onClick={() => onAddChild?.(item)}
@@ -978,7 +1020,7 @@ function HierarchicalRow({
                   <span>View Details</span>
                 </button>
 
-                {!isLeaf && (!isIntern || isStory || isTask) && (
+                {!isLeaf && (canManageProject || hasTaskCreate || !isIntern || isStory || isTask) && (
                   <button
                     type="button"
                     onClick={() => {
