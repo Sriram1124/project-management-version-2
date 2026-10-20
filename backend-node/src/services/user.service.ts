@@ -1410,6 +1410,26 @@ export class UserService {
             { cohort: { id: cVal } },
             { cohort: { code: cVal } },
             { cohort: { name: cVal } },
+            // Also include Tech Leads (org role or project role) who belong to this cohort or oversee cohorts at org level
+            {
+              AND: [
+                {
+                  OR: [
+                    { cohort_id: null },
+                    { cohort_id: cVal },
+                    { cohort: { id: cVal } },
+                    { cohort: { code: cVal } },
+                    { cohort: { name: cVal } },
+                  ],
+                },
+                {
+                  OR: [
+                    { roles: { some: { role: { name: 'TECH_LEAD' } } } },
+                    { project_memberships: { some: { project_role: 'TECH_LEAD' } } },
+                  ],
+                },
+              ],
+            },
           ],
         },
       ];
@@ -1443,12 +1463,39 @@ export class UserService {
             code: true,
           },
         },
+        project_memberships: {
+          select: {
+            project_id: true,
+            project_role: true,
+          },
+        },
+        requested_extensions: {
+          select: {
+            id: true,
+            status: true,
+          },
+        },
       },
       orderBy: { created_at: 'desc' },
     });
 
     const mapped = users.map((u) => {
-      const roleName = u.roles[0]?.role?.name || 'MEMBER';
+      const roleNames = u.roles.map((r: any) => r.role?.name).filter(Boolean);
+      const isProjectLead = u.project_memberships?.some((pm: any) => pm.project_role === 'TECH_LEAD');
+      const isOrgLead = roleNames.includes('TECH_LEAD');
+      const isTechLead = isOrgLead || isProjectLead;
+
+      let primaryRole = roleNames[0] || 'MEMBER';
+      if (isTechLead) {
+        primaryRole = 'TECH_LEAD';
+      }
+
+      const extensionRequests = u.requested_extensions || [];
+      const totalExtensions = extensionRequests.length;
+      const pendingExtensions = extensionRequests.filter((r: any) => r.status === 'PENDING').length;
+      const approvedExtensions = extensionRequests.filter((r: any) => r.status === 'APPROVED').length;
+      const rejectedExtensions = extensionRequests.filter((r: any) => r.status === 'REJECTED').length;
+
       return {
         id: u.id,
         user_code: u.user_code,
@@ -1458,7 +1505,18 @@ export class UserService {
         subbatch: u.subbatch || null,
         cohort_id: u.cohort_id || null,
         cohort: u.cohort || null,
-        type: roleName,
+        type: primaryRole,
+        role: primaryRole,
+        roles: roleNames,
+        is_tech_lead: isTechLead,
+        project_role: isProjectLead ? 'TECH_LEAD' : (u.project_memberships?.[0]?.project_role || null),
+        extensions_count: totalExtensions,
+        extension_stats: {
+          total: totalExtensions,
+          pending: pendingExtensions,
+          approved: approvedExtensions,
+          rejected: rejectedExtensions,
+        },
         is_active: u.is_active,
         created_at: u.created_at,
         updated_at: u.updated_at,
@@ -1473,7 +1531,7 @@ export class UserService {
       } else if (typeFilter === 'INACTIVE') {
         filtered = filtered.filter((u) => !u.is_active);
       } else if (['INTERN', 'EMPLOYEE', 'MANAGER', 'TECH_LEAD'].includes(typeFilter)) {
-        filtered = filtered.filter((u) => u.type === typeFilter);
+        filtered = filtered.filter((u) => u.type === typeFilter || u.role === typeFilter || (typeFilter === 'TECH_LEAD' && u.is_tech_lead));
       }
     }
 

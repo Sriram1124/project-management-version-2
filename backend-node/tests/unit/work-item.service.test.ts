@@ -503,5 +503,63 @@ describe('WorkItemService Unit Tests', () => {
       ).rejects.toThrow('Forbidden: you are not authorized to access analytics for this project');
     });
   });
-});
 
+describe('getKanbanSummary', () => {
+    it('returns exact zeroes and null avg cycle time when project has no tasks', async () => {
+      mockPrisma.workItem.findMany.mockResolvedValueOnce([]);
+
+      const summary = await WorkItemService.getKanbanSummary(mockManager, { project_id: 'proj-123' });
+      expect(summary.total).toBe(0);
+      expect(summary.completed).toBe(0);
+      expect(summary.in_progress_wip).toBe(0);
+      expect(summary.blocked).toBe(0);
+      expect(summary.todo).toBe(0);
+      expect(summary.avg_cycle_time_hours).toBeNull();
+      expect(summary.avg_cycle_time_formatted).toBeNull();
+    });
+
+    it('aggregates live Kanban metrics with valid cycle time in hours', async () => {
+      const start1 = new Date('2026-10-01T00:00:00Z');
+      const end1 = new Date('2026-10-01T15:00:00Z'); // 15h
+      const mockItems = [
+        { id: 't-1', status: 'COMPLETED', type: 'TASK', start_date: start1, completed_at: end1 },
+        { id: 't-2', status: 'IN_PROGRESS', type: 'TASK', start_date: start1, completed_at: null },
+        { id: 't-3', status: 'IN_REVIEW', type: 'STORY', start_date: start1, completed_at: null },
+        { id: 't-4', status: 'BLOCKED', type: 'BUG', start_date: start1, completed_at: null },
+        { id: 't-5', status: 'TODO', type: 'TASK', start_date: null, completed_at: null },
+      ];
+      mockPrisma.workItem.findMany.mockResolvedValueOnce(mockItems);
+
+      const summary = await WorkItemService.getKanbanSummary(mockManager, { project_id: 'proj-123' });
+      expect(summary.total).toBe(5);
+      expect(summary.completed).toBe(1);
+      expect(summary.in_progress_wip).toBe(2);
+      expect(summary.blocked).toBe(1);
+      expect(summary.todo).toBe(1);
+      expect(summary.avg_cycle_time_hours).toBe(15);
+      expect(summary.avg_cycle_time_formatted).toBe('15h avg cycle');
+    });
+
+    it('safely handles missing or corrupted timestamps without throwing or inventing defaults', async () => {
+      const mockItems = [
+        { id: 't-1', status: 'COMPLETED', type: 'TASK', start_date: 'invalid', completed_at: null },
+        { id: 't-2', status: 'COMPLETED', type: 'TASK', start_date: new Date('2026-10-05'), completed_at: new Date('2026-10-01') }, // negative duration
+      ];
+      mockPrisma.workItem.findMany.mockResolvedValueOnce(mockItems);
+
+      const summary = await WorkItemService.getKanbanSummary(mockManager, { project_id: 'proj-123' });
+      expect(summary.total).toBe(2);
+      expect(summary.completed).toBe(2);
+      expect(summary.avg_cycle_time_hours).toBeNull();
+      expect(summary.avg_cycle_time_formatted).toBeNull();
+    });
+
+    it('forbids non-member intern from accessing kanban summary', async () => {
+      mockPrisma.projectMember.findFirst.mockResolvedValueOnce(null);
+
+      await expect(
+        WorkItemService.getKanbanSummary(mockIntern, { project_id: 'proj-123' })
+      ).rejects.toThrow('Forbidden: you are not authorized to access board metrics for this project');
+    });
+  });
+});

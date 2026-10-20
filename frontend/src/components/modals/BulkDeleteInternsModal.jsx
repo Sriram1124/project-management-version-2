@@ -6,6 +6,7 @@ export default function BulkDeleteInternsModal({
   isOpen,
   selectedCount = 0,
   selectedUsers = [],
+  selectedUserIds = [],
   onClose,
   onSuccess,
 }) {
@@ -40,9 +41,12 @@ export default function BulkDeleteInternsModal({
     setError('');
 
     try {
-      const userIds = selectedUsers.map((u) => u.id);
+      const targetUserIds =
+        selectedUserIds && selectedUserIds.length > 0
+          ? selectedUserIds
+          : selectedUsers.map((u) => (typeof u === 'string' ? u : u.id));
       const result = await usersService.deleteUsersBulk({
-        userIds,
+        userIds: targetUserIds,
         password: password.trim(),
       });
 

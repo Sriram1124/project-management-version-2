@@ -124,6 +124,23 @@ export class WorkItemController {
     }
   }
 
+  static async getKanbanSummary(req: Request, res: Response): Promise<void> {
+    try {
+      const user = (req as any).fullUser;
+      const { project_id, sprint_id, user_id } = req.query;
+
+      const summary = await WorkItemService.getKanbanSummary(user, {
+        project_id: project_id as string | undefined,
+        sprint_id: sprint_id as string | undefined,
+        user_id: user_id as string | undefined,
+      });
+
+      res.status(200).json({ kanban_summary: summary, ...summary });
+    } catch (error) {
+      WorkItemController.handleError(res, error);
+    }
+  }
+
   static async getAnalytics(req: Request, res: Response): Promise<void> {
     try {
       const user = (req as any).fullUser;

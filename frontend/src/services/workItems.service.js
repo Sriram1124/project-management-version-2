@@ -234,6 +234,29 @@ export const workItemsService = {
     return requestPromise;
   },
 
+  /**
+   * Get aggregated Kanban summary metrics for a project
+   */
+  async getKanbanSummary(projectId, filters = {}, options = {}) {
+    if (!projectId) return null;
+    const params = new URLSearchParams();
+    params.append('project_id', projectId);
+    if (filters.sprint_id && filters.sprint_id !== 'ALL' && filters.sprint_id !== 'All Sprints') {
+      params.append('sprint_id', filters.sprint_id);
+    }
+    if (filters.user_id) {
+      params.append('user_id', filters.user_id);
+    }
+    const qs = params.toString();
+    const endpoint = '/work-items/kanban-summary' + (qs ? '?' + qs : '');
+    try {
+      const data = await api.get(endpoint, options);
+      return data.kanban_summary || data;
+    } catch (err) {
+      return null;
+    }
+  },
+
   // Backward compatibility alias
   async getWorkItemById(id) {
     return await this.getWorkItem(id);

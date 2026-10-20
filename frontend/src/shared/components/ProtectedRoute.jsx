@@ -14,7 +14,12 @@ export default function ProtectedRoute({ children, allowedRoles }) {
   }
 
   const hasRole = !allowedRoles || allowedRoles.includes(user.role);
-  const hasManagerPermissions = allowedRoles?.includes('MANAGER') && Array.isArray(user.permissions) && user.permissions.length > 0;
+  const hasManagerPermissions =
+    allowedRoles?.includes('MANAGER') &&
+    user.role !== 'INTERN' &&
+    user.role !== 'EMPLOYEE' &&
+    Array.isArray(user.permissions) &&
+    user.permissions.some((p) => ['USER_READ', 'USER_CREATE', 'ORGANIZATION_READ'].includes(p));
 
   if (!hasRole && !hasManagerPermissions) {
     return <Navigate to="/unauthorized" replace />;

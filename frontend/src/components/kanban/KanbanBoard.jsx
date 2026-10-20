@@ -5,7 +5,8 @@ import AddTaskModal from './AddTaskModal';
 import TaskDetailModal from './TaskDetailModal';
 import LogWorkModal from './LogWorkModal';
 import CompleteSprintModal from './CompleteSprintModal';
-import { Plus, Check, Loader2 } from 'lucide-react';
+import { Plus, Check, Loader2, AlertCircle } from 'lucide-react';
+import { calculateKanbanMetrics } from '../../utils/kanbanMetrics';
 import { 
   COLUMNS_CONFIG, 
   KANBAN_STATUSES, 
@@ -21,6 +22,7 @@ export default function KanbanBoard({ projectId, project = null, isKanbanProject
   const { user: authUser } = useAuth();
   const isKanban = isKanbanProject || project?.methodology === 'KANBAN';
   const [loading, setLoading] = useState(true);
+  const [fetchError, setFetchError] = useState(null);
   const [workItems, setWorkItems] = useState([]);
   const [sprints, setSprints] = useState([]);
   const [members, setMembers] = useState([]);
@@ -57,12 +59,14 @@ export default function KanbanBoard({ projectId, project = null, isKanbanProject
       }
       const [sprintsList, itemsList, membersList] = await Promise.all([
         isKanban ? Promise.resolve([]) : sprintsService.getSprints(projectId).catch(() => []),
-        workItemsService.listWorkItems({ project_id: projectId }).catch(() => []),
+        workItemsService.listWorkItems({ project_id: projectId }),
         projectsService.getMembers(projectId).catch(() => []),
+        workItemsService.getKanbanSummary(projectId).catch(() => null),
       ]);
       setSprints(isKanban ? [] : (sprintsList || []));
       setWorkItems(itemsList || []);
       setMembers(membersList || []);
+      setFetchError(null);
 
       if (!hasLoadedRef.current) {
         // In Kanban projects, flow is continuous without mandatory sprint boundaries
@@ -81,6 +85,7 @@ export default function KanbanBoard({ projectId, project = null, isKanbanProject
       }
     } catch (err) {
       console.error('Failed to load kanban data:', err);
+      setFetchError(err.message || 'Failed to load project board data');
       onToast?.('Failed to load project board data');
     } finally {
       setLoading(false);
@@ -373,11 +378,10 @@ export default function KanbanBoard({ projectId, project = null, isKanbanProject
     quickFilterBlocked,
   ]);
 
-  const completedTasks = filteredTasks.filter((t) => t.status === 'COMPLETED');
-  const completedCount = completedTasks.length;
-  const blockedCount = filteredTasks.filter((t) => t.status === 'BLOCKED').length;
-  const inProgressWipCount = filteredTasks.filter((t) => t.status === 'IN_PROGRESS' || t.status === 'IN_REVIEW').length;
-  const incompleteCount = filteredTasks.length - completedCount;
+    // Authoritative real-time Kanban Metrics derived from tasks in scope
+  const kanbanMetrics = useMemo(() => {
+    return calculateKanbanMetrics(filteredTasks);
+  }, [filteredTasks]);
 
   // Real Logged Hours & Story Points derived from filtered tasks
   const totalLoggedMinutes = useMemo(() => {
@@ -394,25 +398,6 @@ export default function KanbanBoard({ projectId, project = null, isKanbanProject
     return filteredTasks
       .filter((t) => t.status === 'COMPLETED')
       .reduce((acc, t) => acc + (t.story_points || 0), 0);
-  }, [filteredTasks]);
-
-  // Average cycle time for completed items (flow metric)
-  const avgCycleTimeFormatted = useMemo(() => {
-    const completedWithDates = filteredTasks.filter(
-      (t) => t.status === 'COMPLETED' && (t.completed_at || t.updated_at) && (t.start_date || t.created_at)
-    );
-    if (completedWithDates.length === 0) return null;
-    const totalMs = completedWithDates.reduce((sum, t) => {
-      const end = new Date(t.completed_at || t.updated_at).getTime();
-      const start = new Date(t.start_date || t.created_at).getTime();
-      return sum + Math.max(0, end - start);
-    }, 0);
-    const avgDays = totalMs / completedWithDates.length / (1000 * 60 * 60 * 24);
-    if (avgDays < 1) {
-      const avgHours = Math.round(avgDays * 24);
-      return `${avgHours || 1}h avg cycle`;
-    }
-    return `${avgDays.toFixed(1)}d avg cycle`;
   }, [filteredTasks]);
 
   // Header display details
@@ -460,12 +445,28 @@ export default function KanbanBoard({ projectId, project = null, isKanbanProject
     };
   }, [isKanban, selectedSprint, sprints]);
 
-  if (loading && workItems.length === 0) {
+    if (loading && workItems.length === 0) {
     return (
       <div className="bg-white rounded-lg border border-slate-200 p-12 flex flex-col items-center justify-center min-h-[360px]">
         <Loader2 className="w-8 h-8 text-purple-600 animate-spin mb-3" />
         <p className="text-xs font-semibold text-slate-700">Loading {isKanban ? 'Kanban Board' : 'Scrum Board'}...</p>
         <p className="text-[11px] text-slate-400 mt-1">Retrieving sprint and task metrics</p>
+      </div>
+    );
+  }
+
+  if (fetchError && workItems.length === 0) {
+    return (
+      <div className="bg-white rounded-lg border border-rose-200 p-12 flex flex-col items-center justify-center min-h-[360px]">
+        <AlertCircle className="w-8 h-8 text-rose-500 mb-3" />
+        <p className="text-xs font-semibold text-rose-700">Failed to load {isKanban ? 'Kanban Board' : 'Scrum Board'}</p>
+        <p className="text-[11px] text-slate-400 mt-1">{fetchError}</p>
+        <button
+          onClick={() => loadProjectData()}
+          className="mt-4 px-3 py-1.5 rounded-md bg-purple-600 hover:bg-purple-700 text-white text-xs font-semibold cursor-pointer"
+        >
+          Retry
+        </button>
       </div>
     );
   }
@@ -500,33 +501,43 @@ export default function KanbanBoard({ projectId, project = null, isKanbanProject
           </div>
 
           <div className="flex items-center gap-3 text-xs text-slate-500 mt-1 font-medium flex-wrap">
-            <span>{filteredTasks.length} tasks</span>
-            <span>•</span>
-            <span className="text-emerald-700 font-semibold">{completedCount} completed</span>
-            <span>•</span>
-            {isKanban ? (
-              <>
-                <span className="text-blue-700 font-semibold">{inProgressWipCount} in-progress WIP</span>
-                {avgCycleTimeFormatted && (
-                  <>
-                    <span>•</span>
-                    <span className="text-purple-700 font-semibold">~{avgCycleTimeFormatted}</span>
-                  </>
-                )}
-                {blockedCount > 0 && (
-                  <>
-                    <span>•</span>
-                    <span className="text-rose-700 font-semibold">{blockedCount} blocked</span>
-                  </>
-                )}
-              </>
+            {loading && workItems.length === 0 ? (
+              <span className="inline-flex items-center gap-1.5 text-slate-400">
+                <Loader2 className="w-3 h-3 animate-spin text-purple-600" />
+                <span>Loading metrics...</span>
+              </span>
+            ) : fetchError && workItems.length === 0 ? (
+              <span className="text-rose-600 font-semibold">
+                Failed to load board metrics
+              </span>
             ) : (
               <>
-                <span className="text-rose-700 font-semibold">{blockedCount} blocked</span>
-                {totalStoryPoints > 0 && (
+                <span>{kanbanMetrics.total} tasks</span>
+                <span>•</span>
+                <span className="text-emerald-700 font-semibold">{kanbanMetrics.completed} completed</span>
+                <span>•</span>
+                {isKanban ? (
                   <>
+                    <span className="text-blue-700 font-semibold">{kanbanMetrics.inProgressWip} in-progress WIP</span>
                     <span>•</span>
-                    <span className="text-purple-700 font-semibold">{completedStoryPoints} / {totalStoryPoints} pts</span>
+                    <span
+                      className="text-purple-700 font-semibold"
+                      title={kanbanMetrics.avgCycleTimeFormatted ? `Average Cycle Time: ${kanbanMetrics.avgCycleTimeFormatted}` : 'No completed tasks with valid cycle time'}
+                    >
+                      {kanbanMetrics.avgCycleTimeDisplay}
+                    </span>
+                    <span>•</span>
+                    <span className="text-rose-700 font-semibold">{kanbanMetrics.blocked} blocked</span>
+                  </>
+                ) : (
+                  <>
+                    <span className="text-rose-700 font-semibold">{kanbanMetrics.blocked} blocked</span>
+                    {totalStoryPoints > 0 && (
+                      <>
+                        <span>•</span>
+                        <span className="text-purple-700 font-semibold">{completedStoryPoints} / {totalStoryPoints} pts</span>
+                      </>
+                    )}
                   </>
                 )}
               </>

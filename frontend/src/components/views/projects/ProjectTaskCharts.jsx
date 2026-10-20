@@ -117,7 +117,7 @@ function AnalyticsSkeleton() {
   );
 }
 
-export default function ProjectTaskCharts({ projectId = null, members = [], readOnly = false }) {
+export default function ProjectTaskCharts({ projectId = null, project = null, members = [], onNavigateTab = null, readOnly = false }) {
   const { user: authUser } = useAuth();
   const authRole = String(authUser?.role?.name || authUser?.role || authUser?.type || authUser?.user_type || '').toUpperCase();
   const currentUserId = authUser?.id || authUser?.user_id;
@@ -127,19 +127,35 @@ export default function ProjectTaskCharts({ projectId = null, members = [], read
   const [selectedSprintId, setSelectedSprintId] = useState('ALL');
   const [dateRangeFilter, setDateRangeFilter] = useState('ALL'); // 'ALL' | '7D' | '14D' | '30D' | 'THIS_MONTH'
 
+  // Determine project methodology
+  const isKanban = Boolean(
+    project?.methodology === 'KANBAN' || 
+    analyticsData?.project?.methodology === 'KANBAN' ||
+    analyticsData?.methodology === 'KANBAN'
+  );
+
   // Default values for this Project Overview component
   const defaultProjectId = projectId || '';
   const defaultSprintId = 'ALL';
   const defaultDateRange = 'ALL';
 
-  // Check if any filter on this Project Overview page differs from its default value
+  // Check if any active filter differs from default
   const isFiltersChanged = useMemo(() => {
     return (
-      (selectedProjectId !== defaultProjectId) ||
-      (selectedSprintId !== defaultSprintId) ||
+      (!projectId && selectedProjectId !== defaultProjectId) ||
+      (!isKanban && selectedSprintId !== defaultSprintId) ||
       (dateRangeFilter !== defaultDateRange)
     );
-  }, [selectedProjectId, defaultProjectId, selectedSprintId, defaultSprintId, dateRangeFilter, defaultDateRange]);
+  }, [projectId, selectedProjectId, defaultProjectId, isKanban, selectedSprintId, defaultSprintId, dateRangeFilter, defaultDateRange]);
+
+  const handleViewBoard = () => {
+    const targetTab = isKanban ? 'kanban' : 'scrum';
+    if (onNavigateTab) {
+      onNavigateTab(targetTab);
+    } else {
+      window.dispatchEvent(new CustomEvent('project-tab-change', { detail: { tab: targetTab } }));
+    }
+  };
 
   // Server Analytics & Raw Items
   const [analyticsData, setAnalyticsData] = useState(null);
@@ -738,26 +754,28 @@ export default function ProjectTaskCharts({ projectId = null, members = [], read
         {/* Divider below Header */}
         <div className="border-t border-slate-100" />
 
-        {/* 2. FILTER ROW: Project, Sprint, Date Range Filter, Reset, Scope */}
+        {/* 2. FILTER ROW: Sprint (Scrum only), Date Range Filter, Reset, Scope */}
         <div className="px-4 py-3 sm:px-5 flex flex-wrap items-center justify-between gap-3 bg-slate-50/50 text-xs">
           <div className="flex flex-wrap items-center gap-2.5">
-            {/* Project Filter */}
-            <div className="inline-flex items-center gap-1.5">
-              <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Project:</span>
-              <select
-                value={selectedProjectId || ''}
-                onChange={(e) => setSelectedProjectId(e.target.value)}
-                className="bg-white border border-slate-200 rounded-lg px-2.5 py-1 text-xs font-semibold text-slate-700 focus:outline-purple-500 cursor-pointer shadow-2xs"
-              >
-                <option value="">{isInternUser ? 'All Assigned Projects (Aggregate)' : 'All Projects'}</option>
-                {accessibleProjects.map((p) => (
-                  <option key={p.id} value={p.id}>{p.name}</option>
-                ))}
-              </select>
-            </div>
+            {/* Project Filter: Only rendered when outside a specific project context */}
+            {!projectId && (
+              <div className="inline-flex items-center gap-1.5">
+                <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Project:</span>
+                <select
+                  value={selectedProjectId || ''}
+                  onChange={(e) => setSelectedProjectId(e.target.value)}
+                  className="bg-white border border-slate-200 rounded-lg px-2.5 py-1 text-xs font-semibold text-slate-700 focus:outline-purple-500 cursor-pointer shadow-2xs"
+                >
+                  <option value="">{isInternUser ? 'All Assigned Projects (Aggregate)' : 'All Projects'}</option>
+                  {accessibleProjects.map((p) => (
+                    <option key={p.id} value={p.id}>{p.name}</option>
+                  ))}
+                </select>
+              </div>
+            )}
 
-            {/* Sprint Filter */}
-            {accessibleSprints.length > 0 && (
+            {/* Sprint Filter: Kept for Scrum projects; omitted for Kanban projects */}
+            {!isKanban && accessibleSprints.length > 0 && (
               <div className="inline-flex items-center gap-1.5">
                 <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Sprint:</span>
                 <select
@@ -773,7 +791,7 @@ export default function ProjectTaskCharts({ projectId = null, members = [], read
               </div>
             )}
 
-            {/* Date Range Filter */}
+            {/* Date Range Filter: Retained for both Scrum and Kanban */}
             <div className="inline-flex items-center gap-1.5">
               <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Date Range:</span>
               <select
@@ -789,12 +807,12 @@ export default function ProjectTaskCharts({ projectId = null, members = [], read
               </select>
             </div>
 
-            {/* Clear Filters Button: Shown ONLY on Manager Project Overview and only when at least one filter differs from default */}
-            {Boolean(projectId) && !isInternUser && isFiltersChanged && (
+            {/* Clear Filters Button: Shown when any filter differs from default */}
+            {isFiltersChanged && (
               <button
                 type="button"
                 onClick={() => {
-                  setSelectedProjectId(defaultProjectId);
+                  if (!projectId) setSelectedProjectId(defaultProjectId);
                   setSelectedSprintId(defaultSprintId);
                   setDateRangeFilter(defaultDateRange);
                 }}
@@ -812,9 +830,9 @@ export default function ProjectTaskCharts({ projectId = null, members = [], read
             <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 inline-block shrink-0" />
             <span>
               {isInternUser ? (
-                selectedProjectId ? (
+                projectId || selectedProjectId ? (
                   <>
-                    Project Scope: <strong className="text-slate-800">{accessibleProjects.find((p) => p.id === selectedProjectId)?.name || 'Selected Project'}</strong> ({analytics.total} {analytics.total === 1 ? 'task' : 'tasks'} assigned to you)
+                    Project Scope: <strong className="text-slate-800">{project?.name || accessibleProjects.find((p) => p.id === (projectId || selectedProjectId))?.name || 'Selected Project'}</strong> ({analytics.total} {analytics.total === 1 ? 'task' : 'tasks'} assigned to you)
                   </>
                 ) : (
                   <>
@@ -948,24 +966,53 @@ export default function ProjectTaskCharts({ projectId = null, members = [], read
 
             {/* Analytics Row: 42% Status Distribution (col-span-5) | 58% Priority Mix (col-span-7) with thin vertical divider */}
             {analytics.total === 0 ? (
-              <div className="p-8 text-center bg-slate-50/60 rounded-xl border border-dashed border-slate-200 m-5">
-                <div className="w-10 h-10 rounded-full bg-purple-50 text-purple-600 flex items-center justify-center mx-auto mb-2.5">
-                  <Layers className="w-5 h-5" />
+              <div className="p-8 sm:p-12 text-center bg-slate-50/60 rounded-xl border border-dashed border-slate-200 m-4 sm:m-5">
+                <div className="w-12 h-12 rounded-full bg-purple-50 text-purple-600 flex items-center justify-center mx-auto mb-3 border border-purple-100 shadow-2xs">
+                  <FolderKanban className="w-6 h-6" />
                 </div>
-                <h4 className="text-sm font-bold text-slate-800">
-                  No tasks assigned to you in {accessibleProjects.find((p) => p.id === selectedProjectId)?.name || 'this scope'}
-                </h4>
-                <p className="text-xs text-slate-500 mt-1 max-w-sm mx-auto">
-                  You currently have no tasks assigned to your account in this selected project.
-                </p>
-                {selectedProjectId && (
-                  <button
-                    type="button"
-                    onClick={() => setSelectedProjectId('')}
-                    className="mt-3.5 px-3.5 py-1.5 rounded-lg bg-purple-600 hover:bg-purple-700 text-white text-xs font-semibold inline-flex items-center gap-1.5 cursor-pointer shadow-2xs"
-                  >
-                    <span>View All Assigned Projects</span>
-                  </button>
+                {hasFullTeamAccess ? (
+                  <>
+                    <h4 className="text-base font-bold text-slate-900">
+                      Nothing on the board just yet.
+                    </h4>
+                    <p className="text-xs text-slate-500 mt-1.5 max-w-md mx-auto leading-relaxed">
+                      Tasks and deliverables for this project will appear here as your team starts adding work. You&apos;re all set to review project progress once work gets underway.
+                    </p>
+                    <button
+                      type="button"
+                      onClick={handleViewBoard}
+                      className="mt-4 px-4 py-2 rounded-lg bg-purple-600 hover:bg-purple-700 active:bg-purple-800 text-white text-xs font-semibold inline-flex items-center gap-2 cursor-pointer shadow-2xs transition-colors"
+                    >
+                      <Layers className="w-3.5 h-3.5" />
+                      <span>View Project Board</span>
+                    </button>
+                  </>
+                ) : (
+                  <>
+                    <h4 className="text-sm font-bold text-slate-800">
+                      No tasks assigned to you in {project?.name || accessibleProjects.find((p) => p.id === (projectId || selectedProjectId))?.name || 'this project'}
+                    </h4>
+                    <p className="text-xs text-slate-500 mt-1 max-w-sm mx-auto">
+                      You currently have no tasks assigned to your account in this selected project.
+                    </p>
+                    <button
+                      type="button"
+                      onClick={handleViewBoard}
+                      className="mt-4 px-3.5 py-1.5 rounded-lg bg-purple-600 hover:bg-purple-700 text-white text-xs font-semibold inline-flex items-center gap-1.5 cursor-pointer shadow-2xs"
+                    >
+                      <Layers className="w-3.5 h-3.5" />
+                      <span>View Project Board</span>
+                    </button>
+                    {!projectId && selectedProjectId && (
+                      <button
+                        type="button"
+                        onClick={() => setSelectedProjectId('')}
+                        className="mt-2.5 block mx-auto text-xs font-medium text-slate-500 hover:text-purple-600"
+                      >
+                        View All Assigned Projects
+                      </button>
+                    )}
+                  </>
                 )}
               </div>
             ) : (

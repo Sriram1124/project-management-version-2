@@ -105,6 +105,16 @@ export default function ProjectWorkspaceView({
     onTabChange?.(tabId);
   };
 
+  useEffect(() => {
+    const handleCustomTabChange = (e) => {
+      if (e?.detail?.tab) {
+        handleTabClick(e.detail.tab);
+      }
+    };
+    window.addEventListener('project-tab-change', handleCustomTabChange);
+    return () => window.removeEventListener('project-tab-change', handleCustomTabChange);
+  }, []);
+
   const handleOpenSprintBoard = (sprintId) => {
     if (isKanban) return;
     setSelectedSprintId(sprintId);
@@ -171,7 +181,8 @@ export default function ProjectWorkspaceView({
         {currentTab === 'overview' ? (
           <ProjectOverviewTab 
             projectId={projectId} 
-            project={liveProject} 
+            project={liveProject}
+            onNavigateTab={handleTabClick} 
             onToast={onToast}
             onDeleted={onBackToDirectory}
             readOnly={effectiveReadOnly}

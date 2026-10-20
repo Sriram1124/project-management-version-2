@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { 
   Search, 
   Filter,
@@ -12,7 +13,9 @@ import {
   CheckCircle2,
   XCircle,
   Trash2,
-  AlertCircle
+  AlertCircle,
+  Clock,
+  CheckSquare
 } from 'lucide-react';
 import { usersService } from '../../services/users.service';
 import AddMemberModal from '../modals/AddMemberModal';
@@ -34,6 +37,7 @@ const BATCH_GROUPS = [
 const ALL_SUBBATCHES = ['A1', 'A2', 'B1', 'B2', 'C1', 'C2', 'D1', 'D2'];
 
 export default function InternsView({ cohorts = [], selectedCohortId = null }) {
+  const navigate = useNavigate();
   const [users, setUsers] = useState([]);
   const userReqSeq = useRef(0);
   const [loading, setLoading] = useState(true);
@@ -46,6 +50,7 @@ export default function InternsView({ cohorts = [], selectedCohortId = null }) {
   const filterRef = useRef(null);
 
   // Bulk selection & pagination state
+  const [isSelectionMode, setIsSelectionMode] = useState(false);
   const [selectedUserIds, setSelectedUserIds] = useState(new Set());
   const [isAllAcrossPagesSelected, setIsAllAcrossPagesSelected] = useState(false);
   const [pageSize, setPageSize] = useState(15);
@@ -110,6 +115,13 @@ export default function InternsView({ cohorts = [], selectedCohortId = null }) {
   useEffect(() => {
     setCurrentPage(1);
   }, [search, activeTab, selectedSubbatches]);
+
+  // Reset selections when search filters, status filters, pagination, or subbatch change
+  // so unintended members are never deleted across filters or pages
+  useEffect(() => {
+    setSelectedUserIds(new Set());
+    setIsAllAcrossPagesSelected(false);
+  }, [search, activeTab, selectedSubbatches, currentPage, pageSize]);
 
   const handleCreatedSuccess = (result) => {
     setIsAddModalOpen(false);
@@ -196,7 +208,7 @@ export default function InternsView({ cohorts = [], selectedCohortId = null }) {
 
   // Sync indeterminate state for header checkbox
   useEffect(() => {
-    if (!headerCheckboxRef.current) return;
+    if (!headerCheckboxRef.current || !isSelectionMode) return;
     const visibleIds = paginatedUsers.map((u) => u.id);
     const selectedOnPage = visibleIds.filter((id) => selectedUserIds.has(id)).length;
 
@@ -210,7 +222,7 @@ export default function InternsView({ cohorts = [], selectedCohortId = null }) {
       headerCheckboxRef.current.checked = false;
       headerCheckboxRef.current.indeterminate = true;
     }
-  }, [paginatedUsers, selectedUserIds]);
+  }, [paginatedUsers, selectedUserIds, isSelectionMode]);
 
   // Bulk Selection Handlers
   const handleToggleSelectPage = () => {
@@ -253,8 +265,14 @@ export default function InternsView({ cohorts = [], selectedCohortId = null }) {
     setIsAllAcrossPagesSelected(false);
   };
 
+  const handleCancelSelection = () => {
+    setIsSelectionMode(false);
+    setSelectedUserIds(new Set());
+    setIsAllAcrossPagesSelected(false);
+  };
+
   const handleBulkDeleteSuccess = (result) => {
-    handleClearSelection();
+    handleCancelSelection();
     fetchUsers();
     setDeletionResult(result);
   };
@@ -290,6 +308,38 @@ export default function InternsView({ cohorts = [], selectedCohortId = null }) {
 
         {/* Action Buttons */}
         <div className="flex items-center gap-2.5">
+          {isSelectionMode ? (
+            <>
+              {selectedUserIds.size > 0 && (
+                <button
+                  type="button"
+                  onClick={() => setIsBulkDeleteModalOpen(true)}
+                  className="px-3.5 py-1.5 rounded-lg bg-rose-600 hover:bg-rose-700 text-white text-xs font-bold flex items-center gap-1.5 transition-colors shadow-xs cursor-pointer animate-in fade-in"
+                >
+                  <Trash2 className="w-3.5 h-3.5" />
+                  <span>Delete Selected ({selectedUserIds.size})</span>
+                </button>
+              )}
+              <button
+                type="button"
+                onClick={handleCancelSelection}
+                className="px-3 py-1.5 rounded-lg border border-slate-200 hover:border-slate-300 hover:bg-slate-50 text-xs font-semibold text-slate-700 transition-colors shadow-2xs cursor-pointer"
+              >
+                Cancel Selection
+              </button>
+            </>
+          ) : (
+            <button
+              type="button"
+              onClick={() => setIsSelectionMode(true)}
+              className="px-3.5 py-1.5 rounded-lg border border-slate-200 hover:border-slate-300 hover:bg-slate-50 text-xs font-semibold text-slate-700 flex items-center gap-1.5 transition-colors shadow-2xs cursor-pointer"
+              title="Select members for bulk deletion"
+            >
+              <CheckSquare className="w-3.5 h-3.5 text-purple-600" />
+              <span>Select Members</span>
+            </button>
+          )}
+
           <button
             type="button"
             onClick={() => setIsBulkModalOpen(true)}
@@ -344,7 +394,7 @@ export default function InternsView({ cohorts = [], selectedCohortId = null }) {
             />
           </div>
 
-          {/* Filter Button & Multi-Select Popover */}
+          {/* Subbatch Filter Button & Multi-Select Popover */}
           <div className="relative" ref={filterRef}>
             <button
               type="button"
@@ -425,10 +475,57 @@ export default function InternsView({ cohorts = [], selectedCohortId = null }) {
               </div>
             )}
           </div>
+
+          {/* Quick Select Mode Toggle in Filter Bar */}
+          <button
+            type="button"
+            onClick={() => {
+              if (isSelectionMode) {
+                handleCancelSelection();
+              } else {
+                setIsSelectionMode(true);
+              }
+            }}
+            className={`inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-lg border transition-all cursor-pointer shadow-2xs ${
+              isSelectionMode
+                ? 'bg-purple-50 border-purple-300 text-purple-700 ring-1 ring-purple-300/50'
+                : 'bg-white border-slate-200 text-slate-700 hover:bg-slate-50 hover:border-slate-300'
+            }`}
+            title={isSelectionMode ? 'Cancel selection' : 'Select members'}
+          >
+            <CheckSquare className="w-3.5 h-3.5 text-purple-600" />
+            <span>{isSelectionMode ? 'Cancel' : 'Select'}</span>
+          </button>
         </div>
       </div>
 
       {/* Bulk Selection Action Toolbar */}
+      {isSelectionMode && selectedUserIds.size === 0 && (
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-purple-50/80 border border-purple-200/90 p-3 rounded-xl shadow-2xs animate-in fade-in slide-in-from-top-1 duration-150">
+          <div className="flex items-center gap-2 text-xs text-purple-950 font-medium">
+            <CheckSquare className="w-4 h-4 text-purple-600 shrink-0" />
+            <span>Select members using the checkboxes or select all visible via the table header.</span>
+          </div>
+
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={handleToggleSelectPage}
+              className="px-3 py-1.5 rounded-lg bg-white hover:bg-purple-50 text-purple-700 border border-purple-200 text-xs font-semibold transition-colors shadow-2xs cursor-pointer"
+            >
+              Select All Visible
+            </button>
+            <button
+              type="button"
+              onClick={handleCancelSelection}
+              className="px-3 py-1.5 rounded-lg border border-slate-200 hover:bg-slate-100 text-xs font-medium text-slate-600 transition-colors cursor-pointer"
+            >
+              Cancel
+            </button>
+          </div>
+        </div>
+      )}
+
       {selectedUserIds.size > 0 && (
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-purple-50/90 border border-purple-200/90 p-3 rounded-xl shadow-2xs animate-in fade-in slide-in-from-top-1 duration-150">
           <div className="flex items-center gap-2.5">
@@ -446,6 +543,14 @@ export default function InternsView({ cohorts = [], selectedCohortId = null }) {
             >
               Clear selection
             </button>
+            <span className="text-purple-300">|</span>
+            <button
+              type="button"
+              onClick={handleCancelSelection}
+              className="text-xs font-semibold text-purple-700 hover:text-purple-900 underline cursor-pointer"
+            >
+              Cancel
+            </button>
           </div>
 
           <div className="flex items-center gap-2">
@@ -462,7 +567,7 @@ export default function InternsView({ cohorts = [], selectedCohortId = null }) {
       )}
 
       {/* Explicit Cross-Page Selection Banner */}
-      {isPageFullySelected && hasMultiplePages && (
+      {isSelectionMode && isPageFullySelected && hasMultiplePages && (
         <div className="p-3 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-700 flex items-center justify-between gap-3 animate-in fade-in">
           <div className="flex items-center gap-2">
             <AlertCircle className="w-4 h-4 text-purple-600 shrink-0" />
@@ -515,21 +620,24 @@ export default function InternsView({ cohorts = [], selectedCohortId = null }) {
             <table className="w-full text-left text-xs border-collapse">
               <thead className="bg-slate-50/80 border-b border-slate-200 text-slate-500 font-bold uppercase tracking-wider text-[10px]">
                 <tr>
-                  <th className="py-3 px-3.5 w-10 text-center">
-                    <input
-                      ref={headerCheckboxRef}
-                      type="checkbox"
-                      checked={paginatedUsers.length > 0 && paginatedUsers.every((u) => selectedUserIds.has(u.id))}
-                      onChange={handleToggleSelectPage}
-                      className="w-3.5 h-3.5 rounded text-purple-600 focus:ring-purple-500 cursor-pointer accent-purple-600 align-middle"
-                      title="Select all members on this page"
-                    />
-                  </th>
+                  {isSelectionMode && (
+                    <th className="py-3 px-3.5 w-10 text-center">
+                      <input
+                        ref={headerCheckboxRef}
+                        type="checkbox"
+                        checked={paginatedUsers.length > 0 && paginatedUsers.every((u) => selectedUserIds.has(u.id))}
+                        onChange={handleToggleSelectPage}
+                        className="w-3.5 h-3.5 rounded text-purple-600 focus:ring-purple-500 cursor-pointer accent-purple-600 align-middle"
+                        title="Select all members on this page"
+                      />
+                    </th>
+                  )}
                   <th className="py-3 px-4">Member Name</th>
                   <th className="py-3 px-4">Batch / Subbatch</th>
                   <th className="py-3 px-4">Email</th>
                   <th className="py-3 px-4">Role / Type</th>
                   <th className="py-3 px-4">Status</th>
+                  <th className="py-3 px-4">Extensions</th>
                   <th className="py-3 px-4">Created Date</th>
                   <th className="py-3 px-4 text-right">Actions</th>
                 </tr>
@@ -544,15 +652,17 @@ export default function InternsView({ cohorts = [], selectedCohortId = null }) {
                         isSelected ? 'bg-purple-50/50 hover:bg-purple-50/80' : 'hover:bg-slate-50/80'
                       }`}
                     >
-                      <td className="py-2.5 px-3.5 text-center">
-                        <input
-                          type="checkbox"
-                          checked={isSelected}
-                          onChange={() => handleToggleUser(user.id)}
-                          className="w-3.5 h-3.5 rounded text-purple-600 focus:ring-purple-500 cursor-pointer accent-purple-600 align-middle"
-                          title={`Select ${user.name || user.email}`}
-                        />
-                      </td>
+                      {isSelectionMode && (
+                        <td className="py-2.5 px-3.5 text-center">
+                          <input
+                            type="checkbox"
+                            checked={isSelected}
+                            onChange={() => handleToggleUser(user.id)}
+                            className="w-3.5 h-3.5 rounded text-purple-600 focus:ring-purple-500 cursor-pointer accent-purple-600 align-middle"
+                            title={`Select ${user.name || user.email}`}
+                          />
+                        </td>
+                      )}
 
                       <td className="py-2.5 px-4">
                         <div className="flex items-center gap-2.5">
@@ -611,6 +721,25 @@ export default function InternsView({ cohorts = [], selectedCohortId = null }) {
                             </>
                           )}
                         </span>
+                      </td>
+
+                      <td className="py-2.5 px-4">
+                        {user.extensions_count > 0 ? (
+                          <span
+                            className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-amber-50 text-amber-800 border border-amber-200 font-mono text-[11px] font-bold cursor-help whitespace-nowrap shadow-2xs"
+                            title={`${user.extensions_count} Total Requests (${user.extension_stats?.approved || 0} approved, ${user.extension_stats?.pending || 0} pending, ${user.extension_stats?.rejected || 0} rejected)`}
+                          >
+                            <Clock className="w-3 h-3 text-amber-600 shrink-0" />
+                            <span>{user.extensions_count}</span>
+                            {user.extension_stats && (
+                              <span className="text-[10px] font-medium text-amber-600/80">
+                                ({user.extension_stats.approved}a/{user.extension_stats.pending}p/{user.extension_stats.rejected}r)
+                              </span>
+                            )}
+                          </span>
+                        ) : (
+                          <span className="font-mono text-[11px] font-medium text-slate-400" title="0 extension requests">0</span>
+                        )}
                       </td>
 
                       <td className="py-2.5 px-4 text-slate-400 text-[11px]">
@@ -749,6 +878,15 @@ export default function InternsView({ cohorts = [], selectedCohortId = null }) {
         onClose={() => setSelectedUserForDetail(null)}
         onOpenResetPassword={(u) => setSelectedUserForReset(u)}
         onOpenDeactivate={(u) => setSelectedUserForDeactivate(u)}
+        onOpenPerformanceReport={(u) => {
+          if (u?.id) {
+            navigate(`/manager/reports?userId=${encodeURIComponent(u.id)}`, {
+              state: { userId: u.id },
+            });
+          } else {
+            navigate('/manager/reports');
+          }
+        }}
         onSuccess={handleUserUpdated}
       />
 
@@ -771,6 +909,7 @@ export default function InternsView({ cohorts = [], selectedCohortId = null }) {
         isOpen={isBulkDeleteModalOpen}
         selectedCount={selectedUserIds.size}
         selectedUsers={selectedUserObjects}
+        selectedUserIds={Array.from(selectedUserIds)}
         onClose={() => setIsBulkDeleteModalOpen(false)}
         onSuccess={handleBulkDeleteSuccess}
       />

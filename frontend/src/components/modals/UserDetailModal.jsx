@@ -176,7 +176,14 @@ export default function UserDetailModal({
     if (onOpenPerformanceReport) {
       onOpenPerformanceReport(currentUser);
     } else {
-      navigate('/manager/reports');
+      const targetUserId = currentUser?.id;
+      if (targetUserId) {
+        navigate(`/manager/reports?userId=${encodeURIComponent(targetUserId)}`, {
+          state: { userId: targetUserId },
+        });
+      } else {
+        navigate('/manager/reports');
+      }
     }
   };
 
@@ -456,6 +463,28 @@ export default function UserDetailModal({
                   <span className="text-slate-700 font-medium text-xs">
                     {currentUser.created_at ? new Date(currentUser.created_at).toLocaleDateString(undefined, { dateStyle: 'medium' }) : '—'}
                   </span>
+                </div>
+
+                <div className="py-3.5 px-4 sm:px-5 flex items-center justify-between hover:bg-slate-50/50 transition-colors">
+                  <span className="text-slate-500 font-semibold flex items-center gap-2.5 text-xs">
+                    <Clock className="w-4 h-4 text-purple-600/70 shrink-0" />
+                    <span>Extension Requests</span>
+                  </span>
+                  {currentUser.extensions_count > 0 ? (
+                    <span
+                      className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-amber-50 text-amber-800 border border-amber-200 font-mono text-xs font-bold"
+                      title={`${currentUser.extensions_count} Total Requests (${currentUser.extension_stats?.approved || 0} approved, ${currentUser.extension_stats?.pending || 0} pending, ${currentUser.extension_stats?.rejected || 0} rejected)`}
+                    >
+                      <span>{currentUser.extensions_count} Total</span>
+                      {currentUser.extension_stats && (
+                        <span className="text-[10px] text-amber-700/80 font-normal">
+                          ({currentUser.extension_stats.approved} approved, {currentUser.extension_stats.pending} pending)
+                        </span>
+                      )}
+                    </span>
+                  ) : (
+                    <span className="text-slate-400 font-mono text-xs font-medium">0</span>
+                  )}
                 </div>
 
                 {currentUser.updated_at && (

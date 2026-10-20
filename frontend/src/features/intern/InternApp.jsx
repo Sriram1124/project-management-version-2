@@ -14,7 +14,6 @@ import {
   X,
   ChevronRight,
   ShieldAlert,
-  ShieldCheck,
   ArrowRightLeft,
   Menu,
   BarChart3,
@@ -492,17 +491,6 @@ export default function InternApp({ onLogout, onSelectProject, onToast }) {
 
           {/* Right Header Actions */}
           <div className="flex items-center gap-3">
-            {Array.isArray(authUser?.permissions) && authUser.permissions.length > 0 && (
-              <button
-                type="button"
-                onClick={() => navigate('/manager/dashboard')}
-                className="px-3 py-1.5 rounded-lg bg-purple-50 hover:bg-purple-100 text-purple-700 border border-purple-200 text-xs font-semibold flex items-center gap-1.5 transition-colors cursor-pointer"
-                title="Switch to Manager Workspace"
-              >
-                <ShieldCheck className="w-3.5 h-3.5 text-purple-600" />
-                <span>Manager Workspace</span>
-              </button>
-            )}
             {/* Notifications Trigger */}
             <div className="relative">
               <button

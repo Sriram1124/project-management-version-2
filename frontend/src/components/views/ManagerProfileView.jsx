@@ -20,7 +20,9 @@ import {
   Sparkles,
   ExternalLink,
   ShieldAlert,
-  X
+  X,
+  ChevronLeft,
+  ChevronRight
 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { authService } from '../../services/auth.service';
@@ -41,6 +43,13 @@ export default function ManagerProfileView({ onSelectProject, onToast }) {
   const [projectsError, setProjectsError] = useState(null);
   const [projectSearch, setProjectSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState('ALL');
+  const PROJECTS_PER_PAGE = 5;
+  const [projectPage, setProjectPage] = useState(1);
+
+  // Reset pagination to page 1 whenever search query or status filter changes
+  useEffect(() => {
+    setProjectPage(1);
+  }, [projectSearch, statusFilter]);
 
   // Change Password state
   const [passwordForm, setPasswordForm] = useState({
@@ -197,6 +206,16 @@ export default function ManagerProfileView({ onSelectProject, onToast }) {
       return true;
     });
   }, [projects, statusFilter, projectSearch]);
+
+  // Pagination calculations based on filtered project list
+  const totalFilteredProjects = filteredProjects.length;
+  const totalProjectPages = Math.max(1, Math.ceil(totalFilteredProjects / PROJECTS_PER_PAGE));
+  const safeProjectPage = Math.min(Math.max(1, projectPage), totalProjectPages);
+  const projectStartIndex = (safeProjectPage - 1) * PROJECTS_PER_PAGE;
+  const projectEndIndex = Math.min(projectStartIndex + PROJECTS_PER_PAGE, totalFilteredProjects);
+  const paginatedProjects = useMemo(() => {
+    return filteredProjects.slice(projectStartIndex, projectEndIndex);
+  }, [filteredProjects, projectStartIndex, projectEndIndex]);
 
   // Project counts
   const totalProjects = projects.length;
@@ -553,86 +572,173 @@ export default function ManagerProfileView({ onSelectProject, onToast }) {
                   </button>
                 </div>
               ) : (
-                filteredProjects.map((proj) => {
-                  const statusInfo = getStatusBadge(proj.status);
-                  const memberCount =
-                    proj._count?.members ??
-                    (Array.isArray(proj.members) ? proj.members.length : 0);
-
-                  return (
-                    <div
-                      key={proj.id}
-                      onClick={() => onSelectProject?.(proj.id, proj.name)}
-                      className="p-4 hover:bg-purple-50/40 transition-colors cursor-pointer group flex items-center justify-between gap-4"
-                      role="button"
-                      tabIndex={0}
-                      onKeyDown={(e) => {
-                        if (e.key === 'Enter' || e.key === ' ') {
-                          e.preventDefault();
-                          onSelectProject?.(proj.id, proj.name);
-                        }
-                      }}
-                    >
-                      <div className="space-y-1 min-w-0 flex-1">
-                        <div className="flex flex-wrap items-center gap-2">
-                          <span className="font-bold text-sm text-slate-800 group-hover:text-purple-700 transition-colors truncate">
-                            {proj.name}
-                          </span>
-                          <span
-                            className={`inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-bold border ${statusInfo.badgeClass}`}
-                          >
-                            <span className={`w-1.5 h-1.5 rounded-full ${statusInfo.dotClass}`} />
-                            {statusInfo.label}
-                          </span>
-                          <ProjectMethodologyBadge methodology={proj.methodology} size="sm" />
-                        </div>
-
-                        {proj.description && (
-                          <p className="text-xs text-slate-500 line-clamp-1">{proj.description}</p>
-                        )}
-
-                        <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-[11px] text-slate-400 pt-0.5">
-                          <span className="flex items-center gap-1 text-slate-600 font-medium">
-                            <Users className="w-3 h-3 text-purple-500" />
-                            <span>
-                              {memberCount} {memberCount === 1 ? 'member' : 'members'}
-                            </span>
-                          </span>
-
-                          {proj.start_date && (
-                            <span className="flex items-center gap-1">
-                              <Calendar className="w-3 h-3 text-slate-400" />
-                              <span>
-                                {new Date(proj.start_date).toLocaleDateString('en-US', {
-                                  month: 'short',
-                                  day: 'numeric',
-                                })}
-                                {proj.end_date &&
-                                  ` – ${new Date(proj.end_date).toLocaleDateString('en-US', {
-                                    month: 'short',
-                                    day: 'numeric',
-                                  })}`}
-                              </span>
-                            </span>
-                          )}
-
-                          {proj.owner?.name && (
-                            <span className="text-slate-400">
-                              Lead: <span className="text-slate-600">{proj.owner.name}</span>
-                            </span>
-                          )}
-                        </div>
+                <>
+                  <div className="overflow-x-auto">
+                    <div className="min-w-[760px]">
+                      {/* Consistent Column Header */}
+                      <div className="grid grid-cols-[minmax(180px,2fr)_minmax(110px,1fr)_minmax(105px,1fr)_minmax(95px,0.9fr)_minmax(140px,1.2fr)_minmax(110px,1fr)] gap-3 px-4 py-2.5 bg-slate-50/80 border-b border-slate-200 text-[10px] font-bold text-slate-500 uppercase tracking-wider items-center select-none">
+                        <div>Project</div>
+                        <div>Status</div>
+                        <div>Methodology</div>
+                        <div>Members</div>
+                        <div>Timeline</div>
+                        <div>Lead</div>
                       </div>
 
-                      <div className="flex items-center gap-2 shrink-0">
-                        <span className="text-xs font-semibold text-purple-600 opacity-0 group-hover:opacity-100 transition-opacity flex items-center gap-1">
-                          Open Workspace
-                          <ArrowRight className="w-3.5 h-3.5" />
-                        </span>
+                      {/* Paginated Project Rows */}
+                      <div className="divide-y divide-slate-100 font-medium">
+                        {paginatedProjects.map((proj) => {
+                          const statusInfo = getStatusBadge(proj.status);
+                          const memberCount =
+                            proj._count?.members ??
+                            (Array.isArray(proj.members) ? proj.members.length : 0);
+
+                          return (
+                            <div
+                              key={proj.id}
+                              onClick={() => onSelectProject?.(proj.id, proj.name)}
+                              className="grid grid-cols-[minmax(180px,2fr)_minmax(110px,1fr)_minmax(105px,1fr)_minmax(95px,0.9fr)_minmax(140px,1.2fr)_minmax(110px,1fr)] gap-3 px-4 py-3 hover:bg-purple-50/40 transition-colors cursor-pointer group items-center"
+                              role="button"
+                              tabIndex={0}
+                              onKeyDown={(e) => {
+                                if (e.key === 'Enter' || e.key === ' ') {
+                                  e.preventDefault();
+                                  onSelectProject?.(proj.id, proj.name);
+                                }
+                              }}
+                            >
+                              {/* Column 1 — Project */}
+                              <div className="min-w-0 pr-2">
+                                <span className="font-bold text-sm text-slate-800 group-hover:text-purple-700 transition-colors truncate block" title={proj.name}>
+                                  {proj.name}
+                                </span>
+                                {proj.description && (
+                                  <p className="text-[11px] text-slate-400 line-clamp-1 truncate" title={proj.description}>
+                                    {proj.description}
+                                  </p>
+                                )}
+                              </div>
+
+                              {/* Column 2 — Status */}
+                              <div className="whitespace-nowrap">
+                                <span
+                                  className={`inline-flex items-center gap-1.5 px-2 py-0.5 rounded-md text-[10px] font-bold border h-5 leading-none select-none ${statusInfo.badgeClass}`}
+                                >
+                                  <span className={`w-1.5 h-1.5 rounded-full ${statusInfo.dotClass}`} />
+                                  <span>{statusInfo.label}</span>
+                                </span>
+                              </div>
+
+                              {/* Column 3 — Methodology */}
+                              <div className="whitespace-nowrap">
+                                <ProjectMethodologyBadge methodology={proj.methodology} size="sm" />
+                              </div>
+
+                              {/* Column 4 — Members */}
+                              <div className="whitespace-nowrap">
+                                <span className="inline-flex items-center gap-1.5 text-xs text-slate-600 font-medium">
+                                  <Users className="w-3.5 h-3.5 text-purple-500 shrink-0" />
+                                  <span>
+                                    {memberCount} {memberCount === 1 ? 'member' : 'members'}
+                                  </span>
+                                </span>
+                              </div>
+
+                              {/* Column 5 — Timeline */}
+                              <div className="whitespace-nowrap text-slate-500 text-xs">
+                                {proj.start_date ? (
+                                  <span
+                                    className="inline-flex items-center gap-1.5"
+                                    title={`${new Date(proj.start_date).toLocaleDateString()} – ${proj.end_date ? new Date(proj.end_date).toLocaleDateString() : 'Ongoing'}`}
+                                  >
+                                    <Calendar className="w-3.5 h-3.5 text-slate-400 shrink-0" />
+                                    <span>
+                                      {new Date(proj.start_date).toLocaleDateString('en-US', {
+                                        month: 'short',
+                                        day: 'numeric',
+                                      })}
+                                      {proj.end_date &&
+                                        ` – ${new Date(proj.end_date).toLocaleDateString('en-US', {
+                                          month: 'short',
+                                          day: 'numeric',
+                                        })}`}
+                                    </span>
+                                  </span>
+                                ) : null}
+                              </div>
+
+                              {/* Column 6 — Lead */}
+                              <div className="min-w-0 pr-2 whitespace-nowrap">
+                                {proj.owner?.name ? (
+                                  <span className="text-xs text-slate-600 font-medium truncate block" title={proj.owner.name}>
+                                    {proj.owner.name}
+                                  </span>
+                                ) : (
+                                  <span className="text-slate-300 font-mono text-xs select-none">—</span>
+                                )}
+                              </div>
+                            </div>
+                          );
+                        })}
                       </div>
                     </div>
-                  );
-                })
+                  </div>
+
+                  {/* Pagination Controls */}
+                  {!loadingProjects && totalFilteredProjects > 0 && (
+                    <div className="px-4 py-3 bg-slate-50/70 border-t border-slate-200 flex flex-col sm:flex-row items-center justify-between gap-3 text-xs text-slate-600 select-none">
+                      <div className="text-xs text-slate-500 font-medium">
+                        Showing{' '}
+                        <span className="font-bold text-slate-800">
+                          {totalFilteredProjects === 0 ? '0' : `${projectStartIndex + 1}–${projectEndIndex}`}
+                        </span>{' '}
+                        of <span className="font-bold text-slate-800">{totalFilteredProjects}</span> {totalFilteredProjects === 1 ? 'project' : 'projects'}
+                      </div>
+
+                      <div className="flex items-center gap-1.5">
+                        <button
+                          type="button"
+                          onClick={() => setProjectPage((p) => Math.max(1, p - 1))}
+                          disabled={safeProjectPage <= 1}
+                          className="inline-flex items-center gap-1 px-2.5 py-1 rounded-md border border-slate-200 bg-white hover:bg-slate-50 disabled:opacity-40 disabled:cursor-not-allowed font-medium text-xs text-slate-700 shadow-2xs transition-colors cursor-pointer"
+                          title="Previous Page"
+                        >
+                          <ChevronLeft className="w-3.5 h-3.5" />
+                          <span>Previous</span>
+                        </button>
+
+                        {/* Page Numbers */}
+                        <div className="flex items-center gap-1">
+                          {Array.from({ length: totalProjectPages }, (_, i) => i + 1).map((pageNum) => (
+                            <button
+                              key={pageNum}
+                              type="button"
+                              onClick={() => setProjectPage(pageNum)}
+                              className={`min-w-[28px] h-7 px-2 rounded-md text-xs font-semibold transition-colors cursor-pointer flex items-center justify-center ${
+                                safeProjectPage === pageNum
+                                  ? 'bg-purple-900 text-white font-bold shadow-2xs'
+                                  : 'bg-white border border-slate-200 text-slate-700 hover:bg-slate-50'
+                              }`}
+                            >
+                              {pageNum}
+                            </button>
+                          ))}
+                        </div>
+
+                        <button
+                          type="button"
+                          onClick={() => setProjectPage((p) => Math.min(totalProjectPages, p + 1))}
+                          disabled={safeProjectPage >= totalProjectPages}
+                          className="inline-flex items-center gap-1 px-2.5 py-1 rounded-md border border-slate-200 bg-white hover:bg-slate-50 disabled:opacity-40 disabled:cursor-not-allowed font-medium text-xs text-slate-700 shadow-2xs transition-colors cursor-pointer"
+                          title="Next Page"
+                        >
+                          <span>Next</span>
+                          <ChevronRight className="w-3.5 h-3.5" />
+                        </button>
+                      </div>
+                    </div>
+                  )}
+                </>
               )}
             </div>
           </div>

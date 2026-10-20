@@ -1934,7 +1934,7 @@ export class WorkItemService {
     const targetProjectForMembers = filters?.project_id || (isLeadAnyProject && authorizedLeadProjects.length === 1 ? authorizedLeadProjects[0] : null);
 
     // Parallel execution of all analytics data queries with lean selects and index optimizations
-    const [items, timeEntries, accessibleSprints, accessibleProjects, pMembers, allExtensionRequests] = await Promise.all([
+    const [items, timeEntries, accessibleSprints, accessibleProjects, pMembers, allExtensionRequests, orgTechLeads, targetUserRecord] = await Promise.all([
       prisma.workItem.findMany({
         where,
         select: {
@@ -2011,7 +2011,25 @@ export class WorkItemService {
               },
             },
           })
-        : Promise.resolve([]),
+        : prisma.projectMember.findMany({
+            where: {
+              project: {
+                organization_id: orgId,
+                ...(isLeadAnyProject && !isMgr ? { id: { in: authorizedLeadProjects } } : {}),
+              },
+            },
+            select: {
+              project_role: true,
+              user: {
+                select: {
+                  id: true,
+                  name: true,
+                  email: true,
+                  roles: { include: { role: true } },
+                },
+              },
+            },
+          }),
       prisma.workItemExtensionRequest.findMany({
         where: {
           ...(orgId ? { organization_id: orgId } : {}),
@@ -2026,6 +2044,39 @@ export class WorkItemService {
         },
         orderBy: { created_at: 'asc' },
       }),
+      orgId
+        ? prisma.user.findMany({
+            where: {
+              organization_id: orgId,
+              is_active: true,
+              roles: {
+                some: {
+                  role: { name: 'TECH_LEAD' },
+                },
+              },
+            },
+            select: {
+              id: true,
+              name: true,
+              email: true,
+              roles: { include: { role: true } },
+            },
+          })
+        : Promise.resolve([]),
+      targetUserId
+        ? prisma.user.findUnique({
+            where: { id: targetUserId },
+            select: {
+              id: true,
+              name: true,
+              email: true,
+              batch: true,
+              subbatch: true,
+              roles: { include: { role: true } },
+              project_memberships: { select: { project_role: true } },
+            },
+          })
+        : Promise.resolve(null),
     ]);
 
     const projectNameMap = new Map((accessibleProjects || []).map((p: any) => [p.id, p.name]));
@@ -2463,14 +2514,40 @@ export class WorkItemService {
       });
     }
 
-    // Project members mapped from pre-fetched parallel query
-    const projectMembers = pMembers.map((pm: any) => ({
-      id: pm.user?.id,
-      user_id: pm.user?.id,
-      name: pm.user?.name,
-      email: pm.user?.email,
-      project_role: pm.project_role,
-    }));
+    // Project members & Tech Leads mapped from pre-fetched parallel query
+    const membersMap = new Map<string, any>();
+    for (const pm of (pMembers || [])) {
+      if (pm.user && !membersMap.has(pm.user.id)) {
+        const isLead =
+          pm.project_role === 'TECH_LEAD' ||
+          pm.user.roles?.some((r: any) => r.role?.name === 'TECH_LEAD');
+        membersMap.set(pm.user.id, {
+          id: pm.user.id,
+          user_id: pm.user.id,
+          name: pm.user.name,
+          email: pm.user.email,
+          role: isLead ? 'TECH_LEAD' : 'INTERN',
+          roleLabel: isLead ? 'Tech Lead' : 'Intern',
+          project_role: pm.project_role,
+          is_tech_lead: isLead,
+        });
+      }
+    }
+    for (const tl of (orgTechLeads || [])) {
+      if (tl && !membersMap.has(tl.id)) {
+        membersMap.set(tl.id, {
+          id: tl.id,
+          user_id: tl.id,
+          name: tl.name,
+          email: tl.email,
+          role: 'TECH_LEAD',
+          roleLabel: 'Tech Lead',
+          project_role: 'TECH_LEAD',
+          is_tech_lead: true,
+        });
+      }
+    }
+    const projectMembers = Array.from(membersMap.values());
 
     const result = {
       is_tech_lead: isActingAsLead || isLeadAnyProject,
@@ -2547,6 +2624,15 @@ export class WorkItemService {
       task_breakdown,
       trends,
       members: projectMembers,
+      target_user: targetUserRecord ? {
+        id: targetUserRecord.id,
+        user_id: targetUserRecord.id,
+        name: targetUserRecord.name,
+        email: targetUserRecord.email,
+        batch: targetUserRecord.batch,
+        subbatch: targetUserRecord.subbatch,
+        is_tech_lead: targetUserRecord.roles?.some((r: any) => r.role?.name === 'TECH_LEAD') || targetUserRecord.project_memberships?.some((pm: any) => pm.project_role === 'TECH_LEAD'),
+      } : null,
       filters: {
         projects: accessibleProjects,
         sprints: accessibleSprints,
@@ -2558,6 +2644,113 @@ export class WorkItemService {
     }
 
     return result;
+  }
+
+  /**
+   * Get aggregated Kanban summary metrics for a project
+   */
+  static async getKanbanSummary(user: any, filters?: { project_id?: string; sprint_id?: string; user_id?: string }) {
+    let orgId = user?.organization_id;
+    if (!orgId && this.isManagerOrAdmin(user)) {
+      const firstOrg = await prisma.organization.findFirst({ where: { is_active: true } });
+      orgId = firstOrg?.id;
+    }
+
+    if (filters?.project_id) {
+      const isMgr = this.isManagerOrAdmin(user);
+      if (!isMgr) {
+        const membership = await prisma.projectMember.findFirst({
+          where: { project_id: filters.project_id, user_id: user.id },
+        });
+        const isLead = this.isOrgTechLead(user);
+        if (!membership && !isLead) {
+          throw new Error('Forbidden: you are not authorized to access board metrics for this project');
+        }
+      }
+    }
+
+    const where: any = {
+      type: { not: WorkItemType.EPIC },
+    };
+    if (orgId) {
+      where.organization_id = orgId;
+    }
+    if (filters?.project_id) {
+      where.project_id = filters.project_id;
+    }
+    if (filters?.user_id) {
+      where.assignees = { some: { user_id: filters.user_id } };
+    }
+    if (filters?.sprint_id && filters.sprint_id !== 'ALL' && filters.sprint_id !== 'null') {
+      where.sprint_id = filters.sprint_id;
+    }
+
+    const items = await prisma.workItem.findMany({
+      where,
+      select: {
+        id: true,
+        status: true,
+        type: true,
+        start_date: true,
+        created_at: true,
+        updated_at: true,
+        completed_at: true,
+      },
+    });
+
+    const total = items.length;
+    const completed = items.filter((w) => w.status === WorkItemStatus.COMPLETED).length;
+    const in_progress_wip = items.filter(
+      (w) => w.status === WorkItemStatus.IN_PROGRESS || w.status === WorkItemStatus.IN_REVIEW
+    ).length;
+    const blocked = items.filter((w) => w.status === WorkItemStatus.BLOCKED).length;
+    const todo = items.filter((w) => w.status === WorkItemStatus.TODO).length;
+
+    const completedWithDates = items.filter((w) => {
+      if (w.status !== WorkItemStatus.COMPLETED) return false;
+      const start = w.start_date || w.created_at;
+      const end = w.completed_at || w.updated_at;
+      if (!start || !end) return false;
+      const s = new Date(start).getTime();
+      const e = new Date(end).getTime();
+      return !isNaN(s) && !isNaN(e) && e >= s;
+    });
+
+    let avg_cycle_time_hours: number | null = null;
+    let avg_cycle_time_days: number | null = null;
+    let avg_cycle_time_formatted: string | null = null;
+
+    if (completedWithDates.length > 0) {
+      const totalMs = completedWithDates.reduce((sum, w) => {
+        const start = new Date(w.start_date || w.created_at).getTime();
+        const end = new Date(w.completed_at || w.updated_at).getTime();
+        return sum + (end - start);
+      }, 0);
+      const avgMs = totalMs / completedWithDates.length;
+      const hours = avgMs / (1000 * 60 * 60);
+      const days = avgMs / (1000 * 60 * 60 * 24);
+      avg_cycle_time_hours = +hours.toFixed(1);
+      avg_cycle_time_days = +days.toFixed(1);
+
+      if (days < 1) {
+        const roundedH = Math.round(hours);
+        avg_cycle_time_formatted = `${roundedH < 1 && hours > 0 ? '<1' : roundedH}h avg cycle`;
+      } else {
+        const roundedD = +(days.toFixed(1));
+        avg_cycle_time_formatted = `${roundedD % 1 === 0 ? Math.round(roundedD) : roundedD}d avg cycle`;
+      }
+    }
+
+    return {
+      total,
+      completed,
+      in_progress_wip,
+      blocked,
+      todo,
+      avg_cycle_time_hours,
+      avg_cycle_time_days,
+      avg_cycle_time_formatted,
+    };
   }
 
   /**

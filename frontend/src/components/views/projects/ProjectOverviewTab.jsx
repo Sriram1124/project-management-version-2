@@ -26,7 +26,7 @@ import AddProjectMembersModal from '../../modals/AddProjectMembersModal';
 import AddCustomRoleModal from '../../modals/AddCustomRoleModal';
 import ProjectTaskCharts from './ProjectTaskCharts';
 
-export default function ProjectOverviewTab({ projectId, project, onToast, onDeleted, readOnly = false }) {
+export default function ProjectOverviewTab({ projectId, project, onNavigateTab, onToast, onDeleted, readOnly = false }) {
   const { user: authUser } = useAuth();
   const currentUserId = authUser?.id || authUser?.user_id;
   const authRole = String(authUser?.role?.name || authUser?.role || authUser?.type || authUser?.user_type || '').toUpperCase();
@@ -338,7 +338,9 @@ export default function ProjectOverviewTab({ projectId, project, onToast, onDele
       {/* 2. Task Analytics & Work Distribution (Second) */}
       <ProjectTaskCharts 
         projectId={projectId || project?.id} 
+        project={project}
         members={members || project?.members || []}
+        onNavigateTab={onNavigateTab}
         readOnly={readOnly && !canManageProject}
       />
 

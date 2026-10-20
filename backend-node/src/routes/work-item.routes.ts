@@ -11,6 +11,7 @@ router.use(authenticate);
 router.post('/', WorkItemController.create);
 router.get('/', WorkItemController.list);
 router.get('/analytics', WorkItemController.getAnalytics);
+router.get('/kanban-summary', WorkItemController.getKanbanSummary);
 router.get('/:id', WorkItemController.getById);
 router.patch('/:id', WorkItemController.update);
 router.put('/:id', WorkItemController.update);

@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
+import { useSearchParams, useLocation } from 'react-router-dom';
 import {
   BarChart3,
   Award,
@@ -30,11 +31,27 @@ import { projectsService } from '../../services/projects.service';
 import { workItemsService } from '../../services/workItems.service';
 
 export default function ReportsView({ onToast, selectedCohort, selectedCohortId }) {
+  const [searchParams] = useSearchParams();
+  const location = useLocation();
+
+  const queryUserId = searchParams.get('userId') || searchParams.get('user_id') || location?.state?.userId || location?.state?.user_id;
+
   // View mode switcher: 'TASKS' | 'PERFORMANCE' | 'BOTH'
   const [viewMode, setViewMode] = useState('BOTH');
 
   // Scope filter: 'ALL' | 'TECH_LEADS' | userId
-  const [selectedScope, setSelectedScope] = useState('ALL');
+  const [selectedScope, setSelectedScope] = useState(() => queryUserId || 'ALL');
+
+  // Keep scope in sync when navigation changes with query parameters or location state
+  useEffect(() => {
+    if (queryUserId && queryUserId !== selectedScope) {
+      setSelectedScope(queryUserId);
+      const filters = {};
+      if (selectedProjectId !== 'ALL') filters.project_id = selectedProjectId;
+      filters.user_id = queryUserId;
+      loadAnalytics(filters);
+    }
+  }, [queryUserId]);
   const [isScopeDropdownOpen, setIsScopeDropdownOpen] = useState(false);
   const [scopeSearchQuery, setScopeSearchQuery] = useState('');
   const scopeDropdownRef = useRef(null);
@@ -136,7 +153,8 @@ export default function ReportsView({ onToast, selectedCohort, selectedCohortId 
       // Trigger initial analytics fetch
       const initialFilters = {};
       if (selectedProjectId !== 'ALL') initialFilters.project_id = selectedProjectId;
-      if (selectedScope !== 'ALL' && selectedScope !== 'TECH_LEADS') initialFilters.user_id = selectedScope;
+      const targetScope = queryUserId || selectedScope;
+      if (targetScope !== 'ALL' && targetScope !== 'TECH_LEADS') initialFilters.user_id = targetScope;
       await loadAnalytics(initialFilters);
 
       // Reset cached project health when cohort context initializes
@@ -239,16 +257,17 @@ export default function ReportsView({ onToast, selectedCohort, selectedCohortId 
   const memberPerformanceMap = useMemo(() => {
     const map = new Map();
 
+    // 1. Seed from organization/cohort members
     members.forEach((m) => {
-      const uid = m.id || m.userId;
+      const uid = m.id || m.userId || m.user_id;
       if (!uid) return;
-      const isLead = m.role === 'TECH_LEAD' || m.project_role === 'TECH_LEAD';
+      const isLead = m.role === 'TECH_LEAD' || m.type === 'TECH_LEAD' || m.project_role === 'TECH_LEAD' || Boolean(m.is_tech_lead);
       map.set(uid, {
         userId: uid,
         name: m.name || m.email || 'Member',
         email: m.email || '',
-        role: isLead ? 'TECH_LEAD' : 'INTERN',
-        roleLabel: isLead ? 'Tech Lead' : (m.role || 'Intern'),
+        role: isLead ? 'TECH_LEAD' : (m.role || m.type || 'INTERN'),
+        roleLabel: isLead ? 'Tech Lead' : (m.role || m.type || 'Intern'),
         isTechLead: isLead,
         totalAssigned: 0,
         completed: 0,
@@ -262,6 +281,67 @@ export default function ReportsView({ onToast, selectedCohort, selectedCohortId 
         onTimeRate: 0,
       });
     });
+
+    // 2. Incorporate members and tech leads returned in live analytics
+    if (Array.isArray(analytics?.members)) {
+      analytics.members.forEach((m) => {
+        const uid = m.id || m.userId || m.user_id;
+        if (!uid) return;
+        const isLead = m.role === 'TECH_LEAD' || m.type === 'TECH_LEAD' || m.project_role === 'TECH_LEAD' || Boolean(m.is_tech_lead);
+        if (!map.has(uid)) {
+          map.set(uid, {
+            userId: uid,
+            name: m.name || m.email || 'Member',
+            email: m.email || '',
+            role: isLead ? 'TECH_LEAD' : (m.role || m.type || 'INTERN'),
+            roleLabel: isLead ? 'Tech Lead' : (m.role || m.type || 'Intern'),
+            isTechLead: isLead,
+            totalAssigned: 0,
+            completed: 0,
+            inProgress: 0,
+            inReview: 0,
+            blocked: 0,
+            todo: 0,
+            pastDue: 0,
+            completedOnTime: 0,
+            completionRate: 0,
+            onTimeRate: 0,
+          });
+        } else if (isLead) {
+          const entry = map.get(uid);
+          entry.isTechLead = true;
+          entry.role = 'TECH_LEAD';
+          entry.roleLabel = 'Tech Lead';
+        }
+      });
+    }
+
+    // 3. Ensure target scoped user is present
+    if (analytics?.target_user) {
+      const tu = analytics.target_user;
+      const uid = tu.id || tu.userId || tu.user_id;
+      if (uid && !map.has(uid)) {
+        const isLead = tu.role === 'TECH_LEAD' || tu.type === 'TECH_LEAD' || tu.project_role === 'TECH_LEAD' || Boolean(tu.is_tech_lead);
+        map.set(uid, {
+          userId: uid,
+          name: tu.name || tu.email || 'Member',
+          email: tu.email || '',
+          role: isLead ? 'TECH_LEAD' : 'INTERN',
+          roleLabel: isLead ? 'Tech Lead' : 'Intern',
+          isTechLead: isLead,
+          totalAssigned: 0,
+          completed: 0,
+          inProgress: 0,
+          inReview: 0,
+          blocked: 0,
+          todo: 0,
+          pastDue: 0,
+          completedOnTime: 0,
+          completionRate: 0,
+          onTimeRate: 0,
+        });
+      }
+    }
 
     const tasks = analytics?.task_breakdown || [];
     tasks.forEach((t) => {
@@ -324,7 +404,7 @@ export default function ReportsView({ onToast, selectedCohort, selectedCohortId 
     });
 
     return map;
-  }, [members, analytics?.task_breakdown]);
+  }, [members, analytics?.members, analytics?.target_user, analytics?.task_breakdown]);
 
   // Performance rows filtered by selected scope
   const performanceRows = useMemo(() => {
@@ -351,8 +431,8 @@ export default function ReportsView({ onToast, selectedCohort, selectedCohortId 
   // Current scope member object
   const selectedScopeMember = useMemo(() => {
     if (selectedScope === 'ALL' || selectedScope === 'TECH_LEADS') return null;
-    return memberPerformanceMap.get(selectedScope) || members.find((m) => (m.id || m.userId) === selectedScope);
-  }, [selectedScope, memberPerformanceMap, members]);
+    return memberPerformanceMap.get(selectedScope) || members.find((m) => (m.id || m.userId || m.user_id) === selectedScope) || analytics?.target_user || null;
+  }, [selectedScope, memberPerformanceMap, members, analytics?.target_user]);
 
   // Current selected project object
   const selectedProjectObj = useMemo(() => {

@@ -299,36 +299,6 @@ export default function TeamsChannelView({
               </button>
             </div>
 
-            {/* Download Overdue Members Report Button */}
-            <button
-              onClick={handleDownloadOverdueReport}
-              disabled={isDownloadingOverdue}
-              title={
-                overdueStats.overdueMembersCount > 0
-                  ? `Download report of ${overdueStats.overdueMembersCount} member(s) with overdue form submissions (${overdueStats.totalOverdueCount} total)`
-                  : 'No members have overdue form submissions in this scope'
-              }
-              className={`h-7 px-2 sm:px-2.5 rounded-lg text-xs font-semibold flex items-center gap-1.5 transition-colors cursor-pointer shrink-0 border ${
-                overdueStats.overdueMembersCount > 0
-                  ? 'border-purple-300 bg-purple-50 hover:bg-purple-100 text-purple-700 shadow-2xs active:bg-purple-200'
-                  : 'border-slate-200 bg-slate-50 text-slate-400 hover:bg-slate-100 hover:text-slate-600'
-              }`}
-            >
-              <Download className={`w-3.5 h-3.5 ${isDownloadingOverdue ? 'animate-bounce text-purple-600' : ''}`} />
-              <span className="hidden xl:inline">Download Overdue Members</span>
-              <span className="xl:hidden hidden md:inline">Overdue Report</span>
-              <span className="md:hidden">Overdue</span>
-              {overdueStats.overdueMembersCount > 0 ? (
-                <span className="px-1.5 py-0.2 rounded-full text-[10px] font-bold bg-purple-200 text-purple-800">
-                  {overdueStats.overdueMembersCount}
-                </span>
-              ) : (
-                <span className="px-1.5 py-0.2 rounded-full text-[10px] font-medium bg-slate-200/70 text-slate-500">
-                  0
-                </span>
-              )}
-            </button>
-
             {/* Post New Form Button */}
             <button
               onClick={() => setIsPostModalOpen(true)}
