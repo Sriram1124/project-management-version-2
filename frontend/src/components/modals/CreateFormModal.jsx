@@ -27,8 +27,8 @@ function parseDeadlineToParts(deadline) {
 
 function combineDateAndTime(dateStr, hoursStr, minutesStr, ampmStr) {
   if (!dateStr) return null;
-  let h = parseInt(hoursStr, 10);
-  const m = parseInt(minutesStr, 10);
+  let h = Number.parseInt(hoursStr, 10);
+  const m = Number.parseInt(minutesStr, 10);
   if (Number.isNaN(h) || h < 1 || h > 12) return null;
   if (Number.isNaN(m) || m < 0 || m > 59) return null;
   if (ampmStr === 'AM') {
@@ -158,8 +158,8 @@ export default function CreateFormModal({ form, cohorts: initialCohorts, onClose
       if (deadlineDate < minDate) {
         return setError(`Deadline date cannot be earlier than permitted date (${minDate})`);
       }
-      const h = parseInt(timeHours, 10);
-      const m = parseInt(timeMinutes, 10);
+      const h = Number.parseInt(timeHours, 10);
+      const m = Number.parseInt(timeMinutes, 10);
       if (Number.isNaN(h) || h < 1 || h > 12) {
         return setError('Please enter a valid deadline hour (1-12)');
       }

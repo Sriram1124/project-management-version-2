@@ -73,8 +73,8 @@ describe('Intern Timesheet UI/UX Refinement Suite', () => {
 
   describe('3. Edit Previously Logged Time Validation & Calculations', () => {
     const validateEditEntry = (hoursStr, minutesStr, dateStr) => {
-      const hrs = parseInt(hoursStr, 10) || 0;
-      const mins = parseInt(minutesStr, 10) || 0;
+      const hrs = Number.parseInt(hoursStr, 10) || 0;
+      const mins = Number.parseInt(minutesStr, 10) || 0;
       const totalMinutes = hrs * 60 + mins;
 
       if (totalMinutes <= 0) {

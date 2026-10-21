@@ -202,7 +202,7 @@ export default function TimesheetView({
     try {
       const stored = sessionStorage.getItem('internhub_timesheet_page_size');
       if (stored === 'ALL') return 'ALL';
-      const num = parseInt(stored, 10);
+      const num = Number.parseInt(stored, 10);
       if (!Number.isNaN(num) && num > 0) return num;
     } catch {}
     return 15;
@@ -254,7 +254,7 @@ export default function TimesheetView({
       setPageSizeError('Positive integer only');
       return;
     }
-    const num = parseInt(trimmed, 10);
+    const num = Number.parseInt(trimmed, 10);
     if (num <= 0) {
       setPageSizeError('Must be > 0');
       return;
@@ -564,8 +564,8 @@ export default function TimesheetView({
   const handleAddWeekEntry = async (e) => {
     e.preventDefault();
     if (!weekModalData || !weekFormDate) return;
-    const hours = parseInt(weekFormHours, 10) || 0;
-    const minutes = parseInt(weekFormMinutes, 10) || 0;
+    const hours = Number.parseInt(weekFormHours, 10) || 0;
+    const minutes = Number.parseInt(weekFormMinutes, 10) || 0;
     const totalMins = hours * 60 + minutes;
 
     if (totalMins <= 0) {
@@ -595,8 +595,8 @@ export default function TimesheetView({
   const handleAddCellEntry = async (e) => {
     e.preventDefault();
     if (!cellModalData) return;
-    const hours = parseInt(cellFormHours, 10) || 0;
-    const minutes = parseInt(cellFormMinutes, 10) || 0;
+    const hours = Number.parseInt(cellFormHours, 10) || 0;
+    const minutes = Number.parseInt(cellFormMinutes, 10) || 0;
     const totalMins = hours * 60 + minutes;
 
     if (totalMins <= 0) {
@@ -671,8 +671,8 @@ export default function TimesheetView({
     e?.preventDefault();
     if (!editingEntry) return;
 
-    const hrs = parseInt(editHours, 10) || 0;
-    const mins = parseInt(editMinutes, 10) || 0;
+    const hrs = Number.parseInt(editHours, 10) || 0;
+    const mins = Number.parseInt(editMinutes, 10) || 0;
     const totalMinutes = hrs * 60 + mins;
 
     if (totalMinutes <= 0) {
@@ -715,8 +715,8 @@ export default function TimesheetView({
       alert('Please select a task.');
       return;
     }
-    const hours = parseInt(manualHours, 10) || 0;
-    const minutes = parseInt(manualMinutes, 10) || 0;
+    const hours = Number.parseInt(manualHours, 10) || 0;
+    const minutes = Number.parseInt(manualMinutes, 10) || 0;
     const totalMins = hours * 60 + minutes;
 
     if (totalMins <= 0) {

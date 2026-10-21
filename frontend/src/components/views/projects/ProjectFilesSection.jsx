@@ -341,7 +341,7 @@ export default function ProjectFilesSection({ projectId, projectName = '', onToa
               {/* Card Info */}
               <div className="p-3 space-y-2">
                 {renameFile?.id === file.id ? (
-                  <div className="flex items-center gap-1" onClick={(e) => e.stopPropagation()}>
+                  <div className="flex items-center gap-1">
                     <input
                       type="text"
                       value={newName}
@@ -394,7 +394,7 @@ export default function ProjectFilesSection({ projectId, projectName = '', onToa
               </div>
 
               {/* Action Dropdown Menu Trigger */}
-              <div className="absolute top-2 right-2" onClick={(e) => e.stopPropagation()}>
+              <div className="absolute top-2 right-2">
                 <button
                   type="button"
                   onClick={(e) => toggleMenu(file.id, e)}

@@ -420,8 +420,8 @@ export default function IssueDetailDrawer({
       alert('Managers do not have permission to log time on tasks');
       return;
     }
-    const hours = parseInt(logHours, 10) || 0;
-    const minutes = parseInt(logMinutes, 10) || 0;
+    const hours = Number.parseInt(logHours, 10) || 0;
+    const minutes = Number.parseInt(logMinutes, 10) || 0;
     const totalMins = hours * 60 + minutes;
 
     if (totalMins <= 0) {
@@ -648,7 +648,7 @@ export default function IssueDetailDrawer({
       setEditedStoryPoints(issue?.story_points ?? issue?.storyPoints ?? (isStory ? 1 : 0));
       return;
     }
-    const val = parseInt(raw, 10);
+    const val = Number.parseInt(raw, 10);
     if (isStory) {
       if (Number.isNaN(val) || val <= 0) {
         alert('Story points are mandatory for stories and must be a positive integer (1 or greater).');
@@ -790,7 +790,7 @@ export default function IssueDetailDrawer({
     e.preventDefault();
     if (newSubtaskTitle.trim() && allowedChildTypes.length > 0) {
       const isChildApplicable = ['TASK', 'SUBTASK', 'BUG', 'STORY'].includes(childType);
-      const pointsVal = parseInt(childPoints, 10);
+      const pointsVal = Number.parseInt(childPoints, 10);
       if (isChildApplicable && (Number.isNaN(pointsVal) || pointsVal <= 0)) {
         alert('Story points are mandatory for tasks, stories, subtasks, and bugs and must be a positive integer greater than 0.');
         return;

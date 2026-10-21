@@ -51,10 +51,18 @@ export default function TaskCard({
 
   return (
     <div
+      role="button"
+      tabIndex={0}
       draggable={canDrag}
       onDragStart={(e) => canDrag && onDragStart?.(e, task.id)}
       onDragEnd={onDragEnd}
       onClick={() => onClick?.(task)}
+      onKeyDown={(e) => {
+        if (e.target === e.currentTarget && (e.key === 'Enter' || e.key === ' ')) {
+          e.preventDefault();
+          onClick?.(task);
+        }
+      }}
       className={`p-2.5 rounded-md bg-white select-none group border transition-colors ${
         canDrag ? 'cursor-grab active:cursor-grabbing' : 'cursor-pointer'
       } ${

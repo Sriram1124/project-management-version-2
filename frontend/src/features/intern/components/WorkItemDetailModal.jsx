@@ -262,8 +262,8 @@ export default function WorkItemDetailModal({
 
   const handleSaveWorklog = async (e) => {
     e.preventDefault();
-    const hours = parseInt(logHours, 10) || 0;
-    const minutes = parseInt(logMinutes, 10) || 0;
+    const hours = Number.parseInt(logHours, 10) || 0;
+    const minutes = Number.parseInt(logMinutes, 10) || 0;
     const totalMins = hours * 60 + minutes;
 
     if (totalMins <= 0) {

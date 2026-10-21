@@ -777,7 +777,7 @@ export default function ProjectsDirectoryView({ onSelectProject, isIntern = fals
 
                           {/* Actions */}
                           <td className="py-3 px-2 sm:px-3 text-right">
-                            <div className="flex items-center justify-end gap-1 shrink-0 whitespace-nowrap" onClick={(e) => e.stopPropagation()}>
+                            <div className="flex items-center justify-end gap-1 shrink-0 whitespace-nowrap">
                               {isIntern ? (
                                 <button
                                   title="Open Workspace"
@@ -848,7 +848,15 @@ export default function ProjectsDirectoryView({ onSelectProject, isIntern = fals
                   return (
                     <div
                       key={proj.id}
+                      role="button"
+                      tabIndex={0}
                       onClick={() => onSelectProject?.(proj.id, proj.name)}
+                      onKeyDown={(e) => {
+                        if (e.target === e.currentTarget && (e.key === 'Enter' || e.key === ' ')) {
+                          e.preventDefault();
+                          onSelectProject?.(proj.id, proj.name);
+                        }
+                      }}
                       className="p-4 hover:bg-purple-50/30 transition-colors cursor-pointer space-y-3"
                     >
                       {/* Top row: Project Details & Badges */}
@@ -914,11 +922,14 @@ export default function ProjectsDirectoryView({ onSelectProject, isIntern = fals
                       </div>
 
                       {/* Actions row */}
-                      <div className="flex items-center justify-end gap-1.5 pt-1 border-t border-slate-50" onClick={(e) => e.stopPropagation()}>
+                      <div className="flex items-center justify-end gap-1.5 pt-1 border-t border-slate-50">
                         {isIntern ? (
                           <button
                             title="Open Workspace"
-                            onClick={() => onSelectProject?.(proj.id, proj.name)}
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              onSelectProject?.(proj.id, proj.name);
+                            }}
                             className="inline-flex items-center gap-1 px-2.5 py-1 text-xs font-semibold text-purple-700 bg-purple-50 hover:bg-purple-100 rounded-lg transition-colors cursor-pointer"
                           >
                             <span>Open</span>

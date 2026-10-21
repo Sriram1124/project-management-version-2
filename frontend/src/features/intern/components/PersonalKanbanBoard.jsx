@@ -162,10 +162,18 @@ export default function PersonalKanbanBoard({
                   return (
                     <div
                       key={task.id}
+                      role="button"
+                      tabIndex={0}
                       draggable={canDrag}
                       onDragStart={(e) => handleDragStart(e, task)}
                       onDragEnd={handleDragEnd}
                       onClick={() => onTaskClick?.(task)}
+                      onKeyDown={(e) => {
+                        if (e.target === e.currentTarget && (e.key === 'Enter' || e.key === ' ')) {
+                          e.preventDefault();
+                          onTaskClick?.(task);
+                        }
+                      }}
                       className={`p-3 rounded-xl bg-white border transition-all ${
                         canDrag ? 'cursor-grab active:cursor-grabbing' : 'cursor-pointer'
                       } hover:border-purple-300 hover:shadow-xs group ${

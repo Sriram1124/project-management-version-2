@@ -30,6 +30,7 @@ export default function EpicPanel({
 
       {/* All Issues / Clear Filter Option */}
       <button
+        type="button"
         onClick={() => onSelectEpicId?.(null)}
         className={`w-full text-left px-2 py-1.5 rounded-md font-medium transition-colors flex items-center justify-between ${
           !selectedEpicId
@@ -58,10 +59,11 @@ export default function EpicPanel({
             : epic.progress || 0;
 
           return (
-            <div
+            <button
+              type="button"
               key={epic.id}
               onClick={() => onSelectEpicId?.(isSelected ? null : epic.id)}
-              className={`p-2 rounded-md border transition-colors cursor-pointer space-y-1.5 ${
+              className={`w-full text-left p-2 rounded-md border transition-colors cursor-pointer space-y-1.5 ${
                 isSelected
                   ? 'border-purple-400 bg-purple-50/50 shadow-2xs'
                   : 'border-slate-100 hover:border-slate-200 hover:bg-slate-50/70 bg-white'
@@ -104,7 +106,7 @@ export default function EpicPanel({
                   />
                 </div>
               </div>
-            </div>
+            </button>
           );
         })}
       </div>

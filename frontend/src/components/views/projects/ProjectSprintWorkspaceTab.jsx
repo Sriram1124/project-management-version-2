@@ -957,10 +957,13 @@ export default function ProjectSprintWorkspaceTab({
                       {/* Action buttons (Hidden for readOnly) */}
                       {!readOnly && (
                         <td className="py-3 px-3.5 text-right">
-                          <div className="flex items-center justify-end gap-1.5" onClick={(e) => e.stopPropagation()}>
+                          <div className="flex items-center justify-end gap-1.5">
                             <button
                               type="button"
-                              onClick={() => setEditingSprint(s)}
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setEditingSprint(s);
+                              }}
                               className="p-1 text-slate-400 hover:text-slate-700 hover:bg-slate-100 rounded transition-colors"
                               title="Edit or Delete Sprint"
                             >
@@ -1083,10 +1086,18 @@ export default function ProjectSprintWorkspaceTab({
                     return (
                       <div
                         key={card.id}
+                        role="button"
+                        tabIndex={0}
                         draggable
                         onDragStart={(e) => handleDragStart(e, card.id)}
                         onDragEnd={handleDragEnd}
                         onClick={() => setSelectedTask(card)}
+                        onKeyDown={(e) => {
+                          if (e.target === e.currentTarget && (e.key === 'Enter' || e.key === ' ')) {
+                            e.preventDefault();
+                            setSelectedTask(card);
+                          }
+                        }}
                         className={`p-2.5 rounded-md border bg-white transition-all cursor-grab active:cursor-grabbing hover:shadow-xs ${
                           draggedTaskId === card.id ? 'opacity-40 border-purple-400' : ''
                         } ${

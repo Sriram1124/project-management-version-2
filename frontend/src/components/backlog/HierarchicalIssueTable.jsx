@@ -508,7 +508,7 @@ function HierarchicalRow({
   const handlePointsSubmit = (e) => {
     e.preventDefault();
     if (isStory) {
-      const val = parseInt(pointsValue, 10);
+      const val = Number.parseInt(pointsValue, 10);
       if (Number.isNaN(val) || val <= 0) {
         alert('Story points are mandatory for stories and must be a positive integer (1 or greater).');
         setPointsValue(item.story_points ?? 1);
@@ -517,7 +517,7 @@ function HierarchicalRow({
       }
       onUpdateStoryPoints?.(item.id, val);
     } else if (isTask || isLeaf) {
-      const val = parseInt(pointsValue, 10);
+      const val = Number.parseInt(pointsValue, 10);
       if (Number.isNaN(val) || val < 0) {
         alert('Story points are mandatory for tasks, subtasks, and bugs and must be a non-negative integer (0 or greater).');
         setPointsValue(item.story_points ?? 0);
@@ -526,7 +526,7 @@ function HierarchicalRow({
       }
       onUpdateStoryPoints?.(item.id, val);
     } else {
-      const val = pointsValue === '' ? null : Math.max(0, parseInt(pointsValue, 10) || 0);
+      const val = pointsValue === '' ? null : Math.max(0, Number.parseInt(pointsValue, 10) || 0);
       onUpdateStoryPoints?.(item.id, val);
     }
     setEditingPoints(false);
@@ -535,10 +535,18 @@ function HierarchicalRow({
   return (
     <div ref={rowRef} className={`group border-b border-slate-100 last:border-b-0 ${menuOpen ? 'relative z-50' : 'relative z-1'}`}>
       <div
+        role="button"
+        tabIndex={0}
         draggable={canDrag}
         onDragStart={(e) => canDrag && onDragStart?.(e, item.id)}
         onDragEnd={onDragEnd}
         onClick={() => onSelectIssue?.(item)}
+        onKeyDown={(e) => {
+          if (e.target === e.currentTarget && (e.key === 'Enter' || e.key === ' ')) {
+            e.preventDefault();
+            onSelectIssue?.(item);
+          }
+        }}
         className={`grid ${isKanban ? 'grid-cols-[minmax(260px,2.5fr)_90px_120px_110px_60px_85px_95px_75px]' : 'grid-cols-[minmax(260px,2.5fr)_90px_120px_110px_minmax(140px,1.3fr)_60px_85px_95px_75px]'} items-center gap-2 px-3 py-2 text-xs transition-colors cursor-pointer select-none ${
           isSelected
             ? 'bg-purple-50/90 border-l-2 border-l-purple-600'
@@ -615,10 +623,11 @@ function HierarchicalRow({
         </div>
 
         {/* COL 2: PRIORITY DROPDOWN */}
-        <div className="relative text-left shrink-0" onClick={(e) => e.stopPropagation()}>
+        <div className="relative text-left shrink-0">
           <button
             type="button"
-            onClick={() => {
+            onClick={(e) => {
+              e.stopPropagation();
               if (canChangePriority) {
                 handleToggleMenu('priority');
               }
@@ -634,7 +643,8 @@ function HierarchicalRow({
                 <button
                   key={p}
                   type="button"
-                  onClick={() => {
+                  onClick={(e) => {
+                    e.stopPropagation();
                     onUpdatePriority?.(item.id, p);
                     setMenuOpen(null);
                   }}
@@ -651,10 +661,11 @@ function HierarchicalRow({
         </div>
 
         {/* COL 3: ASSIGNEE DROPDOWN */}
-        <div className="relative flex items-center min-w-0 shrink-0" onClick={(e) => e.stopPropagation()}>
+        <div className="relative flex items-center min-w-0 shrink-0">
           <button
             type="button"
-            onClick={() => {
+            onClick={(e) => {
+              e.stopPropagation();
               if (canChangeAssignee) {
                 handleToggleMenu('assignee');
               }
@@ -684,7 +695,8 @@ function HierarchicalRow({
             <div className={`absolute left-0 w-48 bg-white rounded-md shadow-lg border border-slate-200 py-1 z-50 max-h-56 overflow-y-auto ${openUpward ? 'bottom-full mb-1' : 'top-full mt-1'}`}>
               <button
                 type="button"
-                onClick={() => {
+                onClick={(e) => {
+                  e.stopPropagation();
                   onUpdateAssignee?.(item.id, []);
                   setMenuOpen(null);
                 }}
@@ -704,7 +716,8 @@ function HierarchicalRow({
                   <button
                     key={uid}
                     type="button"
-                    onClick={() => {
+                    onClick={(e) => {
+                      e.stopPropagation();
                       onUpdateAssignee?.(item.id, [uid]);
                       setMenuOpen(null);
                     }}
@@ -729,11 +742,12 @@ function HierarchicalRow({
         </div>
 
         {/* COL 4: STATUS DROPDOWN + CONTEXTUAL PARENT INDICATOR */}
-        <div className="relative text-left shrink-0" onClick={(e) => e.stopPropagation()}>
+        <div className="relative text-left shrink-0">
           <div className="flex items-center gap-1.5 flex-wrap">
             <button
               type="button"
-              onClick={() => {
+              onClick={(e) => {
+                e.stopPropagation();
                 if (canChangeStatus) {
                   handleToggleMenu('status');
                 }
@@ -758,7 +772,8 @@ function HierarchicalRow({
                 <button
                   key={st}
                   type="button"
-                  onClick={() => {
+                  onClick={(e) => {
+                    e.stopPropagation();
                     onUpdateStatus?.(item.id, st);
                     setMenuOpen(null);
                   }}
@@ -776,13 +791,14 @@ function HierarchicalRow({
 
         {/* COL 5: SPRINT DROPDOWN / READ-ONLY SUMMARY (Scrum only) */}
         {!isKanban && (
-          <div className="relative text-left shrink-0" onClick={(e) => e.stopPropagation()}>
+          <div className="relative text-left shrink-0">
             {isEpic ? (
               /* Derived read-only sprint summary for parent Epics */
               <div className="relative">
                 <button
                   type="button"
-                  onClick={() => {
+                  onClick={(e) => {
+                    e.stopPropagation();
                     if (epicSprintSummary?.details?.length > 1) {
                       handleToggleMenu('epicSprint');
                     }
@@ -822,7 +838,8 @@ function HierarchicalRow({
               <>
                 <button
                   type="button"
-                  onClick={() => {
+                  onClick={(e) => {
+                    e.stopPropagation();
                     if (canChangeSprint) {
                       handleToggleMenu('sprint');
                     }
@@ -841,7 +858,8 @@ function HierarchicalRow({
                   <div className={`absolute left-0 w-44 bg-white rounded-md shadow-lg border border-slate-200 py-1 z-50 max-h-52 overflow-y-auto ${openUpward ? 'bottom-full mb-1' : 'top-full mt-1'}`}>
                     <button
                       type="button"
-                      onClick={() => {
+                      onClick={(e) => {
+                        e.stopPropagation();
                         onUpdateSprint?.(item.id, null);
                         setMenuOpen(null);
                       }}
@@ -857,7 +875,8 @@ function HierarchicalRow({
                       <button
                         key={sprint.id}
                         type="button"
-                        onClick={() => {
+                        onClick={(e) => {
+                          e.stopPropagation();
                           onUpdateSprint?.(item.id, sprint.id);
                           setMenuOpen(null);
                         }}
@@ -877,9 +896,9 @@ function HierarchicalRow({
         )}
 
         {/* COL 6: STORY POINTS */}
-        <div className="flex justify-center shrink-0" onClick={(e) => e.stopPropagation()}>
+        <div className="flex justify-center shrink-0">
           {canChangeStoryPoints && editingPoints ? (
-            <form onSubmit={handlePointsSubmit} className="w-12">
+            <form onSubmit={handlePointsSubmit} onClick={(e) => e.stopPropagation()} className="w-12">
               <input
                 type="number"
                 min={isStory ? '1' : '0'}
@@ -894,7 +913,8 @@ function HierarchicalRow({
           ) : (
             <button
               type="button"
-              onClick={() => {
+              onClick={(e) => {
+                e.stopPropagation();
                 if (canChangeStoryPoints) {
                   setPointsValue(item.story_points ?? '');
                   setEditingPoints(true);
@@ -919,10 +939,11 @@ function HierarchicalRow({
         </div>
 
         {/* COL 7: DUE DATE */}
-        <div className="relative text-left shrink-0" onClick={(e) => e.stopPropagation()}>
+        <div className="relative text-left shrink-0">
           <button
             type="button"
-            onClick={() => {
+            onClick={(e) => {
+              e.stopPropagation();
               if (canChangeDueDate) {
                 handleToggleMenu('date');
               }
@@ -959,7 +980,8 @@ function HierarchicalRow({
               {item.due_date && (
                 <button
                   type="button"
-                  onClick={() => {
+                  onClick={(e) => {
+                    e.stopPropagation();
                     onUpdateDueDate?.(item.id, null);
                     setMenuOpen(null);
                   }}
@@ -997,12 +1019,15 @@ function HierarchicalRow({
         </div>
 
         {/* COL 9: CONTEXT-SENSITIVE ACTIONS (+ child, ...) */}
-        <div className="flex items-center justify-end gap-1 shrink-0" onClick={(e) => e.stopPropagation()}>
+        <div className="flex items-center justify-end gap-1 shrink-0">
           {/* Quick Add Child Button (Only for non-leaf items: Epic, Story, Task) */}
           {!isLeaf && (canManageProject || hasTaskCreate || !isIntern || isStory || isTask) && (
             <button
               type="button"
-              onClick={() => onAddChild?.(item)}
+              onClick={(e) => {
+                e.stopPropagation();
+                onAddChild?.(item);
+              }}
               title={
                 isEpic
                   ? 'Add Story or Bug under this Epic'
@@ -1020,7 +1045,10 @@ function HierarchicalRow({
           <div className="relative">
             <button
               type="button"
-              onClick={() => handleToggleMenu('more')}
+              onClick={(e) => {
+                e.stopPropagation();
+                handleToggleMenu('more');
+              }}
               className="w-5 h-5 rounded hover:bg-slate-200 text-slate-400 hover:text-slate-700 flex items-center justify-center transition-colors cursor-pointer"
             >
               <MoreHorizontal className="w-3.5 h-3.5" />
@@ -1030,7 +1058,8 @@ function HierarchicalRow({
               <div className="absolute right-0 mt-1 w-36 bg-white rounded-md shadow-lg border border-slate-200 py-1 z-40">
                 <button
                   type="button"
-                  onClick={() => {
+                  onClick={(e) => {
+                    e.stopPropagation();
                     onSelectIssue?.(item);
                     setMenuOpen(null);
                   }}

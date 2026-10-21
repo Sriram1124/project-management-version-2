@@ -100,10 +100,18 @@ export default function IssueRow({
     <div className="group border-b border-slate-100 last:border-b-0">
       {/* INVISIBLE-GRID ROW: PERFECT COLUMN ALIGNMENT ACROSS ALL ROWS */}
       <div
+        role="button"
+        tabIndex={0}
         draggable
         onDragStart={(e) => onDragStart?.(e, issue.id)}
         onDragEnd={onDragEnd}
         onClick={() => onSelectIssue?.(issue)}
+        onKeyDown={(e) => {
+          if (e.target === e.currentTarget && (e.key === 'Enter' || e.key === ' ')) {
+            e.preventDefault();
+            onSelectIssue?.(issue);
+          }
+        }}
         className={`grid grid-cols-[1fr_75px_110px_95px_40px_70px] items-center gap-2.5 px-3 py-2 text-xs transition-colors cursor-pointer select-none ${
           isSelected
             ? 'bg-purple-50/80 border-l-2 border-l-purple-600'

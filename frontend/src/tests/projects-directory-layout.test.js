@@ -23,7 +23,7 @@ describe('Projects Directory Responsive Layout & Zero Horizontal Scrolling Suite
     const colMatches = [...fileContent.matchAll(/<col className="w-\[(\d+)%\]" \/>/g)];
     assert.equal(colMatches.length, 8, 'Must declare exactly 8 columns in colgroup');
 
-    const totalPercentage = colMatches.reduce((sum, match) => sum + parseInt(match[1], 10), 0);
+    const totalPercentage = colMatches.reduce((sum, match) => sum + Number.parseInt(match[1], 10), 0);
     assert.equal(totalPercentage, 100, 'Sum of column percentage widths must equal exactly 100%');
   });
 
