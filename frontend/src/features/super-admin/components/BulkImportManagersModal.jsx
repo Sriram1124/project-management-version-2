@@ -68,7 +68,7 @@ export default function BulkImportManagersModal({ isOpen, organization, onClose,
       const text = evt.target?.result;
       if (typeof text === 'string') {
         setCsvContent(text);
-        validateCsv(text);
+        await validateCsv(text);
       }
     };
     reader.readAsText(selected);

@@ -126,7 +126,7 @@ export default function FormsView({ onToast }) {
               
               {form.status === 'DRAFT' && (
                 <button
-                  onClick={() => handlePublish(form.id)}
+                  onClick={() => { void handlePublish(form.id); }}
                   className="mt-3 w-full py-2 bg-slate-50 hover:bg-purple-50 text-purple-700 font-bold text-xs rounded-lg transition-colors border border-purple-100"
                 >
                   Publish Form
@@ -209,7 +209,7 @@ export default function FormsView({ onToast }) {
               </button>
               <button
                 type="button"
-                onClick={handleConfirmRevert}
+                onClick={() => { void handleConfirmRevert(); }}
                 disabled={isReverting}
                 className="px-4 py-2 text-xs font-semibold text-white bg-amber-600 hover:bg-amber-700 active:bg-amber-800 rounded-xl transition-colors disabled:opacity-50 flex items-center gap-1.5 cursor-pointer shadow-xs"
               >
@@ -244,7 +244,7 @@ export default function FormsView({ onToast }) {
         <FormBuilderDrawer
           form={selectedForm}
           onClose={() => setSelectedForm(null)}
-          onUpdate={loadForms}
+          onUpdate={() => { void loadForms(); }}
         />
       )}
 

@@ -771,7 +771,7 @@ export default function MyTasksTab({
                         type="button"
                         onClick={(e) => {
                           e.stopPropagation();
-                          onToggleTask?.(item.id);
+                          void onToggleTask?.(item.id);
                         }}
                         className={`w-5 h-5 rounded-md border flex items-center justify-center transition-colors shrink-0 cursor-pointer ${
                           isCompleted

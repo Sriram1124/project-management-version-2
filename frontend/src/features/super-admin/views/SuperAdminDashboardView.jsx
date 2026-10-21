@@ -721,7 +721,7 @@ export default function SuperAdminDashboardView({ onNavigateTab }) {
                         <td className="py-3.5 px-4 text-right">
                           <div className="flex items-center justify-end gap-1.5">
                             <button
-                              onClick={(e) => handleToggleStatus(org, e)}
+                              onClick={(e) => { void handleToggleStatus(org, e); }}
                               title={org.is_active ? 'Suspend organization' : 'Reactivate organization'}
                               className={`px-3 py-1 rounded-lg text-xs font-semibold border transition-colors cursor-pointer ${
                                 org.is_active

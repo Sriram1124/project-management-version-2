@@ -196,6 +196,8 @@ export default function InternApp({ onLogout, onSelectProject, onToast }) {
     void notificationsService.loadNotifications().then((loadedNotifications) => {
       knownNotificationIds = new Set(loadedNotifications.map((notification) => notification.id));
       hasLoadedNotifications = true;
+    }).catch((err) => {
+      console.error('Failed to load notifications on mount:', err);
     });
     // Smart notification polling with automatic visibility pause and resume
     let pollInterval = null;

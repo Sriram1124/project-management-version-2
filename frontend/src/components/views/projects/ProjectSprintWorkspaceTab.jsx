@@ -559,7 +559,7 @@ export default function ProjectSprintWorkspaceTab({
             <div className="flex items-center gap-2 self-start shrink-0">
               {currentSprint?.status === 'PLANNED' && (
                 <button
-                  onClick={() => handleStartSprint(currentSprint.id)}
+                  onClick={() => { void handleStartSprint(currentSprint.id); }}
                   disabled={startingSprint}
                   className="px-3 py-1.5 rounded-md bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-semibold transition-colors flex items-center gap-1.5 shadow-xs cursor-pointer disabled:opacity-50"
                 >
@@ -580,7 +580,7 @@ export default function ProjectSprintWorkspaceTab({
 
               {currentSprint?.status === 'COMPLETED' && (
                 <button
-                  onClick={() => handleReopenSprint(currentSprint.id)}
+                  onClick={() => { void handleReopenSprint(currentSprint.id); }}
                   className="px-3 py-1.5 rounded-md border border-slate-200 hover:bg-slate-50 text-slate-700 text-xs font-medium transition-colors flex items-center gap-1.5 cursor-pointer"
                   title="Reopen completed sprint"
                 >
@@ -1050,7 +1050,7 @@ export default function ProjectSprintWorkspaceTab({
                 onDragLeave={(e) => {
                   if (dragOverColId === col.id) setDragOverColId(null);
                 }}
-                onDrop={(e) => handleDropTask(e, col.id)}
+                onDrop={(e) => { void handleDropTask(e, col.id); }}
                 className={`rounded-lg p-2.5 border flex flex-col min-h-[380px] transition-colors ${
                   dragOverColId === col.id
                     ? 'bg-purple-50/50 border-purple-400 border-dashed'

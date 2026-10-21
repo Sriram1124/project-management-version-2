@@ -805,7 +805,7 @@ export default function ProjectsDirectoryView({ onSelectProject, isIntern = fals
                                 <>
                                   <button 
                                     title="Edit Project"
-                                    onClick={(e) => handleOpenEdit(proj, e)}
+                                    onClick={(e) => { void handleOpenEdit(proj, e); }}
                                     className="p-1.5 text-slate-400 hover:text-purple-600 hover:bg-purple-50 rounded-lg transition-colors cursor-pointer"
                                   >
                                     <Edit3 className="w-4 h-4" />
@@ -813,7 +813,7 @@ export default function ProjectsDirectoryView({ onSelectProject, isIntern = fals
                                   {proj.status === 'ARCHIVED' ? (
                                     <button 
                                       title="Reactivate Project"
-                                      onClick={(e) => handleReactivate(proj, e)}
+                                      onClick={(e) => { void handleReactivate(proj, e); }}
                                       className="p-1.5 text-slate-400 hover:text-emerald-600 hover:bg-emerald-50 rounded-lg transition-colors cursor-pointer"
                                     >
                                       <RotateCcw className="w-4 h-4" />
@@ -953,7 +953,7 @@ export default function ProjectsDirectoryView({ onSelectProject, isIntern = fals
                           <>
                             <button 
                               title="Edit Project"
-                              onClick={(e) => handleOpenEdit(proj, e)}
+                              onClick={(e) => { void handleOpenEdit(proj, e); }}
                               className="p-1.5 text-slate-400 hover:text-purple-600 hover:bg-purple-50 rounded-lg transition-colors cursor-pointer"
                             >
                               <Edit3 className="w-4 h-4" />
@@ -961,7 +961,7 @@ export default function ProjectsDirectoryView({ onSelectProject, isIntern = fals
                             {proj.status === 'ARCHIVED' ? (
                               <button 
                                 title="Reactivate Project"
-                                onClick={(e) => handleReactivate(proj, e)}
+                                onClick={(e) => { void handleReactivate(proj, e); }}
                                 className="p-1.5 text-slate-400 hover:text-emerald-600 hover:bg-emerald-50 rounded-lg transition-colors cursor-pointer"
                               >
                                 <RotateCcw className="w-4 h-4" />

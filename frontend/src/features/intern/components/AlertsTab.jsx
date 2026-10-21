@@ -306,7 +306,7 @@ export default function AlertsTab({ notifications = [], onToast }) {
                         {!notif.is_read ? (
                           <button
                             type="button"
-                            onClick={(e) => handleMarkRead(notif.id, e)}
+                            onClick={(e) => { void handleMarkRead(notif.id, e); }}
                             className="flex items-center gap-1 text-purple-700 font-bold hover:text-purple-900 transition-colors cursor-pointer"
                           >
                             <Check className="w-3.5 h-3.5" />
@@ -322,7 +322,7 @@ export default function AlertsTab({ notifications = [], onToast }) {
                         {isArchived ? (
                           <button
                             type="button"
-                            onClick={(e) => handleUnarchive(notif.id, e)}
+                            onClick={(e) => { void handleUnarchive(notif.id, e); }}
                             className="flex items-center gap-1 text-purple-700 font-bold hover:text-purple-900 transition-colors cursor-pointer"
                             title="Restore alert to active inbox"
                           >
@@ -332,7 +332,7 @@ export default function AlertsTab({ notifications = [], onToast }) {
                         ) : (
                           <button
                             type="button"
-                            onClick={(e) => handleArchive(notif.id, e)}
+                            onClick={(e) => { void handleArchive(notif.id, e); }}
                             className="flex items-center gap-1 text-slate-500 hover:text-slate-800 transition-colors cursor-pointer"
                             title="Archive alert"
                           >
@@ -436,7 +436,7 @@ export default function AlertsTab({ notifications = [], onToast }) {
                 {selectedAlert.is_archived || filter === 'ARCHIVED' ? (
                   <button
                     type="button"
-                    onClick={(e) => handleUnarchive(selectedAlert.id, e)}
+                    onClick={(e) => { void handleUnarchive(selectedAlert.id, e); }}
                     className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-purple-700 bg-purple-50 hover:bg-purple-100 border border-purple-200 rounded-xl transition-colors cursor-pointer"
                   >
                     <ArchiveRestore className="w-3.5 h-3.5" />
@@ -445,7 +445,7 @@ export default function AlertsTab({ notifications = [], onToast }) {
                 ) : (
                   <button
                     type="button"
-                    onClick={(e) => handleArchive(selectedAlert.id, e)}
+                    onClick={(e) => { void handleArchive(selectedAlert.id, e); }}
                     className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-slate-700 bg-white hover:bg-slate-100 border border-slate-200 rounded-xl transition-colors cursor-pointer"
                   >
                     <Archive className="w-3.5 h-3.5" />

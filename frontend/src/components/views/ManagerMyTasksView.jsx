@@ -871,7 +871,7 @@ export default function ManagerMyTasksView({ onToast }) {
                           {!isCompleted ? (
                             <button
                               type="button"
-                              onClick={() => handleToggleTask(item.id)}
+                              onClick={() => { void handleToggleTask(item.id); }}
                               className="inline-flex items-center gap-1 px-2.5 py-1.5 text-[11px] font-semibold text-emerald-700 bg-emerald-50 hover:bg-emerald-100 border border-emerald-200 rounded-lg transition-colors cursor-pointer"
                               title="Mark as done and archive"
                             >
@@ -881,7 +881,7 @@ export default function ManagerMyTasksView({ onToast }) {
                           ) : (
                             <button
                               type="button"
-                              onClick={() => handleToggleTask(item.id)}
+                              onClick={() => { void handleToggleTask(item.id); }}
                               className="inline-flex items-center gap-1 px-2.5 py-1.5 text-[11px] font-semibold text-slate-600 bg-slate-100 hover:bg-slate-200 border border-slate-200 rounded-lg transition-colors cursor-pointer"
                               title="Reopen task and move to active"
                             >

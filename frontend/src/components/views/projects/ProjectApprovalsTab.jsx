@@ -434,7 +434,7 @@ export default function ProjectApprovalsTab({
                           <div className="min-w-0 max-w-[200px]">
                             <button
                               type="button"
-                              onClick={() => handleInspectTask(req.task_id)}
+                              onClick={() => { void handleInspectTask(req.task_id); }}
                               className="font-semibold text-slate-900 hover:text-purple-600 truncate block text-xs cursor-pointer group-hover:underline text-left"
                               title={req.task?.title || 'Deliverable'}
                             >

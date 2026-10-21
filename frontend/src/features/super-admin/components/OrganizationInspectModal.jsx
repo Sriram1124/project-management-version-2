@@ -328,7 +328,7 @@ export default function OrganizationInspectModal({
 
                         <div className="flex items-center gap-2">
                           <button
-                            onClick={() => handleResetPassword(m.id, m.name)}
+                            onClick={() => { void handleResetPassword(m.id, m.name); }}
                             title="Reset manager password and revoke active sessions"
                             className="flex items-center gap-1.5 px-2.5 py-1.5 bg-white hover:bg-amber-50 text-amber-700 border border-slate-200 hover:border-amber-300 rounded-lg text-xs font-bold transition-colors cursor-pointer"
                           >
@@ -408,7 +408,7 @@ export default function OrganizationInspectModal({
                             </span>
                             {isManager && (
                               <button
-                                onClick={() => handleResetPassword(u.id, u.name)}
+                                onClick={() => { void handleResetPassword(u.id, u.name); }}
                                 title="Reset Manager Password"
                                 className="flex items-center gap-1 px-2 py-1 bg-white hover:bg-amber-50 border border-slate-200 hover:border-amber-300 text-amber-700 rounded-lg text-[10px] font-bold transition-colors cursor-pointer"
                               >

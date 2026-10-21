@@ -417,7 +417,7 @@ export default function ProjectFilesSection({ projectId, projectName = '', onToa
                       <span>Preview</span>
                     </button>
                     <button
-                      onClick={(e) => handleDownload(file, e)}
+                      onClick={(e) => { void handleDownload(file, e); }}
                       className="w-full px-3 py-1.5 text-left text-xs text-slate-700 hover:bg-slate-50 flex items-center gap-2 cursor-pointer"
                     >
                       <Download className="w-3.5 h-3.5 text-slate-400" />

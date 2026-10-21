@@ -37,6 +37,8 @@ export default function ManagerDashboardView({
     ]).then(([projData, workData]) => {
       setProjects(Array.isArray(projData) ? projData : (projData?.projects || []));
       setWorkItems(Array.isArray(workData) ? workData : []);
+    }).catch((err) => {
+      console.error('Failed to load global manager dashboard data:', err);
     });
   }, []);
 
@@ -57,6 +59,9 @@ export default function ManagerDashboardView({
       const loadedUsers = Array.isArray(userData) ? userData : (userData?.users || []);
       setUsers(loadedUsers);
       setHealthOverview(healthData);
+      setHealthLoading(false);
+    }).catch((err) => {
+      console.error('Failed to load cohort manager dashboard data:', err);
       setHealthLoading(false);
     });
   }, [selectedCohort?.id]);
