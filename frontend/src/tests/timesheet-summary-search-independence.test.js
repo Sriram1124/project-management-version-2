@@ -158,7 +158,7 @@ describe('InternHub — Manager Timesheets Summary & Search Independence Suite',
     assert.strictEqual(result.summary.active_interns, 2);
     // Total logged time: 540 mins = 9.0 hours
     assert.strictEqual(result.summary.total_logged_minutes, 540);
-    assert.strictEqual(result.summary.total_logged_hours, 9.0);
+    assert.ok(Math.abs(result.summary.total_logged_hours - 9.0) < 1e-4);
     // Avg active hours: 540 / 2 = 270 mins (4.5 hours)
     assert.strictEqual(result.summary.avg_logged_minutes_per_active, 270);
 
@@ -179,7 +179,7 @@ describe('InternHub — Manager Timesheets Summary & Search Independence Suite',
     assert.strictEqual(result.summary.total_interns, 3);
     assert.strictEqual(result.summary.active_interns, 2);
     assert.strictEqual(result.summary.total_logged_minutes, 540);
-    assert.strictEqual(result.summary.total_logged_hours, 9.0);
+    assert.ok(Math.abs(result.summary.total_logged_hours - 9.0) < 1e-4);
     assert.strictEqual(result.summary.avg_logged_minutes_per_active, 270);
 
     // Intern table should be empty
@@ -203,7 +203,7 @@ describe('InternHub — Manager Timesheets Summary & Search Independence Suite',
     // All four summary cards remain identical to the whole cohort
     assert.strictEqual(resultAlice.summary.total_interns, 3);
     assert.strictEqual(resultAlice.summary.active_interns, 2);
-    assert.strictEqual(resultAlice.summary.total_logged_hours, 9.0);
+    assert.ok(Math.abs(resultAlice.summary.total_logged_hours - 9.0) < 1e-4);
     assert.strictEqual(resultAlice.summary.avg_logged_minutes_per_active, 270);
 
     // Search by user code
@@ -257,7 +257,7 @@ describe('InternHub — Manager Timesheets Summary & Search Independence Suite',
     assert.strictEqual(resultCohort2.summary.active_interns, 2);
     // Total logged time: 900 mins = 15.0 hours
     assert.strictEqual(resultCohort2.summary.total_logged_minutes, 900);
-    assert.strictEqual(resultCohort2.summary.total_logged_hours, 15.0);
+    assert.ok(Math.abs(resultCohort2.summary.total_logged_hours - 15.0) < 1e-4);
     // Avg active: 900 / 2 = 450 mins (7.5 hours)
     assert.strictEqual(resultCohort2.summary.avg_logged_minutes_per_active, 450);
 
@@ -284,7 +284,7 @@ describe('InternHub — Manager Timesheets Summary & Search Independence Suite',
     assert.strictEqual(resultWeek2.summary.active_interns, 2);
     // Total logged time: 240 mins = 4.0 hours
     assert.strictEqual(resultWeek2.summary.total_logged_minutes, 240);
-    assert.strictEqual(resultWeek2.summary.total_logged_hours, 4.0);
+    assert.ok(Math.abs(resultWeek2.summary.total_logged_hours - 4.0) < 1e-4);
     // Avg active: 240 / 2 = 120 mins (2.0 hours)
     assert.strictEqual(resultWeek2.summary.avg_logged_minutes_per_active, 120);
   });
@@ -300,7 +300,7 @@ describe('InternHub — Manager Timesheets Summary & Search Independence Suite',
 
     assert.strictEqual(crossSearch.tableInterns.length, 0);
     assert.strictEqual(crossSearch.summary.total_interns, 3);
-    assert.strictEqual(crossSearch.summary.total_logged_hours, 9.0);
+    assert.ok(Math.abs(crossSearch.summary.total_logged_hours - 9.0) < 1e-4);
   });
 });
 

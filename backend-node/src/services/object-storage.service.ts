@@ -34,6 +34,8 @@ export interface StorageDownloadResult {
   contentDisposition?: string;
 }
 
+export const MAX_PROJECT_DOCUMENT_SIZE = 50 * 1024 * 1024; // 50MB maximum document payload
+
 export class ObjectStorageService {
   private static client: S3Client | null = null;
   private static bucketName: string = '';
@@ -150,7 +152,7 @@ export class ObjectStorageService {
     originalName: string,
     sourceStream: Readable,
     declaredMime: string,
-    maxSizeBytes: number = 50 * 1024 * 1024 // 50MB default
+    maxSizeBytes: number = MAX_PROJECT_DOCUMENT_SIZE
   ): Promise<StorageUploadResult> {
     const s3 = this.getClient();
     const bucket = this.getBucket();

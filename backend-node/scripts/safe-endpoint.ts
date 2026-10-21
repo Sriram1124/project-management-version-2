@@ -12,7 +12,10 @@ export function safeEndpoint(baseUrl: string, ...segments: string[]): string {
     throw new Error('Rejected embedded credentials in URL');
   }
 
-  const basePrefix = parsed.pathname.replace(/\/+$/, '');
+  let basePrefix = parsed.pathname;
+  while (basePrefix.endsWith('/')) {
+    basePrefix = basePrefix.slice(0, -1);
+  }
   const encodedSegments: string[] = [];
 
   for (const raw of segments) {

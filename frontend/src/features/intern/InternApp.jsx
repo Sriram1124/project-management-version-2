@@ -63,7 +63,10 @@ export default function InternApp({ onLogout, onSelectProject, onToast }) {
   const navigate = useNavigate();
 
   const getTabFromPath = (pathname) => {
-    const clean = pathname.replace(/^\/intern\/?/, '');
+    let clean = pathname.replace(/^\/intern\/?/, '');
+    while (clean.endsWith('/')) {
+      clean = clean.slice(0, -1);
+    }
     if (!clean || clean === 'dashboard') return 'dashboard';
     if (clean === 'tasks' || clean === 'my-tasks') return 'tasks';
     if (['alerts', 'projects', 'tasks', 'timesheet', 'analytics', 'forms', 'attendance', 'profile'].includes(clean)) {

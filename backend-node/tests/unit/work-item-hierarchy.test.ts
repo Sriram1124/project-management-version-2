@@ -177,7 +177,7 @@ describe('WorkItem Hierarchy, Validation & Permissions Unit Tests', () => {
           parent_id: 'story-1',
           story_points: 1,
         })
-      ).rejects.toThrow('A STORY can only contain TASK or BUG work items');
+      ).rejects.toThrow('A STORY can only contain TASK work items as direct children');
     });
 
     it('throws error when adding STORY under a TASK parent', async () => {

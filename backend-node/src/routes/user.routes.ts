@@ -5,9 +5,13 @@ import { TimesheetController } from '../controllers/timesheet.controller';
 import { authenticate, requireRole, requirePermission, requireRoleOrPermission } from '../middleware/auth.middleware';
 
 const router = Router();
+const MAX_CSV_IMPORT_FILE_SIZE = 5 * 1024 * 1024; // 5 MB limit for bulk CSV user import
 const upload = multer({
   storage: multer.memoryStorage(),
-  limits: { fileSize: 5 * 1024 * 1024 }, // 5 MB limit
+  limits: {
+    fileSize: MAX_CSV_IMPORT_FILE_SIZE,
+    files: 1,
+  },
 });
 
 // All user routes require authentication

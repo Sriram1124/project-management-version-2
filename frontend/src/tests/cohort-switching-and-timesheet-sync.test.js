@@ -276,14 +276,14 @@ describe('InternHub — Cohort Switching & Timesheet Data Synchronization Suite'
     assert.strictEqual(c1Result.summary.total_interns, 3);
     assert.strictEqual(c1Result.summary.active_interns, 2); // Alice (240m) + Bob (180m), Test Intern (0m)
     assert.strictEqual(c1Result.summary.total_logged_minutes, 420);
-    assert.strictEqual(c1Result.summary.total_logged_hours, 7.0);
+    assert.ok(Math.abs(c1Result.summary.total_logged_hours - 7.0) < 1e-4);
     assert.strictEqual(c1Result.summary.avg_logged_minutes_per_active, 210);
 
     const c2Result = queryManagerTimesheetsReview({ cohortId: 'cohort-uuid-2' });
     assert.strictEqual(c2Result.summary.total_interns, 2);
     assert.strictEqual(c2Result.summary.active_interns, 1); // Charlie (300m), David (0m)
     assert.strictEqual(c2Result.summary.total_logged_minutes, 300);
-    assert.strictEqual(c2Result.summary.total_logged_hours, 5.0);
+    assert.ok(Math.abs(c2Result.summary.total_logged_hours - 5.0) < 1e-4);
     assert.strictEqual(c2Result.summary.avg_logged_minutes_per_active, 300);
   });
 

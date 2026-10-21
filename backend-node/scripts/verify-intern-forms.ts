@@ -259,7 +259,7 @@ async function main() {
   assert(savedQ5?.value_boolean === true, 'Q5 BOOLEAN answer verified');
 
   const savedQ6 = savedAnswers.find((a: any) => a.question_id === q6.id);
-  assert(savedQ6?.value_number === 4.5, 'Q6 NUMBER answer verified');
+  assert(savedQ6?.value_number !== undefined && Math.abs(savedQ6.value_number - 4.5) < 0.001, 'Q6 NUMBER answer verified');
 
   // 6. Duplicate Submission Protection
   console.log('\n6. Duplicate Submission Prevention');

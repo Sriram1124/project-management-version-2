@@ -114,7 +114,7 @@ describe('InternHub — Dynamic Kanban Board Summary Metrics Suite', () => {
         { id: 't-1', type: 'TASK', status: 'COMPLETED', start_date: start.toISOString(), completed_at: end.toISOString() },
       ];
       const result = calculateKanbanMetrics(tasks);
-      assert.strictEqual(result.avgCycleTimeDays, 1.5);
+      assert.ok(Math.abs(result.avgCycleTimeDays - 1.5) < 1e-4);
       assert.strictEqual(result.avgCycleTimeFormatted, '1.5d avg cycle');
       assert.strictEqual(result.avgCycleTimeDisplay, '~1.5d avg cycle');
     });

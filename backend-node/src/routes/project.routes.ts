@@ -3,10 +3,14 @@ import multer from 'multer';
 import { ProjectController } from '../controllers/project.controller';
 import { SprintController } from '../controllers/sprint.controller';
 import { authenticate, requirePermission, requireAnyPermission, requireRoleOrPermission } from '../middleware/auth.middleware';
+import { MAX_PROJECT_DOCUMENT_SIZE } from '../services/object-storage.service';
 
 const upload = multer({
   storage: multer.memoryStorage(),
-  limits: { fileSize: 50 * 1024 * 1024 }, // 50MB
+  limits: {
+    fileSize: MAX_PROJECT_DOCUMENT_SIZE,
+    files: 1,
+  },
 });
 
 const router = Router();

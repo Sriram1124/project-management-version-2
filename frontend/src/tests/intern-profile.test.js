@@ -4,7 +4,10 @@ import assert from 'node:assert';
 describe('Intern Profile Feature Suite', () => {
   describe('View Routing & Navigation', () => {
     const getTabFromPath = (pathname) => {
-      const clean = pathname.replace(/^\/intern\/?/, '').replace(/\/+$/, '');
+      let clean = pathname.replace(/^\/intern\/?/, '');
+      while (clean.endsWith('/')) {
+        clean = clean.slice(0, -1);
+      }
       if (!clean || clean === 'dashboard') return 'dashboard';
       if (clean === 'tasks' || clean === 'my-tasks') return 'tasks';
       if (['alerts', 'projects', 'tasks', 'timesheet', 'analytics', 'forms', 'attendance', 'profile'].includes(clean)) {

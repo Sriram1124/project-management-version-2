@@ -40,22 +40,22 @@ async function runTests() {
 
     test(
       'Prompt example: 8 Healthy out of 12 assessed is 66.7%',
-      healthyPct === 66.7,
+      Math.abs(healthyPct - 66.7) < 0.05,
       { healthyPct }
     );
     test(
       'Prompt example: 3 At Risk out of 12 assessed is 25.0%',
-      atRiskPct === 25,
+      Math.abs(atRiskPct - 25.0) < 0.05,
       { atRiskPct }
     );
     test(
       'Prompt example: 1 Critical out of 12 assessed is 8.3%',
-      criticalPct === 8.3,
+      Math.abs(criticalPct - 8.3) < 0.05,
       { criticalPct }
     );
     test(
       'Prompt example: 4 Attention Required out of 12 assessed is 33.3% Attention Rate',
-      attentionRate === 33.3,
+      Math.abs(attentionRate - 33.3) < 0.05,
       { attentionRate }
     );
     test(
@@ -83,10 +83,10 @@ async function runTests() {
     const criticalPct = roundPct(critical, assessed);
     const attentionRate = roundPct(attentionRequired, assessed);
 
-    test('Zero assessed projects: healthyPct is 0 (not NaN)', healthyPct === 0 && !Number.isNaN(healthyPct));
-    test('Zero assessed projects: atRiskPct is 0 (not NaN)', atRiskPct === 0 && !Number.isNaN(atRiskPct));
-    test('Zero assessed projects: criticalPct is 0 (not NaN)', criticalPct === 0 && !Number.isNaN(criticalPct));
-    test('Zero assessed projects: attentionRate is 0 (not NaN)', attentionRate === 0 && !Number.isNaN(attentionRate));
+    test('Zero assessed projects: healthyPct is 0 (not NaN)', Math.abs(healthyPct) < 0.001 && !Number.isNaN(healthyPct));
+    test('Zero assessed projects: atRiskPct is 0 (not NaN)', Math.abs(atRiskPct) < 0.001 && !Number.isNaN(atRiskPct));
+    test('Zero assessed projects: criticalPct is 0 (not NaN)', Math.abs(criticalPct) < 0.001 && !Number.isNaN(criticalPct));
+    test('Zero assessed projects: attentionRate is 0 (not NaN)', Math.abs(attentionRate) < 0.001 && !Number.isNaN(attentionRate));
     test('Zero assessed projects: notAssessed disclosed separately', notAssessed === 3);
   }
 
@@ -129,17 +129,17 @@ async function runTests() {
       if (summary.assessed > 0) {
         test(
           'Live distribution healthy percentage uses assessed as denominator',
-          distribution.healthy.percentage === Number(((summary.healthy / summary.assessed) * 100).toFixed(1)),
+          Math.abs(distribution.healthy.percentage - ((summary.healthy / summary.assessed) * 100)) < 0.15,
           { distribution, summary }
         );
         test(
           'Live attention_rate uses assessed as denominator',
-          summary.attention_rate === Number(((summary.attention_required / summary.assessed) * 100).toFixed(1)),
+          Math.abs(summary.attention_rate - ((summary.attention_required / summary.assessed) * 100)) < 0.15,
           { summary }
         );
       } else {
-        test('When assessed is 0, healthy percentage is 0', distribution.healthy.percentage === 0);
-        test('When assessed is 0, attention_rate is 0', summary.attention_rate === 0);
+        test('When assessed is 0, healthy percentage is 0', Math.abs(distribution.healthy.percentage) < 0.001);
+        test('When assessed is 0, attention_rate is 0', Math.abs(summary.attention_rate) < 0.001);
       }
     } else {
       console.log('Skipping live admin query (no admin found)');

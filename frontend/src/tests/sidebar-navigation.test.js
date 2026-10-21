@@ -4,7 +4,10 @@ import assert from 'node:assert';
 describe('Sidebar & Reports Navigation Suite', () => {
   // Navigation helper mirroring ManagerApp getViewFromPath
   const getViewFromPath = (pathname) => {
-    const clean = pathname.replace(/^\/manager\/?/, '').replace(/\/+$/, '');
+    let clean = pathname.replace(/^\/manager\/?/, '');
+    while (clean.endsWith('/')) {
+      clean = clean.slice(0, -1);
+    }
     if (!clean || clean === 'dashboard') return 'dashboard';
     if (clean === 'timesheet') return 'timesheets';
     if (['projects', 'my-tasks', 'tasks', 'interns', 'tech-leads', 'reports', 'timesheets', 'channels', 'profile'].includes(clean)) {
@@ -16,7 +19,10 @@ describe('Sidebar & Reports Navigation Suite', () => {
   // Helper mirroring ManagerApp getInitialProjectState
   const getInitialProjectState = (pathname, searchString = '') => {
     try {
-      const clean = pathname.replace(/^\/manager\/?/, '').replace(/\/+$/, '');
+      let clean = pathname.replace(/^\/manager\/?/, '');
+      while (clean.endsWith('/')) {
+        clean = clean.slice(0, -1);
+      }
       if (clean !== 'projects') {
         return { projId: null, tab: 'overview' };
       }

@@ -4,7 +4,10 @@ import assert from 'node:assert';
 describe('Manager Profile Feature Suite', () => {
   describe('View Routing & Navigation', () => {
     const getViewFromPath = (pathname) => {
-      const clean = pathname.replace(/^\/manager\/?/, '').replace(/\/+$/, '');
+      let clean = pathname.replace(/^\/manager\/?/, '');
+      while (clean.endsWith('/')) {
+        clean = clean.slice(0, -1);
+      }
       if (!clean || clean === 'dashboard') return 'dashboard';
       if (clean === 'timesheet') return 'timesheets';
       if (['projects', 'my-tasks', 'tasks', 'interns', 'tech-leads', 'reports', 'timesheets', 'channels', 'profile'].includes(clean)) {
