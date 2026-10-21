@@ -166,6 +166,42 @@ describe('Intern Permissions & Status Transitions Unit Tests', () => {
       ).rejects.toThrow(/Forbidden: interns cannot alter parent-child or epic assignments/);
     });
 
+    it('rejects intern requesting extension on task assigned to another user', async () => {
+      mockPrisma.workItem.findFirst.mockResolvedValueOnce({
+        ...assignedTask,
+        id: 'task-other-member',
+        assignees: [{ user_id: 'tanvi-user-2' }],
+        assignee_id: 'tanvi-user-2',
+      });
+
+      await expect(
+        WorkItemService.requestExtension('task-other-member', internUser, {
+          requested_due_date: '2026-11-15',
+          reason: 'Need more time for testing',
+        })
+      ).rejects.toThrow(/Forbidden: interns can only apply for due-date extensions on tasks assigned to them/);
+    });
+
+    it('allows assigned intern to request extension on their own task', async () => {
+      mockPrisma.workItem.findFirst.mockResolvedValueOnce(assignedTask);
+      mockPrisma.workItemExtensionRequest.findFirst.mockResolvedValueOnce(null);
+      mockPrisma.workItemExtensionRequest.create.mockResolvedValueOnce({
+        id: 'ext-req-1',
+        task_id: 'task-assigned-1',
+        requester_id: internUser.id,
+        requested_due_date: new Date('2026-11-15'),
+        reason: 'Need more time',
+        status: 'PENDING',
+      });
+
+      const res = await WorkItemService.requestExtension('task-assigned-1', internUser, {
+        requested_due_date: '2026-11-15',
+        reason: 'Need more time',
+      });
+      expect(res).toBeDefined();
+      expect(res.id).toBe('ext-req-1');
+    });
+
     it('strictly forbids intern from deleting any work item', async () => {
       await expect(
         WorkItemService.deleteWorkItem('task-assigned-1', internUser)

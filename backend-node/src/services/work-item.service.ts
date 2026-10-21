@@ -3005,6 +3005,7 @@ export class WorkItemService {
     }
 
     const item = await this.verifyWorkItemAccess(workItemId, user);
+
     if (item.project?.status === ProjectStatus.ARCHIVED) {
       const err: any = new Error('Cannot add comments to work items in an archived project');
       err.statusCode = 400;
@@ -3182,6 +3183,17 @@ export class WorkItemService {
     }
 
     const item = await this.verifyWorkItemAccess(workItemId, user);
+
+    if (this.isIntern(user)) {
+      const isAssignee =
+        item.assignees?.some((a: any) => a.user_id === user.id);
+      if (!isAssignee) {
+        const err: any = new Error('Forbidden: interns can only apply for due-date extensions on tasks assigned to them');
+        err.statusCode = 403;
+        throw err;
+      }
+    }
+
     if (item.project?.status === ProjectStatus.ARCHIVED) {
       const err: any = new Error('Cannot request extensions for work items in an archived project');
       err.statusCode = 400;

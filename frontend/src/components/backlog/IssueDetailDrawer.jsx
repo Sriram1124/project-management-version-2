@@ -1250,7 +1250,7 @@ export default function IssueDetailDrawer({
                   </div>
                 ) : String(issue?.project?.status || issue?.project_status || '').toUpperCase() === 'ARCHIVED' ? (
                   <span className="text-[11px] text-slate-400 italic">Project is archived</span>
-                ) : isIntern ? (
+                ) : isIntern && isAssignedToMe ? (
                   <button
                     type="button"
                     onClick={() => {

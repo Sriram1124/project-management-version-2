@@ -9,10 +9,12 @@ const __dirname = path.dirname(__filename);
 
 describe('Intern Backlog Permissions, Status Persistence, and Due-Date Extension Suite', () => {
   const drawerPath = path.join(__dirname, '../components/backlog/IssueDetailDrawer.jsx');
+  const hierarchicalTablePath = path.join(__dirname, '../components/backlog/HierarchicalIssueTable.jsx');
   const backlogTabPath = path.join(__dirname, '../components/views/projects/ProjectBacklogTab.jsx');
   const backendWorkItemServicePath = path.join(__dirname, '../../../backend-node/src/services/work-item.service.ts');
 
   const drawerContent = fs.readFileSync(drawerPath, 'utf8');
+  const tableContent = fs.readFileSync(hierarchicalTablePath, 'utf8');
   const backlogTabContent = fs.readFileSync(backlogTabPath, 'utf8');
   const backendServiceContent = fs.readFileSync(backendWorkItemServicePath, 'utf8');
 
@@ -109,6 +111,39 @@ describe('Intern Backlog Permissions, Status Persistence, and Due-Date Extension
       );
     });
 
+    test('Interns cannot edit Assignee, Priority, Sprint, Story Points, or Due Date in Backlog table rows', () => {
+      assert.match(
+        tableContent,
+        /const canChangeAssignee = !isIntern && \(canManageProject \|\| memberPerms\.has\('ROLE_ASSIGN'\) \|\| hasTaskUpdate\);/,
+        'canChangeAssignee in table must be strictly false for interns'
+      );
+      assert.match(
+        tableContent,
+        /const canChangePriority = !isIntern && \(canManageProject \|\| hasTaskUpdate\);/,
+        'canChangePriority in table must be false for interns'
+      );
+      assert.match(
+        tableContent,
+        /const canChangeSprint = !isIntern && \(canManageProject \|\| hasTaskUpdate\);/,
+        'canChangeSprint in table must be false for interns'
+      );
+      assert.match(
+        tableContent,
+        /const canChangeStoryPoints = !isIntern && \(canManageProject \|\| hasTaskUpdate\);/,
+        'canChangeStoryPoints in table must be false for interns'
+      );
+      assert.match(
+        tableContent,
+        /const canChangeDueDate = !isIntern && \(canManageProject \|\| hasTaskUpdate\);/,
+        'canChangeDueDate in table must be false for interns'
+      );
+      assert.match(
+        backlogTabContent,
+        /if \(isIntern\) \{\s*onToast\?\.\('Forbidden: interns cannot reassign tasks'\);\s*return;\s*\}/,
+        'handleUpdateAssignee in ProjectBacklogTab must guard against intern execution'
+      );
+    });
+
     test('Interns can change task status if assigned, but canCompleteStatus is false', () => {
       assert.match(
         drawerContent,
@@ -201,6 +236,11 @@ describe('Intern Backlog Permissions, Status Persistence, and Due-Date Extension
         drawerContent,
         /!canChangeDueDate && \([\s\S]*?Apply for Extension/,
         'Apply for Extension button must be rendered under read-only due date when cannot edit due date'
+      );
+      assert.match(
+        drawerContent,
+        /isIntern && isAssignedToMe/,
+        'Apply for Extension button must only be shown for the assigned intern, not for other members'
       );
     });
 

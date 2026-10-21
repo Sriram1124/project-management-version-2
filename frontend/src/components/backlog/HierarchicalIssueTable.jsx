@@ -381,15 +381,15 @@ function HierarchicalRow({
     (item?.created_by === currentUserId || item?.creator_id === currentUserId || item?.creator?.id === currentUserId)
   );
 
-  const canDrag = canManageProject || hasTaskUpdate || isAssignedToMe || !isIntern;
-  const canChangeStatus = canManageProject || hasTaskUpdate || isAssignedToMe || !isIntern;
+  const canDrag = !isIntern && (canManageProject || hasTaskUpdate);
+  const canChangeStatus = !isIntern ? (canManageProject || hasTaskUpdate) : isAssignedToMe;
   const canCompleteStatus = canManageProject;
-  const canChangePriority = canManageProject || hasTaskUpdate || isAssignedToMe || !isIntern;
-  const canChangeAssignee = canManageProject || hasTaskUpdate || memberPerms.has('ROLE_ASSIGN') || !isIntern;
-  const canChangeSprint = canManageProject || hasTaskUpdate || isAssignedToMe || isCreator || !isIntern;
-  const canChangeStoryPoints = canManageProject || hasTaskUpdate || isAssignedToMe || !isIntern;
-  const canChangeDueDate = canManageProject || hasTaskUpdate || isAssignedToMe || !isIntern;
-  const canDelete = canManageProject || hasTaskDelete || isCreator || !isIntern;
+  const canChangePriority = !isIntern && (canManageProject || hasTaskUpdate);
+  const canChangeAssignee = !isIntern && (canManageProject || memberPerms.has('ROLE_ASSIGN') || hasTaskUpdate);
+  const canChangeSprint = !isIntern && (canManageProject || hasTaskUpdate);
+  const canChangeStoryPoints = !isIntern && (canManageProject || hasTaskUpdate);
+  const canChangeDueDate = !isIntern && (canManageProject || hasTaskUpdate);
+  const canDelete = !isIntern && (canManageProject || hasTaskDelete || isCreator);
 
   const [menuOpen, setMenuOpen] = useState(null); // 'status' | 'priority' | 'assignee' | 'sprint' | 'points' | 'date' | 'more' | 'epicSprint'
   const [openUpward, setOpenUpward] = useState(false);

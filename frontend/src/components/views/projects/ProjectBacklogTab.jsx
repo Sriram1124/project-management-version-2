@@ -235,6 +235,10 @@ export default function ProjectBacklogTab({ projectId, project = null, isKanbanP
   };
 
   const handleUpdatePriority = async (issueId, newPriority) => {
+    if (isIntern) {
+      onToast?.('Forbidden: interns cannot change task priority');
+      return;
+    }
     const originalItem = workItems.find((item) => item.id === issueId);
     try {
       setWorkItems((prev) =>
@@ -260,6 +264,10 @@ export default function ProjectBacklogTab({ projectId, project = null, isKanbanP
   };
 
   const handleUpdateAssignee = async (issueId, assigneeIds) => {
+    if (isIntern) {
+      onToast?.('Forbidden: interns cannot reassign tasks');
+      return;
+    }
     const originalItem = workItems.find((item) => item.id === issueId);
     try {
       const saved = await workItemsService.updateWorkItem(issueId, { assignee_ids: assigneeIds });
@@ -436,6 +444,7 @@ export default function ProjectBacklogTab({ projectId, project = null, isKanbanP
     currentMember?.role === 'TECH_LEAD';
 
   const canManageSprint = isManagerOrAdmin || isTechLead;
+  const isIntern = String(authRole).toUpperCase() === 'INTERN' && !canManageSprint;
 
   // Sprint lifecycle
   const handleStartSprint = async (sprintId) => {
