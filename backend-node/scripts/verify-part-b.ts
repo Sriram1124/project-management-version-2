@@ -1,3 +1,4 @@
+import { safeEndpoint, getTestPassword, sanitizeForLog } from './safe-endpoint';
 import crypto from 'crypto';
 import { PrismaClient } from '@prisma/client';
 import { UserService } from '../src/services/user.service';
@@ -15,19 +16,21 @@ const results: TestResult[] = [];
 
 function assert(condition: boolean, message: string) {
   if (!condition) {
-    throw new Error(`Assertion failed: ${message}`);
+    throw new Error(`Assertion failed: ${sanitizeForLog(message)}`);
   }
 }
 
 async function runTest(name: string, fn: () => Promise<void>) {
+  const safeName = sanitizeForLog(name);
   try {
-    console.log(`\n⏳ Running: ${name}`);
+    console.log(`\n⏳ Running: ${safeName}`);
     await fn();
-    console.log(`✅ PASS: ${name}`);
-    results.push({ name, passed: true });
+    console.log(`✅ PASS: ${safeName}`);
+    results.push({ name: safeName, passed: true });
   } catch (err: any) {
-    console.error(`❌ FAIL: ${name} ->`, err.message || err);
-    results.push({ name, passed: false, error: err.message || String(err) });
+    const errMsg = sanitizeForLog(err?.message || err);
+    console.error(`❌ FAIL: ${safeName} -> ${errMsg}`);
+    results.push({ name: safeName, passed: false, error: errMsg });
   }
 }
 
@@ -76,12 +79,12 @@ async function main() {
 
   // Setup: Authenticate Manager
   await runTest('Setup: Authenticate Manager', async () => {
-    const res = await fetch(`${API_BASE}/auth/login`, {
+    const res = await fetch(safeEndpoint(API_BASE, 'auth', 'login'), {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         email: 'manager@dailoqa.com',
-        password: 'password123',
+        password: getTestPassword(),
         organization_id: dailoqaOrgId
       })
     });
@@ -93,7 +96,7 @@ async function main() {
 
   // Individual Creation Tests
   await runTest('Individual: Manager creates Intern with generated user_code & temp password', async () => {
-    const res = await fetch(`${API_BASE}/users`, {
+    const res = await fetch(safeEndpoint(API_BASE, 'users'), {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -128,7 +131,7 @@ async function main() {
   });
 
   await runTest('Individual: Manager creates Employee with generated user_code & temp password', async () => {
-    const res = await fetch(`${API_BASE}/users`, {
+    const res = await fetch(safeEndpoint(API_BASE, 'users'), {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -160,19 +163,19 @@ async function main() {
   });
 
   await runTest('Security: Intern receives 403 from user creation', async () => {
-    const internLogin = await fetch(`${API_BASE}/auth/login`, {
+    const internLogin = await fetch(safeEndpoint(API_BASE, 'auth', 'login'), {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         email: 'intern@dailoqa.com',
-        password: 'password123',
+        password: getTestPassword(),
         organization_id: dailoqaOrgId
       })
     });
     const internData = await internLogin.json();
     internToken = internData.accessToken;
 
-    const res = await fetch(`${API_BASE}/users`, {
+    const res = await fetch(safeEndpoint(API_BASE, 'users'), {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -189,7 +192,7 @@ async function main() {
   });
 
   await runTest('Security: Manager cannot provide organization_id or custom passwords', async () => {
-    const res1 = await fetch(`${API_BASE}/users`, {
+    const res1 = await fetch(safeEndpoint(API_BASE, 'users'), {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -204,7 +207,7 @@ async function main() {
     });
     assert(res1.status === 400, `Expected 400 on injected org, got ${res1.status}`);
 
-    const res2 = await fetch(`${API_BASE}/users`, {
+    const res2 = await fetch(safeEndpoint(API_BASE, 'users'), {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -583,7 +586,7 @@ async function main() {
   // =========================================================================
 
   await runTest('First Login: Temporary password forces password change', async () => {
-    const loginRes = await fetch(`${API_BASE}/auth/login`, {
+    const loginRes = await fetch(safeEndpoint(API_BASE, 'auth', 'login'), {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
@@ -599,7 +602,7 @@ async function main() {
     const newInternToken = loginData.accessToken;
 
     // Change Password
-    const changeRes = await fetch(`${API_BASE}/auth/change-password`, {
+    const changeRes = await fetch(safeEndpoint(API_BASE, 'auth', 'change-password'), {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -620,7 +623,7 @@ async function main() {
   });
 
   await runTest('Login: User ID (user_code) login succeeds', async () => {
-    const loginRes = await fetch(`${API_BASE}/auth/login`, {
+    const loginRes = await fetch(safeEndpoint(API_BASE, 'auth', 'login'), {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
@@ -638,30 +641,30 @@ async function main() {
 
   await runTest('Regressions: Super Admin login, Projects, Work Items, and Forms', async () => {
     // Super Admin login
-    const saLogin = await fetch(`${API_BASE}/auth/login`, {
+    const saLogin = await fetch(safeEndpoint(API_BASE, 'auth', 'login'), {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         email: 'superadmin@dailoqa.com',
-        password: 'password123'
+        password: getTestPassword()
       })
     });
     assert(saLogin.status === 200, 'Super admin login must succeed');
 
     // Projects list
-    const projRes = await fetch(`${API_BASE}/projects`, {
+    const projRes = await fetch(safeEndpoint(API_BASE, 'projects'), {
       headers: { Authorization: `Bearer ${managerToken}` }
     });
     assert(projRes.status === 200, 'Projects endpoint must succeed');
 
     // Work items list
-    const workRes = await fetch(`${API_BASE}/work-items`, {
+    const workRes = await fetch(safeEndpoint(API_BASE, 'work-items'), {
       headers: { Authorization: `Bearer ${managerToken}` }
     });
     assert(workRes.status === 200, 'Work items endpoint must succeed');
 
     // Forms list
-    const formRes = await fetch(`${API_BASE}/forms`, {
+    const formRes = await fetch(safeEndpoint(API_BASE, 'forms'), {
       headers: { Authorization: `Bearer ${managerToken}` }
     });
     assert(formRes.status === 200, 'Forms endpoint must succeed');
@@ -684,7 +687,7 @@ async function main() {
     });
     console.log(`✅ Cleanup complete for ${allUniqueTestEmails.length} test records.`);
   } catch (err) {
-    console.warn('⚠️ Cleanup warning:', err);
+    console.warn('⚠️ Cleanup warning:', sanitizeForLog(err?.message || err));
   }
 
   // Summary
@@ -695,13 +698,13 @@ async function main() {
   const passed = results.filter(r => r.passed).length;
   const failed = results.filter(r => !r.passed).length;
 
-  console.log(`Total Suites : ${total}`);
-  console.log(`Passed       : ${passed}`);
-  console.log(`Failed       : ${failed}`);
+  console.log(`Total Suites : ${sanitizeForLog(total)}`);
+  console.log(`Passed       : ${sanitizeForLog(passed)}`);
+  console.log(`Failed       : ${sanitizeForLog(failed)}`);
 
   if (failed > 0) {
     console.error('\nFailed tests:');
-    results.filter(r => !r.passed).forEach(r => console.error(`- ${r.name}: ${r.error}`));
+    results.filter(r => !r.passed).forEach(r => console.error(`- ${sanitizeForLog(r.name)}: ${sanitizeForLog(r.error)}`));
     process.exit(1);
   } else {
     console.log('\n🌟 ALL 14 TEST SUITES (INCLUDING TESTS 1-9) VERIFIED AND PASSING CLEANLY!');
@@ -711,7 +714,7 @@ async function main() {
 
 main()
   .catch((err) => {
-    console.error('Fatal test runner error:', err);
+    console.error('Fatal test runner error:', sanitizeForLog(err?.message || err));
     process.exit(1);
   })
   .finally(async () => {

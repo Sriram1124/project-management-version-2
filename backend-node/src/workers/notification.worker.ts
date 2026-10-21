@@ -14,7 +14,9 @@ export const notificationWorker = new Worker<NotificationJobData>(
   NOTIFICATION_QUEUE_NAME,
   async (job: Job<NotificationJobData>) => {
     const { notification_id } = job.data;
-    console.log(`[Worker] Received job ${job.id} for notification ${notification_id} (attempt ${job.attemptsMade + 1}/${job.opts.attempts || 3})`);
+    const safeJobId = String(job.id || '').replace(/[\r\n\t]/g, ' ');
+    const safeNotifId = String(notification_id || '').replace(/[\r\n\t]/g, ' ');
+    console.log(`[Worker] Received job ${safeJobId} for notification ${safeNotifId} (attempt ${job.attemptsMade + 1}/${job.opts.attempts || 3})`);
 
     if (!notification_id) {
       throw new Error('Invalid job payload: notification_id is missing');
@@ -48,12 +50,14 @@ export const notificationWorker = new Worker<NotificationJobData>(
     });
 
     if (!notification) {
-      console.warn(`[Worker] Notification ${notification_id} not found in database. Job will not be retried.`);
+      console.warn(`[Worker] Notification ${safeNotifId} not found in database. Job will not be retried.`);
       return { status: 'skipped', reason: 'Notification record not found' };
     }
 
     const recipientCount = notification.recipients.length;
-    console.log(`[Worker] Processing notification "${notification.title}" (ID: ${notification.id}) from sender ${notification.sender?.name} to ${recipientCount} recipients`);
+    const safeTitle = String(notification.title || '').replace(/[\r\n\t]/g, ' ');
+    const safeSender = String(notification.sender?.name || '').replace(/[\r\n\t]/g, ' ');
+    console.log(`[Worker] Processing notification "${safeTitle}" (ID: ${notification.id}) from sender ${safeSender} to ${recipientCount} recipients`);
 
     // 2. Deliver notification to all designated recipients in organization
     const recipients = notification.recipients;

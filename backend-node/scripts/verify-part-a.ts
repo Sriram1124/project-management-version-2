@@ -1,5 +1,5 @@
 import { PrismaClient } from '@prisma/client';
-import { safeEndpoint, getTestPassword } from './safe-endpoint';
+import { safeEndpoint, getTestPassword, sanitizeForLog } from './safe-endpoint';
 
 const prisma = new PrismaClient();
 const API_BASE = 'http://127.0.0.1:3001/api';
@@ -14,19 +14,21 @@ const results: TestResult[] = [];
 
 function assert(condition: boolean, message: string) {
   if (!condition) {
-    throw new Error(`Assertion failed: ${message}`);
+    throw new Error(`Assertion failed: ${sanitizeForLog(message)}`);
   }
 }
 
 async function runTest(name: string, fn: () => Promise<void>) {
+  const safeName = sanitizeForLog(name);
   try {
-    console.log(`\n⏳ Running: ${name}`);
+    console.log(`\n⏳ Running: ${safeName}`);
     await fn();
-    console.log(`✅ PASS: ${name}`);
-    results.push({ name, passed: true });
+    console.log(`✅ PASS: ${safeName}`);
+    results.push({ name: safeName, passed: true });
   } catch (err: any) {
-    console.error(`❌ FAIL: ${name} ->`, err.message || err);
-    results.push({ name, passed: false, error: err.message || String(err) });
+    const errMsg = sanitizeForLog(err?.message || err);
+    console.error(`❌ FAIL: ${safeName} -> ${errMsg}`);
+    results.push({ name: safeName, passed: false, error: errMsg });
   }
 }
 
@@ -64,7 +66,7 @@ async function main() {
   // 1. Public Organization Discovery API
   await runTest('1. GET /api/auth/organizations (Public discovery)', async () => {
     const res = await fetch(safeEndpoint(API_BASE, 'auth', 'organizations'));
-    assert(res.status === 200, `Expected 200 OK, got ${res.status}`);
+    assert(res.status === 200, `Expected 200 OK, got ${sanitizeForLog(res.status)}`);
     const data = await res.json();
     assert(Array.isArray(data), 'Response must be an array');
     assert(data.length >= 1, 'Should return at least 1 organization');
@@ -97,9 +99,9 @@ async function main() {
       })
     });
 
-    assert(res.status === 200, `Expected 200 OK, got ${res.status}`);
+    assert(res.status === 200, `Expected 200 OK, got ${sanitizeForLog(res.status)}`);
     const body = await res.json();
-    assert(body.user.role === 'SUPER_ADMIN', `Expected SUPER_ADMIN role, got ${body.user.role}`);
+    assert(body.user.role === 'SUPER_ADMIN', `Expected SUPER_ADMIN role, got ${sanitizeForLog(body.user?.role)}`);
     assert(body.user.organization_id === null, 'Super admin organization_id must be null');
     assert(!!body.accessToken, 'Access token must be returned');
     superAdminToken = body.accessToken;
@@ -117,7 +119,7 @@ async function main() {
       })
     });
 
-    assert(res.status === 401, `Expected 401 Invalid credentials, got ${res.status}`);
+    assert(res.status === 401, `Expected 401 Invalid credentials, got ${sanitizeForLog(res.status)}`);
   });
 
   // 4. Regular Organization User MUST provide organization_id
@@ -132,7 +134,7 @@ async function main() {
       })
     });
 
-    assert(res.status === 401, `Expected 401 Invalid credentials, got ${res.status}`);
+    assert(res.status === 401, `Expected 401 Invalid credentials, got ${sanitizeForLog(res.status)}`);
   });
 
   // 5. Manager Login with Organization Context (Auto role determination)
@@ -147,13 +149,13 @@ async function main() {
       })
     });
 
-    assert(res.status === 200, `Expected 200 OK, got ${res.status}`);
+    assert(res.status === 200, `Expected 200 OK, got ${sanitizeForLog(res.status)}`);
     const cookie = res.headers.get('set-cookie');
     assert(!!cookie, 'Session cookies must be set');
     testSessionCookie = cookie!;
 
     const body = await res.json();
-    assert(body.user.role === 'MANAGER', `Expected MANAGER, got ${body.user.role}`);
+    assert(body.user.role === 'MANAGER', `Expected MANAGER, got ${sanitizeForLog(body.user?.role)}`);
     assert(body.user.organization_id === dailoqaOrgId, 'organization_id must match Dailoqa');
     assert(!!body.accessToken, 'accessToken must be present');
     managerToken = body.accessToken;
@@ -182,9 +184,9 @@ async function main() {
       })
     });
 
-    assert(res.status === 200, `Expected 200 OK, got ${res.status}`);
+    assert(res.status === 200, `Expected 200 OK, got ${sanitizeForLog(res.status)}`);
     const body = await res.json();
-    assert(body.user.role === 'INTERN', `Expected INTERN, got ${body.user.role}`);
+    assert(body.user.role === 'INTERN', `Expected INTERN, got ${sanitizeForLog(body.user?.role)}`);
     assert(body.user.organization_id === dailoqaOrgId, 'organization_id must match Dailoqa');
     internToken = body.accessToken;
   });
@@ -201,9 +203,9 @@ async function main() {
       })
     });
 
-    assert(res.status === 401, `Expected 401 Unauthorized, got ${res.status}`);
+    assert(res.status === 401, `Expected 401 Unauthorized, got ${sanitizeForLog(res.status)}`);
     const body = await res.json();
-    assert(body.error === 'Invalid credentials', `Generic error expected without info leakage, got: ${body.error}`);
+    assert(body.error === 'Invalid credentials', `Generic error expected without info leakage, got: ${sanitizeForLog(body.error)}`);
   });
 
   // 8. Login using User ID (user_code) + Password + organization_id
@@ -218,7 +220,7 @@ async function main() {
       })
     });
 
-    assert(res.status === 200, `Expected 200 OK, got ${res.status}`);
+    assert(res.status === 200, `Expected 200 OK, got ${sanitizeForLog(res.status)}`);
     const body = await res.json();
     assert(body.user.email === 'manager@dailoqa.com', 'User email must match manager');
     assert(body.user.role === 'MANAGER', 'Role must be MANAGER');
@@ -230,7 +232,7 @@ async function main() {
       headers: { Authorization: `Bearer ${managerToken}` }
     });
 
-    assert(res.status === 200, `Expected 200, got ${res.status}`);
+    assert(res.status === 200, `Expected 200, got ${sanitizeForLog(res.status)}`);
     const user = await res.json();
     assert(user.email === 'manager@dailoqa.com', 'Profile email should match');
     assert(user.role === 'MANAGER', 'Profile role should match');
@@ -261,7 +263,7 @@ async function main() {
       headers: { Cookie: cookieHeader }
     });
 
-    assert(refreshRes.status === 200, `Expected 200, got ${refreshRes.status}`);
+    assert(refreshRes.status === 200, `Expected 200, got ${sanitizeForLog(refreshRes.status)}`);
     const refreshData = await refreshRes.json();
     assert(!!refreshData.accessToken, 'Expected new accessToken');
   });
@@ -288,7 +290,7 @@ async function main() {
       }
     });
 
-    assert(logoutRes.status === 200, `Logout expected 200, got ${logoutRes.status}`);
+    assert(logoutRes.status === 200, `Logout expected 200, got ${sanitizeForLog(logoutRes.status)}`);
   });
 
   // 12. Super Admin vs Manager RBAC isolation
@@ -297,13 +299,13 @@ async function main() {
     const saRes = await fetch(safeEndpoint(API_BASE, 'organizations'), {
       headers: { Authorization: `Bearer ${superAdminToken}` }
     });
-    assert(saRes.status === 200, `Super Admin /organizations expected 200, got ${saRes.status}`);
+    assert(saRes.status === 200, `Super Admin /organizations expected 200, got ${sanitizeForLog(saRes.status)}`);
 
     // Manager forbidden from listing all tenant organizations
     const mgrRes = await fetch(safeEndpoint(API_BASE, 'organizations'), {
       headers: { Authorization: `Bearer ${managerToken}` }
     });
-    assert(mgrRes.status === 403, `Manager /organizations expected 403, got ${mgrRes.status}`);
+    assert(mgrRes.status === 403, `Manager /organizations expected 403, got ${sanitizeForLog(mgrRes.status)}`);
   });
 
   // Cleanup secondary test organization
@@ -314,7 +316,7 @@ async function main() {
     });
     console.log('✅ Cleanup complete.');
   } catch (err) {
-    console.warn('⚠️ Cleanup warning:', err);
+    console.warn('⚠️ Cleanup warning:', sanitizeForLog(err?.message || err));
   }
 
   // Summary
@@ -325,13 +327,13 @@ async function main() {
   const passed = results.filter(r => r.passed).length;
   const failed = results.filter(r => !r.passed).length;
 
-  console.log(`Total Tests : ${total}`);
-  console.log(`Passed      : ${passed}`);
-  console.log(`Failed      : ${failed}`);
+  console.log(`Total Tests : ${sanitizeForLog(total)}`);
+  console.log(`Passed      : ${sanitizeForLog(passed)}`);
+  console.log(`Failed      : ${sanitizeForLog(failed)}`);
 
   if (failed > 0) {
     console.error('\nFailed tests:');
-    results.filter(r => !r.passed).forEach(r => console.error(`- ${r.name}: ${r.error}`));
+    results.filter(r => !r.passed).forEach(r => console.error(`- ${sanitizeForLog(r.name)}: ${sanitizeForLog(r.error)}`));
     process.exit(1);
   } else {
     console.log('\n🌟 ALL 12 PART A REQUIREMENTS VERIFIED AND PASSING CLEANLY!');
@@ -341,7 +343,7 @@ async function main() {
 
 main()
   .catch((err) => {
-    console.error('Fatal test runner error:', err);
+    console.error('Fatal test runner error:', sanitizeForLog(err?.message || err));
     process.exit(1);
   })
   .finally(async () => {

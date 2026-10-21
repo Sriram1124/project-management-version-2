@@ -69,3 +69,21 @@ export function safeFormEndpoint(baseUrl: string, formId: string, subPath?: stri
 export function getTestPassword(): string {
   return process.env.TEST_USER_PASSWORD || Buffer.from('cGFzc3dvcmQxMjM=', 'base64').toString('utf8');
 }
+
+export function sanitizeForLog(value: unknown): string {
+  if (value === null || value === undefined) {
+    return String(value);
+  }
+  if (typeof value === 'object') {
+    try {
+      return JSON.stringify(value)
+        .replace(/[\r\n\t]/g, ' ')
+        .replace(/[^\x20-\x7E]/g, '?');
+    } catch {
+      return '[Unserializable Object]';
+    }
+  }
+  return String(value)
+    .replace(/[\r\n\t]/g, ' ')
+    .replace(/[^\x20-\x7E]/g, '?');
+}

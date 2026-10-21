@@ -65,8 +65,10 @@ app.use((req, res, next) => {
     const authDbMs = (req as any)._authDbDuration || 0;
 
     // Structured timing log: never logs tokens, credentials, or sensitive data
+    const safeMethod = String(req.method || '').replace(/[\r\n\t]/g, ' ');
+    const safeUrl = String(req.originalUrl || req.url || '').replace(/[\r\n\t]/g, ' ');
     console.log(
-      `[Timing] ${req.method} ${req.originalUrl || req.url} | ${res.statusCode} | total: ${totalMs.toFixed(1)}ms | auth: ${authMs.toFixed(1)}ms (db: ${authDbMs.toFixed(1)}ms)`
+      `[Timing] ${safeMethod} ${safeUrl} | ${res.statusCode} | total: ${totalMs.toFixed(1)}ms | auth: ${authMs.toFixed(1)}ms (db: ${authDbMs.toFixed(1)}ms)`
     );
   });
 

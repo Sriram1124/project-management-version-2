@@ -215,7 +215,10 @@ export class ProjectController {
               user: member.user,
             });
           } catch (e: any) {
-            console.warn(`Could not add member ${uid} to project ${id}:`, e?.message);
+            const safeUid = String(uid || '').replace(/[\r\n\t]/g, ' ');
+            const safeId = String(id || '').replace(/[\r\n\t]/g, ' ');
+            const safeMsg = String(e?.message || '').replace(/[\r\n\t]/g, ' ');
+            console.warn(`Could not add member ${safeUid} to project ${safeId}:`, safeMsg);
           }
         }
         res.status(201).json({

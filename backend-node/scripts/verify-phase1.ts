@@ -1,4 +1,4 @@
-import { safeEndpoint, getTestPassword } from './safe-endpoint';
+import { safeEndpoint, getTestPassword, sanitizeForLog } from './safe-endpoint';
 import { PrismaClient } from '@prisma/client';
 
 const prisma = new PrismaClient();
@@ -16,19 +16,21 @@ const results: TestResult[] = [];
 
 function assert(condition: boolean, message: string) {
   if (!condition) {
-    throw new Error(`Assertion failed: ${message}`);
+    throw new Error(`Assertion failed: ${sanitizeForLog(message)}`);
   }
 }
 
 async function runTest(name: string, fn: () => Promise<void>) {
+  const safeName = sanitizeForLog(name);
   try {
-    console.log(`\n⏳ Running: ${name}`);
+    console.log(`\n⏳ Running: ${safeName}`);
     await fn();
-    console.log(`✅ PASS: ${name}`);
-    results.push({ name, passed: true });
+    console.log(`✅ PASS: ${safeName}`);
+    results.push({ name: safeName, passed: true });
   } catch (err: any) {
-    console.error(`❌ FAIL: ${name} ->`, err.message || err);
-    results.push({ name, passed: false, error: err.message || String(err) });
+    const errMsg = sanitizeForLog(err?.message || err);
+    console.error(`❌ FAIL: ${safeName} -> ${errMsg}`);
+    results.push({ name: safeName, passed: false, error: errMsg });
   }
 }
 
@@ -57,13 +59,13 @@ async function main() {
       })
     });
 
-    assert(res.status === 200, `Expected 200, got ${res.status}`);
+    assert(res.status === 200, `Expected 200, got ${sanitizeForLog(res.status)}`);
     const data = await res.json();
     assert(!!data.accessToken, 'Expected accessToken on successful login');
     superAdminToken = data.accessToken;
 
     assert(data.user.email === 'superadmin@dailoqa.com', 'User email should match');
-    assert(data.user.role === 'SUPER_ADMIN', `User role should be SUPER_ADMIN, got ${data.user.role}`);
+    assert(data.user.role === 'SUPER_ADMIN', `User role should be SUPER_ADMIN, got ${sanitizeForLog(data.user?.role)}`);
     assert(data.user.organization_id === null, 'Super Admin organization_id must be null');
   });
 
@@ -72,7 +74,7 @@ async function main() {
     const res = await fetch(safeEndpoint(API_BASE, 'organizations'), {
       method: 'GET'
     });
-    assert(res.status === 401, `Expected 401 Unauthorized, got ${res.status}`);
+    assert(res.status === 401, `Expected 401 Unauthorized, got ${sanitizeForLog(res.status)}`);
   });
 
   // 3. Manager/Intern RBAC guard (Forbidden)
@@ -88,7 +90,7 @@ async function main() {
       })
     });
 
-    assert(loginRes.status === 200, `Manager login failed with ${loginRes.status}`);
+    assert(loginRes.status === 200, `Manager login failed with ${sanitizeForLog(loginRes.status)}`);
     const loginData = await loginRes.json();
     managerToken = loginData.accessToken;
 
@@ -96,7 +98,7 @@ async function main() {
     const getRes = await fetch(safeEndpoint(API_BASE, 'organizations'), {
       headers: { Authorization: `Bearer ${managerToken}` }
     });
-    assert(getRes.status === 403, `Manager GET /api/organizations expected 403, got ${getRes.status}`);
+    assert(getRes.status === 403, `Manager GET /api/organizations expected 403, got ${sanitizeForLog(getRes.status)}`);
 
     // Try POST /api/organizations
     const postRes = await fetch(safeEndpoint(API_BASE, 'organizations'), {
@@ -111,7 +113,7 @@ async function main() {
         managerEmail: 'hacker@example.com'
       })
     });
-    assert(postRes.status === 403, `Manager POST /api/organizations expected 403, got ${postRes.status}`);
+    assert(postRes.status === 403, `Manager POST /api/organizations expected 403, got ${sanitizeForLog(postRes.status)}`);
   });
 
   // 4. Super Admin Creates Organization with Manager
@@ -130,7 +132,7 @@ async function main() {
       })
     });
 
-    assert(res.status === 201, `Expected 201 Created, got ${res.status}`);
+    assert(res.status === 201, `Expected 201 Created, got ${sanitizeForLog(res.status)}`);
     const body = await res.json();
     assert(body.organization.name === orgName, 'Organization name should match');
     assert(!!body.organization.id, 'Organization ID should exist');
@@ -163,7 +165,7 @@ async function main() {
       })
     });
 
-    assert(res.status === 409, `Expected 409 Conflict, got ${res.status}`);
+    assert(res.status === 409, `Expected 409 Conflict, got ${sanitizeForLog(res.status)}`);
 
     // Verify atomic rollback in DB: duplicateOrgName must NOT exist
     const orphanOrg = await prisma.organization.findFirst({
@@ -184,7 +186,7 @@ async function main() {
       })
     });
 
-    assert(res.status === 200, `Manager login failed with status ${res.status}`);
+    assert(res.status === 200, `Manager login failed with status ${sanitizeForLog(res.status)}`);
     const body = await res.json();
     assert(body.user.email === createdManagerEmail, 'User email should match');
     assert(body.user.role === 'MANAGER', 'User role should be MANAGER');
@@ -199,7 +201,7 @@ async function main() {
       headers: { Authorization: `Bearer ${superAdminToken}` }
     });
 
-    assert(res.status === 200, `Expected 200, got ${res.status}`);
+    assert(res.status === 200, `Expected 200, got ${sanitizeForLog(res.status)}`);
     const body = await res.json();
     assert(Array.isArray(body.organizations), 'organizations should be an array');
 
@@ -216,7 +218,7 @@ async function main() {
       headers: { Authorization: `Bearer ${superAdminToken}` }
     });
 
-    assert(res.status === 200, `Expected 200, got ${res.status}`);
+    assert(res.status === 200, `Expected 200, got ${sanitizeForLog(res.status)}`);
     const body = await res.json();
     assert(body.organization.id === createdOrgId, 'Org ID should match');
     assert(Array.isArray(body.organization.users), 'users should be an array');
@@ -241,7 +243,7 @@ async function main() {
         managerEmail: 'bob@example.com'
       })
     });
-    assert(res1.status === 400, `Expected 400 for missing org name, got ${res1.status}`);
+    assert(res1.status === 400, `Expected 400 for missing org name, got ${sanitizeForLog(res1.status)}`);
 
     // Invalid email format
     const res2 = await fetch(safeEndpoint(API_BASE, 'organizations'), {
@@ -256,7 +258,7 @@ async function main() {
         managerEmail: 'not-an-email'
       })
     });
-    assert(res2.status === 400, `Expected 400 for invalid email, got ${res2.status}`);
+    assert(res2.status === 400, `Expected 400 for invalid email, got ${sanitizeForLog(res2.status)}`);
   });
 
   // 10. Existing Manager / Intern Regression Verification
@@ -271,16 +273,16 @@ async function main() {
         organization_id: dailoqaId
       })
     });
-    assert(internRes.status === 200, `Intern login failed with ${internRes.status}`);
+    assert(internRes.status === 200, `Intern login failed with ${sanitizeForLog(internRes.status)}`);
     const internData = await internRes.json();
-    assert(internData.user.role === 'INTERN', `Expected role INTERN, got ${internData.user.role}`);
+    assert(internData.user.role === 'INTERN', `Expected role INTERN, got ${sanitizeForLog(internData.user?.role)}`);
     assert(!!internData.user.organization_id, 'Intern should have organization_id');
 
     // Verify intern auth me
     const meRes = await fetch(safeEndpoint(API_BASE, 'auth', 'me'), {
       headers: { Authorization: `Bearer ${internData.accessToken}` }
     });
-    assert(meRes.status === 200, `Intern /auth/me failed with ${meRes.status}`);
+    assert(meRes.status === 200, `Intern /auth/me failed with ${sanitizeForLog(meRes.status)}`);
   });
 
   // Cleanup created test records
@@ -302,7 +304,7 @@ async function main() {
     }
     console.log('✅ Cleanup complete.');
   } catch (err) {
-    console.warn('⚠️ Cleanup warning:', err);
+    console.warn('⚠️ Cleanup warning:', sanitizeForLog(err?.message || err));
   }
 
   // Summary
@@ -313,13 +315,13 @@ async function main() {
   const passed = results.filter(r => r.passed).length;
   const failed = results.filter(r => !r.passed).length;
 
-  console.log(`Total Tests : ${total}`);
-  console.log(`Passed      : ${passed}`);
-  console.log(`Failed      : ${failed}`);
+  console.log(`Total Tests : ${sanitizeForLog(total)}`);
+  console.log(`Passed      : ${sanitizeForLog(passed)}`);
+  console.log(`Failed      : ${sanitizeForLog(failed)}`);
 
   if (failed > 0) {
     console.error('\nFailed tests:');
-    results.filter(r => !r.passed).forEach(r => console.error(`- ${r.name}: ${r.error}`));
+    results.filter(r => !r.passed).forEach(r => console.error(`- ${sanitizeForLog(r.name)}: ${sanitizeForLog(r.error)}`));
     process.exit(1);
   } else {
     console.log('\n🌟 ALL 10 PHASE 1 VERIFICATION SUITES PASSED CLEANLY!');
@@ -329,7 +331,7 @@ async function main() {
 
 main()
   .catch((err) => {
-    console.error('Fatal test runner error:', err);
+    console.error('Fatal test runner error:', sanitizeForLog(err?.message || err));
     process.exit(1);
   })
   .finally(async () => {

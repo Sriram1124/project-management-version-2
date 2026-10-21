@@ -1,4 +1,4 @@
-import { safeEndpoint, getTestPassword } from './safe-endpoint';
+import { safeEndpoint, getTestPassword, sanitizeForLog } from './safe-endpoint';
 import { PrismaClient } from '@prisma/client';
 import * as argon2 from 'argon2';
 
@@ -16,11 +16,12 @@ async function main() {
   let failed = 0;
 
   function assert(condition: boolean, desc: string) {
+    const sanitizedDesc = sanitizeForLog(desc);
     if (condition) {
-      console.log(`[PASS] ${desc}`);
+      console.log(`[PASS] ${sanitizedDesc}`);
       passed++;
     } else {
-      console.error(`[FAIL] ${desc}`);
+      console.error(`[FAIL] ${sanitizedDesc}`);
       failed++;
     }
   }
@@ -38,7 +39,7 @@ async function main() {
       data: { name: 'Dailoqa' }
     });
   }
-  console.log(`   Using Organization: ${org.name} (${org.id})`);
+  console.log(`   Using Organization: ${sanitizeForLog(org.name)} (${sanitizeForLog(org.id)})`);
 
   // Ensure manager exists
   let manager = await prisma.user.findFirst({
@@ -62,7 +63,7 @@ async function main() {
     });
   }
 
-  const loginRes = await fetch(`${BASE_URL}/auth/login`, {
+  const loginRes = await fetch(safeEndpoint(BASE_URL, 'auth', 'login'), {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
@@ -88,20 +89,20 @@ async function main() {
 
   // 2. Query users with filter
   console.log('\n2. User Listing & Status Filters');
-  const allUsersRes = await fetch(`${BASE_URL}/users?type=ALL`, { headers: authHeaders });
+  const allUsersRes = await fetch(safeEndpoint(BASE_URL, 'users') + '?type=ALL', { headers: authHeaders });
   const allUsersData: any = await allUsersRes.json();
   assert(allUsersRes.status === 200 && Array.isArray(allUsersData.users), 'GET /users?type=ALL returned users array');
   const initialUsersCount = allUsersData.users.length;
-  console.log(`   Found ${initialUsersCount} members in organization.`);
+  console.log(`   Found ${sanitizeForLog(initialUsersCount)} members in organization.`);
 
-  const activeUsersRes = await fetch(`${BASE_URL}/users?type=ACTIVE`, { headers: authHeaders });
+  const activeUsersRes = await fetch(safeEndpoint(BASE_URL, 'users') + '?type=ACTIVE', { headers: authHeaders });
   const activeUsersData: any = await activeUsersRes.json();
   assert(
     activeUsersData.users.every((u: any) => u.is_active !== false),
     'GET /users?type=ACTIVE returned only active users'
   );
 
-  const internUsersRes = await fetch(`${BASE_URL}/users?type=INTERN`, { headers: authHeaders });
+  const internUsersRes = await fetch(safeEndpoint(BASE_URL, 'users') + '?type=INTERN', { headers: authHeaders });
   const internUsersData: any = await internUsersRes.json();
   assert(
     internUsersData.users.every((u: any) => u.type === 'INTERN'),
@@ -111,7 +112,7 @@ async function main() {
   // 3. Provision a test intern for password reset & deactivation tests
   console.log('\n3. Provision Test Intern for Hardening Verification');
   const testEmail = `hardening.test.${Date.now()}@dailoqa.com`;
-  const createRes = await fetch(`${BASE_URL}/users`, {
+  const createRes = await fetch(safeEndpoint(BASE_URL, 'users'), {
     method: 'POST',
     headers: authHeaders,
     body: JSON.stringify({
@@ -201,7 +202,7 @@ async function main() {
   assert(dbUserAfterDeact?.is_active === false, 'Database confirms user is_active: false');
 
   // Verify that deactivated user cannot log in
-  const deactLoginRes = await fetch(`${BASE_URL}/auth/login`, {
+  const deactLoginRes = await fetch(safeEndpoint(BASE_URL, 'auth', 'login'), {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
@@ -226,7 +227,7 @@ async function main() {
   );
 
   // Inactive filter test
-  const inactiveUsersRes = await fetch(`${BASE_URL}/users?type=INACTIVE`, { headers: authHeaders });
+  const inactiveUsersRes = await fetch(safeEndpoint(BASE_URL, 'users') + '?type=INACTIVE', { headers: authHeaders });
   const inactiveUsersData: any = await inactiveUsersRes.json();
   assert(
     inactiveUsersData.users.some((u: any) => u.id === testUser.id),
@@ -235,7 +236,7 @@ async function main() {
 
   // 7. Verify Work Items API for Dashboard Metrics
   console.log('\n7. Work Items Live API Verification');
-  const workItemsRes = await fetch(`${BASE_URL}/work-items`, { headers: authHeaders });
+  const workItemsRes = await fetch(safeEndpoint(BASE_URL, 'work-items'), { headers: authHeaders });
   const workItemsData: any = await workItemsRes.json();
   assert(
     workItemsRes.status === 200 && Array.isArray(workItemsData.work_items),
@@ -244,7 +245,7 @@ async function main() {
 
   // 8. Verify Forms API for Clean Empty State / Live Listing
   console.log('\n8. Forms API Verification');
-  const formsRes = await fetch(`${BASE_URL}/forms`, { headers: authHeaders });
+  const formsRes = await fetch(safeEndpoint(BASE_URL, 'forms'), { headers: authHeaders });
   const formsData: any = await formsRes.json();
   assert(
     formsRes.status === 200 && Array.isArray(formsData.forms),
@@ -263,7 +264,7 @@ async function main() {
   console.log('   Cleaned up test users and temporary organization.');
 
   console.log('\n================================================================');
-  console.log(`HARDENING TEST SUMMARY: ${passed} PASSED, ${failed} FAILED`);
+  console.log(`HARDENING TEST SUMMARY: ${sanitizeForLog(passed)} PASSED, ${sanitizeForLog(failed)} FAILED`);
   console.log('================================================================\n');
 
   if (failed > 0) {
@@ -273,7 +274,7 @@ async function main() {
 
 main()
   .catch((err) => {
-    console.error('Hardening verification encountered an error:', err);
+    console.error('Hardening verification encountered an error:', sanitizeForLog(err?.message || err));
     process.exit(1);
   })
   .finally(async () => {
