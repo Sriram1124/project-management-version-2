@@ -278,7 +278,7 @@ export default function ProjectTaskCharts({
         filterPayload.start_date = start;
         filterPayload.end_date = end;
       }
-      if (!activeProjId && isInternUser && currentUserId) {
+      if (!projectId && isInternUser && currentUserId) {
         filterPayload.user_id = currentUserId;
       }
       if (isManualRefresh) {
@@ -522,7 +522,7 @@ export default function ProjectTaskCharts({
 
     // Local calculation fallback
     let items = workItems;
-    if (!projectId && !selectedProjectId && isInternUser && currentUserId) {
+    if (!projectId && isInternUser && currentUserId) {
       items = workItems.filter((w) => {
         const assignees = w.assignees || w.work_item_assignees || [];
         const assignedIds = [
@@ -772,7 +772,7 @@ export default function ProjectTaskCharts({
         {/* 2. FILTER ROW: Sprint (Scrum only), Date Range Filter, Reset, Scope */}
         <div className="px-4 py-3 sm:px-5 flex flex-wrap items-center justify-between gap-3 bg-slate-50/50 text-xs">
           <div className="flex flex-wrap items-center gap-2.5">
-            {/* Project Filter: Only rendered when outside a specific project context */}
+            {/* Project Filter: Only rendered when outside a specific project context (Analytics Page) */}
             {!projectId && (
               <div className="inline-flex items-center gap-1.5">
                 <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Project:</span>
@@ -781,7 +781,7 @@ export default function ProjectTaskCharts({
                   onChange={(e) => setSelectedProjectId(e.target.value)}
                   className="bg-white border border-slate-200 rounded-lg px-2.5 py-1 text-xs font-semibold text-slate-700 focus:outline-purple-500 cursor-pointer shadow-2xs"
                 >
-                  <option value="">{isInternUser ? 'All Assigned Projects (Aggregate)' : 'All Projects'}</option>
+                  <option value="">{isInternUser ? 'All Projects (All Performance)' : 'All Projects'}</option>
                   {accessibleProjects.map((p) => (
                     <option key={p.id} value={p.id}>{p.name}</option>
                   ))}
@@ -844,18 +844,30 @@ export default function ProjectTaskCharts({
           <div className="flex items-center gap-1.5 text-[11px] text-slate-500 font-medium">
             <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 inline-block shrink-0" />
             <span>
-              {projectId || selectedProjectId ? (
+              {projectId ? (
                 <>
                   Project Scope (<strong className="text-slate-800">{analytics.total}</strong> {analytics.total === 1 ? 'task' : 'tasks'})
                 </>
               ) : isInternUser ? (
-                <>
-                  Aggregate Scope: <strong className="text-slate-800">All Assigned Projects</strong> ({analytics.total} {analytics.total === 1 ? 'task' : 'tasks'} assigned to you)
-                </>
+                selectedProjectId ? (
+                  <>
+                    Project Performance: <strong className="text-slate-800">{accessibleProjects.find((p) => p.id === selectedProjectId)?.name || 'Selected Project'}</strong> ({analytics.total} {analytics.total === 1 ? 'task' : 'tasks'} assigned to you)
+                  </>
+                ) : (
+                  <>
+                    All Projects Performance: <strong className="text-slate-800">All Assigned Projects</strong> ({analytics.total} {analytics.total === 1 ? 'task' : 'tasks'} assigned to you)
+                  </>
+                )
               ) : (
-                <>
-                  Project Scope (<strong className="text-slate-800">{analytics.total}</strong> {analytics.total === 1 ? 'task' : 'tasks'})
-                </>
+                selectedProjectId ? (
+                  <>
+                    Project Scope: <strong className="text-slate-800">{accessibleProjects.find((p) => p.id === selectedProjectId)?.name || 'Selected Project'}</strong> ({analytics.total} {analytics.total === 1 ? 'task' : 'tasks'})
+                  </>
+                ) : (
+                  <>
+                    All Projects Scope (<strong className="text-slate-800">{analytics.total}</strong> {analytics.total === 1 ? 'task' : 'tasks'})
+                  </>
+                )
               )}
             </span>
           </div>

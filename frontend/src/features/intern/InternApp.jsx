@@ -46,6 +46,7 @@ import { notificationsService } from './services/notificationsService';
 
 export default function InternApp({ onLogout, onSelectProject, onToast }) {
   const { user: authUser } = useAuth();
+  const currentUserId = authUser?.id || authUser?.user_id;
   const location = useLocation();
   const navigate = useNavigate();
 

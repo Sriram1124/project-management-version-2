@@ -1026,6 +1026,53 @@ export default function TimesheetView({
             >
               <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} />
             </button>
+
+            {/* Active Running Timer Banner / Stop Button */}
+            {!readOnly && !isManager && activeSession && (
+              <div className="flex items-center gap-2 px-3 py-1.5 rounded-xl bg-amber-50 border border-amber-200 text-amber-900 text-xs font-semibold shadow-xs">
+                <span className="relative flex h-2 w-2">
+                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+                  <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
+                </span>
+                <span className="font-mono font-bold text-emerald-700">{elapsedText || '00:00:00'}</span>
+                <span className="truncate max-w-[120px] text-slate-600 hidden sm:inline" title={activeSession.task?.title || 'Active Task'}>
+                  {activeSession.task?.title || 'Active Task'}
+                </span>
+                <button
+                  type="button"
+                  disabled={Boolean(timerActionTaskId)}
+                  onClick={handleStopTimer}
+                  className="flex items-center gap-1 px-2.5 py-1 rounded-lg bg-rose-600 hover:bg-rose-700 text-white text-[11px] font-bold transition-colors cursor-pointer shadow-xs disabled:opacity-50"
+                  title="Stop and save logged time"
+                >
+                  <Square className="w-2.5 h-2.5 fill-current" />
+                  <span>Stop Timer</span>
+                </button>
+              </div>
+            )}
+
+            {/* Start Timer Button (when no timer is active) */}
+            {!readOnly && !isManager && !activeSession && (
+              <button
+                type="button"
+                disabled={Boolean(timerActionTaskId)}
+                onClick={() => {
+                  if (availableTasks.length > 0 && !startTimerTaskId) {
+                    setStartTimerTaskId(availableTasks[0].id);
+                  }
+                  setIsStartTimerModalOpen(true);
+                }}
+                className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-purple-600 hover:bg-purple-700 text-white text-xs font-semibold transition-colors cursor-pointer shadow-xs disabled:opacity-50"
+                title="Start a task timer"
+              >
+                {timerActionTaskId ? (
+                  <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                ) : (
+                  <Play className="w-3.5 h-3.5 fill-current" />
+                )}
+                <span>Start Timer</span>
+              </button>
+            )}
           </div>
         </div>
       </div>
@@ -1454,6 +1501,20 @@ export default function TimesheetView({
                                   )}
                                 </button>
                               </div>
+                            ) : (!readOnly && !isManager) ? (
+                              <button
+                                type="button"
+                                disabled={actionLoading || Boolean(timerActionTaskId)}
+                                onClick={() => handleStartTimer(task.id)}
+                                title={activeSession ? `Switch timer to "${task.title}" (will stop current timer)` : `Start timer for "${task.title}"`}
+                                className="p-1.5 rounded-lg text-slate-400 hover:text-emerald-700 hover:bg-emerald-50 transition-colors cursor-pointer opacity-70 group-hover:opacity-100 disabled:opacity-50"
+                              >
+                                {timerActionTaskId === task.id ? (
+                                  <RefreshCw className="w-3.5 h-3.5 animate-spin text-emerald-600" />
+                                ) : (
+                                  <Play className="w-3.5 h-3.5 fill-current" />
+                                )}
+                              </button>
                             ) : null}
                           </div>
                         </div>
