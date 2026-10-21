@@ -176,3 +176,4 @@ describe('Browser Storage Security Suite (SonarQube jssecurity:S8475)', () => {
     });
   });
 });
+
