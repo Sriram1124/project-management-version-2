@@ -348,7 +348,7 @@ export default function ProjectOverviewTab({ projectId, project, onNavigateTab, 
         members={members || project?.members || []}
         onNavigateTab={onNavigateTab}
         readOnly={readOnly && !canManageProject}
-        isIntern={isIntern}
+        isIntern={false}
       />
 
       {/* 3. Project Files Section (Real Document Metadata API - Last) */}

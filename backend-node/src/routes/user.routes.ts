@@ -14,7 +14,7 @@ const upload = multer({
 router.use(authenticate);
 
 // List organization users (scoped to user's organization)
-router.get('/', requirePermission('USER_READ'), UserController.list);
+router.get('/', UserController.list);
 
 // Manager provisions individual user (or user with USER_CREATE permission)
 router.post('/', requireRoleOrPermission(['MANAGER', 'ADMIN', 'SUPER_ADMIN'], 'USER_CREATE'), UserController.create);

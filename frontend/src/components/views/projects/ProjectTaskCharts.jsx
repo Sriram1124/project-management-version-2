@@ -278,7 +278,7 @@ export default function ProjectTaskCharts({
         filterPayload.start_date = start;
         filterPayload.end_date = end;
       }
-      if (isInternUser && currentUserId) {
+      if (!activeProjId && isInternUser && currentUserId) {
         filterPayload.user_id = currentUserId;
       }
       if (isManualRefresh) {
@@ -522,7 +522,7 @@ export default function ProjectTaskCharts({
 
     // Local calculation fallback
     let items = workItems;
-    if (isInternUser && currentUserId) {
+    if (!projectId && !selectedProjectId && isInternUser && currentUserId) {
       items = workItems.filter((w) => {
         const assignees = w.assignees || w.work_item_assignees || [];
         const assignedIds = [
@@ -844,16 +844,14 @@ export default function ProjectTaskCharts({
           <div className="flex items-center gap-1.5 text-[11px] text-slate-500 font-medium">
             <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 inline-block shrink-0" />
             <span>
-              {isInternUser ? (
-                projectId || selectedProjectId ? (
-                  <>
-                    Project Scope: <strong className="text-slate-800">{project?.name || accessibleProjects.find((p) => p.id === (projectId || selectedProjectId))?.name || 'Selected Project'}</strong> ({analytics.total} {analytics.total === 1 ? 'task' : 'tasks'} assigned to you)
-                  </>
-                ) : (
-                  <>
-                    Aggregate Scope: <strong className="text-slate-800">All Assigned Projects</strong> ({analytics.total} {analytics.total === 1 ? 'task' : 'tasks'} assigned to you)
-                  </>
-                )
+              {projectId || selectedProjectId ? (
+                <>
+                  Project Scope (<strong className="text-slate-800">{analytics.total}</strong> {analytics.total === 1 ? 'task' : 'tasks'})
+                </>
+              ) : isInternUser ? (
+                <>
+                  Aggregate Scope: <strong className="text-slate-800">All Assigned Projects</strong> ({analytics.total} {analytics.total === 1 ? 'task' : 'tasks'} assigned to you)
+                </>
               ) : (
                 <>
                   Project Scope (<strong className="text-slate-800">{analytics.total}</strong> {analytics.total === 1 ? 'task' : 'tasks'})

@@ -1983,10 +1983,15 @@ export class WorkItemService {
             targetUserId = filters.user_id;
           }
         } else if (membershipRecord) {
-          if (filters?.user_id && filters.user_id !== user.id) {
-            throw new Error('Forbidden: interns can only view their own performance analytics');
+          if (filters?.user_id) {
+            if (filters.user_id !== user.id) {
+              throw new Error('Forbidden: interns can only view their own performance analytics');
+            }
+            targetUserId = user.id;
+          } else {
+            // Project-level analytics: project members are authorized to view full project task analytics
+            targetUserId = undefined;
           }
-          targetUserId = user.id;
         } else {
           throw new Error('Forbidden: you are not authorized to access analytics for this project');
         }

@@ -2030,7 +2030,7 @@ export class ProjectService {
       userRoleStr === 'TECH_LEAD' ||
       (Array.isArray(user?.roles) && user.roles.some((r: any) => (r.role?.name || r.name || '').toUpperCase() === 'TECH_LEAD'));
 
-    if (!isMgr && !isOwner && !isTechLead) {
+    if (!isMgr && !isOwner && !isTechLead && !callerMembership) {
       throw new Error('Forbidden: Only managers, project owners, or assigned Tech Leads can add members to this project');
     }
 

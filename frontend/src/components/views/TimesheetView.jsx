@@ -25,6 +25,7 @@ import {
   ChevronUp,
   SlidersHorizontal,
   Pencil,
+  Eye,
 } from 'lucide-react';
 import { timesheetService } from '../../services/timesheet.service';
 import { useAuth } from '../../context/AuthContext';
