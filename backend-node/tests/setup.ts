@@ -4,6 +4,17 @@ process.env.JWT_REFRESH_SECRET = 'test-jwt-refresh-secret';
 process.env.ENABLE_MONGODB_PROJECT_FILES = 'false';
 process.env.DUAL_WRITE_PROJECT_FILES = 'false';
 
+// Globally mock argon2 to prevent native binary binding issues in CI/CD and container environments
+jest.mock('argon2', () => ({
+  hash: jest.fn().mockResolvedValue('$argon2id$mocked-hash'),
+  verify: jest.fn().mockImplementation(async (hash: string, password: string) => {
+    return password === 'ValidPassword123!' || hash === '$argon2id$mocked-hash' || hash === password;
+  }),
+  argon2id: 2,
+  argon2i: 1,
+  argon2d: 0,
+}));
+
 import { mockPrisma, resetPrismaMock } from './mocks/prisma.mock';
 import { invalidateUserSessionCache } from '../src/middleware/auth.middleware';
 
