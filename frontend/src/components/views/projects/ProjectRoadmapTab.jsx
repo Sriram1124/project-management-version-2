@@ -198,7 +198,7 @@ export default function ProjectRoadmapTab({
   }, [projectId, onToast]);
 
   useEffect(() => {
-    loadData();
+    void loadData();
   }, [loadData]);
 
   // Listen to external work item update events
@@ -215,7 +215,7 @@ export default function ProjectRoadmapTab({
         setSelectedTask((prev) => (prev && prev.id === detail.id ? null : prev));
         return;
       }
-      loadData(true);
+      void loadData(true);
     };
     window.addEventListener('work-items-updated', handleUpdate);
     return () => window.removeEventListener('work-items-updated', handleUpdate);
@@ -1918,7 +1918,7 @@ export default function ProjectRoadmapTab({
             onSuccess={(created) => {
               onToast?.(`Sprint "${created?.name || 'New'}" created successfully`);
               setIsCreateSprintOpen(false);
-              loadData(true);
+              void loadData(true);
             }}
           />
 
@@ -1947,12 +1947,12 @@ export default function ProjectRoadmapTab({
             onSuccess={(updated) => {
               onToast?.(`Sprint "${updated?.name || 'Sprint'}" updated successfully`);
               setEditingSprint(null);
-              loadData(true);
+              void loadData(true);
             }}
             onDelete={(deleted) => {
               onToast?.(`Sprint "${deleted?.name || 'Sprint'}" deleted successfully`);
               setEditingSprint(null);
-              loadData(true);
+              void loadData(true);
             }}
           />
         </>

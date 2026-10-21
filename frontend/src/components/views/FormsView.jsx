@@ -28,14 +28,14 @@ export default function FormsView({ onToast }) {
   };
 
   useEffect(() => {
-    loadForms();
+    void loadForms();
   }, []);
 
   const handlePublish = async (id) => {
     try {
       await formsService.publishForm(id);
       onToast?.('Form published successfully');
-      loadForms();
+      await loadForms();
     } catch (e) {
       onToast?.('Failed to publish form');
     }
@@ -48,7 +48,7 @@ export default function FormsView({ onToast }) {
       await formsService.revertForm(revertingForm.id);
       onToast?.(`Form "${revertingForm.title}" reverted to draft successfully`);
       setRevertingForm(null);
-      loadForms();
+      await loadForms();
     } catch (e) {
       onToast?.('Failed to revert form');
     } finally {
@@ -158,12 +158,10 @@ export default function FormsView({ onToast }) {
           }}
           onKeyDown={(e) => {
             if (e.key === 'Enter' || e.key === ' ') {
-              (e) => {
-            if (e.target === e.currentTarget && !isReverting) {
+              if (e.target === e.currentTarget && !isReverting) {
               setRevertingForm(null);
             }
           }
-            }
           }}
         >
           <div
@@ -237,7 +235,7 @@ export default function FormsView({ onToast }) {
           onClose={() => setIsCreateOpen(false)}
           onSuccess={() => {
             setIsCreateOpen(false);
-            loadForms();
+            void loadForms();
           }}
         />
       )}

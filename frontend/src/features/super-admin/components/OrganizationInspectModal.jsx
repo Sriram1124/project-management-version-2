@@ -86,8 +86,8 @@ export default function OrganizationInspectModal({
 
   useEffect(() => {
     if (isOpen && orgId) {
-      fetchOrganizationDetails();
-      fetchMembers(1, '', 'ALL');
+      void fetchOrganizationDetails();
+      void fetchMembers(1, '', 'ALL');
     } else {
       setOrgDetails(null);
       setMembers([]);
@@ -100,7 +100,7 @@ export default function OrganizationInspectModal({
   useEffect(() => {
     if (!isOpen || !orgId) return;
     const timer = setTimeout(() => {
-      fetchMembers(1, memberSearch, memberRoleFilter);
+      void fetchMembers(1, memberSearch, memberRoleFilter);
     }, 300);
     return () => clearTimeout(timer);
   }, [memberSearch, memberRoleFilter, isOpen, orgId, fetchMembers]);
@@ -131,8 +131,8 @@ export default function OrganizationInspectModal({
   };
 
   const handleManagerOperationSuccess = () => {
-    fetchOrganizationDetails();
-    fetchMembers(1);
+    void fetchOrganizationDetails();
+    void fetchMembers(1);
     onOrganizationUpdated?.();
   };
 
@@ -193,7 +193,7 @@ export default function OrganizationInspectModal({
             </div>
             <div>
               <button
-                onClick={fetchOrganizationDetails}
+                onClick={() => { void fetchOrganizationDetails(); }}
                 className="px-4 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg text-xs font-semibold"
               >
                 Retry
@@ -426,14 +426,14 @@ export default function OrganizationInspectModal({
                     <div className="flex items-center gap-1">
                       <button
                         disabled={memberPage <= 1}
-                        onClick={() => fetchMembers(memberPage - 1)}
+                        onClick={() => { void fetchMembers(memberPage - 1); }}
                         className="p-1 rounded border border-slate-200 disabled:opacity-40 cursor-pointer"
                       >
                         <ChevronLeft className="w-3.5 h-3.5" />
                       </button>
                       <button
                         disabled={memberPage >= totalMemberPages}
-                        onClick={() => fetchMembers(memberPage + 1)}
+                        onClick={() => { void fetchMembers(memberPage + 1); }}
                         className="p-1 rounded border border-slate-200 disabled:opacity-40 cursor-pointer"
                       >
                         <ChevronRight className="w-3.5 h-3.5" />

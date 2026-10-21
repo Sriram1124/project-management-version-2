@@ -55,7 +55,7 @@ export default function ReportsView({ onToast, selectedCohort, selectedCohortId 
       const filters = {};
       if (selectedProjectId !== 'ALL') filters.project_id = selectedProjectId;
       filters.user_id = queryUserId;
-      loadAnalytics(filters);
+      void loadAnalytics(filters);
     }
   }, [queryUserId]);
   const [isScopeDropdownOpen, setIsScopeDropdownOpen] = useState(false);
@@ -251,7 +251,7 @@ export default function ReportsView({ onToast, selectedCohort, selectedCohortId 
     const filters = {};
     if (selectedProjectId !== 'ALL') filters.project_id = selectedProjectId;
     if (scopeId !== 'ALL' && scopeId !== 'TECH_LEADS' && scopeId !== 'INTERNS') filters.user_id = scopeId;
-    loadAnalytics(filters);
+    void loadAnalytics(filters);
   };
 
   // Project selection change
@@ -263,7 +263,7 @@ export default function ReportsView({ onToast, selectedCohort, selectedCohortId 
     const filters = {};
     if (projId !== 'ALL') filters.project_id = projId;
     if (selectedScope !== 'ALL' && selectedScope !== 'TECH_LEADS' && selectedScope !== 'INTERNS') filters.user_id = selectedScope;
-    loadAnalytics(filters);
+    void loadAnalytics(filters);
   };
 
   // Build member performance map
@@ -1015,7 +1015,7 @@ export default function ReportsView({ onToast, selectedCohort, selectedCohortId 
           <p className="text-xs text-slate-500 mt-1 max-w-sm mx-auto">{analyticsError}</p>
           <button
             type="button"
-            onClick={() => loadAnalytics({ project_id: selectedProjectId, user_id: selectedScope })}
+            onClick={() => { void loadAnalytics({ project_id: selectedProjectId, user_id: selectedScope }); }}
             className="mt-4 px-4 py-2 rounded-xl bg-purple-600 text-white text-xs font-semibold hover:bg-purple-700"
           >
             Retry Loading

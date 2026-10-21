@@ -48,12 +48,10 @@ export default function QuickSearchModal({ isOpen, onClose, onSelectResult }) {
       }}
       onKeyDown={(e) => {
         if (e.key === 'Enter' || e.key === ' ') {
-          (e) => {
-        if (e.target === e.currentTarget) {
+          if (e.target === e.currentTarget) {
           onClose();
         }
       }
-        }
       }}
     >
       <div 

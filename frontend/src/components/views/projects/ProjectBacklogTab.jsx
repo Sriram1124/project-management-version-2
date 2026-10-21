@@ -105,7 +105,7 @@ export default function ProjectBacklogTab({ projectId, project = null, isKanbanP
   }, [projectId, onToast]);
 
   useEffect(() => {
-    loadProjectData();
+    void loadProjectData();
   }, [loadProjectData]);
 
   useEffect(() => {
@@ -125,7 +125,7 @@ export default function ProjectBacklogTab({ projectId, project = null, isKanbanP
         setSelectedIssue((prev) => (prev?.id === e.detail.id ? null : prev));
         return;
       }
-      loadProjectData(true);
+      void loadProjectData(true);
     };
     window.addEventListener('work-items-updated', handleSync);
     return () => window.removeEventListener('work-items-updated', handleSync);
@@ -458,7 +458,7 @@ export default function ProjectBacklogTab({ projectId, project = null, isKanbanP
 
     try {
       await sprintsService.startSprint(projectId, sprintId);
-      loadProjectData();
+      void loadProjectData();
       onToast?.('Sprint started successfully');
     } catch (err) {
       console.error('Failed to start sprint:', err);
@@ -480,7 +480,7 @@ export default function ProjectBacklogTab({ projectId, project = null, isKanbanP
       await sprintsService.completeSprint(projectId, completingSprint.id, options);
       setIsCompleteSprintOpen(false);
       setCompletingSprint(null);
-      loadProjectData();
+      void loadProjectData();
       onToast?.(`Sprint "${completingSprint.name}" completed successfully`);
     } catch (err) {
       console.error('Failed to complete sprint:', err);
@@ -499,7 +499,7 @@ export default function ProjectBacklogTab({ projectId, project = null, isKanbanP
     }
     try {
       await sprintsService.reopenSprint(projectId, sprintId);
-      loadProjectData();
+      void loadProjectData();
       onToast?.('Sprint reopened successfully');
     } catch (err) {
       console.error('Failed to reopen sprint:', err);
@@ -1156,7 +1156,7 @@ export default function ProjectBacklogTab({ projectId, project = null, isKanbanP
           existingSprints={sprints}
           isKanban={false}
           onSuccess={() => {
-            loadProjectData();
+            void loadProjectData();
             onToast?.('Sprint created successfully');
           }}
         />

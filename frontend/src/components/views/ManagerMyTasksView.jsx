@@ -87,7 +87,7 @@ export default function ManagerMyTasksView({ onToast }) {
   }, [onToast]);
 
   useEffect(() => {
-    loadWorkItems();
+    void loadWorkItems();
   }, [loadWorkItems]);
 
   // Real-time KPIs derived directly from manager's personal tasks
@@ -907,11 +907,11 @@ export default function ManagerMyTasksView({ onToast }) {
         onClose={() => setSelectedTask(null)}
         hideAssignees={true}
         onTaskUpdated={() => {
-          loadWorkItems();
+          void loadWorkItems();
         }}
         onTaskDeleted={() => {
           setSelectedTask(null);
-          loadWorkItems();
+          void loadWorkItems();
           onToast?.('Task deleted successfully');
         }}
         onToast={onToast}
@@ -922,7 +922,7 @@ export default function ManagerMyTasksView({ onToast }) {
         isOpen={isCreatePersonalOpen}
         onClose={() => setIsCreatePersonalOpen(false)}
         onTaskCreated={() => {
-          loadWorkItems();
+          void loadWorkItems();
         }}
         onToast={onToast}
       />

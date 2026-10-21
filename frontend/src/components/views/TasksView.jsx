@@ -73,7 +73,7 @@ export default function TasksView({ projectId = null, onToast }) {
   }, [projectId, selectedProjectId, statusFilter, typeFilter]);
 
   useEffect(() => {
-    loadWorkItems();
+    void loadWorkItems();
   }, [loadWorkItems]);
 
   const filteredTasks = tasks.filter((t) => {
@@ -245,7 +245,7 @@ export default function TasksView({ projectId = null, onToast }) {
           <h4 className="text-sm font-bold">Failed to load work items</h4>
           <p className="text-xs text-rose-600">{error}</p>
           <button
-            onClick={loadWorkItems}
+            onClick={() => { void loadWorkItems(); }}
             className="px-3.5 py-1.5 bg-rose-100 hover:bg-rose-200 text-rose-800 rounded-lg text-xs font-semibold transition-colors cursor-pointer"
           >
             Retry
@@ -423,7 +423,7 @@ export default function TasksView({ projectId = null, onToast }) {
         onClose={() => setIsAddModalOpen(false)}
         projectId={projectId || selectedProjectId || null}
         onTaskCreated={() => {
-          loadWorkItems();
+          void loadWorkItems();
         }}
         onToast={onToast}
       />
@@ -434,10 +434,10 @@ export default function TasksView({ projectId = null, onToast }) {
         isOpen={Boolean(selectedTask)}
         onClose={() => setSelectedTask(null)}
         onTaskUpdated={() => {
-          loadWorkItems();
+          void loadWorkItems();
         }}
         onTaskDeleted={() => {
-          loadWorkItems();
+          void loadWorkItems();
         }}
         onToast={onToast}
       />

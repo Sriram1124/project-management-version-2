@@ -41,13 +41,13 @@ export default function AlertsTab({ notifications = [], onToast }) {
 
   useEffect(() => {
     if (filter === 'ARCHIVED') {
-      loadArchived();
+      void loadArchived();
     }
   }, [filter, loadArchived]);
 
   // Load archived count on mount so the tab badge is accurate
   useEffect(() => {
-    loadArchived();
+    void loadArchived();
   }, [loadArchived]);
 
   const filteredNotifs = filter === 'ARCHIVED'
@@ -361,12 +361,10 @@ export default function AlertsTab({ notifications = [], onToast }) {
           }}
           onKeyDown={(e) => {
             if (e.key === 'Enter' || e.key === ' ') {
-              (e) => {
-            if (e.target === e.currentTarget) {
+              if (e.target === e.currentTarget) {
               setSelectedAlert(null);
             }
           }
-            }
           }}
         >
           <div 

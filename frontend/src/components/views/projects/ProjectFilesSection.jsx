@@ -503,12 +503,10 @@ export default function ProjectFilesSection({ projectId, projectName = '', onToa
           }}
           onKeyDown={(e) => {
             if (e.key === 'Enter' || e.key === ' ') {
-              (e) => {
-            if (e.target === e.currentTarget && !isDeleting) {
+              if (e.target === e.currentTarget && !isDeleting) {
               handleCloseDeleteModal();
             }
           }
-            }
           }}
         >
           <div 

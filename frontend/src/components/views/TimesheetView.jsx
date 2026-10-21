@@ -367,13 +367,13 @@ export default function TimesheetView({
   }, [viewMode, selectedDate, targetUserId, statusFilter, priorityFilter, timeFilter, taskSearchQuery, readOnly]);
 
   useEffect(() => {
-    loadTimesheet();
+    void loadTimesheet();
   }, [loadTimesheet]);
 
   // Multi-tab and timer event synchronization
   useEffect(() => {
     const handleSync = () => {
-      loadTimesheet({ isBackground: true });
+      void loadTimesheet({ isBackground: true });
     };
 
     window.addEventListener('timer-session-updated', handleSync);
@@ -401,7 +401,7 @@ export default function TimesheetView({
     const updateElapsed = () => {
       const cutoff = getSessionCutoffMs(activeSession.started_at);
       if (cutoff && Date.now() >= cutoff) {
-        loadTimesheet({ isBackground: true });
+        void loadTimesheet({ isBackground: true });
         return;
       }
       setElapsedText(formatElapsed(activeSession.started_at));
@@ -1019,7 +1019,7 @@ export default function TimesheetView({
             {/* Refresh */}
             <button
               type="button"
-              onClick={loadTimesheet}
+              onClick={() => { void loadTimesheet(); }}
               disabled={loading}
               className="p-2 rounded-xl border border-slate-200 bg-white hover:bg-slate-50 text-slate-600 transition-colors cursor-pointer disabled:opacity-50"
               title="Refresh Timesheet"
@@ -1086,7 +1086,7 @@ export default function TimesheetView({
           </div>
           <button
             type="button"
-            onClick={loadTimesheet}
+            onClick={() => { void loadTimesheet(); }}
             className="px-2.5 py-1 bg-white border border-rose-300 rounded-lg text-xs font-semibold hover:bg-rose-100"
           >
             Retry

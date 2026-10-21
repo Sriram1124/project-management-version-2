@@ -45,7 +45,7 @@ export default function ManagePermissionsModal({
 
   useEffect(() => {
     if (isOpen && user?.id) {
-      loadPermissions();
+      void loadPermissions();
     } else {
       setError('');
       setSuccessMsg('');

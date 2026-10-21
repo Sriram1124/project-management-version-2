@@ -119,8 +119,8 @@ export default function ManagerProfileView({ onSelectProject, onToast }) {
   }, []);
 
   useEffect(() => {
-    fetchProfile();
-    fetchManagedProjects();
+    void fetchProfile();
+    void fetchManagedProjects();
   }, [fetchProfile, fetchManagedProjects]);
 
   // Authorization check: only authenticated MANAGER role

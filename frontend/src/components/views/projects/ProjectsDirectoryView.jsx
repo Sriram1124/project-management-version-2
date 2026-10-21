@@ -601,7 +601,7 @@ export default function ProjectsDirectoryView({ onSelectProject, isIntern = fals
             <span>{error}</span>
           </div>
           <button
-            onClick={fetchProjects}
+            onClick={() => { void fetchProjects(); }}
             className="px-3 py-1 bg-white border border-rose-200 hover:bg-rose-100 rounded-lg text-rose-700 font-semibold cursor-pointer"
           >
             Retry
@@ -1007,12 +1007,10 @@ export default function ProjectsDirectoryView({ onSelectProject, isIntern = fals
           }}
           onKeyDown={(e) => {
             if (e.key === 'Enter' || e.key === ' ') {
-              (e) => {
-            if (e.target === e.currentTarget) {
+              if (e.target === e.currentTarget) {
               setIsCreateOpen(false);
             }
           }
-            }
           }}
         >
           <div 
@@ -1388,12 +1386,10 @@ export default function ProjectsDirectoryView({ onSelectProject, isIntern = fals
           }}
           onKeyDown={(e) => {
             if (e.key === 'Enter' || e.key === ' ') {
-              (e) => {
-            if (e.target === e.currentTarget) {
+              if (e.target === e.currentTarget) {
               setIsEditOpen(false);
             }
           }
-            }
           }}
         >
           <div 
@@ -1803,12 +1799,10 @@ export default function ProjectsDirectoryView({ onSelectProject, isIntern = fals
           }}
           onKeyDown={(e) => {
             if (e.key === 'Enter' || e.key === ' ') {
-              (e) => {
-            if (e.target === e.currentTarget) {
+              if (e.target === e.currentTarget) {
               setArchiveTarget(null);
             }
           }
-            }
           }}
         >
           <div 
@@ -1854,12 +1848,10 @@ export default function ProjectsDirectoryView({ onSelectProject, isIntern = fals
           }}
           onKeyDown={(e) => {
             if (e.key === 'Enter' || e.key === ' ') {
-              (e) => {
-            if (e.target === e.currentTarget) {
+              if (e.target === e.currentTarget) {
               setDeleteTarget(null);
             }
           }
-            }
           }}
         >
           <div 

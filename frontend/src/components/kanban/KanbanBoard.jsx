@@ -93,7 +93,7 @@ export default function KanbanBoard({ projectId, project = null, isKanbanProject
   }, [projectId, isKanban, onToast]);
 
   useEffect(() => {
-    loadProjectData();
+    void loadProjectData();
   }, [loadProjectData]);
 
   useEffect(() => {
@@ -110,7 +110,7 @@ export default function KanbanBoard({ projectId, project = null, isKanbanProject
         setSelectedTask((prev) => (prev?.id === e.detail.id ? null : prev));
         return;
       }
-      loadProjectData(true);
+      void loadProjectData(true);
     };
     window.addEventListener('work-items-updated', handleSync);
     return () => window.removeEventListener('work-items-updated', handleSync);
@@ -263,7 +263,7 @@ export default function KanbanBoard({ projectId, project = null, isKanbanProject
         notes: description || null,
       });
       onToast?.(`Logged ${hours}h ${minutes}m successfully`);
-      loadProjectData();
+      void loadProjectData();
     } catch (err) {
       console.error('Failed to log work:', err);
       onToast?.(err.message || 'Failed to log work');
@@ -279,7 +279,7 @@ export default function KanbanBoard({ projectId, project = null, isKanbanProject
         : { target_sprint_id: optionsOrTarget };
       await sprintsService.completeSprint(projectId, activeSprint.id, payload);
       onToast?.(payload.unfinished_action === 'CONTINUE' ? `Cycle "${activeSprint.name}" continued` : `Cycle "${activeSprint.name}" completed successfully`);
-      loadProjectData();
+      void loadProjectData();
     } catch (err) {
       console.error('Failed to complete sprint:', err);
       onToast?.(`Failed to complete cycle: ${err.message || 'Error'}`);
@@ -338,7 +338,7 @@ export default function KanbanBoard({ projectId, project = null, isKanbanProject
       }
 
       if (selectedEpic && selectedEpic !== 'All Epics') {
-        const epicId = typeof selectedEpic === 'object' ? selectedEpic.id : selectedEpic;
+        const epicId = selectedEpic && typeof selectedEpic === 'object' ? selectedEpic.id : selectedEpic;
         if (task.parent_id !== epicId && task.parent?.title !== selectedEpic) {
           return false;
         }
@@ -479,7 +479,7 @@ export default function KanbanBoard({ projectId, project = null, isKanbanProject
         <p className="text-xs font-semibold text-rose-700">Failed to load {isKanban ? 'Kanban Board' : 'Scrum Board'}</p>
         <p className="text-[11px] text-slate-400 mt-1">{fetchError}</p>
         <button
-          onClick={() => loadProjectData()}
+          onClick={() => { void loadProjectData(); }}
           className="mt-4 px-3 py-1.5 rounded-md bg-purple-600 hover:bg-purple-700 text-white text-xs font-semibold cursor-pointer"
         >
           Retry

@@ -8,7 +8,7 @@ export default function FormBuilderDrawer({ form: initialForm, onClose, onUpdate
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    loadQuestions();
+    void loadQuestions();
   }, [initialForm.id]);
 
   const loadQuestions = async () => {
@@ -30,7 +30,7 @@ export default function FormBuilderDrawer({ form: initialForm, onClose, onUpdate
         is_required: true,
         options: type === 'SINGLE_SELECT' || type === 'MULTI_SELECT' ? ['Option 1'] : []
       });
-      loadQuestions();
+      void loadQuestions();
     } catch (e) {
       alert('Failed to add question');
     }
@@ -39,7 +39,7 @@ export default function FormBuilderDrawer({ form: initialForm, onClose, onUpdate
   const handleDelete = async (qId) => {
     try {
       await formsService.deleteQuestion(form.id, qId);
-      loadQuestions();
+      void loadQuestions();
     } catch (e) {
       alert('Failed to delete question');
     }
@@ -51,7 +51,7 @@ export default function FormBuilderDrawer({ form: initialForm, onClose, onUpdate
       setQuestions(prev => prev.map(q => q.id === qId ? { ...q, ...updates } : q));
       await formsService.updateQuestion(form.id, qId, updates);
     } catch (e) {
-      loadQuestions(); // Revert on fail
+      void loadQuestions(); // Revert on fail
     }
   };
 

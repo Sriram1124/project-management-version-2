@@ -7,7 +7,7 @@ export default function ViewSubmissionsDrawer({ formId, onClose }) {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    loadSubmissions();
+    void loadSubmissions();
   }, [formId]);
 
   const loadSubmissions = async () => {

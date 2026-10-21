@@ -197,7 +197,7 @@ export default function IssueDetailDrawer({
 
   useEffect(() => {
     if (isOpen && issue?.id) {
-      loadIssueExtensions();
+      void loadIssueExtensions();
       setDecisionNote('');
     }
   }, [isOpen, issue?.id, loadIssueExtensions]);
@@ -340,14 +340,14 @@ export default function IssueDetailDrawer({
 
   useEffect(() => {
     if (isOpen && issue?.id) {
-      loadTaskTimeData();
+      void loadTaskTimeData();
     }
   }, [isOpen, issue?.id, loadTaskTimeData]);
 
   useEffect(() => {
     if (!isOpen || !issue?.id) return;
     const handleSync = () => {
-      loadTaskTimeData();
+      void loadTaskTimeData();
     };
 
     window.addEventListener('timer-session-updated', handleSync);
@@ -381,7 +381,7 @@ export default function IssueDetailDrawer({
       const secs = diffSecs % 60;
       setElapsedText(`${String(hrs).padStart(2, '0')}:${String(mins).padStart(2, '0')}:${String(secs).padStart(2, '0')}`);
       if (cutoff && Date.now() >= cutoff) {
-        loadTaskTimeData();
+        void loadTaskTimeData();
       }
     };
     updateElapsed();

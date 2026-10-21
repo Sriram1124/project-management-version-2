@@ -429,12 +429,10 @@ export default function ProjectOverviewTab({ projectId, project, onNavigateTab, 
           }}
           onKeyDown={(e) => {
             if (e.key === 'Enter' || e.key === ' ') {
-              (e) => {
-            if (e.target === e.currentTarget) {
+              if (e.target === e.currentTarget) {
               setIsDeleteOpen(false);
             }
           }
-            }
           }}
         >
           <div 

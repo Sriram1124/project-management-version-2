@@ -256,7 +256,7 @@ export default function FilterBar({
           >
             <span className="truncate max-w-[100px]">
               {selectedEpic && selectedEpic !== 'All Epics'
-                ? typeof selectedEpic === 'object' ? selectedEpic.name || selectedEpic.title : selectedEpic
+                ? (selectedEpic && typeof selectedEpic === 'object' ? selectedEpic.name || selectedEpic.title : selectedEpic)
                 : 'Epic'}
             </span>
             <ChevronDown className="w-3 h-3 text-slate-400" />
@@ -315,7 +315,7 @@ export default function FilterBar({
               className="flex items-center gap-1.5 px-2.5 py-1 rounded-md border border-slate-200 text-xs font-medium text-slate-700 bg-white hover:bg-slate-50 transition-colors"
             >
               <span className="truncate max-w-[130px]">
-                {typeof selectedSprint === 'object' ? selectedSprint.name : selectedSprint}
+                {selectedSprint && typeof selectedSprint === 'object' ? selectedSprint.name : (selectedSprint || 'All Sprints')}
               </span>
               <ChevronDown className="w-3 h-3 text-slate-400" />
             </button>

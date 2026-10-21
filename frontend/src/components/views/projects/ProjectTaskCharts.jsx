@@ -320,7 +320,7 @@ export default function ProjectTaskCharts({
   }, [selectedProjectId, projectId, selectedSprintId, dateRangeFilter, isManager, isInternUser, currentUserId]);
 
   useEffect(() => {
-    fetchAnalytics();
+    void fetchAnalytics();
     return () => {
       if (abortControllerRef.current) {
         abortControllerRef.current.abort();
@@ -332,7 +332,7 @@ export default function ProjectTaskCharts({
   const [userProjects, setUserProjects] = useState([]);
 
   useEffect(() => {
-    projectsService.getProjects({ my: true })
+    void projectsService.getProjects({ my: true })
       .then((data) => {
         if (Array.isArray(data)) setUserProjects(data);
       })
@@ -686,7 +686,7 @@ export default function ProjectTaskCharts({
         <h4 className="text-sm font-bold text-slate-800">Failed to load task analytics</h4>
         <p className="text-xs text-rose-600 mt-1">{error}</p>
         <button
-          onClick={fetchAnalytics}
+          onClick={() => { void fetchAnalytics(); }}
           className="mt-3 inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg bg-rose-50 hover:bg-rose-100 text-rose-700 text-xs font-semibold transition-colors cursor-pointer"
         >
           <RefreshCw className="w-3.5 h-3.5" />
@@ -755,7 +755,7 @@ export default function ProjectTaskCharts({
             {/* Refresh Button */}
             <button
               type="button"
-              onClick={() => fetchAnalytics(true)}
+              onClick={() => { void fetchAnalytics(true); }}
               disabled={isRefreshing}
               className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-slate-50 hover:bg-slate-100 text-slate-700 border border-slate-200 text-xs font-semibold transition-colors cursor-pointer shadow-2xs disabled:opacity-60"
               title="Refresh current data"

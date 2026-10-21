@@ -22,7 +22,7 @@ const labelHits = [];
 files.forEach(file => {
   const content = fs.readFileSync(file, 'utf8');
   // Match <label ...>
-  const labelRegex = /<label(\s+[^>]*?)?>/gs;
+  const labelRegex = /<label\b([^>]*)>/gis;
   let match;
   while ((match = labelRegex.exec(content)) !== null) {
     const attrs = match[1] || '';

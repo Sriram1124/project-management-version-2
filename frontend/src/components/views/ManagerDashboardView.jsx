@@ -64,7 +64,7 @@ export default function ManagerDashboardView({
   // Initial load: fetch global data once on mount
   useEffect(() => {
     setLoading(true);
-    fetchGlobalData().finally(() => {
+    void fetchGlobalData().finally(() => {
       setLoading(false);
     });
   }, [fetchGlobalData]);
@@ -74,14 +74,14 @@ export default function ManagerDashboardView({
     if (selectedCohort?.id) {
       setUsers([]);
       setHealthOverview(null);
-      fetchCohortData();
+      void fetchCohortData();
     }
   }, [fetchCohortData, selectedCohort?.id]);
 
   useEffect(() => {
     const handleSync = () => {
       fetchGlobalData();
-      fetchCohortData();
+      void fetchCohortData();
     };
     window.addEventListener('work-items-updated', handleSync);
     return () => window.removeEventListener('work-items-updated', handleSync);

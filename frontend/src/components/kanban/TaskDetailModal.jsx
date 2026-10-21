@@ -225,7 +225,7 @@ export default function TaskDetailModal({
       setStoryPoints(data.story_points ?? '');
       setStartDate(data.start_date ? data.start_date.split('T')[0] : '');
       setDueDate(data.due_date ? data.due_date.split('T')[0] : '');
-      loadExtensionRequests(id);
+      await loadExtensionRequests(id);
     } catch (err) {
       setError(err.message || 'Failed to fetch task details');
     } finally {
@@ -235,7 +235,7 @@ export default function TaskDetailModal({
 
   useEffect(() => {
     if (isOpen && task?.id) {
-      fetchTaskDetails(task.id);
+      void fetchTaskDetails(task.id);
       setIsEditing(false);
       setError('');
     }
@@ -597,12 +597,10 @@ export default function TaskDetailModal({
       }}
       onKeyDown={(e) => {
         if (e.key === 'Enter' || e.key === ' ') {
-          (e) => {
-        if (e.target === e.currentTarget) {
+          if (e.target === e.currentTarget) {
           onClose();
         }
       }
-        }
       }}
     >
       <div
@@ -1059,7 +1057,7 @@ export default function TaskDetailModal({
                   </span>
                   <button
                     type="button"
-                    onClick={() => fetchTaskDetails(parent.id)}
+                    onClick={() => { void fetchTaskDetails(parent.id); }}
                     className="w-full text-left p-2.5 bg-purple-50/70 border border-purple-200/80 rounded-xl flex items-center justify-between cursor-pointer hover:bg-purple-100/70 transition-colors"
                   >
                     <div className="flex items-center gap-2 min-w-0">
@@ -1171,7 +1169,7 @@ export default function TaskDetailModal({
                     <button
                       type="button"
                       key={child.id}
-                      onClick={() => fetchTaskDetails(child.id)}
+                      onClick={() => { void fetchTaskDetails(child.id); }}
                       className="w-full text-left p-2 bg-slate-50 hover:bg-slate-100 border border-slate-200 rounded-lg flex items-center justify-between cursor-pointer transition-colors"
                       title="Click to view details"
                     >

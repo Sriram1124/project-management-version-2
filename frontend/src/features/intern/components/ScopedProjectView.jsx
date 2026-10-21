@@ -81,18 +81,18 @@ export default function ScopedProjectView({
   };
 
   useEffect(() => {
-    loadProjectWorkItems();
+    void loadProjectWorkItems();
   }, [project?.id]);
 
   const handleToggleTask = async (taskOrId) => {
-    const targetItem = typeof taskOrId === 'object' ? taskOrId : projectWorkItems.find((w) => w.id === taskOrId);
+    const targetItem = taskOrId && typeof taskOrId === 'object' ? taskOrId : projectWorkItems.find((w) => w.id === taskOrId);
     if (targetItem && !canToggleItem(targetItem)) {
       onToast?.('You can only update status for tasks assigned to you.');
       return;
     }
     try {
       const updated = await workItemsService.toggleComplete(taskOrId);
-      loadProjectWorkItems();
+      void loadProjectWorkItems();
       onToast?.(
         updated?.status === 'COMPLETED'
           ? `Marked "${updated.title}" completed!`

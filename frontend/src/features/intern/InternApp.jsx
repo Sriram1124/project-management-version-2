@@ -172,7 +172,7 @@ export default function InternApp({ onLogout, onSelectProject, onToast }) {
   };
 
   useEffect(() => {
-    loadWorkItems();
+    void loadWorkItems();
     const unsubForms = formsService.subscribe(setForms);
     let knownNotificationIds = new Set(
       notificationsService.getAllNotifications().map((notification) => notification.id)
@@ -193,7 +193,7 @@ export default function InternApp({ onLogout, onSelectProject, onToast }) {
 
       knownNotificationIds = new Set(nextNotifications.map((notification) => notification.id));
     });
-    notificationsService.loadNotifications().then((loadedNotifications) => {
+    void notificationsService.loadNotifications().then((loadedNotifications) => {
       knownNotificationIds = new Set(loadedNotifications.map((notification) => notification.id));
       hasLoadedNotifications = true;
     });
@@ -204,7 +204,7 @@ export default function InternApp({ onLogout, onSelectProject, onToast }) {
       if (pollInterval) clearInterval(pollInterval);
       pollInterval = setInterval(() => {
         if (typeof document !== 'undefined' && document.hidden) return;
-        notificationsService.loadNotifications();
+        void notificationsService.loadNotifications();
       }, 30000);
     };
 
@@ -220,7 +220,7 @@ export default function InternApp({ onLogout, onSelectProject, onToast }) {
       if (document.hidden) {
         stopPolling();
       } else {
-        notificationsService.loadNotifications();
+        void notificationsService.loadNotifications();
         startPolling();
       }
     };
@@ -257,7 +257,7 @@ export default function InternApp({ onLogout, onSelectProject, onToast }) {
         setSelectedTask((prev) => (prev && prev.id === detail.id ? null : prev));
         return;
       }
-      loadWorkItems(true);
+      void loadWorkItems(true);
     };
     window.addEventListener('work-items-updated', handleWorkItemsSync);
 
@@ -716,7 +716,7 @@ export default function InternApp({ onLogout, onSelectProject, onToast }) {
             setWorkItems((prev) => prev.map((w) => (w.id === updated.id ? { ...w, ...updated } : w)));
             setSelectedTask((prev) => (prev && prev.id === updated.id ? { ...prev, ...updated } : prev));
           } else {
-            loadWorkItems(true);
+            void loadWorkItems(true);
           }
         }}
         onTaskDeleted={(deletedId) => {
@@ -724,7 +724,7 @@ export default function InternApp({ onLogout, onSelectProject, onToast }) {
           if (deletedId) {
             setWorkItems((prev) => prev.filter((w) => w.id !== deletedId));
           } else {
-            loadWorkItems(true);
+            void loadWorkItems(true);
           }
         }}
         onToast={onToast}
@@ -741,7 +741,7 @@ export default function InternApp({ onLogout, onSelectProject, onToast }) {
       <CreatePersonalTaskModal
         isOpen={isCreatePersonalOpen}
         onClose={() => setIsCreatePersonalOpen(false)}
-        onTaskCreated={() => loadWorkItems()}
+        onTaskCreated={() => { void loadWorkItems(); }}
         onToast={onToast}
       />
 

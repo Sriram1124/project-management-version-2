@@ -132,8 +132,8 @@ export default function WorkItemDetailModal({
       .finally(() => {
         if (!cancelled) setTaskSessionLoading(false);
       });
-    loadTaskEntries();
-    loadExtensionRequests();
+    void loadTaskEntries();
+    void loadExtensionRequests();
     return () => {
       cancelled = true;
     };
@@ -148,7 +148,7 @@ export default function WorkItemDetailModal({
       timesheetService.getActiveTaskSession(currentItemId)
         .then((data) => setTaskSession(data?.session || null))
         .catch(() => setTaskSession(null));
-      loadTaskEntries();
+      void loadTaskEntries();
     };
 
     window.addEventListener('timer-session-updated', handleSync);
@@ -184,7 +184,7 @@ export default function WorkItemDetailModal({
       if (cutoff && Date.now() >= cutoff) {
         timesheetService.getActiveTaskSession(item?.id).then((res) => {
           setTaskSession(res?.session || null);
-          loadTaskEntries();
+          void loadTaskEntries();
         }).catch(() => {});
       }
     };
@@ -506,12 +506,10 @@ export default function WorkItemDetailModal({
       }}
       onKeyDown={(e) => {
         if (e.key === 'Enter' || e.key === ' ') {
-          (e) => {
-        if (e.target === e.currentTarget) {
+          if (e.target === e.currentTarget) {
           onClose();
         }
       }
-        }
       }}
     >
       <div

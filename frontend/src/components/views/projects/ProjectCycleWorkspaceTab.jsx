@@ -101,7 +101,7 @@ export default function ProjectCycleWorkspaceTab({
   }, [projectId, propSelectedCycleId, onToast]);
 
   useEffect(() => {
-    loadData();
+    void loadData();
   }, [loadData]);
 
   useEffect(() => {
@@ -117,7 +117,7 @@ export default function ProjectCycleWorkspaceTab({
         setSelectedTask((prev) => (prev && prev.id === detail.id ? null : prev));
         return;
       }
-      loadData(true);
+      void loadData(true);
     };
     window.addEventListener('work-items-updated', handleSync);
     return () => window.removeEventListener('work-items-updated', handleSync);
@@ -206,7 +206,7 @@ export default function ProjectCycleWorkspaceTab({
       });
       setIsCreateCycleOpen(false);
       setSelectedCycleId(created.id);
-      loadData();
+      void loadData();
       onToast?.(`Planning cycle "${created.name}" created`);
     } catch (err) {
       console.error('Failed to create cycle:', err);
@@ -238,7 +238,7 @@ export default function ProjectCycleWorkspaceTab({
         end_date: cycleFormEndDate || null,
       });
       setIsEditCycleOpen(false);
-      loadData();
+      void loadData();
       onToast?.(`Planning cycle "${cycleFormName.trim()}" updated`);
     } catch (err) {
       console.error('Failed to update cycle:', err);
@@ -251,7 +251,7 @@ export default function ProjectCycleWorkspaceTab({
   const handleActivateCycle = async (cycleId) => {
     try {
       await sprintsService.startSprint(projectId, cycleId);
-      loadData();
+      void loadData();
       onToast?.('Planning cycle activated');
     } catch (err) {
       console.error('Failed to activate cycle:', err);
@@ -266,7 +266,7 @@ export default function ProjectCycleWorkspaceTab({
         unfinished_action: closeAction,
       });
       setIsCloseCycleOpen(false);
-      loadData();
+      void loadData();
       onToast?.(`Planning cycle "${currentCycle.name}" closed`);
     } catch (err) {
       console.error('Failed to close cycle:', err);
@@ -282,7 +282,7 @@ export default function ProjectCycleWorkspaceTab({
     try {
       await sprintsService.deleteSprint(projectId, currentCycle.id);
       setSelectedCycleId(null);
-      loadData();
+      void loadData();
       onToast?.('Planning cycle deleted');
     } catch (err) {
       console.error('Failed to delete cycle:', err);
@@ -294,7 +294,7 @@ export default function ProjectCycleWorkspaceTab({
   const handleAssignItemToCycle = async (itemId, targetCycleId) => {
     try {
       await workItemsService.updateWorkItem(itemId, { sprint_id: targetCycleId });
-      loadData();
+      void loadData();
       onToast?.(targetCycleId ? 'Item assigned to cycle' : 'Item returned to continuous flow');
     } catch (err) {
       console.error('Failed to update item cycle assignment:', err);

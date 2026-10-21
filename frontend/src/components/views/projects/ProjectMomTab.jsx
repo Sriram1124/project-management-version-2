@@ -96,7 +96,7 @@ export default function ProjectMomTab({ projectId, projectName, onToast, readOnl
   }, [projectId]);
 
   useEffect(() => {
-    fetchBackendActionItems();
+    void fetchBackendActionItems();
   }, [fetchBackendActionItems]);
 
   const filteredMoMs = moms.filter((mom) => {
@@ -451,12 +451,10 @@ export default function ProjectMomTab({ projectId, projectName, onToast, readOnl
           }}
           onKeyDown={(e) => {
             if (e.key === 'Enter' || e.key === ' ') {
-              (e) => {
-            if (e.target === e.currentTarget) {
+              if (e.target === e.currentTarget) {
               setItemToDelete(null);
             }
           }
-            }
           }}
         >
           <div 

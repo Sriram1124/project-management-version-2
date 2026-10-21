@@ -269,7 +269,7 @@ export default function ManagerTimesheetsView({
   }, [period, selectedDate, debouncedSearch, selectedCohort, selectedProject, page, limit]);
 
   useEffect(() => {
-    loadReviewDirectory();
+    void loadReviewDirectory();
   }, [loadReviewDirectory]);
 
   // Week Navigation handlers
@@ -530,7 +530,7 @@ export default function ManagerTimesheetsView({
 
             <button
               type="button"
-              onClick={loadReviewDirectory}
+              onClick={() => { void loadReviewDirectory(); }}
               disabled={loading}
               className="p-2 rounded-xl border border-slate-200 bg-white hover:bg-slate-50 text-slate-600 transition-colors cursor-pointer disabled:opacity-50"
               title="Refresh"
@@ -690,7 +690,7 @@ export default function ManagerTimesheetsView({
           </div>
           <button
             type="button"
-            onClick={loadReviewDirectory}
+            onClick={() => { void loadReviewDirectory(); }}
             className="px-3 py-1 rounded-lg bg-rose-600 text-white font-semibold hover:bg-rose-700 transition-colors"
           >
             Retry

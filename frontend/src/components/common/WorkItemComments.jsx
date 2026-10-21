@@ -90,7 +90,7 @@ export default function WorkItemComments({
   }, [workItemId]);
 
   useEffect(() => {
-    fetchComments();
+    void fetchComments();
   }, [fetchComments]);
 
   const canModifyComment = (comment) => {
