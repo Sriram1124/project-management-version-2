@@ -1177,40 +1177,6 @@ export default function IssueDetailDrawer({
             )}
           </div>
 
-<<<<<<< HEAD
-          {/* Due Date */}
-          <div className="flex items-center justify-between">
-            <span className="text-slate-500 font-medium flex items-center gap-1.5">
-              <Calendar className="w-3.5 h-3.5 text-slate-400" />
-              <span>Due Date</span>
-              {updatingField === 'dueDate' && (
-                <Loader2 className="w-3 h-3 text-purple-600 animate-spin shrink-0" />
-              )}
-            </span>
-            {canChangeDueDate ? (
-              <div className="flex items-center gap-1.5">
-                <input
-                  type="date"
-                  disabled={updatingField === 'dueDate'}
-                  value={formattedDueDateForInput}
-                  onChange={(e) => {
-                    const val = e.target.value;
-                    const isoDate = val ? new Date(val).toISOString() : null;
-                    void handleDueDateChange(isoDate);
-                  }}
-                  className="px-2 py-0.5 rounded border border-slate-200 text-xs font-medium bg-white text-slate-800 focus:outline-none focus:border-purple-600 cursor-pointer shadow-2xs disabled:opacity-60"
-                />
-                {formattedDueDateForInput && (
-                  <button
-                    type="button"
-                    disabled={updatingField === 'dueDate'}
-                    onClick={() => void handleDueDateChange(null)}
-                    title="Clear due date"
-                    className="p-1 rounded hover:bg-slate-200 text-slate-400 hover:text-slate-600 cursor-pointer transition-colors disabled:opacity-60"
-                  >
-                    <X className="w-3 h-3" />
-                  </button>
-=======
           {/* Due Date & Extension Workflow */}
           <div className="space-y-2">
             <div className="flex items-center justify-between">
@@ -1219,7 +1185,6 @@ export default function IssueDetailDrawer({
                 <span>Due Date</span>
                 {updatingField === 'dueDate' && (
                   <Loader2 className="w-3 h-3 text-purple-600 animate-spin shrink-0" />
->>>>>>> 173508b (.)
                 )}
               </span>
               {canChangeDueDate ? (
