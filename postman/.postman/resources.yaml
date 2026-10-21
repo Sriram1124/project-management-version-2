@@ -1,0 +1,11 @@
+# Use this workspace to collaborate
+workspace:
+  id: 56be711c-c2d5-4bf4-a221-c85a1a5958ec
+
+localResources:
+  collections:
+    - ../InternHub_API_Collection.json
+    - ../MIRAI_Project_Management_API_Tests.postman_collection.json
+  environments:
+    - ../InternHub_Local.postman_environment.json
+    - ../MIRAI_Project_Management_API_Tests.postman_environment.json

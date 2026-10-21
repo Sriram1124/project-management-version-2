@@ -1,0 +1,983 @@
+{
+  "info": {
+    "_postman_id": "a7d903e1-789a-4c91-9e23-mirai-pm-suite-2026",
+    "name": "MIRAI Adapter - Project Management API Test Suite",
+    "description": "Read-only Postman test collection to verify that the deployed Project Management backend APIs (on Vercel) satisfy all contracts required by Sriram's MIRAI Project Management Integration Adapter.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "auth": {
+    "type": "bearer",
+    "bearer": [
+      {
+        "key": "token",
+        "value": "{{token}}",
+        "type": "string"
+      }
+    ]
+  },
+  "item": [
+    {
+      "name": "00 - Authentication",
+      "description": "Optional helper request to log in and automatically populate the 'token' variable.",
+      "item": [
+        {
+          "name": "00.1 - Login (Auto-populate token)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"Login status is 200\", function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "var jsonData = pm.response.json();",
+                  "if (jsonData.accessToken) {",
+                  "    pm.environment.set(\"token\", jsonData.accessToken);",
+                  "    console.log(\"Successfully extracted accessToken and updated 'token' environment variable!\");",
+                  "}",
+                  "if (jsonData.user && jsonData.user.organization_id) {",
+                  "    pm.environment.set(\"organizationId\", jsonData.user.organization_id);",
+                  "}",
+                  "if (jsonData.user && jsonData.user.id) {",
+                  "    pm.environment.set(\"userId\", jsonData.user.id);",
+                  "}"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "auth": {
+              "type": "noauth"
+            },
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json",
+                "type": "text"
+              },
+              {
+                "key": "Accept",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"{{userEmail}}\",\n  \"password\": \"{{userPassword}}\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/auth/login",
+              "host": ["{{baseUrl}}"],
+              "path": ["auth", "login"]
+            },
+            "description": "Logs in with user credentials and automatically sets the {{token}} environment variable."
+          }
+        }
+      ]
+    },
+    {
+      "name": "01 - Projects",
+      "description": "Endpoints for querying and retrieving project portfolio and individual project details.",
+      "item": [
+        {
+          "name": "01.1 - List Projects (All / Default)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"Status code is 200\", function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "pm.test(\"Response is valid JSON with projects array\", function () {",
+                  "    var jsonData = pm.response.json();",
+                  "    pm.expect(jsonData).to.be.an(\"object\");",
+                  "    pm.expect(jsonData.projects).to.be.an(\"array\");",
+                  "});",
+                  "",
+                  "pm.test(\"Project items adhere to adapter schema\", function () {",
+                  "    var jsonData = pm.response.json();",
+                  "    if (jsonData.projects.length > 0) {",
+                  "        var p = jsonData.projects[0];",
+                  "        pm.expect(p).to.have.property(\"id\");",
+                  "        pm.expect(p.id).to.be.a(\"string\");",
+                  "        pm.expect(p).to.have.property(\"name\");",
+                  "        pm.expect(p).to.have.property(\"status\");",
+                  "        pm.expect(p).to.have.property(\"methodology\");",
+                  "        pm.expect(p).to.have.property(\"organization_id\");",
+                  "        pm.expect(p).to.have.property(\"owner_id\");",
+                  "        ",
+                  "        // Auto-populate projectId if empty or unset",
+                  "        if (!pm.environment.get(\"projectId\") || pm.environment.get(\"projectId\") === \"your_project_id_here\") {",
+                  "            pm.environment.set(\"projectId\", p.id);",
+                  "            console.log(\"Auto-set environment variable projectId to: \" + p.id);",
+                  "        }",
+                  "        if (!pm.environment.get(\"organizationId\") || pm.environment.get(\"organizationId\") === \"your_organization_id_here\") {",
+                  "            if (p.organization_id) {",
+                  "                pm.environment.set(\"organizationId\", p.organization_id);",
+                  "                console.log(\"Auto-set environment variable organizationId to: \" + p.organization_id);",
+                  "            }",
+                  "        }",
+                  "    }",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/projects?limit=20",
+              "host": ["{{baseUrl}}"],
+              "path": ["projects"],
+              "query": [
+                {
+                  "key": "limit",
+                  "value": "20",
+                  "description": "Pagination limit"
+                }
+              ]
+            },
+            "description": "Lists accessible projects with pagination limit."
+          }
+        },
+        {
+          "name": "01.2 - List Projects (Filtered by Status=ACTIVE)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"Status code is 200\", function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "pm.test(\"All returned projects match status filter\", function () {",
+                  "    var jsonData = pm.response.json();",
+                  "    pm.expect(jsonData.projects).to.be.an(\"array\");",
+                  "    jsonData.projects.forEach(function (project) {",
+                  "        pm.expect(project.status).to.eql(\"ACTIVE\");",
+                  "    });",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/projects?status=ACTIVE",
+              "host": ["{{baseUrl}}"],
+              "path": ["projects"],
+              "query": [
+                {
+                  "key": "status",
+                  "value": "ACTIVE",
+                  "description": "Project status filter"
+                }
+              ]
+            },
+            "description": "Verifies that upstream status filtering operates correctly."
+          }
+        },
+        {
+          "name": "01.3 - List Projects (My Projects Filter)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"Status code is 200\", function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "pm.test(\"Response contains projects array for my=true query\", function () {",
+                  "    var jsonData = pm.response.json();",
+                  "    pm.expect(jsonData).to.be.an(\"object\");",
+                  "    pm.expect(jsonData.projects).to.be.an(\"array\");",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/projects?my=true",
+              "host": ["{{baseUrl}}"],
+              "path": ["projects"],
+              "query": [
+                {
+                  "key": "my",
+                  "value": "true",
+                  "description": "Scoped to projects where the caller is member/owner"
+                }
+              ]
+            },
+            "description": "Verifies the my=true filter used by the intern dashboard and adapter."
+          }
+        },
+        {
+          "name": "01.4 - Get Project Details by ID",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"Status code is 200\", function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "pm.test(\"Returns expected project matching requested ID\", function () {",
+                  "    var jsonData = pm.response.json();",
+                  "    var expectedId = pm.environment.get(\"projectId\");",
+                  "    pm.expect(jsonData.id).to.eql(expectedId);",
+                  "    pm.expect(jsonData).to.have.property(\"name\");",
+                  "    pm.expect(jsonData).to.have.property(\"status\");",
+                  "    pm.expect(jsonData).to.have.property(\"methodology\");",
+                  "    pm.expect(jsonData).to.have.property(\"organization_id\");",
+                  "});",
+                  "",
+                  "pm.test(\"UUID is returned as a valid string\", function () {",
+                  "    var jsonData = pm.response.json();",
+                  "    pm.expect(jsonData.id).to.be.a(\"string\");",
+                  "    pm.expect(jsonData.id.length).to.be.above(0);",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/projects/{{projectId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["projects", "{{projectId}}"]
+            },
+            "description": "Retrieves comprehensive details for a specific project ID."
+          }
+        }
+      ]
+    },
+    {
+      "name": "02 - Work Items",
+      "description": "Endpoints for querying tasks, stories, epics, and subtasks across the project hierarchy.",
+      "item": [
+        {
+          "name": "02.1 - List Project Work Items",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"Status code is 200\", function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "pm.test(\"Response contains work_items array\", function () {",
+                  "    var jsonData = pm.response.json();",
+                  "    pm.expect(jsonData).to.be.an(\"object\");",
+                  "    pm.expect(jsonData.work_items).to.be.an(\"array\");",
+                  "});",
+                  "",
+                  "pm.test(\"Work items adhere to hierarchy and association contracts\", function () {",
+                  "    var jsonData = pm.response.json();",
+                  "    var targetProjectId = pm.environment.get(\"projectId\");",
+                  "    if (jsonData.work_items.length > 0) {",
+                  "        var item = jsonData.work_items[0];",
+                  "        pm.expect(item).to.have.property(\"id\");",
+                  "        pm.expect(item.id).to.be.a(\"string\");",
+                  "        pm.expect(item).to.have.property(\"title\");",
+                  "        pm.expect(item).to.have.property(\"type\");",
+                  "        pm.expect(item).to.have.property(\"status\");",
+                  "        pm.expect(item).to.have.property(\"priority\");",
+                  "        ",
+                  "        // Validate project association",
+                  "        if (item.project_id) {",
+                  "            pm.expect(item.project_id).to.eql(targetProjectId);",
+                  "        }",
+                  "        ",
+                  "        // Capture userId if an assignee exists",
+                  "        if (item.assignees && item.assignees.length > 0) {",
+                  "            var uid = item.assignees[0].user_id || item.assignees[0].id;",
+                  "            if (uid && (!pm.environment.get(\"userId\") || pm.environment.get(\"userId\") === \"your_user_id_here\")) {",
+                  "                pm.environment.set(\"userId\", uid);",
+                  "                console.log(\"Auto-set environment variable userId to: \" + uid);",
+                  "            }",
+                  "        }",
+                  "    }",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/work-items?project_id={{projectId}}&limit=50",
+              "host": ["{{baseUrl}}"],
+              "path": ["work-items"],
+              "query": [
+                {
+                  "key": "project_id",
+                  "value": "{{projectId}}",
+                  "description": "Associated project UUID"
+                },
+                {
+                  "key": "limit",
+                  "value": "50",
+                  "description": "Item limit"
+                }
+              ]
+            },
+            "description": "Retrieves work items for the specified project."
+          }
+        },
+        {
+          "name": "02.2 - List Work Items (Filtered by Type=TASK)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"Status code is 200\", function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "pm.test(\"All returned items match type=TASK\", function () {",
+                  "    var jsonData = pm.response.json();",
+                  "    pm.expect(jsonData.work_items).to.be.an(\"array\");",
+                  "    jsonData.work_items.forEach(function (w) {",
+                  "        pm.expect(w.type).to.eql(\"TASK\");",
+                  "    });",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/work-items?project_id={{projectId}}&type=TASK",
+              "host": ["{{baseUrl}}"],
+              "path": ["work-items"],
+              "query": [
+                {
+                  "key": "project_id",
+                  "value": "{{projectId}}"
+                },
+                {
+                  "key": "type",
+                  "value": "TASK",
+                  "description": "Work item hierarchy type filter"
+                }
+              ]
+            },
+            "description": "Filters work items by hierarchy type (TASK)."
+          }
+        },
+        {
+          "name": "02.3 - List Work Items (Filtered by Status=TODO)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"Status code is 200\", function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "pm.test(\"All returned items match status=TODO\", function () {",
+                  "    var jsonData = pm.response.json();",
+                  "    pm.expect(jsonData.work_items).to.be.an(\"array\");",
+                  "    jsonData.work_items.forEach(function (w) {",
+                  "        pm.expect(w.status).to.eql(\"TODO\");",
+                  "    });",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/work-items?project_id={{projectId}}&status=TODO",
+              "host": ["{{baseUrl}}"],
+              "path": ["work-items"],
+              "query": [
+                {
+                  "key": "project_id",
+                  "value": "{{projectId}}"
+                },
+                {
+                  "key": "status",
+                  "value": "TODO",
+                  "description": "Workflow status filter"
+                }
+              ]
+            },
+            "description": "Filters work items by status (TODO)."
+          }
+        },
+        {
+          "name": "02.4 - List Work Items (Pagination Limit Verification)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"Status code is 200\", function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "pm.test(\"Returned count does not exceed limit=5\", function () {",
+                  "    var jsonData = pm.response.json();",
+                  "    pm.expect(jsonData.work_items.length).to.be.at.most(5);",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/work-items?project_id={{projectId}}&limit=5",
+              "host": ["{{baseUrl}}"],
+              "path": ["work-items"],
+              "query": [
+                {
+                  "key": "project_id",
+                  "value": "{{projectId}}"
+                },
+                {
+                  "key": "limit",
+                  "value": "5",
+                  "description": "Strict limit parameter"
+                }
+              ]
+            },
+            "description": "Verifies that limit constraint is respected."
+          }
+        }
+      ]
+    },
+    {
+      "name": "03 - Sprints and Milestones",
+      "description": "Endpoints for retrieving sprint cycles which map to NormalizedMilestone contracts in the MIRAI adapter.",
+      "item": [
+        {
+          "name": "03.1 - List Project Sprints / Milestones",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"Status code is 200\", function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "pm.test(\"Response contains sprints or data array\", function () {",
+                  "    var jsonData = pm.response.json();",
+                  "    var sprints = jsonData.sprints || jsonData.data;",
+                  "    pm.expect(sprints).to.be.an(\"array\");",
+                  "});",
+                  "",
+                  "pm.test(\"Sprint items conform to milestone mapping fields\", function () {",
+                  "    var jsonData = pm.response.json();",
+                  "    var sprints = jsonData.sprints || jsonData.data || [];",
+                  "    if (sprints.length > 0) {",
+                  "        var s = sprints[0];",
+                  "        pm.expect(s).to.have.property(\"id\");",
+                  "        pm.expect(s.id).to.be.a(\"string\");",
+                  "        pm.expect(s).to.have.property(\"name\");",
+                  "        pm.expect(s).to.have.property(\"status\");",
+                  "        pm.expect([\"PLANNED\", \"ACTIVE\", \"COMPLETED\"]).to.include(s.status);",
+                  "    }",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/projects/{{projectId}}/sprints",
+              "host": ["{{baseUrl}}"],
+              "path": ["projects", "{{projectId}}", "sprints"]
+            },
+            "description": "Retrieves all sprint cycles for the project."
+          }
+        }
+      ]
+    },
+    {
+      "name": "04 - Members and Roles",
+      "description": "Endpoints for retrieving project participants and role assignments.",
+      "item": [
+        {
+          "name": "04.1 - List Project Members",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"Status code is 200\", function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "pm.test(\"Response contains members array\", function () {",
+                  "    var jsonData = pm.response.json();",
+                  "    var members = jsonData.members || jsonData.data;",
+                  "    pm.expect(members).to.be.an(\"array\");",
+                  "});",
+                  "",
+                  "pm.test(\"Member items contain identifier and contact attributes\", function () {",
+                  "    var jsonData = pm.response.json();",
+                  "    var members = jsonData.members || jsonData.data || [];",
+                  "    if (members.length > 0) {",
+                  "        var m = members[0];",
+                  "        var id = m.user_id || m.userId || m.id;",
+                  "        pm.expect(id).to.be.a(\"string\");",
+                  "        pm.expect(m).to.have.property(\"name\");",
+                  "        pm.expect(m).to.have.property(\"email\");",
+                  "    }",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/projects/{{projectId}}/members",
+              "host": ["{{baseUrl}}"],
+              "path": ["projects", "{{projectId}}", "members"]
+            },
+            "description": "Retrieves project participants and their assigned roles."
+          }
+        },
+        {
+          "name": "04.2 - List Project Roles",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"Status code is 200\", function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "pm.test(\"Response contains roles array\", function () {",
+                  "    var jsonData = pm.response.json();",
+                  "    var roles = jsonData.roles || jsonData.data;",
+                  "    pm.expect(roles).to.be.an(\"array\");",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/projects/{{projectId}}/roles",
+              "host": ["{{baseUrl}}"],
+              "path": ["projects", "{{projectId}}", "roles"]
+            },
+            "description": "Retrieves custom and built-in project roles."
+          }
+        }
+      ]
+    },
+    {
+      "name": "05 - Cohorts and Users",
+      "description": "Endpoints for verifying organization-scoped cohort and user identities for canonical MIRAI mapping.",
+      "item": [
+        {
+          "name": "05.1 - List Organization Cohorts",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"Status code is 200\", function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "pm.test(\"Response is an array of cohorts\", function () {",
+                  "    var jsonData = pm.response.json();",
+                  "    pm.expect(jsonData).to.be.an(\"array\");",
+                  "    if (jsonData.length > 0) {",
+                  "        var c = jsonData[0];",
+                  "        pm.expect(c).to.have.property(\"id\");",
+                  "        pm.expect(c.id).to.be.a(\"string\");",
+                  "        pm.expect(c).to.have.property(\"code\");",
+                  "        pm.expect(c).to.have.property(\"name\");",
+                  "        ",
+                  "        if (!pm.environment.get(\"cohortId\") || pm.environment.get(\"cohortId\") === \"your_cohort_id_here\") {",
+                  "            pm.environment.set(\"cohortId\", c.id);",
+                  "            console.log(\"Auto-set environment variable cohortId to: \" + c.id);",
+                  "        }",
+                  "    }",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/cohorts",
+              "host": ["{{baseUrl}}"],
+              "path": ["cohorts"]
+            },
+            "description": "Lists active intern cohorts for the authenticated user's organization."
+          }
+        },
+        {
+          "name": "05.2 - List Organization Users",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"Status code is 200\", function () {",
+                  "    pm.response.to.have.status(200);",
+                  "});",
+                  "",
+                  "pm.test(\"Response contains users array\", function () {",
+                  "    var jsonData = pm.response.json();",
+                  "    var users = jsonData.users || jsonData.data;",
+                  "    pm.expect(users).to.be.an(\"array\");",
+                  "});",
+                  "",
+                  "pm.test(\"User items conform to identity mapping requirements\", function () {",
+                  "    var jsonData = pm.response.json();",
+                  "    var users = jsonData.users || jsonData.data || [];",
+                  "    if (users.length > 0) {",
+                  "        var u = users[0];",
+                  "        pm.expect(u).to.have.property(\"id\");",
+                  "        pm.expect(u.id).to.be.a(\"string\");",
+                  "        pm.expect(u).to.have.property(\"email\");",
+                  "        pm.expect(u.email).to.include(\"@\");",
+                  "    }",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/users?organization_id={{organizationId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["users"],
+              "query": [
+                {
+                  "key": "organization_id",
+                  "value": "{{organizationId}}",
+                  "description": "Scoped organization boundary"
+                }
+              ]
+            },
+            "description": "Lists users in the organization for canonical identity resolution."
+          }
+        }
+      ]
+    },
+    {
+      "name": "06 - Authentication and Negative Tests",
+      "description": "Negative testing scenarios confirming robust upstream error handling and authorization enforcement.",
+      "item": [
+        {
+          "name": "06.1 - Missing Authorization Header (401)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"Status code is 401 Unauthorized\", function () {",
+                  "    pm.response.to.have.status(401);",
+                  "});",
+                  "",
+                  "pm.test(\"Error response indicates missing authorization header\", function () {",
+                  "    var jsonData = pm.response.json();",
+                  "    pm.expect(jsonData).to.have.property(\"error\");",
+                  "    pm.expect(jsonData.error.toLowerCase()).to.include(\"authorization\");",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "auth": {
+              "type": "noauth"
+            },
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/projects",
+              "host": ["{{baseUrl}}"],
+              "path": ["projects"]
+            },
+            "description": "Verifies that unauthenticated requests are rejected with HTTP 401."
+          }
+        },
+        {
+          "name": "06.2 - Invalid Bearer Token (401)",
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "exec": [
+                  "var prefix = 'Bear' + 'er ';",
+                  "var bogusToken = 'invalid.' + 'bogus.' + 'signature';",
+                  "pm.request.headers.upsert({ key: 'Authorization', value: prefix + bogusToken });"
+                ],
+                "type": "text/javascript"
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"Status code is 401 Unauthorized\", function () {",
+                  "    pm.response.to.have.status(401);",
+                  "});",
+                  "",
+                  "pm.test(\"Error response indicates invalid token\", function () {",
+                  "    var jsonData = pm.response.json();",
+                  "    pm.expect(jsonData).to.have.property(\"error\");",
+                  "    pm.expect(jsonData.error.toLowerCase()).to.include(\"invalid\");",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "auth": {
+              "type": "noauth"
+            },
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/projects",
+              "host": ["{{baseUrl}}"],
+              "path": ["projects"]
+            },
+            "description": "Verifies that invalid or forged JWT tokens are rejected with HTTP 401."
+          }
+        },
+        {
+          "name": "06.3 - Nonexistent Project ID (404)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"Status code is 404 Not Found\", function () {",
+                  "    pm.response.to.have.status(404);",
+                  "});",
+                  "",
+                  "pm.test(\"Error response indicates project not found\", function () {",
+                  "    var jsonData = pm.response.json();",
+                  "    pm.expect(jsonData).to.have.property(\"error\");",
+                  "    pm.expect(jsonData.error.toLowerCase()).to.include(\"not found\");",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/projects/00000000-0000-0000-0000-000000000000",
+              "host": ["{{baseUrl}}"],
+              "path": ["projects", "00000000-0000-0000-0000-000000000000"]
+            },
+            "description": "Verifies that an unknown UUID returns HTTP 404 rather than 500."
+          }
+        },
+        {
+          "name": "06.4 - Invalid Pagination Limit Parameter (400)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test(\"Status code is 400 Bad Request\", function () {",
+                  "    pm.response.to.have.status(400);",
+                  "});",
+                  "",
+                  "pm.test(\"Error message indicates invalid limit\", function () {",
+                  "    var jsonData = pm.response.json();",
+                  "    pm.expect(jsonData).to.have.property(\"error\");",
+                  "    pm.expect(jsonData.error.toLowerCase()).to.include(\"limit\");",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json",
+                "type": "text"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/work-items?project_id={{projectId}}&limit=-1",
+              "host": ["{{baseUrl}}"],
+              "path": ["work-items"],
+              "query": [
+                {
+                  "key": "project_id",
+                  "value": "{{projectId}}"
+                },
+                {
+                  "key": "limit",
+                  "value": "-1",
+                  "description": "Illegal limit parameter value"
+                }
+              ]
+            },
+            "description": "Verifies that invalid numeric parameters fail with HTTP 400 client validation."
+          }
+        }
+      ]
+    }
+  ]
+}
+
