@@ -160,6 +160,9 @@ export default function TeamsChannelView({
     setChatMessage('');
   };
 
+  const handleRevertForm = async () => {
+    return handleConfirmRevert();
+  };
   const handleConfirmRevert = async () => {
     if (!revertingForm) return;
     try {

@@ -549,6 +549,19 @@ export default function ReportsView({ onToast, selectedCohort, selectedCohortId 
     return projects.filter((p) => p.name?.toLowerCase().includes(q) || p.key?.toLowerCase().includes(q));
   }, [projects, projectSearchQuery]);
 
+  // Count of work items with extension activity (approved, pending, or requested)
+  const extensionTasksCount = useMemo(() => {
+    if (!analytics?.task_breakdown) return 0;
+    return analytics.task_breakdown.filter(
+      (t) =>
+        t.has_extension ||
+        t.has_pending_extension ||
+        (t.extension_requests_count && t.extension_requests_count > 0) ||
+        t.extension_status === 'APPROVED' ||
+        t.extension_status === 'PENDING'
+    ).length;
+  }, [analytics?.task_breakdown]);
+
   // Filtered tasks in breakdown table
   const displayedTasks = useMemo(() => {
     if (!analytics?.task_breakdown) return [];
@@ -566,6 +579,16 @@ export default function ReportsView({ onToast, selectedCohort, selectedCohortId 
     else if (taskFilter === 'IN_PROGRESS') list = list.filter((t) => t.status === 'IN_PROGRESS' || t.status === 'IN_REVIEW');
     else if (taskFilter === 'BLOCKED') list = list.filter((t) => t.status === 'BLOCKED');
     else if (taskFilter === 'PAST_DUE') list = list.filter((t) => t.is_past_due);
+    else if (taskFilter === 'EXTENSIONS') {
+      list = list.filter(
+        (t) =>
+          t.has_extension ||
+          t.has_pending_extension ||
+          (t.extension_requests_count && t.extension_requests_count > 0) ||
+          t.extension_status === 'APPROVED' ||
+          t.extension_status === 'PENDING'
+      );
+    }
 
     const q = taskSearchQuery.trim().toLowerCase();
     if (q) {
@@ -576,10 +599,15 @@ export default function ReportsView({ onToast, selectedCohort, selectedCohortId 
         const matchSprint = t.sprint_name?.toLowerCase().includes(q);
         const matchPriority = t.priority?.toLowerCase().includes(q);
         const matchStatus = t.status?.toLowerCase().includes(q);
+        const matchExtension =
+          (t.has_extension && ('extended'.includes(q) || 'extension'.includes(q))) ||
+          (t.extension_status && t.extension_status.toLowerCase().includes(q)) ||
+          (t.has_pending_extension && ('pending'.includes(q) || 'extension'.includes(q))) ||
+          (Boolean(t.extension_requests_count) && 'extension'.includes(q));
         const matchAssignees = t.assignees?.some(
           (a) => a.name?.toLowerCase().includes(q) || a.email?.toLowerCase().includes(q)
         );
-        return matchTitle || matchType || matchProject || matchSprint || matchPriority || matchStatus || matchAssignees;
+        return matchTitle || matchType || matchProject || matchSprint || matchPriority || matchStatus || matchExtension || matchAssignees;
       });
     }
 
@@ -1033,7 +1061,7 @@ export default function ReportsView({ onToast, selectedCohort, selectedCohortId 
                     )}
 
                     {/* Project Health / Schedule Risk Pill - hidden when All Projects is selected */}
-                    {selectedProjectId !== 'ALL' && !isIndividualScope && (analytics?.project_health || analytics?.delivery_risk) && (
+                    {!isIndividualScope && (analytics?.project_health || analytics?.delivery_risk) && (
                       <div
                         className={`px-3 py-1.5 rounded-xl border text-xs font-semibold flex items-center gap-1.5 ${
                           (analytics.project_health === 'CRITICAL' || analytics.delivery_risk === 'CRITICAL' || analytics.delivery_risk === 'HIGH')
@@ -1066,6 +1094,26 @@ export default function ReportsView({ onToast, selectedCohort, selectedCohortId 
                         <CheckCircle2 className="w-3.5 h-3.5 text-slate-400" />
                         <span>0 Blocked</span>
                       </div>
+                    )}
+
+                    {/* Deadline Extensions Pill */}
+                    {(extensionTasksCount > 0 || (analytics?.extension_metrics && (analytics.extension_metrics.total_requests > 0 || analytics.extension_metrics.tasks_affected_count > 0))) && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setTaskFilter('EXTENSIONS');
+                          const el = document.getElementById('work-item-breakdown-section');
+                          if (el) el.scrollIntoView({ behavior: 'smooth' });
+                        }}
+                        className="px-3 py-1.5 rounded-xl bg-amber-50 hover:bg-amber-100/80 border border-amber-200 text-xs font-semibold text-amber-800 flex items-center gap-1.5 transition-colors cursor-pointer"
+                        title={`${analytics?.extension_metrics?.approved_requests ?? (analytics?.task_breakdown?.filter((t) => t.has_extension).length || 0)} approved, ${analytics?.extension_metrics?.pending_requests ?? 0} pending review`}
+                      >
+                        <Clock className="w-3.5 h-3.5 text-amber-600" />
+                        <span>
+                          {analytics?.extension_metrics?.approved_requests ?? (analytics?.task_breakdown?.filter((t) => t.has_extension).length || 0)} Ext. Approved
+                          {(analytics?.extension_metrics?.pending_requests || 0) > 0 ? ` (${analytics.extension_metrics.pending_requests} Pending)` : ''}
+                        </span>
+                      </button>
                     )}
                   </div>
                 </div>
@@ -1661,12 +1709,12 @@ export default function ReportsView({ onToast, selectedCohort, selectedCohortId 
               </div>
 
               {/* Work Items Table */}
-              <div className="bg-white rounded-2xl border border-slate-200/80 shadow-card overflow-hidden">
+              <div id="work-item-breakdown-section" className="bg-white rounded-2xl border border-slate-200/80 shadow-card overflow-hidden">
                 <div className="p-4 sm:p-5 border-b border-slate-100 flex flex-col md:flex-row md:items-center justify-between gap-3">
                   <div>
                     <h4 className="text-sm font-bold text-slate-900">Detailed Work Item Breakdown</h4>
                     <p className="text-xs text-slate-500 mt-0.5">
-                      Itemized deliverables, sprint allocations, story points, and recorded hours
+                      Itemized deliverables, sprint allocations, story points, recorded hours, and deadline extensions
                     </p>
                   </div>
 
@@ -1722,6 +1770,20 @@ export default function ReportsView({ onToast, selectedCohort, selectedCohortId 
                       >
                         In Progress ({(analytics?.in_progress || 0) + (analytics?.in_review || 0)})
                       </button>
+                      {(extensionTasksCount > 0 || (analytics?.extension_metrics?.total_requests && analytics.extension_metrics.total_requests > 0)) && (
+                        <button
+                          type="button"
+                          onClick={() => setTaskFilter('EXTENSIONS')}
+                          className={`px-2.5 py-1 rounded-lg font-medium transition-all flex items-center gap-1.5 ${
+                            taskFilter === 'EXTENSIONS' ? 'bg-white text-amber-800 shadow-xs' : 'text-slate-600 hover:text-slate-900'
+                          }`}
+                        >
+                          <Clock className="w-3 h-3 text-amber-600" />
+                          <span>
+                            Extensions ({extensionTasksCount || analytics?.extension_metrics?.total_requests || 0})
+                          </span>
+                        </button>
+                      )}
                       {analytics?.blocked > 0 && (
                         <button
                           type="button"
@@ -1775,6 +1837,7 @@ export default function ReportsView({ onToast, selectedCohort, selectedCohortId 
                           <th className="py-2.5 px-3">Priority</th>
                           <th className="py-2.5 px-3">Points</th>
                           <th className="py-2.5 px-3">Due Date</th>
+                          <th className="py-2.5 px-3">Extension</th>
                           <th className="py-2.5 px-3">Logged</th>
                           <th className="py-2.5 px-4 text-right">Delivery</th>
                         </tr>
@@ -1832,7 +1895,46 @@ export default function ReportsView({ onToast, selectedCohort, selectedCohortId 
                             </td>
 
                             <td className="py-3 px-3 text-slate-600 whitespace-nowrap">
-                              {task.due_date ? new Date(task.due_date).toLocaleDateString() : '—'}
+                              <div className="flex flex-col">
+                                <span className={task.has_extension ? 'text-amber-900 font-medium' : ''}>
+                                  {task.due_date ? new Date(task.due_date).toLocaleDateString() : '—'}
+                                </span>
+                                {task.has_extension && task.original_due_date && new Date(task.original_due_date).toLocaleDateString() !== (task.due_date ? new Date(task.due_date).toLocaleDateString() : '') && (
+                                  <span className="text-[10px] text-slate-400 line-through" title="Original due date before approved extension">
+                                    orig. {new Date(task.original_due_date).toLocaleDateString()}
+                                  </span>
+                                )}
+                              </div>
+                            </td>
+
+                            <td className="py-3 px-3 whitespace-nowrap">
+                              {task.has_pending_extension || task.extension_status === 'PENDING' ? (
+                                <span
+                                  className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-semibold bg-purple-50 text-purple-700 border border-purple-200 animate-pulse"
+                                  title="A deadline extension request is pending manager review"
+                                >
+                                  <Clock className="w-3 h-3 text-purple-600 shrink-0" />
+                                  <span>Pending Request</span>
+                                </span>
+                              ) : task.has_extension || task.extension_status === 'APPROVED' ? (
+                                <span
+                                  className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-semibold bg-amber-50 text-amber-700 border border-amber-200"
+                                  title={`Approved Extension: +${task.additional_days_granted || 0} days${task.original_due_date ? ` (Original: ${new Date(task.original_due_date).toLocaleDateString()} → Extended: ${task.due_date ? new Date(task.due_date).toLocaleDateString() : 'N/A'})` : ''}`}
+                                >
+                                  <Clock className="w-3 h-3 text-amber-600 shrink-0" />
+                                  <span>Extended{task.additional_days_granted > 0 ? ` (+${task.additional_days_granted}d)` : ''}</span>
+                                </span>
+                              ) : task.extension_status === 'REJECTED' ? (
+                                <span
+                                  className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-semibold bg-rose-50 text-rose-700 border border-rose-200"
+                                  title="Extension request was rejected"
+                                >
+                                  <X className="w-3 h-3 text-rose-600 shrink-0" />
+                                  <span>Rejected</span>
+                                </span>
+                              ) : (
+                                <span className="text-slate-400 font-mono text-[11px]">—</span>
+                              )}
                             </td>
 
                             <td className="py-3 px-3 font-medium text-slate-700 whitespace-nowrap">
@@ -1842,14 +1944,24 @@ export default function ReportsView({ onToast, selectedCohort, selectedCohortId 
                             <td className="py-3 px-4 text-right whitespace-nowrap">
                               {task.status === 'COMPLETED' ? (
                                 task.was_completed_on_time ? (
-                                  <span className="inline-flex items-center gap-1 text-[11px] text-emerald-600 font-medium">
-                                    <CheckCircle2 className="w-3.5 h-3.5" /> On Time
-                                  </span>
+                                  task.has_extension ? (
+                                    <span className="inline-flex items-center gap-1 text-[11px] text-amber-600 font-medium" title="Delivered on time according to approved deadline extension">
+                                      <CheckCircle2 className="w-3.5 h-3.5 text-amber-600" /> Extended On-Time
+                                    </span>
+                                  ) : (
+                                    <span className="inline-flex items-center gap-1 text-[11px] text-emerald-600 font-medium">
+                                      <CheckCircle2 className="w-3.5 h-3.5" /> On Time
+                                    </span>
+                                  )
                                 ) : (
                                   <span className="inline-flex items-center gap-1 text-[11px] text-amber-600 font-medium">
                                     <Clock className="w-3.5 h-3.5" /> Late
                                   </span>
                                 )
+                              ) : task.has_pending_extension ? (
+                                <span className="inline-flex items-center gap-1 text-[11px] text-purple-600 font-medium" title="Extension pending review">
+                                  <Clock className="w-3.5 h-3.5 text-purple-600" /> Ext. Pending
+                                </span>
                               ) : task.is_past_due ? (
                                 <span className="inline-flex items-center gap-1 text-[11px] text-rose-600 font-medium">
                                   <AlertTriangle className="w-3.5 h-3.5" /> Past Due

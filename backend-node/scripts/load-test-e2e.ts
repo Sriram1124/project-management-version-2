@@ -199,7 +199,7 @@ async function runStage(
 async function runAll() {
   console.log('=== CONTROLLED E2E LOAD TEST (30, 60, 100 VIRTUAL USERS) ===');
   const dbInfo = getSanitizedDatabaseInfo();
-  console.log('Sanitized Database Configuration:', JSON.stringify(dbInfo, null, 2));
+  console.log(`Database connectivity: configured=${Boolean(dbInfo.configured)}, pool_mode=${dbInfo.pool_mode || 'unknown'}, limit=${dbInfo.connection_limit || 0}`);
 
   // Find an active user who does not require password change
   let user = await prisma.user.findFirst({

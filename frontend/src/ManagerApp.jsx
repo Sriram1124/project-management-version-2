@@ -3,20 +3,32 @@ import { useLocation, useNavigate } from 'react-router-dom';
 import Sidebar from './components/layout/Sidebar';
 import Header from './components/layout/Header';
 import ManagerDashboardView from './components/views/ManagerDashboardView';
-import ProjectsDirectoryView from './components/views/projects/ProjectsDirectoryView';
-import ProjectWorkspaceView from './components/views/projects/ProjectWorkspaceView';
-import InternsView from './components/views/InternsView';
-import TechLeadsView from './components/views/TechLeadsView';
-import TasksView from './components/views/TasksView';
-import ManagerMyTasksView from './components/views/ManagerMyTasksView';
-import ReportsView from './components/views/ReportsView';
-import ManagerTimesheetsView from './components/views/ManagerTimesheetsView';
-import ManagerProfileView from './components/views/ManagerProfileView';
-import InternPortalView from './components/views/InternPortalView';
-import AlertModal from './components/modals/AlertModal';
-import QuickSearchModal from './components/modals/QuickSearchModal';
-import ExceptionDetailModal from './components/modals/ExceptionDetailModal';
-import TeamsChannelView from './components/channels/TeamsChannelView';
+
+const ProjectsDirectoryView = React.lazy(() => import('./components/views/projects/ProjectsDirectoryView'));
+const ProjectWorkspaceView = React.lazy(() => import('./components/views/projects/ProjectWorkspaceView'));
+const InternsView = React.lazy(() => import('./components/views/InternsView'));
+const TechLeadsView = React.lazy(() => import('./components/views/TechLeadsView'));
+const TasksView = React.lazy(() => import('./components/views/TasksView'));
+const ManagerMyTasksView = React.lazy(() => import('./components/views/ManagerMyTasksView'));
+const ReportsView = React.lazy(() => import('./components/views/ReportsView'));
+const ManagerTimesheetsView = React.lazy(() => import('./components/views/ManagerTimesheetsView'));
+const ManagerProfileView = React.lazy(() => import('./components/views/ManagerProfileView'));
+const InternPortalView = React.lazy(() => import('./components/views/InternPortalView'));
+const AlertModal = React.lazy(() => import('./components/modals/AlertModal'));
+const QuickSearchModal = React.lazy(() => import('./components/modals/QuickSearchModal'));
+const ExceptionDetailModal = React.lazy(() => import('./components/modals/ExceptionDetailModal'));
+const TeamsChannelView = React.lazy(() => import('./components/channels/TeamsChannelView'));
+
+function ViewLoadingFallback() {
+  return (
+    <div className="p-8 flex items-center justify-center min-h-[300px]">
+      <div className="flex flex-col items-center gap-2">
+        <div className="w-6 h-6 border-2 border-purple-600 border-t-transparent rounded-full animate-spin" />
+        <span className="text-xs font-medium text-slate-400">Loading view...</span>
+      </div>
+    </div>
+  );
+}
 import { CheckCircle2 } from 'lucide-react';
 import { useAuth } from './context/AuthContext';
 import { notificationsService } from './services/notifications.service';
@@ -394,6 +406,7 @@ export default function ManagerApp() {
               : 'p-4 sm:p-6 pb-12 sm:pb-16 overflow-y-auto overflow-x-hidden bg-[#F7F8FC]'
           }`}
         >
+          <React.Suspense fallback={<ViewLoadingFallback />}>
           {currentRole === 'intern' ? (
             <InternPortalView onSwitchToManager={() => setCurrentRole('manager')} />
           ) : (currentView === 'projects' && activeProjectId) ? (
@@ -480,10 +493,12 @@ export default function ManagerApp() {
               )}
             </>
           )}
+          </React.Suspense>
         </main>
       </div>
 
       {/* Modals */}
+      <React.Suspense fallback={null}>
       <AlertModal
         isOpen={isAlertModalOpen}
         onClose={() => setIsAlertModalOpen(false)}
@@ -510,6 +525,7 @@ export default function ManagerApp() {
         onClose={() => setSelectedException(null)}
         onActionTaken={handleActionFromException}
       />
+      </React.Suspense>
 
       {/* Floating Toast Notification */}
       {toast && (

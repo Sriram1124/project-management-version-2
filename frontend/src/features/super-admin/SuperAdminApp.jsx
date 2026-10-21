@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, Suspense, lazy } from 'react';
 import { 
   Building2, 
   LogOut, 
@@ -10,8 +10,8 @@ import {
   FileText
 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
-import SuperAdminDashboardView from './views/SuperAdminDashboardView';
-import SuperAdminAuditLogsView from './views/SuperAdminAuditLogsView';
+const SuperAdminDashboardView = lazy(() => import('./views/SuperAdminDashboardView'));
+const SuperAdminAuditLogsView = lazy(() => import('./views/SuperAdminAuditLogsView'));
 
 export default function SuperAdminApp() {
   const { user: authUser, logout } = useAuth();
@@ -121,8 +121,10 @@ export default function SuperAdminApp() {
         {/* Scrollable View Area */}
         <main className="flex-1 overflow-y-auto p-8">
           <div className="max-w-7xl mx-auto">
-            {currentTab === 'organizations' && <SuperAdminDashboardView onNavigateTab={setCurrentTab} />}
-            {currentTab === 'audit-logs' && <SuperAdminAuditLogsView />}
+            <Suspense fallback={<div className="p-8 text-center text-xs text-slate-400">Loading admin view...</div>}>
+              {currentTab === 'organizations' && <SuperAdminDashboardView onNavigateTab={setCurrentTab} />}
+              {currentTab === 'audit-logs' && <SuperAdminAuditLogsView />}
+            </Suspense>
           </div>
         </main>
       </div>

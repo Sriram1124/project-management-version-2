@@ -18,7 +18,7 @@ import {
 import { useAuth } from '../../context/AuthContext';
 import { useNavigate } from 'react-router-dom';
 import { authService } from '../../services/auth.service';
-import dailoqaLogo from '../../../dailoqa-logo.jpg';
+import dailoqaLogo from '../../../dailoqa-logo_1.jpg';
 
 // Module-level cache to ensure zero-latency renders across component remounts
 let cachedOrgsList = null;

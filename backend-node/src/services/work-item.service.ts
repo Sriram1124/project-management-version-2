@@ -2169,6 +2169,9 @@ export class WorkItemService {
           requester_id: true,
           original_due_date: true,
           requested_due_date: true,
+          reason: true,
+          decision_note: true,
+          created_at: true,
         },
         orderBy: { created_at: 'asc' },
       }),
@@ -2584,6 +2587,7 @@ export class WorkItemService {
         extension_requests_count: exts.length,
         approved_extensions_count: approvedExts.length,
         additional_days_granted,
+        extension_requests: exts,
         logged_minutes,
         logged_hours: +(logged_minutes / 60).toFixed(1),
         assignees: w.assignees?.map((a: any) => ({

@@ -1,6 +1,7 @@
 import fs from 'fs';
 import path from 'path';
 import crypto from 'crypto';
+import mongoose from 'mongoose';
 import { ProjectStatus, ProjectMethodology } from '@prisma/client';
 import { prisma } from '../lib/prisma';
 import { StorageService } from './storage.service';
@@ -8,6 +9,7 @@ import { ProjectHealthService } from './project-health.service';
 import { ProjectFile } from '../models/project-file.model';
 import { ObjectStorageService } from './object-storage.service';
 import { invalidateUserSessionCache } from '../middleware/auth.middleware';
+import { cacheService } from './cache.service';
 
 export interface CreateProjectInput {
   name: string;
@@ -196,6 +198,8 @@ export class ProjectService {
       ];
     }
 
+    const cacheKey = `projects:org:${orgId}:my:${filters?.my ? user.id : 'all'}:status:${filters?.status || 'all'}`;
+    return await cacheService.getOrSet(cacheKey, 15, async () => {
     const projects = await prisma.project.findMany({
       where,
       include: {
@@ -271,6 +275,7 @@ export class ProjectService {
     });
 
     return projects.map((p) => this.formatProjectWithOwners(p));
+    });
   }
 
   /**
@@ -292,6 +297,8 @@ export class ProjectService {
       where.organization_id = orgId;
     }
 
+    const cacheKey = `project:${projectId}`;
+    return await cacheService.getOrSet(cacheKey, 15, async () => {
     const project = await prisma.project.findFirst({
       where,
       include: {
@@ -374,7 +381,7 @@ export class ProjectService {
       }
     }
 
-    if (process.env.ENABLE_MONGODB_PROJECT_FILES === 'true') {
+    if (process.env.ENABLE_MONGODB_PROJECT_FILES === 'true' && mongoose.connection?.readyState === 1) {
       try {
         const mongoDocs = await ProjectFile.find({
           project_id: projectId,
@@ -396,6 +403,7 @@ export class ProjectService {
     }
 
     return this.formatProjectWithOwners(project);
+    });
   }
 
   /**
@@ -992,7 +1000,7 @@ export class ProjectService {
 
     // 2. Clean up MongoDB project files if enabled
     try {
-      if (process.env.ENABLE_MONGODB_PROJECT_FILES === 'true') {
+      if (process.env.ENABLE_MONGODB_PROJECT_FILES === 'true' && mongoose.connection?.readyState === 1) {
         const mongoFiles = await ProjectFile.find({ projectId }).select('storage_key _id');
         for (const mf of mongoFiles) {
           if (mf.storage_key) {
@@ -2004,9 +2012,11 @@ export class ProjectService {
       throw new Error('User ID is required');
     }
 
-    const project = await prisma.project.findUnique({
+    const project = (await prisma.project.findUnique({
       where: { id: projectId },
-    });
+    })) || (await prisma.project.findFirst({
+      where: { id: projectId },
+    }));
     if (!project) {
       throw new Error('Project not found');
     }
@@ -2168,9 +2178,11 @@ export class ProjectService {
       throw new Error('Project not found');
     }
 
-    const project = await prisma.project.findUnique({
+    const project = (await prisma.project.findUnique({
       where: { id: projectId },
-    });
+    })) || (await prisma.project.findFirst({
+      where: { id: projectId },
+    }));
     if (!project) {
       throw new Error('Project not found');
     }
@@ -2243,7 +2255,7 @@ export class ProjectService {
       throw new Error('Project not found');
     }
 
-    if (process.env.ENABLE_MONGODB_PROJECT_FILES === 'true') {
+    if (process.env.ENABLE_MONGODB_PROJECT_FILES === 'true' && mongoose.connection?.readyState === 1) {
       const mongoDocs = await ProjectFile.find({
         project_id: projectId,
         is_archived: false,
@@ -2300,7 +2312,7 @@ export class ProjectService {
     const extMatch = file.originalname.split('.').pop();
     const ext = extMatch ? extMatch.toLowerCase() : 'bin';
     
-    if (process.env.ENABLE_MONGODB_PROJECT_FILES === 'true') {
+    if (process.env.ENABLE_MONGODB_PROJECT_FILES === 'true' && mongoose.connection?.readyState === 1) {
       const uploadResult = await ObjectStorageService.uploadBuffer(
         projectId,
         file.originalname,
@@ -2488,7 +2500,7 @@ export class ProjectService {
       throw new Error('Project not found');
     }
 
-    if (process.env.ENABLE_MONGODB_PROJECT_FILES === 'true') {
+    if (process.env.ENABLE_MONGODB_PROJECT_FILES === 'true' && mongoose.connection?.readyState === 1) {
       let doc: any = null;
       if (documentId && documentId !== 'undefined') {
         doc = await ProjectFile.findOne({
@@ -2612,7 +2624,7 @@ export class ProjectService {
       throw new Error('Project not found');
     }
 
-    if (process.env.ENABLE_MONGODB_PROJECT_FILES === 'true') {
+    if (process.env.ENABLE_MONGODB_PROJECT_FILES === 'true' && mongoose.connection?.readyState === 1) {
       let doc: any = null;
       if (documentId && documentId !== 'undefined') {
         doc = await ProjectFile.findOne({
@@ -2742,7 +2754,7 @@ export class ProjectService {
       throw new Error('Project not found');
     }
 
-    if (process.env.ENABLE_MONGODB_PROJECT_FILES === 'true') {
+    if (process.env.ENABLE_MONGODB_PROJECT_FILES === 'true' && mongoose.connection?.readyState === 1) {
       let doc: any = null;
       if (documentId && documentId !== 'undefined') {
         doc = await ProjectFile.findOne({

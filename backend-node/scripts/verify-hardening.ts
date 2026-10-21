@@ -4,6 +4,19 @@ import * as argon2 from 'argon2';
 const prisma = new PrismaClient();
 const BASE_URL = 'http://127.0.0.1:3001/api';
 
+function safeEndpoint(baseUrl: string, ...segments: string[]): string {
+  const parsed = new URL(baseUrl);
+  const cleanSegments = segments.map((s) => {
+    const trimmed = String(s).trim();
+    if (!trimmed || trimmed.includes('/') || trimmed.includes('\\') || trimmed.includes('..')) {
+      throw new Error(`Potential path traversal or invalid URL segment: ${trimmed}`);
+    }
+    return encodeURIComponent(trimmed);
+  });
+  parsed.pathname = [parsed.pathname.replace(/\/+$/, ''), ...cleanSegments].join('/');
+  return parsed.toString();
+}
+
 async function main() {
   console.log('================================================================');
   console.log('PRE-PUSH INTEGRATION HARDENING: COMPREHENSIVE VERIFICATION SUITE');
@@ -125,7 +138,7 @@ async function main() {
 
   // 4. Test Password Reset
   console.log('\n4. Password Reset Functionality');
-  const resetRes = await fetch(`${BASE_URL}/users/${testUser.id}/reset-password`, {
+  const resetRes = await fetch(safeEndpoint(BASE_URL, 'users', testUser.id, 'reset-password'), {
     method: 'POST',
     headers: authHeaders,
   });
@@ -160,7 +173,7 @@ async function main() {
     },
   });
 
-  const crossResetRes = await fetch(`${BASE_URL}/users/${otherUser.id}/reset-password`, {
+  const crossResetRes = await fetch(safeEndpoint(BASE_URL, 'users', otherUser.id, 'reset-password'), {
     method: 'POST',
     headers: authHeaders,
   });
@@ -174,7 +187,7 @@ async function main() {
     where: { organization_id: null },
   });
   if (superAdmin) {
-    const adminResetRes = await fetch(`${BASE_URL}/users/${superAdmin.id}/reset-password`, {
+    const adminResetRes = await fetch(safeEndpoint(BASE_URL, 'users', superAdmin.id, 'reset-password'), {
       method: 'POST',
       headers: authHeaders,
     });
@@ -186,7 +199,7 @@ async function main() {
 
   // 6. Test User Deactivation
   console.log('\n6. User Deactivation Functionality');
-  const deactRes = await fetch(`${BASE_URL}/users/${testUser.id}/deactivate`, {
+  const deactRes = await fetch(safeEndpoint(BASE_URL, 'users', testUser.id, 'deactivate'), {
     method: 'POST',
     headers: authHeaders,
   });
@@ -213,7 +226,7 @@ async function main() {
   );
 
   // Cross-tenant deactivation protection
-  const crossDeactRes = await fetch(`${BASE_URL}/users/${otherUser.id}/deactivate`, {
+  const crossDeactRes = await fetch(safeEndpoint(BASE_URL, 'users', otherUser.id, 'deactivate'), {
     method: 'POST',
     headers: authHeaders,
   });

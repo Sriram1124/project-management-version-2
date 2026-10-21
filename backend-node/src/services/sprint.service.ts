@@ -1,5 +1,6 @@
 import { SprintStatus, WorkItemStatus } from '@prisma/client';
 import { prisma } from '../lib/prisma';
+import { cacheService } from './cache.service';
 
 export interface CreateSprintInput {
   name: string;
@@ -188,7 +189,9 @@ export class SprintService {
       return [];
     }
 
-    const sprints = await prisma.sprint.findMany({
+    const cacheKey = `project:${projectId}:sprints`;
+    return await cacheService.getOrSet(cacheKey, 15, async () => {
+      const sprints = await prisma.sprint.findMany({
       where: { project_id: projectId, organization_id: project.organization_id },
       orderBy: [{ created_at: 'asc' }],
       include: {
@@ -303,6 +306,7 @@ export class SprintService {
         cycle_range_logged_hours: +(cycleRangeLoggedMinutes / 60).toFixed(1),
         time_by_intern: timeByIntern,
       };
+    });
     });
   }
 

@@ -1,6 +1,7 @@
 import * as dotenv from 'dotenv';
 dotenv.config();
 import http from 'http';
+import crypto from 'crypto';
 import jwt from 'jsonwebtoken';
 import { prisma, getSanitizedDatabaseInfo } from '../src/lib/prisma';
 import app from '../src/app';
@@ -151,8 +152,8 @@ async function runStage(
             : `HTTP ${res.status}`,
         });
 
-        // Think time between operations (30ms - 60ms)
-        await sleep(30 + Math.random() * 30);
+        // Think time between operations (30ms - 60ms) using cryptographically secure random jitter
+        await sleep(30 + crypto.randomInt(0, 31));
       } catch (err: any) {
         vuSuccess = false;
         steps.push({
@@ -254,7 +255,7 @@ async function runStage(
 async function runAll() {
   console.log('=== VALIDATION: REALISTIC LOAD TEST (30, 60, 100 VIRTUAL USERS) ===');
   const dbInfo = getSanitizedDatabaseInfo();
-  console.log('Database Configuration:', JSON.stringify(dbInfo, null, 2));
+  console.log(`Database connectivity: configured=${Boolean(dbInfo.configured)}, pool_mode=${dbInfo.pool_mode || 'unknown'}, limit=${dbInfo.connection_limit || 0}`);
 
   // Find manager and intern principals
   const managerUser = await prisma.user.findFirst({
@@ -329,8 +330,8 @@ async function runAll() {
     taskId: internWorkItem?.id || 'sample',
   };
 
-  console.log(`Manager Principal: ${managerUser.email || managerUser.id.slice(0, 8)} -> Project: ${project.name}`);
-  console.log(`Intern Principal:  ${internUser.email || internUser.id.slice(0, 8)} -> Project: ${internMembership?.project?.name || project.name}`);
+  console.log(`Manager Principal: User ID=${managerUser.id.slice(0, 8)}... -> Project: ${project.name}`);
+  console.log(`Intern Principal:  User ID=${internUser.id.slice(0, 8)}... -> Project: ${internMembership?.project?.name || project.name}`);
 
   // Start ephemeral server
   const server = http.createServer(app);

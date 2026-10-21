@@ -21,21 +21,33 @@ import {
 } from 'lucide-react';
 
 import InternDashboardTab from './components/InternDashboardTab';
-import MyProjectsTab from './components/MyProjectsTab';
-import ScopedProjectView from './components/ScopedProjectView';
-import ProjectsDirectoryView from '../../components/views/projects/ProjectsDirectoryView';
-import ProjectWorkspaceView from '../../components/views/projects/ProjectWorkspaceView';
-import ProjectTaskCharts from '../../components/views/projects/ProjectTaskCharts';
-import MyTasksTab from './components/MyTasksTab';
-import AssignedFormsTab from './components/AssignedFormsTab';
-import InternAttendanceTab from './components/InternAttendanceTab';
-import InternProfileTab from './components/InternProfileTab';
-import TimesheetView from '../../components/views/TimesheetView';
-import DynamicFormModal from './components/DynamicFormModal';
-import WorkItemDetailModal from './components/WorkItemDetailModal';
-import CreatePersonalTaskModal from './components/CreatePersonalTaskModal';
-import NotificationsDrawer from './components/NotificationsDrawer';
-import AlertsTab from './components/AlertsTab';
+
+const MyProjectsTab = React.lazy(() => import('./components/MyProjectsTab'));
+const ScopedProjectView = React.lazy(() => import('./components/ScopedProjectView'));
+const ProjectsDirectoryView = React.lazy(() => import('../../components/views/projects/ProjectsDirectoryView'));
+const ProjectWorkspaceView = React.lazy(() => import('../../components/views/projects/ProjectWorkspaceView'));
+const ProjectTaskCharts = React.lazy(() => import('../../components/views/projects/ProjectTaskCharts'));
+const MyTasksTab = React.lazy(() => import('./components/MyTasksTab'));
+const AssignedFormsTab = React.lazy(() => import('./components/AssignedFormsTab'));
+const InternAttendanceTab = React.lazy(() => import('./components/InternAttendanceTab'));
+const InternProfileTab = React.lazy(() => import('./components/InternProfileTab'));
+const TimesheetView = React.lazy(() => import('../../components/views/TimesheetView'));
+const DynamicFormModal = React.lazy(() => import('./components/DynamicFormModal'));
+const WorkItemDetailModal = React.lazy(() => import('./components/WorkItemDetailModal'));
+const CreatePersonalTaskModal = React.lazy(() => import('./components/CreatePersonalTaskModal'));
+const NotificationsDrawer = React.lazy(() => import('./components/NotificationsDrawer'));
+const AlertsTab = React.lazy(() => import('./components/AlertsTab'));
+
+function TabLoadingFallback() {
+  return (
+    <div className="p-8 flex items-center justify-center min-h-[300px]">
+      <div className="flex flex-col items-center gap-2">
+        <div className="w-6 h-6 border-2 border-purple-600 border-t-transparent rounded-full animate-spin" />
+        <span className="text-xs font-medium text-slate-400">Loading view...</span>
+      </div>
+    </div>
+  );
+}
 import { useAuth } from '../../context/AuthContext';
 
 import { userService } from './services/userService';
@@ -579,6 +591,7 @@ export default function InternApp({ onLogout, onSelectProject, onToast }) {
               : 'w-full space-y-6 min-w-0'
           }>
             {/* Render Tab View */}
+            <React.Suspense fallback={<TabLoadingFallback />}>
             {currentTab === 'dashboard' && (
               <InternDashboardTab
                 workItems={workItems}
@@ -651,11 +664,13 @@ export default function InternApp({ onLogout, onSelectProject, onToast }) {
             {currentTab === 'profile' && (
               <InternProfileTab onToast={onToast} onSelectProject={handleSelectInternProject} />
             )}
+            </React.Suspense>
           </div>
         </main>
       </div>
 
       {/* Modals & Drawers */}
+      <React.Suspense fallback={null}>
       <WorkItemDetailModal
         workItem={selectedTask}
         isOpen={Boolean(selectedTask)}
@@ -712,6 +727,7 @@ export default function InternApp({ onLogout, onSelectProject, onToast }) {
         }}
         onToast={onToast}
       />
+      </React.Suspense>
     </div>
   );
 }

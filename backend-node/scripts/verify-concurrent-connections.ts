@@ -120,7 +120,7 @@ async function runConcurrencyStage(concurrencyUsers: number) {
 
   if (failed.length > 0) {
     console.error('Errors encountered:');
-    const uniqueErrors = Array.from(new Set(failed.map((f) => f.error)));
+    const uniqueErrors = Array.from(new Set(failed.map((f) => f.error?.replace(/postgres(ql)?:\/\/[^@\s]+@[^\s/]+/gi, 'postgresql://[REDACTED]'))));
     uniqueErrors.forEach((e) => console.error(`  - ${e}`));
     return false;
   }
@@ -133,12 +133,11 @@ async function main() {
   console.log('=== CONCURRENT DATABASE CONNECTION VERIFICATION ===');
   const dbInfo = getSanitizedDatabaseInfo();
   console.log('Effective Database Configuration:');
-  console.log(`  Host: ${dbInfo.host}`);
-  console.log(`  Port: ${dbInfo.port}`);
-  console.log(`  Pool Mode: ${dbInfo.pool_mode}`);
-  console.log(`  PgBouncer flag: ${dbInfo.pgbouncer}`);
-  console.log(`  Connection Limit: ${dbInfo.connection_limit}`);
-  console.log(`  Pool Timeout: ${dbInfo.pool_timeout}s`);
+  console.log(`  Configured: ${Boolean(dbInfo.configured)}`);
+  console.log(`  Pool Mode: ${dbInfo.pool_mode || 'unknown'}`);
+  console.log(`  PgBouncer flag: ${Boolean(dbInfo.pgbouncer)}`);
+  console.log(`  Connection Limit: ${dbInfo.connection_limit || 0}`);
+  console.log(`  Pool Timeout: ${dbInfo.pool_timeout || 0}s`);
 
   // Progressive load: 5 users (matches user scenario: 5 incognito tabs)
   const pass5 = await runConcurrencyStage(5);

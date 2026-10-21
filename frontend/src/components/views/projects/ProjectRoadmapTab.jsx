@@ -759,7 +759,9 @@ export default function ProjectRoadmapTab({
 
       const columns = [];
       let cur = new Date(timelineStart);
-      while (cur <= timelineEnd) {
+      const endMonthMs = timelineEnd.getTime();
+      const MAX_MONTHS = 120;
+      while (cur.getTime() <= endMonthMs && columns.length < MAX_MONTHS) {
         const colStart = new Date(cur);
         const colEnd = new Date(cur.getFullYear(), cur.getMonth() + 1, 0, 23, 59, 59, 999);
         const isActive = today >= colStart && today <= colEnd;
@@ -809,8 +811,10 @@ export default function ProjectRoadmapTab({
       const columns = [];
       let currentWeekStart = new Date(timelineStart);
       let weekIndex = 1;
+      const endWeekMs = timelineEnd.getTime();
+      const MAX_WEEKS = 260;
 
-      while (currentWeekStart <= timelineEnd) {
+      while (currentWeekStart.getTime() <= endWeekMs && weekIndex <= MAX_WEEKS) {
         const currentWeekEnd = new Date(currentWeekStart);
         currentWeekEnd.setDate(currentWeekEnd.getDate() + 6);
         currentWeekEnd.setHours(23, 59, 59, 999);
@@ -826,7 +830,9 @@ export default function ProjectRoadmapTab({
           isActive,
         });
 
-        currentWeekStart.setDate(currentWeekStart.getDate() + 7);
+        const nextWeekStart = new Date(currentWeekStart);
+        nextWeekStart.setDate(nextWeekStart.getDate() + 7);
+        currentWeekStart = nextWeekStart;
         weekIndex++;
       }
 

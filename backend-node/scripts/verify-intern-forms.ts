@@ -4,6 +4,24 @@ import * as argon2 from 'argon2';
 const prisma = new PrismaClient();
 const BASE_URL = 'http://127.0.0.1:3001/api';
 
+function safeFormEndpoint(baseUrl: string, formId: string, subPath?: string): string {
+  const parsed = new URL(baseUrl);
+  const cleanId = String(formId).trim();
+  if (!/^[0-9a-f-]{36}$/i.test(cleanId) && !/^[a-zA-Z0-9_-]+$/.test(cleanId)) {
+    throw new Error(`Invalid form ID format: ${cleanId}`);
+  }
+  const parts = ['forms', encodeURIComponent(cleanId)];
+  if (subPath) {
+    const cleanSub = String(subPath).trim();
+    if (cleanSub.includes('..') || cleanSub.includes('\\')) {
+      throw new Error(`Invalid subPath: ${cleanSub}`);
+    }
+    parts.push(...cleanSub.split('/').filter(Boolean).map(encodeURIComponent));
+  }
+  parsed.pathname = [parsed.pathname.replace(/\/+$/, ''), ...parts].join('/');
+  return parsed.toString();
+}
+
 async function main() {
   console.log('================================================================');
   console.log('INTERN FORMS: QUESTION FIELD EDITING & SUBMISSION TEST SUITE');
@@ -111,7 +129,7 @@ async function main() {
   assert(createFormRes.status === 201 && Boolean(formId), 'Manager created draft form');
 
   // Add questions
-  const q1Res = await fetch(`${BASE_URL}/forms/${formId}/questions`, {
+  const q1Res = await fetch(safeFormEndpoint(BASE_URL, formId, 'questions'), {
     method: 'POST',
     headers: mgrHeaders,
     body: JSON.stringify({
@@ -122,7 +140,7 @@ async function main() {
   });
   const q1 = (await q1Res.json()).question;
 
-  const q2Res = await fetch(`${BASE_URL}/forms/${formId}/questions`, {
+  const q2Res = await fetch(safeFormEndpoint(BASE_URL, formId, 'questions'), {
     method: 'POST',
     headers: mgrHeaders,
     body: JSON.stringify({
@@ -133,7 +151,7 @@ async function main() {
   });
   const q2 = (await q2Res.json()).question;
 
-  const q3Res = await fetch(`${BASE_URL}/forms/${formId}/questions`, {
+  const q3Res = await fetch(safeFormEndpoint(BASE_URL, formId, 'questions'), {
     method: 'POST',
     headers: mgrHeaders,
     body: JSON.stringify({
@@ -145,7 +163,7 @@ async function main() {
   });
   const q3 = (await q3Res.json()).question;
 
-  const q4Res = await fetch(`${BASE_URL}/forms/${formId}/questions`, {
+  const q4Res = await fetch(safeFormEndpoint(BASE_URL, formId, 'questions'), {
     method: 'POST',
     headers: mgrHeaders,
     body: JSON.stringify({
@@ -157,7 +175,7 @@ async function main() {
   });
   const q4 = (await q4Res.json()).question;
 
-  const q5Res = await fetch(`${BASE_URL}/forms/${formId}/questions`, {
+  const q5Res = await fetch(safeFormEndpoint(BASE_URL, formId, 'questions'), {
     method: 'POST',
     headers: mgrHeaders,
     body: JSON.stringify({
@@ -168,7 +186,7 @@ async function main() {
   });
   const q5 = (await q5Res.json()).question;
 
-  const q6Res = await fetch(`${BASE_URL}/forms/${formId}/questions`, {
+  const q6Res = await fetch(safeFormEndpoint(BASE_URL, formId, 'questions'), {
     method: 'POST',
     headers: mgrHeaders,
     body: JSON.stringify({
@@ -182,7 +200,7 @@ async function main() {
   assert(Boolean(q1 && q2 && q3 && q4 && q5 && q6), 'All 6 question types added successfully');
 
   // Publish Form
-  const pubRes = await fetch(`${BASE_URL}/forms/${formId}/publish`, {
+  const pubRes = await fetch(safeFormEndpoint(BASE_URL, formId, 'publish'), {
     method: 'POST',
     headers: mgrHeaders,
   });
@@ -230,7 +248,7 @@ async function main() {
     },
   ];
 
-  const submitRes = await fetch(`${BASE_URL}/forms/${formId}/submissions`, {
+  const submitRes = await fetch(safeFormEndpoint(BASE_URL, formId, 'submissions'), {
     method: 'POST',
     headers: internHeaders,
     body: JSON.stringify({ answers: submitAnswersPayload })
@@ -240,7 +258,7 @@ async function main() {
 
   // 5. Verify Submissions in DB
   console.log('\n5. Verify Submission Content & Lock State');
-  const mySubRes = await fetch(`${BASE_URL}/forms/${formId}/submissions/my`, { headers: internHeaders });
+  const mySubRes = await fetch(safeFormEndpoint(BASE_URL, formId, 'submissions/my'), { headers: internHeaders });
   const mySubData: any = await mySubRes.json();
   assert(Boolean(mySubData.submission), 'GET /forms/:id/submissions/my returns saved submission');
   const savedAnswers = mySubData.submission.answers;
@@ -260,7 +278,7 @@ async function main() {
 
   // 6. Duplicate Submission Protection
   console.log('\n6. Duplicate Submission Prevention');
-  const dupSubmitRes = await fetch(`${BASE_URL}/forms/${formId}/submissions`, {
+  const dupSubmitRes = await fetch(safeFormEndpoint(BASE_URL, formId, 'submissions'), {
     method: 'POST',
     headers: internHeaders,
     body: JSON.stringify({ answers: submitAnswersPayload })

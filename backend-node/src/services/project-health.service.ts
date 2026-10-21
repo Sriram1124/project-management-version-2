@@ -1,5 +1,6 @@
 import { WorkItemType, WorkItemStatus, WorkItemPriority } from '@prisma/client';
 import { prisma } from '../lib/prisma';
+import { cacheService } from './cache.service';
 
 export type HealthStatus = 'HEALTHY' | 'NEEDS_ATTENTION' | 'AT_RISK' | 'CRITICAL' | 'NOT_ASSESSED' | 'INSUFFICIENT_DATA';
 export type RiskLevel = 'LOW' | 'MODERATE' | 'HIGH' | 'CRITICAL' | 'INSUFFICIENT_DATA';
@@ -893,7 +894,9 @@ export class ProjectHealthService {
       };
     }
 
-    const where: any = { organization_id: orgId };
+    const cacheKey = `health:org:${orgId}:cohort:${filters?.cohort_id || 'all'}`;
+    return await cacheService.getOrSet(cacheKey, 30, async () => {
+      const where: any = { organization_id: orgId };
 
     // Optional cohort filter
     if (filters?.cohort_id) {
@@ -1058,5 +1061,6 @@ export class ProjectHealthService {
       distribution,
       projects: classifiedProjects,
     };
+    });
   }
 }

@@ -1,6 +1,7 @@
 import { Router, Request, Response } from 'express';
 import { prisma } from '../lib/prisma';
 import { authenticate } from '../middleware/auth.middleware';
+import { cacheService } from '../services/cache.service';
 
 const router = Router();
 router.use(authenticate);
@@ -18,25 +19,28 @@ router.get('/', async (req: Request, res: Response): Promise<void> => {
       return;
     }
 
-    const cohorts = await prisma.cohort.findMany({
-      where: {
-        organization_id: orgId,
-        is_active: true,
-      },
-      select: {
-        id: true,
-        name: true,
-        code: true,
-        description: true,
-        _count: {
-          select: {
-            users: true,
+    const cacheKey = `org:${orgId}:cohorts`;
+    const cohorts = await cacheService.getOrSet(cacheKey, 60, async () => {
+      return await prisma.cohort.findMany({
+        where: {
+          organization_id: orgId,
+          is_active: true,
+        },
+        select: {
+          id: true,
+          name: true,
+          code: true,
+          description: true,
+          _count: {
+            select: {
+              users: true,
+            },
           },
         },
-      },
-      orderBy: {
-        code: 'asc',
-      },
+        orderBy: {
+          code: 'asc',
+        },
+      });
     });
 
     res.status(200).json(cohorts);
@@ -47,4 +51,3 @@ router.get('/', async (req: Request, res: Response): Promise<void> => {
 });
 
 export { router as cohortRouter };
-

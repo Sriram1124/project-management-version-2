@@ -3,6 +3,19 @@ import { PrismaClient } from '@prisma/client';
 const prisma = new PrismaClient();
 const API_BASE = 'http://127.0.0.1:3001/api';
 
+function safeEndpoint(baseUrl: string, ...segments: string[]): string {
+  const parsed = new URL(baseUrl);
+  const cleanSegments = segments.map((s) => {
+    const trimmed = String(s).trim();
+    if (!trimmed || trimmed.includes('/') || trimmed.includes('\\') || trimmed.includes('..')) {
+      throw new Error(`Potential path traversal or invalid URL segment: ${trimmed}`);
+    }
+    return encodeURIComponent(trimmed);
+  });
+  parsed.pathname = [parsed.pathname.replace(/\/+$/, ''), ...cleanSegments].join('/');
+  return parsed.toString();
+}
+
 interface TestResult {
   name: string;
   passed: boolean;
@@ -209,7 +222,7 @@ async function main() {
 
   // 8. Super Admin Get Organization Details
   await runTest('8. Super Admin Organization Details View', async () => {
-    const res = await fetch(`${API_BASE}/organizations/${createdOrgId}`, {
+    const res = await fetch(safeEndpoint(API_BASE, 'organizations', createdOrgId), {
       headers: { Authorization: `Bearer ${superAdminToken}` }
     });
 

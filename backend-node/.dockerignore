@@ -1,4 +1,55 @@
+# Dependency directories
 node_modules
-npm-debug.log
-.env
 dist
+
+# Environment variables, credentials, and secrets
+.env*
+*.env
+*.pem
+*.key
+*.cert
+*.crt
+*.id_rsa
+credentials_exports
+credentials.json
+service-account*.json
+
+# Logs and debugging
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+.pnpm-debug.log*
+*.log
+
+# Git and IDE metadata
+.git
+.gitignore
+.github
+.vscode
+.idea
+.agents
+.claude
+.cursor
+.devin
+*.swp
+*.swo
+.DS_Store
+
+# Test files, coverage, and reports
+coverage
+tests
+__tests__
+*.test.ts
+*.spec.ts
+jest.config.js
+Backend_Node_API_Test_Report_Detailed.pdf
+
+# Local storage and scratch files
+.s3-local-data
+storage
+tmp
+temp
+*.tmp
+inspect_*.js
+sync_*.js
+test_*.js
