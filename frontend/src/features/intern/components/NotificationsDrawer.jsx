@@ -27,11 +27,14 @@ export default function NotificationsDrawer({
   return (
     <div
       className="fixed inset-0 z-50 animate-in fade-in duration-150"
-      onClick={onClose}
+      onClick={(e) => {
+        if (e.target === e.currentTarget) {
+          onClose();
+        }
+      }}
     >
       <div
         className="absolute right-3 top-14 flex max-h-[calc(100vh-4.5rem)] w-[min(20rem,calc(100vw-1.5rem))] flex-col overflow-hidden rounded-xl border border-slate-200 bg-white text-slate-800 shadow-xl sm:right-6"
-        onClick={(e) => e.stopPropagation()}
       >
         {/* Header */}
         <div className="flex items-center justify-between border-b border-slate-200 bg-slate-50 px-3.5 py-3">

@@ -219,8 +219,9 @@ export default function CreateFormModal({ form, cohorts: initialCohorts, onClose
           {error && <div className="p-3 bg-rose-50 text-rose-700 text-xs font-semibold rounded-lg">{error}</div>}
 
           <div>
-            <label className="block text-xs font-bold text-slate-700 mb-1">Form Title *</label>
+            <label htmlFor="create-form-title" className="block text-xs font-bold text-slate-700 mb-1">Form Title *</label>
             <input
+              id="create-form-title"
               type="text"
               className="w-full text-sm p-2.5 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-purple-500/20 focus:border-purple-500"
               placeholder="e.g. Weekly Cohort Evaluation"
@@ -230,8 +231,9 @@ export default function CreateFormModal({ form, cohorts: initialCohorts, onClose
           </div>
 
           <div>
-            <label className="block text-xs font-bold text-slate-700 mb-1">Description</label>
+            <label htmlFor="create-form-desc" className="block text-xs font-bold text-slate-700 mb-1">Description</label>
             <textarea
+              id="create-form-desc"
               className="w-full text-sm p-2.5 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-purple-500/20 focus:border-purple-500 min-h-[72px]"
               placeholder="Brief instructions for respondents..."
               value={formData.description}
@@ -242,10 +244,10 @@ export default function CreateFormModal({ form, cohorts: initialCohorts, onClose
           {/* Cohort Option Audience Selector */}
           <div>
             <div className="flex items-center justify-between mb-1.5">
-              <label className="flex items-center gap-1.5 text-xs font-bold text-slate-700">
+              <div className="flex items-center gap-1.5 text-xs font-bold text-slate-700">
                 <Users className="w-3.5 h-3.5 text-purple-600" />
                 <span>Target Cohort Audience *</span>
-              </label>
+              </div>
               <button
                 type="button"
                 onClick={handleToggleAll}
@@ -311,7 +313,7 @@ export default function CreateFormModal({ form, cohorts: initialCohorts, onClose
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               {/* Deadline Date */}
               <div>
-                <label className="block text-xs font-bold text-slate-700 mb-1 flex items-center justify-between">
+                <label htmlFor="create-form-deadline-date" className="block text-xs font-bold text-slate-700 mb-1 flex items-center justify-between">
                   <span className="flex items-center gap-1">
                     <Calendar className="w-3.5 h-3.5 text-purple-600" />
                     Deadline Date
@@ -319,6 +321,7 @@ export default function CreateFormModal({ form, cohorts: initialCohorts, onClose
                   <span className="text-[10px] text-slate-400 font-normal">Min: {minDate}</span>
                 </label>
                 <input
+                  id="create-form-deadline-date"
                   type="date"
                   min={minDate}
                   value={deadlineDate}
@@ -332,16 +335,17 @@ export default function CreateFormModal({ form, cohorts: initialCohorts, onClose
 
               {/* Deadline Time */}
               <div>
-                <label className="block text-xs font-bold text-slate-700 mb-1 flex items-center justify-between">
+                <div className="block text-xs font-bold text-slate-700 mb-1 flex items-center justify-between">
                   <span className="flex items-center gap-1">
                     <Clock className="w-3.5 h-3.5 text-purple-600" />
                     Deadline Time
                   </span>
                   <span className="text-[10px] text-purple-600 font-medium">Asia/Kolkata (IST)</span>
-                </label>
+                </div>
                 <div className="flex items-center gap-1">
                   <input
                     type="number"
+                    aria-label="Deadline hours"
                     min="1"
                     max="12"
                     placeholder="11"
@@ -355,6 +359,7 @@ export default function CreateFormModal({ form, cohorts: initialCohorts, onClose
                   <span className="font-bold text-slate-400">:</span>
                   <input
                     type="number"
+                    aria-label="Deadline minutes"
                     min="0"
                     max="59"
                     placeholder="59"

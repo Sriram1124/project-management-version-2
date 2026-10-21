@@ -588,11 +588,14 @@ export default function TaskDetailModal({
   return (
     <div
       className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs animate-in fade-in duration-150"
-      onClick={onClose}
+      onClick={(e) => {
+        if (e.target === e.currentTarget) {
+          onClose();
+        }
+      }}
     >
       <div
         className="bg-white w-full max-w-2xl rounded-2xl shadow-2xl border border-slate-200 overflow-hidden flex flex-col max-h-[90vh]"
-        onClick={(e) => e.stopPropagation()}
       >
         {/* Header */}
         <div className="px-6 py-4 border-b border-slate-100 flex items-center justify-between bg-slate-50/50">
@@ -760,7 +763,7 @@ export default function TaskDetailModal({
                     <button
                       type="button"
                       disabled={decidingId === pendingExtension.id}
-                      onClick={() => handleDecideExtension('REJECT')}
+                      onClick={() => void handleDecideExtension('REJECT')}
                       className="px-3 py-1.5 text-xs font-semibold rounded-lg border border-rose-300 bg-white hover:bg-rose-50 text-rose-700 transition-colors disabled:opacity-50 cursor-pointer"
                     >
                       Reject
@@ -768,7 +771,7 @@ export default function TaskDetailModal({
                     <button
                       type="button"
                       disabled={decidingId === pendingExtension.id}
-                      onClick={() => handleDecideExtension('APPROVE')}
+                      onClick={() => void handleDecideExtension('APPROVE')}
                       className="px-3 py-1.5 text-xs font-semibold rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white transition-colors disabled:opacity-50 flex items-center gap-1.5 cursor-pointer shadow-2xs"
                     >
                       {decidingId === pendingExtension.id && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
@@ -815,7 +818,7 @@ export default function TaskDetailModal({
               {canUpdateStatus ? (
                 <select
                   value={status}
-                  onChange={(e) => handleStatusChange(e.target.value)}
+                  onChange={(e) => void handleStatusChange(e.target.value)}
                   className="w-full px-2.5 py-1.5 rounded-lg border border-slate-200 bg-white text-slate-800 font-semibold focus:outline-none focus:border-purple-600 text-xs"
                 >
                   {STATUS_OPTIONS.filter((st) => st.id !== 'COMPLETED' || canCompleteStatus || status === 'COMPLETED').map((st) => (
@@ -838,7 +841,7 @@ export default function TaskDetailModal({
               {canEditFields ? (
                 <select
                   value={priority}
-                  onChange={(e) => handlePriorityChange(e.target.value)}
+                  onChange={(e) => void handlePriorityChange(e.target.value)}
                   className="w-full px-2.5 py-1.5 rounded-lg border border-slate-200 bg-white text-slate-800 font-semibold focus:outline-none focus:border-purple-600 text-xs"
                 >
                   {PRIORITY_OPTIONS.map((p) => (
@@ -862,7 +865,7 @@ export default function TaskDetailModal({
                 {canEditFields ? (
                   <select
                     value={liveTask.sprint_id || 'backlog'}
-                    onChange={(e) => handleSprintChange(e.target.value)}
+                    onChange={(e) => void handleSprintChange(e.target.value)}
                     className="w-full px-2.5 py-1.5 rounded-lg border border-slate-200 bg-white text-slate-800 font-semibold focus:outline-none focus:border-purple-600 text-xs"
                   >
                     <option value="backlog">Backlog (No Sprint)</option>
@@ -956,7 +959,7 @@ export default function TaskDetailModal({
                 {canEditFields && startDate && (
                   <button
                     type="button"
-                    onClick={() => handleStartDateChange('')}
+                    onClick={() => void handleStartDateChange('')}
                     className="text-[10px] font-semibold text-slate-400 hover:text-rose-600 transition-colors"
                     title="Clear start date"
                   >
@@ -968,7 +971,7 @@ export default function TaskDetailModal({
                 <input
                   type="date"
                   value={startDate}
-                  onChange={(e) => handleStartDateChange(e.target.value)}
+                  onChange={(e) => void handleStartDateChange(e.target.value)}
                   className="w-full px-2.5 py-1.5 rounded-lg border border-slate-200 bg-white text-slate-800 text-xs font-medium focus:outline-hidden focus:border-purple-600 focus:ring-2 focus:ring-purple-500/20"
                 />
               ) : (
@@ -987,7 +990,7 @@ export default function TaskDetailModal({
                 {canEditFields && dueDate && (
                   <button
                     type="button"
-                    onClick={() => handleDueDateChange('')}
+                    onClick={() => void handleDueDateChange('')}
                     className="text-[10px] font-semibold text-slate-400 hover:text-rose-600 transition-colors"
                     title="Clear due date"
                   >
@@ -999,7 +1002,7 @@ export default function TaskDetailModal({
                 <input
                   type="date"
                   value={dueDate}
-                  onChange={(e) => handleDueDateChange(e.target.value)}
+                  onChange={(e) => void handleDueDateChange(e.target.value)}
                   className="w-full px-2.5 py-1.5 rounded-lg border border-slate-200 bg-white text-slate-800 text-xs font-medium focus:outline-hidden focus:border-purple-600 focus:ring-2 focus:ring-purple-500/20"
                 />
               ) : (
@@ -1217,7 +1220,7 @@ export default function TaskDetailModal({
                       {canAssignOrReassign && (
                         <button
                           type="button"
-                          onClick={() => handleRemoveAssignee(a.user_id || a.id)}
+                          onClick={() => void handleRemoveAssignee(a.user_id || a.id)}
                           className="p-0.5 text-purple-400 hover:text-rose-600 rounded cursor-pointer"
                           title="Remove assignee"
                         >
@@ -1350,18 +1353,18 @@ export default function TaskDetailModal({
 
             <form onSubmit={handleRequestExtension} className="mt-4 space-y-4">
               <div>
-                <label className="block text-[11px] font-bold uppercase text-slate-400 mb-1">
+                <div className="block text-[11px] font-bold uppercase text-slate-400 mb-1">
                   Task
-                </label>
+                </div>
                 <div className="p-2.5 bg-slate-50 rounded-xl border border-slate-200 text-xs font-semibold text-slate-800">
                   {liveTask.title}
                 </div>
               </div>
 
               <div>
-                <label className="block text-[11px] font-bold uppercase text-slate-400 mb-1">
+                <div className="block text-[11px] font-bold uppercase text-slate-400 mb-1">
                   Current Due Date
-                </label>
+                </div>
                 <div className="p-2.5 bg-slate-50 rounded-xl border border-slate-200 text-xs font-medium text-slate-700 flex items-center gap-2">
                   <Clock className="w-3.5 h-3.5 text-slate-400" />
                   <span>
@@ -1371,10 +1374,11 @@ export default function TaskDetailModal({
               </div>
 
               <div>
-                <label className="block text-[11px] font-bold uppercase text-slate-400 mb-1">
+                <label htmlFor="task-ext-new-due-date" className="block text-[11px] font-bold uppercase text-slate-400 mb-1">
                   Requested New Due Date <span className="text-rose-500">*</span>
                 </label>
                 <input
+                  id="task-ext-new-due-date"
                   type="date"
                   required
                   min={
@@ -1389,10 +1393,11 @@ export default function TaskDetailModal({
               </div>
 
               <div>
-                <label className="block text-[11px] font-bold uppercase text-slate-400 mb-1">
+                <label htmlFor="task-ext-reason" className="block text-[11px] font-bold uppercase text-slate-400 mb-1">
                   Reason for Extension <span className="text-rose-500">*</span>
                 </label>
                 <textarea
+                  id="task-ext-reason"
                   required
                   rows={3}
                   maxLength={2000}

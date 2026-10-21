@@ -750,7 +750,6 @@ export default function SuperAdminDashboardView({ onNavigateTab }) {
 
                               {openActionMenuId === org.id && (
                                 <div
-                                  onClick={(e) => e.stopPropagation()}
                                   className="absolute right-0 top-full mt-1 w-36 bg-white border border-slate-200 rounded-xl shadow-lg z-20 py-1 text-left animate-in fade-in zoom-in-95"
                                 >
                                   <button

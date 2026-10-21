@@ -43,7 +43,6 @@ export default function FillFormModal({ form, isOpen, onClose, onSubmitResponse 
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs animate-in fade-in duration-150">
       <div 
         className="bg-white rounded-2xl shadow-2xl border border-slate-200 w-full max-w-xl max-h-[90vh] flex flex-col overflow-hidden"
-        onClick={(e) => e.stopPropagation()}
       >
         {/* Header */}
         <div className="px-6 py-4 border-b border-slate-200 bg-slate-50 flex items-center justify-between">
@@ -80,8 +79,9 @@ export default function FillFormModal({ form, isOpen, onClose, onSubmitResponse 
           {/* Submitter Info */}
           <div className="grid grid-cols-2 gap-3 p-3 bg-slate-50 rounded-xl border border-slate-200">
             <div>
-              <label className="block text-[11px] font-bold text-slate-700 mb-1">Your Name</label>
+              <label htmlFor="fill-form-intern-name" className="block text-[11px] font-bold text-slate-700 mb-1">Your Name</label>
               <input
+                id="fill-form-intern-name"
                 type="text"
                 value={internName}
                 onChange={(e) => setInternName(e.target.value)}
@@ -90,8 +90,9 @@ export default function FillFormModal({ form, isOpen, onClose, onSubmitResponse 
               />
             </div>
             <div>
-              <label className="block text-[11px] font-bold text-slate-700 mb-1">Cohort Section</label>
+              <label htmlFor="fill-form-cohort-section" className="block text-[11px] font-bold text-slate-700 mb-1">Cohort Section</label>
               <select
+                id="fill-form-cohort-section"
                 value={section}
                 onChange={(e) => setSection(e.target.value)}
                 className="w-full px-2.5 py-1.5 border border-slate-300 rounded-lg text-xs bg-white text-slate-900"
@@ -106,12 +107,19 @@ export default function FillFormModal({ form, isOpen, onClose, onSubmitResponse 
           {/* Render Questions */}
           {form.questions?.map((q, idx) => (
             <div key={q.id} className="space-y-1.5 pt-1">
-              <label className="block text-xs font-bold text-slate-800">
-                {idx + 1}. {q.label} {q.required && <span className="text-rose-500">*</span>}
-              </label>
+              {q.type === 'textarea' ? (
+                <label htmlFor={`question-${q.id}`} className="block text-xs font-bold text-slate-800">
+                  {idx + 1}. {q.label} {q.required && <span className="text-rose-500">*</span>}
+                </label>
+              ) : (
+                <div className="block text-xs font-bold text-slate-800">
+                  {idx + 1}. {q.label} {q.required && <span className="text-rose-500">*</span>}
+                </div>
+              )}
 
               {q.type === 'textarea' && (
                 <textarea
+                  id={`question-${q.id}`}
                   rows={3}
                   value={answers[q.id] || ''}
                   onChange={(e) => setAnswers({ ...answers, [q.id]: e.target.value })}

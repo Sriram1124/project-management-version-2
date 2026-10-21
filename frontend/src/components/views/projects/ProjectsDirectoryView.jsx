@@ -990,11 +990,14 @@ export default function ProjectsDirectoryView({ onSelectProject, isIntern = fals
       {isCreateOpen && (
         <div 
           className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/50 backdrop-blur-xs animate-in fade-in duration-100"
-          onClick={() => setIsCreateOpen(false)}
+          onClick={(e) => {
+            if (e.target === e.currentTarget) {
+              setIsCreateOpen(false);
+            }
+          }}
         >
           <div 
             className="bg-white rounded-2xl shadow-xl border border-slate-200 p-6 w-full max-w-lg max-h-[90vh] overflow-y-auto"
-            onClick={(e) => e.stopPropagation()}
           >
             <div className="flex items-center justify-between pb-3 border-b border-slate-100 mb-4">
               <div className="flex items-center gap-2">
@@ -1349,11 +1352,14 @@ export default function ProjectsDirectoryView({ onSelectProject, isIntern = fals
       {isEditOpen && (
         <div 
           className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/50 backdrop-blur-xs animate-in fade-in duration-100"
-          onClick={() => setIsEditOpen(false)}
+          onClick={(e) => {
+            if (e.target === e.currentTarget) {
+              setIsEditOpen(false);
+            }
+          }}
         >
           <div 
             className="bg-white rounded-2xl shadow-xl border border-slate-200 p-6 w-full max-w-lg max-h-[90vh] overflow-y-auto"
-            onClick={(e) => e.stopPropagation()}
           >
             <div className="flex items-center justify-between pb-3 border-b border-slate-100 mb-4">
               <div className="flex items-center gap-2">
@@ -1743,11 +1749,14 @@ export default function ProjectsDirectoryView({ onSelectProject, isIntern = fals
       {archiveTarget && (
         <div 
           className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/50 backdrop-blur-xs animate-in fade-in duration-100"
-          onClick={() => setArchiveTarget(null)}
+          onClick={(e) => {
+            if (e.target === e.currentTarget) {
+              setArchiveTarget(null);
+            }
+          }}
         >
           <div 
             className="bg-white rounded-2xl shadow-xl border border-slate-200 p-6 w-full max-w-sm"
-            onClick={(e) => e.stopPropagation()}
           >
             <div className="flex items-center gap-3 text-amber-600 mb-3">
               <Archive className="w-6 h-6" />
@@ -1780,11 +1789,14 @@ export default function ProjectsDirectoryView({ onSelectProject, isIntern = fals
       {deleteTarget && (
         <div 
           className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/50 backdrop-blur-xs animate-in fade-in duration-100"
-          onClick={() => setDeleteTarget(null)}
+          onClick={(e) => {
+            if (e.target === e.currentTarget) {
+              setDeleteTarget(null);
+            }
+          }}
         >
           <div 
             className="bg-white rounded-2xl shadow-xl border border-slate-200 p-6 w-full max-w-sm"
-            onClick={(e) => e.stopPropagation()}
           >
             <div className="flex items-center gap-3 text-rose-600 mb-3">
               <div className="w-10 h-10 rounded-xl bg-rose-50 flex items-center justify-center shrink-0">

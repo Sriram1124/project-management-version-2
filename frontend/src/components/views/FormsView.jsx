@@ -149,11 +149,14 @@ export default function FormsView({ onToast }) {
       {revertingForm && (
         <div
           className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/50 backdrop-blur-xs animate-in fade-in duration-150"
-          onClick={() => !isReverting && setRevertingForm(null)}
+          onClick={(e) => {
+            if (e.target === e.currentTarget && !isReverting) {
+              setRevertingForm(null);
+            }
+          }}
         >
           <div
             className="bg-white rounded-2xl shadow-xl border border-slate-200 p-6 w-full max-w-md overflow-hidden animate-in zoom-in-95 duration-150"
-            onClick={(e) => e.stopPropagation()}
           >
             <div className="flex items-center justify-between pb-3 border-b border-slate-100 mb-4">
               <div className="flex items-center gap-2.5">

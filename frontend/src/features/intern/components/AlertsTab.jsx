@@ -344,11 +344,14 @@ export default function AlertsTab({ notifications = [], onToast }) {
       {selectedAlert && (
         <div 
           className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/50 backdrop-blur-xs transition-opacity animate-in fade-in duration-200"
-          onClick={() => setSelectedAlert(null)}
+          onClick={(e) => {
+            if (e.target === e.currentTarget) {
+              setSelectedAlert(null);
+            }
+          }}
         >
           <div 
             className="bg-white w-full max-w-xl rounded-2xl shadow-2xl border border-slate-200 overflow-hidden flex flex-col max-h-[85vh] animate-in zoom-in-95 duration-150"
-            onClick={(e) => e.stopPropagation()}
           >
             {/* Modal Header */}
             <div className="px-6 py-4 border-b border-slate-100 flex items-center justify-between bg-purple-50/50">

@@ -491,11 +491,14 @@ export default function ProjectFilesSection({ projectId, projectName = '', onToa
       {deleteModalFile && typeof document !== 'undefined' && createPortal(
         <div 
           className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs animate-in fade-in duration-200"
-          onClick={!isDeleting ? handleCloseDeleteModal : undefined}
+          onClick={(e) => {
+            if (e.target === e.currentTarget && !isDeleting) {
+              handleCloseDeleteModal();
+            }
+          }}
         >
           <div 
             className="bg-white rounded-2xl border border-slate-200 shadow-2xl max-w-md w-full overflow-hidden animate-in fade-in zoom-in-95 duration-200"
-            onClick={(e) => e.stopPropagation()}
           >
             {/* Modal Header */}
             <div className="p-5 border-b border-slate-100 flex items-center justify-between bg-slate-50/50">

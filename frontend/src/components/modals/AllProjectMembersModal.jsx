@@ -262,11 +262,14 @@ export default function AllProjectMembersModal({
   const modalContent = (
     <div 
       className="fixed inset-0 z-50 bg-slate-900/50 backdrop-blur-xs flex items-center justify-center p-4 animate-in fade-in duration-200"
-      onClick={onClose}
+      onClick={(e) => {
+        if (e.target === e.currentTarget) {
+          onClose();
+        }
+      }}
     >
       <div 
         className="bg-white rounded-2xl shadow-2xl border border-slate-200 w-full max-w-4xl h-[580px] max-h-[85vh] flex flex-col overflow-hidden"
-        onClick={(e) => e.stopPropagation()}
       >
         {/* Modal Header */}
         <div className="px-6 py-4 bg-slate-50/80 border-b border-slate-200/80 flex items-center justify-between">
@@ -628,7 +631,6 @@ export default function AllProjectMembersModal({
                           {activeMenuMemberId === member.user_id && (
                             <div
                               className="absolute right-0 top-full mt-1 w-48 rounded-xl bg-white border border-slate-200 shadow-xl p-1.5 z-50 animate-in fade-in zoom-in-95 duration-100"
-                              onClick={(e) => e.stopPropagation()}
                             >
                               {canEditPermissions && (
                                 <button
@@ -709,13 +711,14 @@ export default function AllProjectMembersModal({
         <div 
           className="fixed inset-0 z-60 bg-slate-950/40 backdrop-blur-xs flex items-center justify-center p-4 animate-in fade-in duration-150"
           onClick={(e) => {
-            e.stopPropagation();
-            setMemberToRemove(null);
+            if (e.target === e.currentTarget) {
+              e.stopPropagation();
+              setMemberToRemove(null);
+            }
           }}
         >
           <div 
             className="bg-white rounded-2xl shadow-2xl border border-slate-200 w-full max-w-sm p-5 space-y-4"
-            onClick={(e) => e.stopPropagation()}
           >
             <div className="flex items-center gap-3">
               <div className="w-10 h-10 rounded-xl bg-rose-100 text-rose-600 flex items-center justify-center shrink-0">

@@ -427,11 +427,14 @@ export default function ProjectOverviewTab({ projectId, project, onNavigateTab, 
       {isDeleteOpen && (
         <div 
           className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/50 backdrop-blur-xs animate-in fade-in duration-100"
-          onClick={() => setIsDeleteOpen(false)}
+          onClick={(e) => {
+            if (e.target === e.currentTarget) {
+              setIsDeleteOpen(false);
+            }
+          }}
         >
           <div 
             className="bg-white rounded-2xl shadow-xl border border-slate-200 p-6 w-full max-w-sm"
-            onClick={(e) => e.stopPropagation()}
           >
             <div className="flex items-center gap-3 text-rose-600 mb-3">
               <div className="w-10 h-10 rounded-xl bg-rose-50 flex items-center justify-center shrink-0">

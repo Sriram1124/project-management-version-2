@@ -440,11 +440,14 @@ export default function ProjectMomTab({ projectId, projectName, onToast, readOnl
       {itemToDelete && (
         <div 
           className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/50 backdrop-blur-xs animate-in fade-in duration-100"
-          onClick={() => setItemToDelete(null)}
+          onClick={(e) => {
+            if (e.target === e.currentTarget) {
+              setItemToDelete(null);
+            }
+          }}
         >
           <div 
             className="bg-white rounded-2xl shadow-xl border border-slate-200 p-5 w-full max-w-sm animate-in fade-in zoom-in-95 duration-150"
-            onClick={(e) => e.stopPropagation()}
           >
             <div className="flex items-center gap-3 text-rose-600 mb-3">
               <div className="w-8 h-8 rounded-lg bg-rose-50 text-rose-600 flex items-center justify-center border border-rose-100 shrink-0">

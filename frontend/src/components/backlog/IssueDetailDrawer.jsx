@@ -714,7 +714,7 @@ export default function IssueDetailDrawer({
   const handleSPKeyDown = (e) => {
     if (e.key === 'Enter') {
       e.preventDefault();
-      handleSPBlur();
+      void handleSPBlur();
     }
   };
 
@@ -913,7 +913,7 @@ export default function IssueDetailDrawer({
                   <button
                     type="button"
                     disabled={decidingId === pendingExtension.id}
-                    onClick={() => handleDecideExtension('REJECT')}
+                    onClick={() => void handleDecideExtension('REJECT')}
                     className="px-3 py-1.5 text-xs font-semibold rounded-lg border border-rose-300 bg-white hover:bg-rose-50 text-rose-700 transition-colors disabled:opacity-50 cursor-pointer"
                   >
                     Reject
@@ -921,7 +921,7 @@ export default function IssueDetailDrawer({
                   <button
                     type="button"
                     disabled={decidingId === pendingExtension.id}
-                    onClick={() => handleDecideExtension('APPROVE')}
+                    onClick={() => void handleDecideExtension('APPROVE')}
                     className="px-3 py-1.5 text-xs font-semibold rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white transition-colors disabled:opacity-50 flex items-center gap-1.5 cursor-pointer shadow-2xs"
                   >
                     {decidingId === pendingExtension.id && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
@@ -966,7 +966,7 @@ export default function IssueDetailDrawer({
               <select
                 value={issue.status || 'TODO'}
                 disabled={updatingField === 'status'}
-                onChange={(e) => handleStatusChange(e.target.value)}
+                onChange={(e) => void handleStatusChange(e.target.value)}
                 className="px-2 py-1 rounded border border-slate-200 text-xs font-semibold bg-white text-slate-800 focus:outline-none focus:border-purple-600 cursor-pointer disabled:opacity-60 disabled:cursor-not-allowed"
               >
                 <option value="TODO">To Do</option>
@@ -998,7 +998,7 @@ export default function IssueDetailDrawer({
               <select
                 value={issue.priority || 'MEDIUM'}
                 disabled={updatingField === 'priority'}
-                onChange={(e) => handlePriorityChange(e.target.value)}
+                onChange={(e) => void handlePriorityChange(e.target.value)}
                 className="px-2 py-1 rounded border border-slate-200 text-xs font-medium bg-white text-slate-800 focus:outline-none focus:border-purple-600 cursor-pointer disabled:opacity-60 disabled:cursor-not-allowed"
               >
                 <option value="URGENT">Urgent</option>
@@ -1037,7 +1037,7 @@ export default function IssueDetailDrawer({
                 <select
                   value={currentAssigneeId}
                   disabled={updatingField === 'assignee'}
-                  onChange={(e) => handleAssigneeChange(e.target.value)}
+                  onChange={(e) => void handleAssigneeChange(e.target.value)}
                   className="px-2 py-1 rounded border border-slate-200 text-xs font-medium bg-white text-slate-800 focus:outline-none focus:border-purple-600 min-w-[120px] max-w-full truncate cursor-pointer disabled:opacity-60 disabled:cursor-not-allowed"
                 >
                   <option value="">Unassigned</option>
@@ -1083,7 +1083,7 @@ export default function IssueDetailDrawer({
                 <select
                   value={issue.sprint_id || issue.sprintId || 'backlog'}
                   disabled={updatingField === 'sprint'}
-                  onChange={(e) => handleSprintChange(e.target.value)}
+                  onChange={(e) => void handleSprintChange(e.target.value)}
                   className="px-2 py-1 rounded border border-slate-200 text-xs font-medium bg-white text-slate-800 focus:outline-none focus:border-purple-600 max-w-[180px] cursor-pointer disabled:opacity-60 disabled:cursor-not-allowed"
                 >
                   <option value="backlog">Backlog (No {Term})</option>
@@ -1173,7 +1173,7 @@ export default function IssueDetailDrawer({
                   onChange={(e) => {
                     const val = e.target.value;
                     const isoDate = val ? new Date(val).toISOString() : null;
-                    handleDueDateChange(isoDate);
+                    void handleDueDateChange(isoDate);
                   }}
                   className="px-2 py-0.5 rounded border border-slate-200 text-xs font-medium bg-white text-slate-800 focus:outline-none focus:border-purple-600 cursor-pointer shadow-2xs disabled:opacity-60"
                 />
@@ -1181,7 +1181,7 @@ export default function IssueDetailDrawer({
                   <button
                     type="button"
                     disabled={updatingField === 'dueDate'}
-                    onClick={() => handleDueDateChange(null)}
+                    onClick={() => void handleDueDateChange(null)}
                     title="Clear due date"
                     className="p-1 rounded hover:bg-slate-200 text-slate-400 hover:text-slate-600 cursor-pointer transition-colors disabled:opacity-60"
                   >
@@ -1665,7 +1665,7 @@ export default function IssueDetailDrawer({
                         {canDeleteEntry && (
                           <button
                             type="button"
-                            onClick={() => handleDeleteWorklog(entry.id)}
+                            onClick={() => void handleDeleteWorklog(entry.id)}
                             disabled={timeActionLoading}
                             title="Delete entry"
                             className="p-1 rounded text-slate-400 hover:text-rose-600 hover:bg-rose-50 transition-colors cursor-pointer"
@@ -1719,18 +1719,18 @@ export default function IssueDetailDrawer({
 
             <form onSubmit={handleInternRequestExtension} className="mt-4 space-y-4">
               <div>
-                <label className="block text-[11px] font-bold uppercase text-slate-400 mb-1">
+                <div className="block text-[11px] font-bold uppercase text-slate-400 mb-1">
                   Task
-                </label>
+                </div>
                 <div className="p-2.5 bg-slate-50 rounded-xl border border-slate-200 text-xs font-semibold text-slate-800">
                   {issue.title}
                 </div>
               </div>
 
               <div>
-                <label className="block text-[11px] font-bold uppercase text-slate-400 mb-1">
+                <div className="block text-[11px] font-bold uppercase text-slate-400 mb-1">
                   Current Due Date
-                </label>
+                </div>
                 <div className="p-2.5 bg-slate-50 rounded-xl border border-slate-200 text-xs font-medium text-slate-700 flex items-center gap-2">
                   <Clock className="w-3.5 h-3.5 text-slate-400" />
                   <span>

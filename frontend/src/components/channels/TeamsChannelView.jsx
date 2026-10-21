@@ -88,14 +88,14 @@ export default function TeamsChannelView({
       const data = await formsService.getForms(selectedCohortId);
       if (seq !== formsReqSeq.current) return;
       setForms(data);
-      loadOverdueStats();
+      await loadOverdueStats();
     } catch (e) {
       console.error('Failed to load forms');
     }
   };
 
   React.useEffect(() => {
-    loadForms();
+    void loadForms();
   }, [selectedCohortId]);
 
   const handleDownloadOverdueReport = async () => {
@@ -170,7 +170,7 @@ export default function TeamsChannelView({
       await formsService.revertForm(revertingForm.id);
       onToast?.(`Form "${revertingForm.title}" reverted to draft successfully.`);
       setRevertingForm(null);
-      loadForms();
+      await loadForms();
     } catch (err) {
       onToast?.(err.message || 'Failed to revert form');
     } finally {
@@ -491,7 +491,7 @@ export default function TeamsChannelView({
                                 try {
                                   await formsService.publishForm(form.id);
                                   onToast?.('Form published successfully');
-                                  loadForms();
+                                  await loadForms();
                                 } catch (e) {
                                   onToast?.('Failed to publish form');
                                 }
@@ -523,7 +523,7 @@ export default function TeamsChannelView({
                               <span>View Submissions ({submissionsCount})</span>
                             </button>
                             <button
-                              onClick={() => handleDownloadFormOverdue(form, overdueForThisForm.length)}
+                              onClick={() => void handleDownloadFormOverdue(form, overdueForThisForm.length)}
                               className={`h-7 px-2.5 rounded-md text-xs font-semibold flex items-center gap-1.5 transition-colors shadow-2xs cursor-pointer border ${
                                 overdueForThisForm.length > 0
                                   ? 'border-purple-300 bg-purple-50 hover:bg-purple-100 text-purple-700'
@@ -616,11 +616,14 @@ export default function TeamsChannelView({
       {revertingForm && (
         <div
           className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/50 backdrop-blur-xs animate-in fade-in duration-150"
-          onClick={() => !isReverting && setRevertingForm(null)}
+          onClick={(e) => {
+            if (e.target === e.currentTarget && !isReverting) {
+              setRevertingForm(null);
+            }
+          }}
         >
           <div
             className="bg-white rounded-2xl shadow-xl border border-slate-200 p-6 w-full max-w-md overflow-hidden animate-in zoom-in-95 duration-150"
-            onClick={(e) => e.stopPropagation()}
           >
             <div className="flex items-center justify-between pb-3 border-b border-slate-100 mb-4">
               <div className="flex items-center gap-2.5">
@@ -692,7 +695,7 @@ export default function TeamsChannelView({
           onClose={() => setIsPostModalOpen(false)}
           onSuccess={() => {
             setIsPostModalOpen(false);
-            loadForms();
+            void loadForms();
             onToast?.('New form created successfully.');
           }}
         />
@@ -705,7 +708,7 @@ export default function TeamsChannelView({
           onClose={() => setSelectedFormForEdit(null)}
           onSuccess={() => {
             setSelectedFormForEdit(null);
-            loadForms();
+            void loadForms();
             onToast?.('Form updated successfully.');
           }}
         />

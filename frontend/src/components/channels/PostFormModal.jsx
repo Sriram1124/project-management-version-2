@@ -92,7 +92,6 @@ export default function PostFormModal({ isOpen, onClose, onPostForm }) {
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs animate-in fade-in duration-150">
       <div 
         className="bg-white rounded-2xl shadow-2xl border border-slate-200 w-full max-w-2xl max-h-[90vh] flex flex-col overflow-hidden"
-        onClick={(e) => e.stopPropagation()}
       >
         {/* Header */}
         <div className="px-6 py-4 border-b border-slate-200 flex items-center justify-between bg-slate-50/80">
@@ -119,10 +118,11 @@ export default function PostFormModal({ isOpen, onClose, onPostForm }) {
         <form onSubmit={handleSubmit} className="flex-1 overflow-y-auto p-6 space-y-4 text-xs text-slate-700">
           {/* Title */}
           <div>
-            <label className="block text-xs font-bold text-slate-800 mb-1">
+            <label htmlFor="post-form-title" className="block text-xs font-bold text-slate-800 mb-1">
               Form Title <span className="text-rose-500">*</span>
             </label>
             <input
+              id="post-form-title"
               type="text"
               required
               value={title}
@@ -134,10 +134,11 @@ export default function PostFormModal({ isOpen, onClose, onPostForm }) {
 
           {/* Description */}
           <div>
-            <label className="block text-xs font-bold text-slate-800 mb-1">
+            <label htmlFor="post-form-instructions" className="block text-xs font-bold text-slate-800 mb-1">
               Instructions / Description
             </label>
             <textarea
+              id="post-form-instructions"
               rows={2}
               value={description}
               onChange={(e) => setDescription(e.target.value)}
@@ -149,8 +150,9 @@ export default function PostFormModal({ isOpen, onClose, onPostForm }) {
           {/* Configuration Grid */}
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
             <div>
-              <label className="block text-xs font-bold text-slate-800 mb-1">Category</label>
+              <label htmlFor="post-form-category" className="block text-xs font-bold text-slate-800 mb-1">Category</label>
               <select
+                id="post-form-category"
                 value={category}
                 onChange={(e) => setCategory(e.target.value)}
                 className="w-full px-2.5 py-1.5 border border-slate-300 rounded-lg text-xs bg-white text-slate-800 focus:outline-hidden focus:border-purple-600"
@@ -163,8 +165,9 @@ export default function PostFormModal({ isOpen, onClose, onPostForm }) {
             </div>
 
             <div>
-              <label className="block text-xs font-bold text-slate-800 mb-1">Target Audience</label>
+              <label htmlFor="post-form-audience" className="block text-xs font-bold text-slate-800 mb-1">Target Audience</label>
               <select
+                id="post-form-audience"
                 value={targetAudience}
                 onChange={(e) => setTargetAudience(e.target.value)}
                 className="w-full px-2.5 py-1.5 border border-slate-300 rounded-lg text-xs bg-white text-slate-800 focus:outline-hidden focus:border-purple-600"
@@ -179,8 +182,9 @@ export default function PostFormModal({ isOpen, onClose, onPostForm }) {
             </div>
 
             <div>
-              <label className="block text-xs font-bold text-slate-800 mb-1">Due Date</label>
+              <label htmlFor="post-form-due-date" className="block text-xs font-bold text-slate-800 mb-1">Due Date</label>
               <input
+                id="post-form-due-date"
                 type="text"
                 value={dueDate}
                 onChange={(e) => setDueDate(e.target.value)}

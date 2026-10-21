@@ -898,8 +898,9 @@ function HierarchicalRow({
         {/* COL 6: STORY POINTS */}
         <div className="flex justify-center shrink-0">
           {canChangeStoryPoints && editingPoints ? (
-            <form onSubmit={handlePointsSubmit} onClick={(e) => e.stopPropagation()} className="w-12">
+            <form onSubmit={handlePointsSubmit} className="w-12">
               <input
+                onClick={(e) => e.stopPropagation()}
                 type="number"
                 min={isStory ? '1' : '0'}
                 max="999"
