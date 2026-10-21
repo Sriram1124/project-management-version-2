@@ -1,6 +1,7 @@
 import { Request, Response } from 'express';
 import * as argon2 from 'argon2';
 import { UserService } from '../services/user.service';
+import { invalidateUserSessionCache } from '../middleware/auth.middleware';
 import { prisma } from '../lib/prisma';
 
 export class UserController {
@@ -333,6 +334,7 @@ export class UserController {
 
       const { name, batch } = req.body;
       const updated = await UserService.updateProfile(userId, { name, batch });
+      invalidateUserSessionCache(userId);
       res.status(200).json({ user: updated, message: 'Profile updated successfully' });
     } catch (error: any) {
       const statusCode = error.statusCode || 500;

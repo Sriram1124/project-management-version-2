@@ -2462,7 +2462,7 @@ export class ProjectService {
     const anyData = (data || {}) as any;
     const name = (anyData.name || anyData.title || anyData.fileName || anyData.filename || 'Project Document').trim();
     const docType = (anyData.document_type || anyData.documentType || anyData.type || anyData.fileType || 'OTHER').trim();
-    const storageKey = (anyData.storage_key || anyData.storageKey || anyData.key || `metadata_${Date.now()}_${Math.random().toString(36).substring(7)}`).trim();
+    const storageKey = (anyData.storage_key || anyData.storageKey || anyData.key || `metadata_${Date.now()}_${crypto.randomUUID()}`).trim();
 
     return await prisma.projectDocument.create({
       data: {

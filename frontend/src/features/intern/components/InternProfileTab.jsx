@@ -25,11 +25,12 @@ import {
 } from 'lucide-react';
 import { useAuth } from '../../../context/AuthContext';
 import { authService } from '../../../services/auth.service';
+import { setSafeStoredUser } from '../../../utils/storageSecurity.js';
 import { projectsService } from '../../../services/projects.service';
 import ProjectMethodologyBadge from '../../../components/views/projects/ProjectMethodologyBadge';
 
 export default function InternProfileTab({ onSelectProject, onToast }) {
-  const { user: authUser } = useAuth();
+  const { user: authUser, setUser } = useAuth();
 
   // Fresh user profile fetched directly from /api/auth/me
   const [profile, setProfile] = useState(authUser || null);
@@ -84,6 +85,10 @@ export default function InternProfileTab({ onSelectProject, onToast }) {
       const userObj = data?.user || data;
       if (userObj) {
         setProfile(userObj);
+        if (typeof setUser === 'function') {
+          setUser(userObj);
+        }
+        setSafeStoredUser(userObj);
       }
     } catch (err) {
       console.error('Failed to load intern profile:', err);
@@ -91,7 +96,7 @@ export default function InternProfileTab({ onSelectProject, onToast }) {
     } finally {
       setLoadingProfile(false);
     }
-  }, []);
+  }, [setUser]);
 
   // Fetch projects assigned to / completed by this intern
   const fetchProjects = useCallback(async () => {

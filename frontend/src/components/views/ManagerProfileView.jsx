@@ -26,11 +26,12 @@ import {
 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import { authService } from '../../services/auth.service';
+import { setSafeStoredUser } from '../../utils/storageSecurity.js';
 import { projectsService } from '../../services/projects.service';
 import ProjectMethodologyBadge from './projects/ProjectMethodologyBadge';
 
 export default function ManagerProfileView({ onSelectProject, onToast }) {
-  const { user: authUser } = useAuth();
+  const { user: authUser, setUser } = useAuth();
 
   // Fresh user profile fetched directly from /api/auth/me
   const [profile, setProfile] = useState(authUser || null);
@@ -92,6 +93,10 @@ export default function ManagerProfileView({ onSelectProject, onToast }) {
       const userObj = data?.user || data;
       if (userObj) {
         setProfile(userObj);
+        if (typeof setUser === 'function') {
+          setUser(userObj);
+        }
+        setSafeStoredUser(userObj);
       }
     } catch (err) {
       console.error('Failed to load manager profile:', err);
@@ -99,7 +104,7 @@ export default function ManagerProfileView({ onSelectProject, onToast }) {
     } finally {
       setLoadingProfile(false);
     }
-  }, []);
+  }, [setUser]);
 
   // Fetch projects managed by this manager
   const fetchManagedProjects = useCallback(async () => {

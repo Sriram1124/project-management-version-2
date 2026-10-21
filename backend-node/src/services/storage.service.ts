@@ -48,9 +48,14 @@ export class StorageService {
     originalName: string,
     buffer: Buffer
   ): Promise<{ storageKey: string; filename: string }> {
-    const storageRoot = this.getStorageRoot();
-    const safeProjectDir = path.join(storageRoot, 'projects', projectId);
+    const storageRoot = path.resolve(this.getStorageRoot());
+    const safeProjectDir = path.resolve(path.join(storageRoot, 'projects', projectId));
     
+    // Guard against path traversal before performing filesystem operations
+    if (!safeProjectDir.startsWith(storageRoot)) {
+      throw new Error('Invalid file storage path');
+    }
+
     if (!fs.existsSync(safeProjectDir)) {
       fs.mkdirSync(safeProjectDir, { recursive: true });
     }

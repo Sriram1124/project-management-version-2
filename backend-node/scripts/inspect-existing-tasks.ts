@@ -23,5 +23,12 @@ async function main() {
   }
 }
 
-main().finally(() => prisma.$disconnect());
+main()
+  .catch((err) => {
+    console.error('Inspect tasks error:', err?.message || err);
+    process.exitCode = 1;
+  })
+  .finally(async () => {
+    await prisma.$disconnect().catch(() => {});
+  });
 

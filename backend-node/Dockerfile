@@ -11,17 +11,15 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     g++ \
     && rm -rf /var/lib/apt/lists/*
 
-# Install tsx pinned to exact version matching package-lock.json devDependencies
-RUN npm install -g tsx@4.20.6
-
 # Copy package manifests and Prisma schema for deterministic installation and caching
 COPY package*.json ./
 COPY prisma ./prisma/
 
-# Install dependencies deterministically using npm ci
-RUN npm ci
+# Install dependencies deterministically with lifecycle scripts disabled to prevent unverified script execution (docker:S6505)
+RUN npm ci --ignore-scripts
 
-# Generate Prisma client using local prisma binary
+# Explicitly execute only trusted, required build and generation steps
+RUN npm rebuild argon2
 RUN ./node_modules/.bin/prisma generate
 
 # Copy only required application source code and configuration (replaces recursive blanket copy)
@@ -30,5 +28,5 @@ COPY src ./src/
 
 EXPOSE 3001
 
-# Execute using pinned tsx binary
-CMD ["tsx", "src/server.ts"]
+# Execute using local pinned tsx binary from node_modules
+CMD ["./node_modules/.bin/tsx", "src/server.ts"]

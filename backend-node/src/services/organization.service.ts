@@ -83,7 +83,7 @@ export class OrganizationService {
    * Helper to generate a unique user code for the manager within an organization
    */
   private static generateUserCode(prefix: string = 'MGR'): string {
-    const num = Math.floor(1000 + Math.random() * 9000);
+    const num = crypto.randomInt(1000, 10000);
     return `${prefix}-${num}`;
   }
 

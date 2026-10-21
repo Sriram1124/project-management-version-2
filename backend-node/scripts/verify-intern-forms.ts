@@ -4,22 +4,69 @@ import * as argon2 from 'argon2';
 const prisma = new PrismaClient();
 const BASE_URL = 'http://127.0.0.1:3001/api';
 
-function safeFormEndpoint(baseUrl: string, formId: string, subPath?: string): string {
+const ALLOWED_TEST_HOSTS = new Set(['127.0.0.1', 'localhost', '::1']);
+
+function safeEndpoint(baseUrl: string, ...segments: string[]): string {
   const parsed = new URL(baseUrl);
-  const cleanId = String(formId).trim();
-  if (!/^[0-9a-f-]{36}$/i.test(cleanId) && !/^[a-zA-Z0-9_-]+$/.test(cleanId)) {
-    throw new Error(`Invalid form ID format: ${cleanId}`);
+  if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') {
+    throw new Error(`Rejected unsafe protocol: ${parsed.protocol}`);
   }
-  const parts = ['forms', encodeURIComponent(cleanId)];
-  if (subPath) {
-    const cleanSub = String(subPath).trim();
-    if (cleanSub.includes('..') || cleanSub.includes('\\')) {
-      throw new Error(`Invalid subPath: ${cleanSub}`);
+  if (!ALLOWED_TEST_HOSTS.has(parsed.hostname)) {
+    throw new Error(`Rejected unauthorized destination host: ${parsed.hostname}`);
+  }
+  if (parsed.username || parsed.password) {
+    throw new Error('Rejected embedded credentials in URL');
+  }
+
+  const basePrefix = parsed.pathname.replace(/\/+$/, '');
+  const encodedSegments: string[] = [];
+
+  for (const raw of segments) {
+    const trimmed = String(raw).trim();
+    if (!trimmed) {
+      throw new Error('Empty path segment rejected');
     }
-    parts.push(...cleanSub.split('/').filter(Boolean).map(encodeURIComponent));
+
+    let decoded = trimmed;
+    try {
+      decoded = decodeURIComponent(trimmed);
+    } catch {
+      throw new Error(`Malformed URL segment encoding: ${trimmed}`);
+    }
+
+    if (
+      decoded.includes('..') ||
+      decoded.includes('/') ||
+      decoded.includes('\\') ||
+      decoded.includes('?') ||
+      decoded.includes('#') ||
+      /[\x00-\x1F\x7F]/.test(decoded) ||
+      /^(https?:|file:|data:|javascript:|\/\/)/i.test(decoded)
+    ) {
+      throw new Error(`Potential SSRF or path traversal in segment: ${trimmed}`);
+    }
+
+    if (!/^[a-zA-Z0-9_\-\.:]+$/.test(decoded)) {
+      throw new Error(`Segment contains disallowed characters: ${trimmed}`);
+    }
+
+    encodedSegments.push(encodeURIComponent(decoded));
   }
-  parsed.pathname = [parsed.pathname.replace(/\/+$/, ''), ...parts].join('/');
+
+  parsed.pathname = `${basePrefix}/${encodedSegments.join('/')}`;
+  parsed.search = '';
+  parsed.hash = '';
+
+  if (!parsed.pathname.startsWith(basePrefix)) {
+    throw new Error('Resolved path escaped permitted boundary');
+  }
+
   return parsed.toString();
+}
+
+function safeFormEndpoint(baseUrl: string, formId: string, subPath?: string): string {
+  const subSegments = subPath ? subPath.split('/').filter(Boolean) : [];
+  return safeEndpoint(baseUrl, 'forms', formId, ...subSegments);
 }
 
 async function main() {

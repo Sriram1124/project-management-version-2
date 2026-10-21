@@ -202,8 +202,8 @@ async function profile() {
         // Format: total;dur=12.3, auth;dur=1.2, db;dur=0.5
         const dbMatch = serverTiming.match(/db;dur=([0-9.]+)/);
         const authMatch = serverTiming.match(/auth;dur=([0-9.]+)/);
-        if (dbMatch) prof.dbDurations.push(parseFloat(dbMatch[1]));
-        if (authMatch) prof.authDurations.push(parseFloat(authMatch[1]));
+        if (dbMatch) prof.dbDurations.push(Number.parseFloat(dbMatch[1]));
+        if (authMatch) prof.authDurations.push(Number.parseFloat(authMatch[1]));
       } catch (err) {
         prof.errorCount++;
         prof.durations.push(performance.now() - t0);
@@ -237,7 +237,7 @@ async function profile() {
     const p99 = calculatePercentile(p.durations, 99).toFixed(1);
     const avgDb = (p.dbDurations.reduce((a, b) => a + b, 0) / (p.dbDurations.length || 1)).toFixed(1);
     const avgTotal = p.durations.reduce((a, b) => a + b, 0) / p.durations.length;
-    const avgApp = Math.max(0, avgTotal - parseFloat(avgDb)).toFixed(1);
+    const avgApp = Math.max(0, avgTotal - Number.parseFloat(avgDb)).toFixed(1);
 
     console.log(
       p.category.padEnd(20) +

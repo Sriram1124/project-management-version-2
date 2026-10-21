@@ -1,3 +1,10 @@
+import {
+  getSafeToken,
+  setSafeToken,
+  isValidSessionId,
+  clearSafeAuthStorage,
+} from '../utils/storageSecurity.js';
+
 const getApiBaseUrl = () => {
   if (typeof import.meta !== 'undefined' && import.meta.env && import.meta.env.VITE_API_URL) {
     return import.meta.env.VITE_API_URL;
@@ -69,13 +76,7 @@ const inFlightGetRequests = new Map();
 
 export function clearAuthSession() {
   inFlightGetRequests.clear();
-  if (typeof window !== 'undefined' && window.localStorage) {
-    localStorage.removeItem('accessToken');
-    localStorage.removeItem('refreshToken');
-    localStorage.removeItem('sessionId');
-    localStorage.removeItem('user');
-    localStorage.removeItem('user_last_verified');
-  }
+  clearSafeAuthStorage();
 
   if (typeof window !== 'undefined' && typeof window.dispatchEvent === 'function') {
     try {
@@ -97,12 +98,11 @@ export function refreshAccessToken() {
 
   refreshPromise = (async () => {
     try {
-      const refreshToken = typeof window !== 'undefined' && window.localStorage
-        ? localStorage.getItem('refreshToken')
-        : null;
-      const sessionId = typeof window !== 'undefined' && window.localStorage
+      const refreshToken = getSafeToken('refreshToken');
+      const rawSessionId = typeof window !== 'undefined' && window.localStorage
         ? localStorage.getItem('sessionId')
         : null;
+      const sessionId = isValidSessionId(rawSessionId) ? rawSessionId : null;
 
       if (!refreshToken) {
         throw new Error('No refresh token available');
@@ -124,12 +124,12 @@ export function refreshAccessToken() {
         throw new Error('Refresh response missing access token');
       }
 
-      if (typeof window !== 'undefined' && window.localStorage) {
-        localStorage.setItem('accessToken', data.accessToken);
-        if (data.refreshToken) {
-          localStorage.setItem('refreshToken', data.refreshToken);
-        }
-        if (data.sessionId) {
+      setSafeToken('accessToken', data.accessToken);
+      if (data.refreshToken) {
+        setSafeToken('refreshToken', data.refreshToken);
+      }
+      if (data.sessionId && isValidSessionId(data.sessionId)) {
+        if (typeof window !== 'undefined' && window.localStorage) {
           localStorage.setItem('sessionId', data.sessionId);
         }
       }
@@ -168,12 +168,8 @@ async function ensureValidAccessToken() {
     }
   }
 
-  const token = typeof window !== 'undefined' && window.localStorage
-    ? localStorage.getItem('accessToken')
-    : null;
-  const refreshToken = typeof window !== 'undefined' && window.localStorage
-    ? localStorage.getItem('refreshToken')
-    : null;
+  const token = getSafeToken('accessToken');
+  const refreshToken = getSafeToken('refreshToken');
 
   // If token is missing or expired, attempt proactive refresh if refreshToken exists
   if (!token || isJwtExpired(token)) {
@@ -199,9 +195,7 @@ const api = {
     let token = null;
     if (!isPublic) {
       token = await ensureValidAccessToken();
-      const hasRefreshToken = typeof window !== 'undefined' && window.localStorage
-        ? !!localStorage.getItem('refreshToken')
-        : false;
+      const hasRefreshToken = !!getSafeToken('refreshToken');
 
       // If we cannot obtain a valid token and no refresh token exists, fail cleanly
       if (!token && !hasRefreshToken) {

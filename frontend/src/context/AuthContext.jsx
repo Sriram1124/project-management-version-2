@@ -1,29 +1,30 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
 import { authService } from '../services/auth.service';
 import { isJwtExpired } from '../services/api';
+import {
+  getSafeStoredUser,
+  setSafeStoredUser,
+  getSafeToken,
+  clearSafeAuthStorage,
+} from '../utils/storageSecurity.js';
 
 const AuthContext = createContext(null);
 
 export const AuthProvider = ({ children }) => {
-  // Hydrate user immediately from localStorage to avoid flashes or unauthenticated redirects on refresh
+  // Hydrate validated user immediately from localStorage to avoid flashes while preventing storage poisoning
   const [user, setUser] = useState(() => {
-    try {
-      const token = typeof window !== 'undefined' ? localStorage.getItem('accessToken') : null;
-      const refreshToken = typeof window !== 'undefined' ? localStorage.getItem('refreshToken') : null;
-      if (!token && !refreshToken) return null;
-      const cached = localStorage.getItem('user');
-      return cached ? JSON.parse(cached) : null;
-    } catch (e) {
-      return null;
-    }
+    const token = getSafeToken('accessToken');
+    const refreshToken = getSafeToken('refreshToken');
+    if (!token && !refreshToken) return null;
+    return getSafeStoredUser();
   });
 
   // Only block with isLoading if tokens exist but user is not hydrated yet
   const [isLoading, setIsLoading] = useState(() => {
-    const token = typeof window !== 'undefined' ? localStorage.getItem('accessToken') : null;
-    const refreshToken = typeof window !== 'undefined' ? localStorage.getItem('refreshToken') : null;
+    const token = getSafeToken('accessToken');
+    const refreshToken = getSafeToken('refreshToken');
     if (!token && !refreshToken) return false;
-    const cachedUser = typeof window !== 'undefined' ? localStorage.getItem('user') : null;
+    const cachedUser = getSafeStoredUser();
     return !cachedUser;
   });
 
@@ -44,52 +45,51 @@ export const AuthProvider = ({ children }) => {
     let isMounted = true;
 
     const initAuth = async () => {
-      const token = localStorage.getItem('accessToken');
-      const refreshToken = localStorage.getItem('refreshToken');
+      const token = getSafeToken('accessToken');
+      const refreshToken = getSafeToken('refreshToken');
 
       if (token || refreshToken) {
-        const lastVerifiedStr = localStorage.getItem('user_last_verified');
-        const lastVerified = lastVerifiedStr ? Number(lastVerifiedStr) : 0;
-        const now = Date.now();
-        const cachedUser = localStorage.getItem('user');
+        const cachedUser = getSafeStoredUser();
 
-        // Throttle verification: if user was verified in last 60s and token is not expired, skip redundant /me fetch
-        if (cachedUser && (now - lastVerified < 60_000) && token && !isJwtExpired(token)) {
-          if (isMounted) setIsLoading(false);
-          return;
+        // Immediately unblock initial render if validated cached user exists (stale-while-revalidate)
+        if (cachedUser && isMounted) {
+          setIsLoading(false);
         }
 
         try {
           const userData = await authService.getCurrentUser();
           const activeUser = userData?.user || userData;
           if (activeUser && isMounted) {
-            setUser(activeUser);
-            localStorage.setItem('user', JSON.stringify(activeUser));
-            localStorage.setItem('user_last_verified', String(Date.now()));
+            setUser((prev) => {
+              if (
+                !prev ||
+                prev.name !== activeUser.name ||
+                prev.email !== activeUser.email ||
+                prev.role !== activeUser.role ||
+                prev.user_code !== activeUser.user_code ||
+                prev.id !== activeUser.id
+              ) {
+                return activeUser;
+              }
+              return prev;
+            });
+            setSafeStoredUser(activeUser);
           } else if (!activeUser) {
             // If getCurrentUser returned null because refresh failed
-            if (!localStorage.getItem('accessToken') && !localStorage.getItem('refreshToken')) {
+            if (!getSafeToken('accessToken') && !getSafeToken('refreshToken')) {
               if (isMounted) setUser(null);
             }
           }
         } catch (e) {
           // If token expired and couldn't be refreshed, clear auth state
           if (isMounted) {
-            localStorage.removeItem('accessToken');
-            localStorage.removeItem('refreshToken');
-            localStorage.removeItem('sessionId');
-            localStorage.removeItem('user');
-            localStorage.removeItem('user_last_verified');
+            clearSafeAuthStorage();
             setUser(null);
           }
         }
       } else {
         if (isMounted) {
-          localStorage.removeItem('accessToken');
-          localStorage.removeItem('refreshToken');
-          localStorage.removeItem('sessionId');
-          localStorage.removeItem('user');
-          localStorage.removeItem('user_last_verified');
+          clearSafeAuthStorage();
           setUser(null);
         }
       }
@@ -110,8 +110,7 @@ export const AuthProvider = ({ children }) => {
     const activeUser = data.user || data;
     setUser(activeUser);
     if (activeUser) {
-      localStorage.setItem('user', JSON.stringify(activeUser));
-      localStorage.setItem('user_last_verified', String(Date.now()));
+      setSafeStoredUser(activeUser);
     }
     return data;
   };
@@ -122,11 +121,7 @@ export const AuthProvider = ({ children }) => {
     } catch (e) {
       // Ignore logout errors
     } finally {
-      localStorage.removeItem('accessToken');
-      localStorage.removeItem('refreshToken');
-      localStorage.removeItem('sessionId');
-      localStorage.removeItem('user');
-      localStorage.removeItem('user_last_verified');
+      clearSafeAuthStorage();
       setUser(null);
     }
   };
@@ -134,7 +129,7 @@ export const AuthProvider = ({ children }) => {
   const updateUser = (updatedFields) => {
     setUser((prev) => {
       const updated = { ...prev, ...updatedFields };
-      localStorage.setItem('user', JSON.stringify(updated));
+      setSafeStoredUser(updated);
       return updated;
     });
   };

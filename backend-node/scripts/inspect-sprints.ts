@@ -14,4 +14,11 @@ async function main() {
   }
 }
 
-main().catch(console.error).finally(() => prisma.$disconnect());
+main()
+  .catch((err) => {
+    console.error('Inspect sprints error:', err?.message || err);
+    process.exitCode = 1;
+  })
+  .finally(async () => {
+    await prisma.$disconnect().catch(() => {});
+  });

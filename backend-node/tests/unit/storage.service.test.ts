@@ -8,7 +8,7 @@ describe('StorageService', () => {
   const originalEnvStorage = process.env.STORAGE_PATH;
 
   beforeEach(() => {
-    tempStorageDir = path.join(os.tmpdir(), `test-storage-${Date.now()}-${Math.random().toString(36).substring(7)}`);
+    tempStorageDir = path.join(os.tmpdir(), `test-storage-${Date.now()}-${crypto.randomUUID()}`);
     process.env.STORAGE_PATH = tempStorageDir;
   });
 

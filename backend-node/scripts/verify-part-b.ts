@@ -1,3 +1,4 @@
+import crypto from 'crypto';
 import { PrismaClient } from '@prisma/client';
 import { UserService } from '../src/services/user.service';
 
@@ -391,7 +392,7 @@ async function main() {
     const dummyEmail = `collision.check.${timestamp}@dailoqa.com`;
     createdTestEmails.push(dummyEmail);
 
-    const existingCode = `INT-${Math.floor(1000 + Math.random() * 9000)}`;
+    const existingCode = `INT-${crypto.randomInt(1000, 10000)}`;
     await prisma.user.create({
       data: {
         name: 'Code Collision Blocker',
@@ -457,7 +458,7 @@ async function main() {
       data: {
         name: 'Concurrent Interceptor',
         email: conflictEmail,
-        user_code: `INT-RACE-${Math.floor(1000 + Math.random() * 9000)}`,
+        user_code: `INT-RACE-${crypto.randomInt(1000, 10000)}`,
         password_hash: 'dummyhash',
         organization_id: dailoqaOrgId,
         must_change_password: true,
