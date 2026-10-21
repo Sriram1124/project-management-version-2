@@ -677,9 +677,13 @@ export default function SuperAdminDashboardView({ onNavigateTab }) {
                           {primaryMgr ? (
                             <div>
                               <span className="font-bold text-slate-800">{managers.length}</span>
-                              <span className="block text-[11px] font-medium text-purple-700 hover:underline cursor-pointer" onClick={() => setInspectOrgId(org.id)}>
+                              <button
+                                type="button"
+                                className="block text-left text-[11px] font-medium text-purple-700 hover:underline cursor-pointer"
+                                onClick={() => setInspectOrgId(org.id)}
+                              >
                                 {primaryMgr.name}
-                              </span>
+                              </button>
                             </div>
                           ) : (
                             <div className="flex items-center gap-1.5">
@@ -842,8 +846,9 @@ export default function SuperAdminDashboardView({ onNavigateTab }) {
             <h3 className="font-bold text-slate-900 text-sm">Rename Organization</h3>
             <form onSubmit={handleSaveRename} className="space-y-3">
               <div>
-                <label className="block text-xs font-bold text-slate-700 mb-1">Organization Name</label>
+                <label htmlFor="rename-org-name" className="block text-xs font-bold text-slate-700 mb-1">Organization Name</label>
                 <input
+                  id="rename-org-name"
                   type="text"
                   required
                   value={newName}

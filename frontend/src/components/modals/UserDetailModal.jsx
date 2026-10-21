@@ -288,10 +288,11 @@ export default function UserDetailModal({
               )}
 
               <div className="space-y-1">
-                <label className="block text-slate-700 font-bold text-xs">
+                <label htmlFor="edit-member-name" className="block text-slate-700 font-bold text-xs">
                   Member Name <span className="text-rose-500">*</span>
                 </label>
                 <input
+                  id="edit-member-name"
                   type="text"
                   value={formData.name}
                   onChange={(e) => setFormData((prev) => ({ ...prev, name: e.target.value }))}
@@ -302,10 +303,11 @@ export default function UserDetailModal({
               </div>
 
               <div className="space-y-1">
-                <label className="block text-slate-700 font-bold text-xs">
+                <label htmlFor="edit-member-cohort" className="block text-slate-700 font-bold text-xs">
                   Cohort
                 </label>
                 <select
+                  id="edit-member-cohort"
                   value={formData.cohort_id}
                   onChange={(e) => setFormData((prev) => ({ ...prev, cohort_id: e.target.value }))}
                   className="w-full px-3.5 py-2 text-xs rounded-lg border border-slate-200 text-slate-900 font-medium bg-white focus:outline-none focus:border-purple-600 focus:ring-1 focus:ring-purple-600 shadow-2xs cursor-pointer"
@@ -321,10 +323,11 @@ export default function UserDetailModal({
 
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div className="space-y-1">
-                  <label className="block text-slate-700 font-bold text-xs">
+                  <label htmlFor="edit-member-batch" className="block text-slate-700 font-bold text-xs">
                     Batch <span className="text-rose-500">*</span>
                   </label>
                   <select
+                    id="edit-member-batch"
                     value={formData.batch}
                     onChange={(e) => handleBatchChange(e.target.value)}
                     className="w-full px-3.5 py-2 text-xs rounded-lg border border-slate-200 text-slate-900 font-medium bg-white focus:outline-none focus:border-purple-600 focus:ring-1 focus:ring-purple-600 shadow-2xs cursor-pointer"
@@ -338,10 +341,11 @@ export default function UserDetailModal({
                 </div>
 
                 <div className="space-y-1">
-                  <label className="block text-slate-700 font-bold text-xs">
+                  <label htmlFor="edit-member-subbatch" className="block text-slate-700 font-bold text-xs">
                     Subbatch <span className="text-rose-500">*</span>
                   </label>
                   <select
+                    id="edit-member-subbatch"
                     value={formData.subbatch}
                     onChange={(e) => setFormData((prev) => ({ ...prev, subbatch: e.target.value }))}
                     className="w-full px-3.5 py-2 text-xs rounded-lg border border-slate-200 text-slate-900 font-medium bg-white focus:outline-none focus:border-purple-600 focus:ring-1 focus:ring-purple-600 shadow-2xs cursor-pointer"
@@ -356,9 +360,9 @@ export default function UserDetailModal({
               </div>
 
               <div className="space-y-1">
-                <label className="block text-slate-500 font-medium text-[11px]">
+                <span className="block text-slate-500 font-medium text-[11px]">
                   Email (Read-only)
-                </label>
+                </span>
                 <div className="w-full px-3.5 py-2 text-xs rounded-lg border border-slate-200 bg-slate-50 font-mono text-slate-600 select-all">
                   {currentUser.email}
                 </div>
@@ -368,9 +372,9 @@ export default function UserDetailModal({
               </div>
 
               <div className="space-y-1">
-                <label className="block text-slate-500 font-medium text-[11px]">
+                <span className="block text-slate-500 font-medium text-[11px]">
                   Role / Type (Read-only)
-                </label>
+                </span>
                 <div className="w-full px-3.5 py-2 text-xs rounded-lg border border-slate-200 bg-slate-50 text-slate-700">
                   <span className={`px-2.5 py-0.5 rounded text-[10px] font-bold ${
                     currentUser.type === 'INTERN'

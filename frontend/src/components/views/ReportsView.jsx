@@ -715,40 +715,51 @@ export default function ReportsView({ onToast, selectedCohort, selectedCohortId 
           <div className="flex items-center gap-2 shrink-0">
             {/* 2. All Scope Dropdown Filter */}
             <div className="relative shrink-0" ref={scopeDropdownRef}>
-              <button
-                type="button"
-                onClick={() => setIsScopeDropdownOpen(!isScopeDropdownOpen)}
-                className={`h-9 inline-flex items-center gap-1.5 px-3 rounded-xl border text-xs font-semibold transition-all cursor-pointer shadow-2xs ${
+              <div
+                className={`h-9 inline-flex items-center gap-1.5 px-3 rounded-xl border text-xs font-semibold transition-all shadow-2xs ${
                   selectedScope !== 'ALL'
                     ? 'bg-purple-50 border-purple-300 text-purple-900'
                     : 'bg-white border-slate-200 text-slate-700 hover:bg-slate-50'
                 }`}
               >
-                <UserCheck className="w-3.5 h-3.5 text-purple-600 shrink-0" />
-                <span className="truncate max-w-[110px]">
-                {selectedScope === 'ALL'
-                  ? 'All Scope'
-                  : selectedScope === 'TECH_LEADS'
-                  ? 'Tech Leads'
-                  : selectedScope === 'INTERNS'
-                  ? 'Interns'
-                  : selectedScopeMember?.name || 'Member'}
-              </span>
-              {selectedScope !== 'ALL' ? (
-                <span
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    handleSelectScope('ALL');
-                  }}
-                  className="p-0.5 rounded hover:bg-purple-200/80 text-purple-700 ml-0.5"
-                  title="Reset to All Scope"
+                <button
+                  type="button"
+                  onClick={() => setIsScopeDropdownOpen(!isScopeDropdownOpen)}
+                  className="inline-flex items-center gap-1.5 cursor-pointer bg-transparent border-0 p-0 text-inherit font-inherit"
                 >
-                  <X className="w-3 h-3" />
-                </span>
-              ) : (
-                <ChevronDown className={`w-3.5 h-3.5 text-slate-400 ml-0.5 transition-transform ${isScopeDropdownOpen ? 'rotate-180' : ''}`} />
-              )}
-            </button>
+                  <UserCheck className="w-3.5 h-3.5 text-purple-600 shrink-0" />
+                  <span className="truncate max-w-[110px]">
+                    {selectedScope === 'ALL'
+                      ? 'All Scope'
+                      : selectedScope === 'TECH_LEADS'
+                      ? 'Tech Leads'
+                      : selectedScope === 'INTERNS'
+                      ? 'Interns'
+                      : selectedScopeMember?.name || 'Member'}
+                  </span>
+                </button>
+                {selectedScope !== 'ALL' ? (
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      handleSelectScope('ALL');
+                    }}
+                    className="p-0.5 rounded hover:bg-purple-200/80 text-purple-700 ml-0.5 cursor-pointer"
+                    title="Reset to All Scope"
+                  >
+                    <X className="w-3 h-3" />
+                  </button>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={() => setIsScopeDropdownOpen(!isScopeDropdownOpen)}
+                    className="cursor-pointer bg-transparent border-0 p-0 text-inherit"
+                  >
+                    <ChevronDown className={`w-3.5 h-3.5 text-slate-400 ml-0.5 transition-transform ${isScopeDropdownOpen ? 'rotate-180' : ''}`} />
+                  </button>
+                )}
+              </div>
 
             {isScopeDropdownOpen && (
               <div className="absolute right-0 top-full mt-1.5 w-72 rounded-xl bg-white border border-slate-200 shadow-xl p-2 z-30 text-slate-800 animate-in fade-in slide-in-from-top-1 duration-150">
@@ -843,36 +854,47 @@ export default function ReportsView({ onToast, selectedCohort, selectedCohortId 
 
           {/* 3. Project Selector Filter */}
           <div className="relative shrink-0" ref={projectDropdownRef}>
-              <button
-                type="button"
-                onClick={() => setIsProjectDropdownOpen(!isProjectDropdownOpen)}
-                className={`h-9 inline-flex items-center gap-1.5 px-3 rounded-xl border text-xs font-semibold transition-all cursor-pointer shadow-2xs ${
+              <div
+                className={`h-9 inline-flex items-center gap-1.5 px-3 rounded-xl border text-xs font-semibold transition-all shadow-2xs ${
                   selectedProjectId !== 'ALL'
                     ? 'bg-purple-50 border-purple-300 text-purple-900'
                     : 'bg-white border-slate-200 text-slate-700 hover:bg-slate-50'
                 }`}
               >
-                <FolderKanban className="w-3.5 h-3.5 text-purple-600 shrink-0" />
-                <span className="truncate max-w-[110px]">
-                  {selectedProjectId === 'ALL'
-                    ? 'All Projects'
-                    : selectedProjectObj?.name || 'Project'}
-                </span>
-              {selectedProjectId !== 'ALL' ? (
-                <span
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    handleSelectProject('ALL');
-                  }}
-                  className="p-0.5 rounded hover:bg-purple-200/80 text-purple-700 ml-0.5"
-                  title="Reset to All Projects"
+                <button
+                  type="button"
+                  onClick={() => setIsProjectDropdownOpen(!isProjectDropdownOpen)}
+                  className="inline-flex items-center gap-1.5 cursor-pointer bg-transparent border-0 p-0 text-inherit font-inherit"
                 >
-                  <X className="w-3 h-3" />
-                </span>
-              ) : (
-                <ChevronDown className={`w-3.5 h-3.5 text-slate-400 ml-0.5 transition-transform ${isProjectDropdownOpen ? 'rotate-180' : ''}`} />
-              )}
-            </button>
+                  <FolderKanban className="w-3.5 h-3.5 text-purple-600 shrink-0" />
+                  <span className="truncate max-w-[110px]">
+                    {selectedProjectId === 'ALL'
+                      ? 'All Projects'
+                      : selectedProjectObj?.name || 'Project'}
+                  </span>
+                </button>
+                {selectedProjectId !== 'ALL' ? (
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      handleSelectProject('ALL');
+                    }}
+                    className="p-0.5 rounded hover:bg-purple-200/80 text-purple-700 ml-0.5 cursor-pointer"
+                    title="Reset to All Projects"
+                  >
+                    <X className="w-3 h-3" />
+                  </button>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={() => setIsProjectDropdownOpen(!isProjectDropdownOpen)}
+                    className="cursor-pointer bg-transparent border-0 p-0 text-inherit"
+                  >
+                    <ChevronDown className={`w-3.5 h-3.5 text-slate-400 ml-0.5 transition-transform ${isProjectDropdownOpen ? 'rotate-180' : ''}`} />
+                  </button>
+                )}
+              </div>
 
             {isProjectDropdownOpen && (
               <div className="absolute right-0 top-full mt-1.5 w-72 rounded-xl bg-white border border-slate-200 shadow-xl p-2 z-30 text-slate-800 animate-in fade-in slide-in-from-top-1 duration-150">
@@ -2071,7 +2093,15 @@ export default function ReportsView({ onToast, selectedCohort, selectedCohortId 
                           return (
                             <tr
                               key={mem.userId}
+                              role="button"
+                              tabIndex={0}
                               onClick={() => handleSelectScope(isSelected ? 'ALL' : mem.userId)}
+                              onKeyDown={(e) => {
+                                if (e.target === e.currentTarget && (e.key === 'Enter' || e.key === ' ')) {
+                                  e.preventDefault();
+                                  handleSelectScope(isSelected ? 'ALL' : mem.userId);
+                                }
+                              }}
                               className={`hover:bg-purple-50/40 transition-colors cursor-pointer ${
                                 isSelected ? 'bg-purple-50/70 font-semibold' : ''
                               }`}

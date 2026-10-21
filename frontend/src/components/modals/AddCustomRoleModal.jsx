@@ -223,10 +223,21 @@ export default function AddCustomRoleModal({
 
   const modalContent = (
     <div
+      role="button"
+      tabIndex={0}
       className="fixed inset-0 z-60 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs"
       onClick={(e) => {
         if (e.target === e.currentTarget) {
           onClose();
+        }
+      }}
+      onKeyDown={(e) => {
+        if (e.key === 'Enter' || e.key === ' ') {
+          (e) => {
+        if (e.target === e.currentTarget) {
+          onClose();
+        }
+      }
         }
       }}
     >
@@ -322,12 +333,12 @@ export default function AddCustomRoleModal({
           <div className="pt-2 border-t border-slate-100">
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 mb-3">
               <div>
-                <label className="text-xs font-bold text-slate-800 flex items-center gap-1.5">
+                <span className="text-xs font-bold text-slate-800 flex items-center gap-1.5">
                   Role Permissions <span className="text-rose-500">*</span>
                   <span className="text-[11px] font-semibold px-2 py-0.5 rounded-full bg-purple-50 text-purple-700 border border-purple-200">
                     {selectedPermissions.size} selected
                   </span>
-                </label>
+                </span>
                 <p className="text-[11px] text-slate-400">
                   Select capabilities granted to members assigned to this role.
                 </p>

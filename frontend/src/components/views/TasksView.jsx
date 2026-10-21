@@ -295,7 +295,15 @@ export default function TasksView({ projectId = null, onToast }) {
                   return (
                     <tr
                       key={task.id}
+                      role="button"
+                      tabIndex={0}
                       onClick={() => setSelectedTask(task)}
+                      onKeyDown={(e) => {
+                        if (e.target === e.currentTarget && (e.key === 'Enter' || e.key === ' ')) {
+                          e.preventDefault();
+                          setSelectedTask(task);
+                        }
+                      }}
                       className="hover:bg-purple-50/40 transition-colors cursor-pointer group"
                     >
                       {/* Type Badge */}

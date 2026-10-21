@@ -334,7 +334,15 @@ export default function ScopedProjectView({
                 return (
                   <div
                     key={doc.id}
+                    role="button"
+                    tabIndex={0}
                     onClick={() => handlePreviewDoc(doc)}
+                    onKeyDown={(e) => {
+                      if (e.target === e.currentTarget && (e.key === 'Enter' || e.key === ' ')) {
+                        e.preventDefault();
+                        handlePreviewDoc(doc);
+                      }
+                    }}
                     className="p-3.5 bg-slate-50 border border-slate-200 rounded-xl flex items-center justify-between hover:border-purple-200 transition-colors cursor-pointer"
                   >
                     <div className="flex items-center gap-2.5 min-w-0">
@@ -547,7 +555,15 @@ export default function ScopedProjectView({
                   return (
                     <div
                       key={item.id}
+                      role="button"
+                      tabIndex={0}
                       onClick={() => onTaskClick?.(item)}
+                      onKeyDown={(e) => {
+                        if (e.target === e.currentTarget && (e.key === 'Enter' || e.key === ' ')) {
+                          e.preventDefault();
+                          onTaskClick?.(item);
+                        }
+                      }}
                       className={`p-3.5 bg-white border rounded-xl flex items-center justify-between gap-3 hover:border-purple-200 hover:shadow-2xs transition-all cursor-pointer ${
                         isOverdue ? 'border-rose-200 bg-rose-50/20' : 'border-slate-200'
                       }`}

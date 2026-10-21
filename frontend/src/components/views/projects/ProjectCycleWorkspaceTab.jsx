@@ -719,10 +719,11 @@ export default function ProjectCycleWorkspaceTab({
               )}
 
               <div>
-                <label className="block text-xs font-semibold text-slate-700 mb-1">
+                <label htmlFor="create-cycle-name" className="block text-xs font-semibold text-slate-700 mb-1">
                   Cycle Name <span className="text-rose-500">*</span>
                 </label>
                 <input
+                  id="create-cycle-name"
                   type="text"
                   required
                   value={cycleFormName}
@@ -733,10 +734,11 @@ export default function ProjectCycleWorkspaceTab({
               </div>
 
               <div>
-                <label className="block text-xs font-semibold text-slate-700 mb-1">
+                <label htmlFor="create-cycle-goal" className="block text-xs font-semibold text-slate-700 mb-1">
                   Cycle Goal / Scope
                 </label>
                 <textarea
+                  id="create-cycle-goal"
                   rows={2}
                   value={cycleFormGoal}
                   onChange={(e) => setCycleFormGoal(e.target.value)}
@@ -747,8 +749,9 @@ export default function ProjectCycleWorkspaceTab({
 
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="block text-xs font-semibold text-slate-700 mb-1">Start Date</label>
+                  <label htmlFor="create-cycle-start-date" className="block text-xs font-semibold text-slate-700 mb-1">Start Date</label>
                   <input
+                    id="create-cycle-start-date"
                     type="date"
                     value={cycleFormStartDate}
                     onChange={(e) => setCycleFormStartDate(e.target.value)}
@@ -756,8 +759,9 @@ export default function ProjectCycleWorkspaceTab({
                   />
                 </div>
                 <div>
-                  <label className="block text-xs font-semibold text-slate-700 mb-1">Target End Date</label>
+                  <label htmlFor="create-cycle-end-date" className="block text-xs font-semibold text-slate-700 mb-1">Target End Date</label>
                   <input
+                    id="create-cycle-end-date"
                     type="date"
                     value={cycleFormEndDate}
                     onChange={(e) => setCycleFormEndDate(e.target.value)}
@@ -820,10 +824,11 @@ export default function ProjectCycleWorkspaceTab({
               )}
 
               <div>
-                <label className="block text-xs font-semibold text-slate-700 mb-1">
+                <label htmlFor="edit-cycle-name" className="block text-xs font-semibold text-slate-700 mb-1">
                   Cycle Name <span className="text-rose-500">*</span>
                 </label>
                 <input
+                  id="edit-cycle-name"
                   type="text"
                   required
                   value={cycleFormName}
@@ -833,10 +838,11 @@ export default function ProjectCycleWorkspaceTab({
               </div>
 
               <div>
-                <label className="block text-xs font-semibold text-slate-700 mb-1">
+                <label htmlFor="edit-cycle-goal" className="block text-xs font-semibold text-slate-700 mb-1">
                   Cycle Goal / Scope
                 </label>
                 <textarea
+                  id="edit-cycle-goal"
                   rows={2}
                   value={cycleFormGoal}
                   onChange={(e) => setCycleFormGoal(e.target.value)}
@@ -846,8 +852,9 @@ export default function ProjectCycleWorkspaceTab({
 
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="block text-xs font-semibold text-slate-700 mb-1">Start Date</label>
+                  <label htmlFor="edit-cycle-start-date" className="block text-xs font-semibold text-slate-700 mb-1">Start Date</label>
                   <input
+                    id="edit-cycle-start-date"
                     type="date"
                     value={cycleFormStartDate}
                     onChange={(e) => setCycleFormStartDate(e.target.value)}
@@ -855,8 +862,9 @@ export default function ProjectCycleWorkspaceTab({
                   />
                 </div>
                 <div>
-                  <label className="block text-xs font-semibold text-slate-700 mb-1">Target End Date</label>
+                  <label htmlFor="edit-cycle-end-date" className="block text-xs font-semibold text-slate-700 mb-1">Target End Date</label>
                   <input
+                    id="edit-cycle-end-date"
                     type="date"
                     value={cycleFormEndDate}
                     onChange={(e) => setCycleFormEndDate(e.target.value)}
@@ -937,9 +945,9 @@ export default function ProjectCycleWorkspaceTab({
               </div>
 
               <div>
-                <label className="block text-xs font-semibold text-slate-700 mb-2">
+                <span className="block text-xs font-semibold text-slate-700 mb-2">
                   Handling Incomplete Deliverables:
-                </label>
+                </span>
                 <div className="space-y-2 text-xs">
                   <label className="flex items-start gap-2 p-2.5 rounded-lg border border-slate-200 hover:bg-slate-50 cursor-pointer">
                     <input

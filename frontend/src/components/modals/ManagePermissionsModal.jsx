@@ -275,7 +275,15 @@ export default function ManagePermissionsModal({
                   return (
                     <div
                       key={perm.name}
+                      role="button"
+                      tabIndex={0}
                       onClick={() => handleTogglePermission(perm.name)}
+                      onKeyDown={(e) => {
+                        if (e.target === e.currentTarget && (e.key === 'Enter' || e.key === ' ')) {
+                          e.preventDefault();
+                          handleTogglePermission(perm.name);
+                        }
+                      }}
                       className={`p-3.5 rounded-xl border transition-all cursor-pointer flex items-start gap-3.5 select-none ${
                         isChecked
                           ? 'bg-purple-50/60 border-purple-300 shadow-2xs'

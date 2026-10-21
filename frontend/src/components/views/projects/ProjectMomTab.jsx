@@ -391,8 +391,9 @@ export default function ProjectMomTab({ projectId, projectName, onToast, readOnl
 
             <form onSubmit={handleCreateMoM} className="p-5 space-y-3.5 text-xs">
               <div>
-                <label className="block font-semibold text-slate-700 mb-1">Title / Summary *</label>
+                <label htmlFor="mom-action-title" className="block font-semibold text-slate-700 mb-1">Title / Summary *</label>
                 <input
+                  id="mom-action-title"
                   type="text"
                   required
                   placeholder="e.g. Implement OAuth token refresh flow"
@@ -403,8 +404,9 @@ export default function ProjectMomTab({ projectId, projectName, onToast, readOnl
               </div>
 
               <div>
-                <label className="block font-semibold text-slate-700 mb-1">Details &amp; Context</label>
+                <label htmlFor="mom-action-agenda" className="block font-semibold text-slate-700 mb-1">Details &amp; Context</label>
                 <textarea
+                  id="mom-action-agenda"
                   rows={3}
                   placeholder="Key context, requirements, blockers..."
                   value={newAgenda}
@@ -438,11 +440,22 @@ export default function ProjectMomTab({ projectId, projectName, onToast, readOnl
 
       {/* Delete Action Item Confirmation Modal */}
       {itemToDelete && (
-        <div 
+        <div
+          role="button"
+          tabIndex={0} 
           className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/50 backdrop-blur-xs animate-in fade-in duration-100"
           onClick={(e) => {
             if (e.target === e.currentTarget) {
               setItemToDelete(null);
+            }
+          }}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter' || e.key === ' ') {
+              (e) => {
+            if (e.target === e.currentTarget) {
+              setItemToDelete(null);
+            }
+          }
             }
           }}
         >

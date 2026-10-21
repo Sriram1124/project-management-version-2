@@ -129,9 +129,12 @@ export default function ProjectFilesSection({ projectId, projectName = '', onToa
   }, [projectId]);
 
   // Close open dropdowns when clicking outside
-  const handleContainerClick = () => {
-    if (activeMenuId) setActiveMenuId(null);
-  };
+  useEffect(() => {
+    if (!activeMenuId) return;
+    const handleClickOutside = () => setActiveMenuId(null);
+    document.addEventListener('click', handleClickOutside);
+    return () => document.removeEventListener('click', handleClickOutside);
+  }, [activeMenuId]);
 
   const handleUploadClick = (e) => {
     e.stopPropagation();
@@ -239,7 +242,7 @@ export default function ProjectFilesSection({ projectId, projectName = '', onToa
   };
 
   return (
-    <div className={`mt-6 pt-6 border-t border-slate-100 ${className}`} onClick={handleContainerClick}>
+    <div className={`mt-6 pt-6 border-t border-slate-100 ${className}`}>
       {/* SECTION HEADER & UPLOAD BUTTON */}
       <div className="flex items-center justify-between gap-3 mb-4">
         <div className="flex items-center gap-2">
@@ -489,11 +492,22 @@ export default function ProjectFilesSection({ projectId, projectName = '', onToa
 
       {/* Delete Confirmation Modal */}
       {deleteModalFile && typeof document !== 'undefined' && createPortal(
-        <div 
+        <div
+          role="button"
+          tabIndex={0} 
           className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs animate-in fade-in duration-200"
           onClick={(e) => {
             if (e.target === e.currentTarget && !isDeleting) {
               handleCloseDeleteModal();
+            }
+          }}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter' || e.key === ' ') {
+              (e) => {
+            if (e.target === e.currentTarget && !isDeleting) {
+              handleCloseDeleteModal();
+            }
+          }
             }
           }}
         >

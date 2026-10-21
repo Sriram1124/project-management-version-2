@@ -1529,7 +1529,15 @@ export default function TimesheetView({
                             return (
                               <td
                                 key={weekNum}
+                                role="button"
+                                tabIndex={0}
                                 onClick={() => handleOpenWeekCell(task, wg)}
+                                onKeyDown={(e) => {
+                                  if (e.target === e.currentTarget && (e.key === 'Enter' || e.key === ' ')) {
+                                    e.preventDefault();
+                                    handleOpenWeekCell(task, wg);
+                                  }
+                                }}
                                 className={`py-2 px-3 text-center cursor-pointer transition-colors relative group/cell ${
                                   weekMins > 0 ? 'bg-purple-50/40 hover:bg-purple-100/70 font-mono font-bold text-purple-900' : 'hover:bg-slate-50 text-slate-300'
                                 }`}
@@ -1571,7 +1579,15 @@ export default function TimesheetView({
                             return (
                               <td
                                 key={d.date}
+                                role="button"
+                                tabIndex={0}
                                 onClick={() => handleOpenCell(task, d.date, d)}
+                                onKeyDown={(e) => {
+                                  if (e.target === e.currentTarget && (e.key === 'Enter' || e.key === ' ')) {
+                                    e.preventDefault();
+                                    handleOpenCell(task, d.date, d);
+                                  }
+                                }}
                                 className={`py-2 px-2 text-center cursor-pointer transition-colors relative group/cell ${
                                   isToday ? 'bg-purple-50/30 hover:bg-purple-100/50' : 'hover:bg-slate-100/70'
                                 }`}
@@ -1877,7 +1893,15 @@ export default function TimesheetView({
                   className="border border-slate-200/90 rounded-xl overflow-hidden bg-white shadow-2xs"
                 >
                   <div
+                    role="button"
+                    tabIndex={0}
                     onClick={() => toggleWeekExpanded(wg.week_number)}
+                    onKeyDown={(e) => {
+                      if (e.target === e.currentTarget && (e.key === 'Enter' || e.key === ' ')) {
+                        e.preventDefault();
+                        toggleWeekExpanded(wg.week_number);
+                      }
+                    }}
                     className="px-4 py-3 bg-slate-50/90 hover:bg-slate-100/80 transition-colors flex items-center justify-between gap-3 cursor-pointer select-none"
                   >
                     <div className="flex items-center gap-3">
@@ -1980,7 +2004,15 @@ export default function TimesheetView({
                                     return (
                                       <td
                                         key={d.date}
+                                        role="button"
+                                        tabIndex={0}
                                         onClick={() => handleOpenCell(task, d.date, d)}
+                                        onKeyDown={(e) => {
+                                          if (e.target === e.currentTarget && (e.key === 'Enter' || e.key === ' ')) {
+                                            e.preventDefault();
+                                            handleOpenCell(task, d.date, d);
+                                          }
+                                        }}
                                         className={`py-2 px-2 text-center cursor-pointer transition-colors ${
                                           !d.in_month
                                             ? 'bg-slate-50/50 text-slate-300 opacity-60'
@@ -2346,11 +2378,12 @@ export default function TimesheetView({
             <form onSubmit={handleManualLogSubmit} className="p-5 space-y-4">
               {/* Task Selection */}
               <div>
-                <label className="block text-[11px] font-semibold text-slate-700 mb-1">
+                <label htmlFor="manual-log-task" className="block text-[11px] font-semibold text-slate-700 mb-1">
                   Select Task *
                 </label>
                 {availableTasks.length > 0 ? (
                   <select
+                    id="manual-log-task"
                     value={manualTaskId}
                     onChange={(e) => setManualTaskId(e.target.value)}
                     required
@@ -2365,6 +2398,7 @@ export default function TimesheetView({
                   </select>
                 ) : (
                   <input
+                    id="manual-log-task"
                     type="text"
                     value={manualTaskId}
                     onChange={(e) => setManualTaskId(e.target.value)}
@@ -2377,10 +2411,11 @@ export default function TimesheetView({
 
               {/* Date */}
               <div>
-                <label className="block text-[11px] font-semibold text-slate-700 mb-1">
+                <label htmlFor="manual-log-date" className="block text-[11px] font-semibold text-slate-700 mb-1">
                   Date *
                 </label>
                 <input
+                  id="manual-log-date"
                   type="date"
                   value={manualDate}
                   onChange={(e) => setManualDate(e.target.value)}
@@ -2392,10 +2427,11 @@ export default function TimesheetView({
               {/* Duration Hours & Minutes */}
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="block text-[11px] font-semibold text-slate-700 mb-1">
+                  <label htmlFor="manual-log-hours" className="block text-[11px] font-semibold text-slate-700 mb-1">
                     Hours
                   </label>
                   <input
+                    id="manual-log-hours"
                     type="number"
                     min="0"
                     max="24"
@@ -2406,10 +2442,11 @@ export default function TimesheetView({
                   />
                 </div>
                 <div>
-                  <label className="block text-[11px] font-semibold text-slate-700 mb-1">
+                  <label htmlFor="manual-log-minutes" className="block text-[11px] font-semibold text-slate-700 mb-1">
                     Minutes
                   </label>
                   <input
+                    id="manual-log-minutes"
                     type="number"
                     min="0"
                     max="59"
@@ -2424,10 +2461,11 @@ export default function TimesheetView({
 
               {/* Notes */}
               <div>
-                <label className="block text-[11px] font-semibold text-slate-700 mb-1">
+                <label htmlFor="manual-log-notes" className="block text-[11px] font-semibold text-slate-700 mb-1">
                   Notes (Optional)
                 </label>
                 <textarea
+                  id="manual-log-notes"
                   rows={2}
                   value={manualNotes}
                   onChange={(e) => setManualNotes(e.target.value)}
@@ -2493,11 +2531,12 @@ export default function TimesheetView({
               className="p-5 space-y-4"
             >
               <div>
-                <label className="block text-[11px] font-semibold text-slate-700 mb-1">
+                <label htmlFor="start-timer-task-select" className="block text-[11px] font-semibold text-slate-700 mb-1">
                   Select Task to Track *
                 </label>
                 {availableTasks.length > 0 ? (
                   <select
+                    id="start-timer-task-select"
                     value={startTimerTaskId}
                     onChange={(e) => setStartTimerTaskId(e.target.value)}
                     required
@@ -2584,11 +2623,12 @@ export default function TimesheetView({
 
               {/* Entry selector if choosing from multiple */}
               <div>
-                <label className="block text-[11px] font-semibold text-slate-700 mb-1">
+                <label htmlFor="correction-entry-select" className="block text-[11px] font-semibold text-slate-700 mb-1">
                   Recorded Work Session / Entry *
                 </label>
                 {allWeekEntries.length > 0 ? (
                   <select
+                    id="correction-entry-select"
                     value={correctionEntry?.id || ''}
                     onChange={(e) => {
                       const found = allWeekEntries.find((ent) => ent.id === e.target.value);
@@ -2641,7 +2681,7 @@ export default function TimesheetView({
 
                   <div>
                     <div className="flex items-center justify-between mb-1">
-                      <label className="text-[11px] font-semibold text-slate-700">
+                      <label htmlFor="correction-excess-minutes-input" className="text-[11px] font-semibold text-slate-700">
                         Excess Minutes to Remove (Deduct) *
                       </label>
                       <span className="text-[10px] text-slate-400">
@@ -2650,6 +2690,7 @@ export default function TimesheetView({
                     </div>
                     <div className="flex items-center gap-3">
                       <input
+                        id="correction-excess-minutes-input"
                         type="number"
                         min="1"
                         max={(correctionEntry.duration_minutes || 1) - 1}
@@ -2681,10 +2722,11 @@ export default function TimesheetView({
                   </div>
 
                   <div>
-                    <label className="block text-[11px] font-semibold text-slate-700 mb-1">
+                    <label htmlFor="correction-reason-input" className="block text-[11px] font-semibold text-slate-700 mb-1">
                       Reason for Correction *
                     </label>
                     <textarea
+                      id="correction-reason-input"
                       rows={3}
                       value={correctionReason}
                       onChange={(e) => setCorrectionReason(e.target.value)}
@@ -2755,11 +2797,12 @@ export default function TimesheetView({
 
               {/* Task Select */}
               <div>
-                <label className="block text-[11px] font-semibold text-slate-700 mb-1">
+                <label htmlFor="edit-entry-task" className="block text-[11px] font-semibold text-slate-700 mb-1">
                   Task
                 </label>
                 {availableTasks.length > 0 ? (
                   <select
+                    id="edit-entry-task"
                     value={editTaskId}
                     onChange={(e) => setEditTaskId(e.target.value)}
                     className="w-full px-3 py-2 rounded-xl border border-slate-200 bg-white font-medium text-slate-900 focus:outline-none focus:border-purple-500"
@@ -2779,10 +2822,11 @@ export default function TimesheetView({
 
               {/* Date Input */}
               <div>
-                <label className="block text-[11px] font-semibold text-slate-700 mb-1">
+                <label htmlFor="edit-entry-date" className="block text-[11px] font-semibold text-slate-700 mb-1">
                   Date *
                 </label>
                 <input
+                  id="edit-entry-date"
                   type="date"
                   value={editDate}
                   onChange={(e) => setEditDate(e.target.value)}
@@ -2793,9 +2837,9 @@ export default function TimesheetView({
 
               {/* Duration Inputs: Hours and Minutes */}
               <div>
-                <label className="block text-[11px] font-semibold text-slate-700 mb-1">
+                <span className="block text-[11px] font-semibold text-slate-700 mb-1">
                   Duration *
-                </label>
+                </span>
                 <div className="grid grid-cols-2 gap-3">
                   <div>
                     <div className="flex items-center gap-1.5">
@@ -2856,10 +2900,11 @@ export default function TimesheetView({
 
               {/* Notes */}
               <div>
-                <label className="block text-[11px] font-semibold text-slate-700 mb-1">
+                <label htmlFor="edit-entry-notes" className="block text-[11px] font-semibold text-slate-700 mb-1">
                   Notes / Description
                 </label>
                 <textarea
+                  id="edit-entry-notes"
                   rows={2}
                   value={editNotes}
                   onChange={(e) => setEditNotes(e.target.value)}

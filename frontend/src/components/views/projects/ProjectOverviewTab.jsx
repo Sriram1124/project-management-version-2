@@ -299,17 +299,10 @@ export default function ProjectOverviewTab({ projectId, project, onNavigateTab, 
           </div>
 
           {/* Assigned Team */}
-          <div
-            role="button"
-            tabIndex={0}
+          <button
+            type="button"
             onClick={handleOpenAllMembers}
-            onKeyDown={(e) => {
-              if (e.key === 'Enter' || e.key === ' ') {
-                e.preventDefault();
-                handleOpenAllMembers();
-              }
-            }}
-            className="flex items-center justify-between gap-3.5 p-3.5 sm:p-4 bg-slate-50/80 hover:bg-blue-50/60 border border-slate-200/80 hover:border-blue-300 rounded-xl transition-all cursor-pointer shadow-2xs hover:shadow-xs group select-none"
+            className="w-full text-left flex items-center justify-between gap-3.5 p-3.5 sm:p-4 bg-slate-50/80 hover:bg-blue-50/60 border border-slate-200/80 hover:border-blue-300 rounded-xl transition-all cursor-pointer shadow-2xs hover:shadow-xs group select-none"
             title="Click to view all members, add members, or assign roles"
           >
             <div className="flex items-center gap-3 min-w-0">
@@ -337,7 +330,7 @@ export default function ProjectOverviewTab({ projectId, project, onNavigateTab, 
               </span>
               <ChevronRight className="w-4 h-4 sm:hidden text-slate-400 group-hover:text-blue-600" />
             </div>
-          </div>
+          </button>
         </div>
       </div>
 
@@ -425,11 +418,22 @@ export default function ProjectOverviewTab({ projectId, project, onNavigateTab, 
 
       {/* Delete Project Confirmation Modal */}
       {isDeleteOpen && (
-        <div 
+        <div
+          role="button"
+          tabIndex={0} 
           className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/50 backdrop-blur-xs animate-in fade-in duration-100"
           onClick={(e) => {
             if (e.target === e.currentTarget) {
               setIsDeleteOpen(false);
+            }
+          }}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter' || e.key === ' ') {
+              (e) => {
+            if (e.target === e.currentTarget) {
+              setIsDeleteOpen(false);
+            }
+          }
             }
           }}
         >

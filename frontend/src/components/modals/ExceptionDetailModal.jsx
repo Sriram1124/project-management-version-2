@@ -84,11 +84,22 @@ export default function ExceptionDetailModal({ exceptionId, onClose, onActionTak
   };
 
   return (
-    <div 
+    <div
+      role="button"
+      tabIndex={0} 
       className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/50 backdrop-blur-xs animate-in fade-in duration-200"
       onClick={(e) => {
         if (e.target === e.currentTarget) {
           onClose();
+        }
+      }}
+      onKeyDown={(e) => {
+        if (e.key === 'Enter' || e.key === ' ') {
+          (e) => {
+        if (e.target === e.currentTarget) {
+          onClose();
+        }
+      }
         }
       }}
     >

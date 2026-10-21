@@ -495,7 +495,15 @@ export default function BroadcastAlert({
                 return (
                   <div
                     key={user.id}
+                    role="button"
+                    tabIndex={0}
                     onClick={() => handleToggle(user.id)}
+                    onKeyDown={(e) => {
+                      if (e.target === e.currentTarget && (e.key === 'Enter' || e.key === ' ')) {
+                        e.preventDefault();
+                        handleToggle(user.id);
+                      }
+                    }}
                     className={`grid grid-cols-12 gap-2 items-center px-3 py-2 text-xs hover:bg-slate-50 transition-colors cursor-pointer select-none ${
                       isSelected ? 'bg-purple-50/30' : ''
                     }`}
@@ -547,10 +555,11 @@ export default function BroadcastAlert({
       {/* Message input area */}
       <form onSubmit={handleSend} className="space-y-2.5">
         <div>
-          <label className="block text-[11px] font-semibold text-slate-600 mb-1">
+          <label htmlFor="broadcast-alert-title" className="block text-[11px] font-semibold text-slate-600 mb-1">
             Alert Title
           </label>
           <input
+            id="broadcast-alert-title"
             type="text"
             value={title}
             onChange={(e) => setTitle(e.target.value)}
@@ -564,10 +573,11 @@ export default function BroadcastAlert({
         </div>
 
         <div>
-          <label className="block text-[11px] font-semibold text-slate-600 mb-1">
+          <label htmlFor="broadcast-alert-message" className="block text-[11px] font-semibold text-slate-600 mb-1">
             Alert Message
           </label>
           <textarea
+            id="broadcast-alert-message"
             rows={2}
             value={message}
             onChange={(e) => setMessage(e.target.value)}

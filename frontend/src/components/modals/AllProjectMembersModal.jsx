@@ -260,11 +260,22 @@ export default function AllProjectMembersModal({
   }, [localMembers, search, selectedRoles, isCustomMode, customSelectedIds]);
 
   const modalContent = (
-    <div 
+    <div
+      role="button"
+      tabIndex={0} 
       className="fixed inset-0 z-50 bg-slate-900/50 backdrop-blur-xs flex items-center justify-center p-4 animate-in fade-in duration-200"
       onClick={(e) => {
         if (e.target === e.currentTarget) {
           onClose();
+        }
+      }}
+      onKeyDown={(e) => {
+        if (e.key === 'Enter' || e.key === ' ') {
+          (e) => {
+        if (e.target === e.currentTarget) {
+          onClose();
+        }
+      }
         }
       }}
     >
@@ -485,10 +496,6 @@ export default function AllProjectMembersModal({
                   {/* Dedicated Custom Option Item */}
                   <div className="pt-1.5 mt-1.5 border-t border-slate-100">
                     <label
-                      onClick={() => {
-                        setIsCustomMode(true);
-                        setSelectedRoles(new Set());
-                      }}
                       className={`flex items-center justify-between px-2.5 py-2 rounded-lg text-xs font-medium cursor-pointer transition-colors select-none ${
                         isCustomMode
                           ? 'bg-purple-50 text-purple-900 font-bold border border-purple-200/80'
@@ -567,7 +574,15 @@ export default function AllProjectMembersModal({
                 return (
                   <div
                     key={member.user_id}
+                    role={isCustomMode ? 'button' : undefined}
+                    tabIndex={isCustomMode ? 0 : undefined}
                     onClick={isCustomMode ? () => handleToggleCustomMember(member.user_id) : undefined}
+                    onKeyDown={isCustomMode ? (e) => {
+                      if (e.target === e.currentTarget && (e.key === 'Enter' || e.key === ' ')) {
+                        e.preventDefault();
+                        handleToggleCustomMember(member.user_id);
+                      }
+                    } : undefined}
                     className={`flex items-center justify-between p-3 rounded-xl border transition-all shadow-2xs ${
                       isCustomMode
                         ? isCustomChecked
@@ -708,12 +723,24 @@ export default function AllProjectMembersModal({
 
       {/* Confirmation Dialog for Removing Member */}
       {memberToRemove && (
-        <div 
+        <div
+          role="button"
+          tabIndex={0} 
           className="fixed inset-0 z-60 bg-slate-950/40 backdrop-blur-xs flex items-center justify-center p-4 animate-in fade-in duration-150"
           onClick={(e) => {
             if (e.target === e.currentTarget) {
               e.stopPropagation();
               setMemberToRemove(null);
+            }
+          }}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter' || e.key === ' ') {
+              (e) => {
+            if (e.target === e.currentTarget) {
+              e.stopPropagation();
+              setMemberToRemove(null);
+            }
+          }
             }
           }}
         >

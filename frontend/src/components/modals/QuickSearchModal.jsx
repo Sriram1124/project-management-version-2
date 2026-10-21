@@ -37,11 +37,22 @@ export default function QuickSearchModal({ isOpen, onClose, onSelectResult }) {
   const hasResults = filteredUsers.length > 0 || filteredProjects.length > 0;
 
   return (
-    <div 
+    <div
+      role="button"
+      tabIndex={0} 
       className="fixed inset-0 z-50 flex items-start justify-center pt-20 p-4 bg-slate-900/50 backdrop-blur-xs animate-in fade-in duration-150"
       onClick={(e) => {
         if (e.target === e.currentTarget) {
           onClose();
+        }
+      }}
+      onKeyDown={(e) => {
+        if (e.key === 'Enter' || e.key === ' ') {
+          (e) => {
+        if (e.target === e.currentTarget) {
+          onClose();
+        }
+      }
         }
       }}
     >
@@ -94,13 +105,14 @@ export default function QuickSearchModal({ isOpen, onClose, onSelectResult }) {
                   </div>
                   <div className="space-y-1">
                     {filteredUsers.map((u) => (
-                      <div
+                      <button
+                        type="button"
                         key={u.id}
                         onClick={() => {
                           onSelectResult?.('interns', u);
                           onClose();
                         }}
-                        className="flex items-center justify-between p-2.5 rounded-xl hover:bg-purple-50/60 cursor-pointer group transition-colors"
+                        className="w-full text-left flex items-center justify-between p-2.5 rounded-xl hover:bg-purple-50/60 cursor-pointer group transition-colors"
                       >
                         <div className="flex items-center gap-2.5">
                           <div className="w-7 h-7 rounded-lg bg-purple-100 text-purple-700 font-bold text-xs flex items-center justify-center">
@@ -116,7 +128,7 @@ export default function QuickSearchModal({ isOpen, onClose, onSelectResult }) {
                           </div>
                         </div>
                         <ArrowRight className="w-3.5 h-3.5 text-slate-300 group-hover:text-purple-600 transition-colors" />
-                      </div>
+                      </button>
                     ))}
                   </div>
                 </div>
@@ -131,13 +143,14 @@ export default function QuickSearchModal({ isOpen, onClose, onSelectResult }) {
                   </div>
                   <div className="space-y-1">
                     {filteredProjects.map((proj) => (
-                      <div
+                      <button
+                        type="button"
                         key={proj.id}
                         onClick={() => {
                           onSelectResult?.('projects', proj);
                           onClose();
                         }}
-                        className="flex items-center justify-between p-2.5 rounded-xl hover:bg-purple-50/60 cursor-pointer group transition-colors"
+                        className="w-full text-left flex items-center justify-between p-2.5 rounded-xl hover:bg-purple-50/60 cursor-pointer group transition-colors"
                       >
                         <div>
                           <span className="text-xs font-semibold text-slate-800 group-hover:text-purple-700">
@@ -150,7 +163,7 @@ export default function QuickSearchModal({ isOpen, onClose, onSelectResult }) {
                         <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-slate-100 text-slate-600">
                           {proj.status}
                         </span>
-                      </div>
+                      </button>
                     ))}
                   </div>
                 </div>

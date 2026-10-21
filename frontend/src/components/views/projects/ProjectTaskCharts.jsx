@@ -1620,7 +1620,15 @@ export default function ProjectTaskCharts({
                           return (
                             <tr 
                               key={mem.userId}
+                              role="button"
+                              tabIndex={0}
                               onClick={() => setSelectedPerformanceFilter(mem.userId === selectedPerformanceFilter ? 'ALL' : mem.userId)}
+                              onKeyDown={(e) => {
+                                if (e.target === e.currentTarget && (e.key === 'Enter' || e.key === ' ')) {
+                                  e.preventDefault();
+                                  setSelectedPerformanceFilter(mem.userId === selectedPerformanceFilter ? 'ALL' : mem.userId);
+                                }
+                              }}
                               className={`hover:bg-purple-50/40 transition-colors cursor-pointer ${
                                 selectedPerformanceFilter === mem.userId ? 'bg-purple-50/60 font-semibold' : ''
                               }`}

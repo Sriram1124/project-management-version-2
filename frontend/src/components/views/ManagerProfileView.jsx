@@ -596,18 +596,11 @@ export default function ManagerProfileView({ onSelectProject, onToast }) {
                             (Array.isArray(proj.members) ? proj.members.length : 0);
 
                           return (
-                            <div
+                            <button
+                              type="button"
                               key={proj.id}
                               onClick={() => onSelectProject?.(proj.id, proj.name)}
-                              className="grid grid-cols-[minmax(180px,2fr)_minmax(110px,1fr)_minmax(105px,1fr)_minmax(95px,0.9fr)_minmax(140px,1.2fr)_minmax(110px,1fr)] gap-3 px-4 py-3 hover:bg-purple-50/40 transition-colors cursor-pointer group items-center"
-                              role="button"
-                              tabIndex={0}
-                              onKeyDown={(e) => {
-                                if (e.key === 'Enter' || e.key === ' ') {
-                                  e.preventDefault();
-                                  onSelectProject?.(proj.id, proj.name);
-                                }
-                              }}
+                              className="w-full text-left grid grid-cols-[minmax(180px,2fr)_minmax(110px,1fr)_minmax(105px,1fr)_minmax(95px,0.9fr)_minmax(140px,1.2fr)_minmax(110px,1fr)] gap-3 px-4 py-3 hover:bg-purple-50/40 transition-colors cursor-pointer group items-center"
                             >
                               {/* Column 1 — Project */}
                               <div className="min-w-0 pr-2">
@@ -679,7 +672,7 @@ export default function ManagerProfileView({ onSelectProject, onToast }) {
                                   <span className="text-slate-300 font-mono text-xs select-none">—</span>
                                 )}
                               </div>
-                            </div>
+                            </button>
                           );
                         })}
                       </div>
@@ -801,11 +794,12 @@ export default function ManagerProfileView({ onSelectProject, onToast }) {
 
                 {/* 1. Current Password Field */}
                 <div className="space-y-1">
-                  <label className="block text-xs font-semibold text-slate-700">
+                  <label htmlFor="mgr-current-password" className="block text-xs font-semibold text-slate-700">
                     Current Password <span className="text-rose-500">*</span>
                   </label>
                   <div className="relative">
                     <input
+                      id="mgr-current-password"
                       type={showPasswords.current ? 'text' : 'password'}
                       value={passwordForm.currentPassword}
                       onChange={(e) => handlePasswordChange('currentPassword', e.target.value)}
@@ -840,11 +834,12 @@ export default function ManagerProfileView({ onSelectProject, onToast }) {
 
                 {/* 2. New Password Field */}
                 <div className="space-y-1">
-                  <label className="block text-xs font-semibold text-slate-700">
+                  <label htmlFor="mgr-new-password" className="block text-xs font-semibold text-slate-700">
                     New Password <span className="text-rose-500">*</span>
                   </label>
                   <div className="relative">
                     <input
+                      id="mgr-new-password"
                       type={showPasswords.next ? 'text' : 'password'}
                       value={passwordForm.newPassword}
                       onChange={(e) => handlePasswordChange('newPassword', e.target.value)}
@@ -871,11 +866,12 @@ export default function ManagerProfileView({ onSelectProject, onToast }) {
 
                 {/* 3. Confirm New Password Field */}
                 <div className="space-y-1">
-                  <label className="block text-xs font-semibold text-slate-700">
+                  <label htmlFor="mgr-confirm-password" className="block text-xs font-semibold text-slate-700">
                     Confirm New Password <span className="text-rose-500">*</span>
                   </label>
                   <div className="relative">
                     <input
+                      id="mgr-confirm-password"
                       type={showPasswords.confirm ? 'text' : 'password'}
                       value={passwordForm.confirmPassword}
                       onChange={(e) => handlePasswordChange('confirmPassword', e.target.value)}

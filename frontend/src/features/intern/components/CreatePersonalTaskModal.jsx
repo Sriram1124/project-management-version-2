@@ -56,10 +56,21 @@ export default function CreatePersonalTaskModal({
 
   return (
     <div
+      role="button"
+      tabIndex={0}
       className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs animate-in fade-in duration-150"
       onClick={(e) => {
         if (e.target === e.currentTarget) {
           onClose();
+        }
+      }}
+      onKeyDown={(e) => {
+        if (e.key === 'Enter' || e.key === ' ') {
+          (e) => {
+        if (e.target === e.currentTarget) {
+          onClose();
+        }
+      }
         }
       }}
     >
@@ -92,10 +103,11 @@ export default function CreatePersonalTaskModal({
           )}
 
           <div>
-            <label className="block text-[11px] font-bold text-slate-700 mb-1">
+            <label htmlFor="personal-task-title" className="block text-[11px] font-bold text-slate-700 mb-1">
               Task Title *
             </label>
             <input
+              id="personal-task-title"
               type="text"
               required
               placeholder="e.g. Complete Docker for Developers course"
@@ -106,10 +118,11 @@ export default function CreatePersonalTaskModal({
           </div>
 
           <div>
-            <label className="block text-[11px] font-bold text-slate-700 mb-1">
+            <label htmlFor="personal-task-desc" className="block text-[11px] font-bold text-slate-700 mb-1">
               Description / Notes
             </label>
             <textarea
+              id="personal-task-desc"
               rows={3}
               placeholder="What will you learn or produce? What are the key deliverables?"
               value={description}
@@ -120,10 +133,11 @@ export default function CreatePersonalTaskModal({
 
           <div className="grid grid-cols-3 gap-3">
             <div>
-              <label className="block text-[11px] font-bold text-slate-700 mb-1">
+              <label htmlFor="personal-task-priority" className="block text-[11px] font-bold text-slate-700 mb-1">
                 Priority
               </label>
               <select
+                id="personal-task-priority"
                 value={priority}
                 onChange={(e) => setPriority(e.target.value)}
                 className="w-full px-3 py-2 border border-slate-200 rounded-lg bg-white text-slate-900 focus:outline-none focus:border-purple-600"
@@ -136,10 +150,11 @@ export default function CreatePersonalTaskModal({
             </div>
 
             <div>
-              <label className="block text-[11px] font-bold text-slate-700 mb-1">
+              <label htmlFor="personal-task-sp" className="block text-[11px] font-bold text-slate-700 mb-1">
                 Story Points *
               </label>
               <input
+                id="personal-task-sp"
                 type="number"
                 min="1"
                 max="99"
@@ -152,10 +167,11 @@ export default function CreatePersonalTaskModal({
             </div>
 
             <div>
-              <label className="block text-[11px] font-bold text-slate-700 mb-1">
+              <label htmlFor="personal-task-due" className="block text-[11px] font-bold text-slate-700 mb-1">
                 Target Due Date
               </label>
               <input
+                id="personal-task-due"
                 type="date"
                 value={dueDate}
                 onChange={(e) => setDueDate(e.target.value)}

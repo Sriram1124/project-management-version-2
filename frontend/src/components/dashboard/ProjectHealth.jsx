@@ -199,10 +199,11 @@ export default function ProjectHealth({
                 proj.health_score === undefined;
 
               return (
-                <div
+                <button
+                  type="button"
                   key={proj.id}
                   onClick={() => onSelectProject?.(proj.id, proj.name)}
-                  className={`group relative p-4 sm:p-5 rounded-xl border border-slate-200/80 hover:border-violet-300 bg-white hover:bg-violet-50/20 transition-all cursor-pointer shadow-2xs hover:shadow-xs flex flex-col md:flex-row md:items-center justify-between gap-4 border-l-4 ${config.borderAccent}`}
+                  className={`w-full text-left group relative p-4 sm:p-5 rounded-xl border border-slate-200/80 hover:border-violet-300 bg-white hover:bg-violet-50/20 transition-all cursor-pointer shadow-2xs hover:shadow-xs flex flex-col md:flex-row md:items-center justify-between gap-4 border-l-4 ${config.borderAccent}`}
                 >
                   {/* Left Side: Prominent Icon + Name + Primary Reason + Supporting Signals */}
                   <div className="flex items-start gap-3.5 min-w-0 flex-1">
@@ -314,7 +315,7 @@ export default function ProjectHealth({
                       <ChevronRight className="w-5 h-5 group-hover:translate-x-0.5 transition-transform" />
                     </div>
                   </div>
-                </div>
+                </button>
               );
             })}
           </div>

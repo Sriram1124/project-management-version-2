@@ -1281,7 +1281,15 @@ export default function ProjectRoadmapTab({
                   return (
                     <div
                       key={item.id}
+                      role="button"
+                      tabIndex={0}
                       onClick={() => setSelectedTask(item)}
+                      onKeyDown={(e) => {
+                        if (e.target === e.currentTarget && (e.key === 'Enter' || e.key === ' ')) {
+                          e.preventDefault();
+                          setSelectedTask(item);
+                        }
+                      }}
                       className={`h-12 px-3 flex items-center text-xs hover:bg-purple-50/40 cursor-pointer transition-colors group select-none ${
                         isEpic ? 'bg-purple-50/20 font-semibold' : ''
                       }`}
@@ -1486,7 +1494,8 @@ export default function ProjectRoadmapTab({
                       >
                         {isSingleMilestone ? (
                           // Single Date Milestone Marker
-                          <div
+                          <button
+                            type="button"
                             onClick={() => setSelectedTask(item)}
                             style={{ left: `${leftPercent}%` }}
                             title={`${item.title} • Target: ${dueLabel} • Click to view`}
@@ -1498,10 +1507,11 @@ export default function ProjectRoadmapTab({
                             <span className="text-[10px] font-semibold text-slate-700 bg-white/90 border border-slate-200 px-1.5 py-0.5 rounded shadow-2xs whitespace-nowrap ml-1 opacity-80 group-hover/mile:opacity-100">
                               {dueLabel}
                             </span>
-                          </div>
+                          </button>
                         ) : (
                           // Range Gantt Duration Bar
-                          <div
+                          <button
+                            type="button"
                             onClick={() => setSelectedTask(item)}
                             style={{
                               marginLeft: `${leftPercent}%`,
@@ -1540,7 +1550,7 @@ export default function ProjectRoadmapTab({
                               ) : null}
                               <span>{row.progress}%</span>
                             </div>
-                          </div>
+                          </button>
                         )}
                       </div>
                     );
@@ -1639,7 +1649,15 @@ export default function ProjectRoadmapTab({
                       className="relative py-4 px-2 hover:bg-slate-50/40 transition-colors group min-h-[64px] flex items-center"
                     >
                       <div
+                        role="button"
+                        tabIndex={0}
                         onClick={() => setSelectedSprintDetails(sprint)}
+                        onKeyDown={(e) => {
+                          if (e.target === e.currentTarget && (e.key === 'Enter' || e.key === ' ')) {
+                            e.preventDefault();
+                            setSelectedSprintDetails(sprint);
+                          }
+                        }}
                         title={`${sprint.name} (${dateDisplay}) • Click to view sprint details`}
                         style={{
                           marginLeft: `${Math.min(leftPercent, 75)}%`,
@@ -1757,7 +1775,15 @@ export default function ProjectRoadmapTab({
                 return (
                   <div
                     key={item.id}
+                    role="button"
+                    tabIndex={0}
                     onClick={() => setSelectedTask(item)}
+                    onKeyDown={(e) => {
+                      if (e.target === e.currentTarget && (e.key === 'Enter' || e.key === ' ')) {
+                        e.preventDefault();
+                        setSelectedTask(item);
+                      }
+                    }}
                     className="p-3 rounded-xl border border-dashed border-slate-300 hover:border-purple-400 bg-slate-50/50 hover:bg-purple-50/20 transition-all flex flex-col justify-between gap-2.5 cursor-pointer group"
                   >
                     <div className="space-y-1.5">

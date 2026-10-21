@@ -387,10 +387,21 @@ export default function AddTaskModal({
 
   return (
     <div
+      role="button"
+      tabIndex={0}
       className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs animate-in fade-in duration-150"
       onClick={(e) => {
         if (e.target === e.currentTarget) {
           onClose();
+        }
+      }}
+      onKeyDown={(e) => {
+        if (e.key === 'Enter' || e.key === ' ') {
+          (e) => {
+        if (e.target === e.currentTarget) {
+          onClose();
+        }
+      }
         }
       }}
     >
@@ -428,10 +439,11 @@ export default function AddTaskModal({
           {/* Project Selector (if not passed as prop) */}
           {!projectId && (
             <div>
-              <label className="block text-[11px] font-bold text-slate-700 uppercase tracking-wider mb-1">
+              <label htmlFor="add-task-project" className="block text-[11px] font-bold text-slate-700 uppercase tracking-wider mb-1">
                 Project *
               </label>
               <select
+                id="add-task-project"
                 required
                 value={selectedProjectId}
                 onChange={(e) => {
@@ -454,10 +466,11 @@ export default function AddTaskModal({
           {/* Work Item Type, Priority & Story Points Row */}
           <div className={`grid gap-3 ${type !== 'EPIC' ? 'grid-cols-3' : 'grid-cols-2'}`}>
             <div>
-              <label className="block text-[11px] font-bold text-slate-700 uppercase tracking-wider mb-1">
+              <label htmlFor="add-task-type" className="block text-[11px] font-bold text-slate-700 uppercase tracking-wider mb-1">
                 Issue Type *
               </label>
               <select
+                id="add-task-type"
                 value={type}
                 onChange={(e) => handleTypeChange(e.target.value)}
                 className="w-full px-3 py-2 rounded-xl border border-slate-200 bg-white text-slate-800 focus:outline-none focus:border-purple-600 font-semibold"
@@ -471,10 +484,11 @@ export default function AddTaskModal({
             </div>
 
             <div>
-              <label className="block text-[11px] font-bold text-slate-700 uppercase tracking-wider mb-1">
+              <label htmlFor="add-task-priority" className="block text-[11px] font-bold text-slate-700 uppercase tracking-wider mb-1">
                 Priority
               </label>
               <select
+                id="add-task-priority"
                 value={priority}
                 onChange={(e) => setPriority(e.target.value)}
                 className="w-full px-3 py-2 rounded-xl border border-slate-200 bg-white text-slate-800 focus:outline-none focus:border-purple-600"
@@ -489,10 +503,11 @@ export default function AddTaskModal({
 
             {type !== 'EPIC' && (
               <div>
-                <label className="block text-[11px] font-bold text-slate-700 uppercase tracking-wider mb-1 flex items-center justify-between">
+                <label htmlFor="add-task-sp" className="block text-[11px] font-bold text-slate-700 uppercase tracking-wider mb-1 flex items-center justify-between">
                   <span>Story Points *</span>
                 </label>
                 <input
+                  id="add-task-sp"
                   type="number"
                   min={type === 'STORY' ? '1' : '0'}
                   max="99"
@@ -509,10 +524,11 @@ export default function AddTaskModal({
 
           {/* Title */}
           <div>
-            <label className="block text-[11px] font-bold text-slate-700 uppercase tracking-wider mb-1">
+            <label htmlFor="add-task-title" className="block text-[11px] font-bold text-slate-700 uppercase tracking-wider mb-1">
               Title *
             </label>
             <input
+              id="add-task-title"
               type="text"
               required
               value={title}
@@ -524,10 +540,11 @@ export default function AddTaskModal({
 
           {/* Description */}
           <div>
-            <label className="block text-[11px] font-bold text-slate-700 uppercase tracking-wider mb-1">
+            <label htmlFor="add-task-desc" className="block text-[11px] font-bold text-slate-700 uppercase tracking-wider mb-1">
               Description
             </label>
             <textarea
+              id="add-task-desc"
               rows={3}
               value={description}
               onChange={(e) => setDescription(e.target.value)}
@@ -564,7 +581,7 @@ export default function AddTaskModal({
               </div>
             ) : (
               <div className="p-3 bg-purple-50/50 rounded-xl border border-purple-100">
-                <label className="block text-[11px] font-bold text-purple-900 uppercase tracking-wider mb-1 flex items-center gap-1.5">
+                <label htmlFor="add-task-parent-select" className="block text-[11px] font-bold text-purple-900 uppercase tracking-wider mb-1 flex items-center gap-1.5">
                   <GitFork className="w-3.5 h-3.5 text-purple-600" />
                   <span>
                     Parent {['STORY', 'BUG'].includes(type) ? 'Epic (Optional)' : type === 'TASK' ? 'Story *' : type === 'SUBTASK' ? 'Task *' : 'Parent Item *'}
@@ -590,6 +607,7 @@ export default function AddTaskModal({
                   )
                 ) : (
                   <select
+                    id="add-task-parent-select"
                     value={parentId}
                     onChange={(e) => setParentId(e.target.value)}
                     required={type === 'TASK' || type === 'SUBTASK'}
@@ -617,10 +635,11 @@ export default function AddTaskModal({
           <div className={`grid ${isKanban ? 'grid-cols-1' : 'grid-cols-2'} gap-3`}>
             {!isKanban && (
               <div>
-                <label className="block text-[11px] font-bold text-slate-700 uppercase tracking-wider mb-1">
+                <label htmlFor="add-task-sprint" className="block text-[11px] font-bold text-slate-700 uppercase tracking-wider mb-1">
                   {isKanban ? 'Cycle' : 'Sprint'}
                 </label>
                 <select
+                  id="add-task-sprint"
                   value={sprintId}
                   onChange={(e) => setSprintId(e.target.value)}
                   className="w-full px-3 py-2 rounded-xl border border-slate-200 bg-white text-slate-800 focus:outline-none focus:border-purple-600"
@@ -638,10 +657,11 @@ export default function AddTaskModal({
             )}
 
             <div>
-              <label className="block text-[11px] font-bold text-slate-700 uppercase tracking-wider mb-1">
+              <label htmlFor="add-task-status" className="block text-[11px] font-bold text-slate-700 uppercase tracking-wider mb-1">
                 Initial Status
               </label>
               <select
+                id="add-task-status"
                 value={status}
                 onChange={(e) => setStatus(e.target.value)}
                 className="w-full px-3 py-2 rounded-xl border border-slate-200 bg-white text-slate-800 focus:outline-none focus:border-purple-600"
@@ -656,7 +676,7 @@ export default function AddTaskModal({
           </div>
 
             <div>
-              <label className="block text-[11px] font-bold text-slate-700 uppercase tracking-wider mb-1 flex items-center justify-between">
+              <label htmlFor="add-task-assignee-select" className="block text-[11px] font-bold text-slate-700 uppercase tracking-wider mb-1 flex items-center justify-between">
                 <span className="flex items-center gap-1">
                   <User className="w-3.5 h-3.5 text-slate-400" />
                   <span>Assignee</span>
@@ -683,6 +703,7 @@ export default function AddTaskModal({
                   />
                 </div>
                 <select
+                  id="add-task-assignee-select"
                   value={assigneeId}
                   onChange={(e) => setAssigneeId(e.target.value)}
                   className="w-full px-3 py-2 rounded-xl border border-slate-200 bg-white text-slate-800 focus:outline-none focus:border-purple-600"
@@ -708,11 +729,12 @@ export default function AddTaskModal({
             {/* Row: Dates */}
           <div className="grid grid-cols-2 gap-3">
             <div>
-              <label className="block text-[11px] font-bold text-slate-700 uppercase tracking-wider mb-1 flex items-center gap-1">
+              <label htmlFor="add-task-start-date" className="block text-[11px] font-bold text-slate-700 uppercase tracking-wider mb-1 flex items-center gap-1">
                 <Calendar className="w-3.5 h-3.5 text-slate-400" />
                 <span>Start Date</span>
               </label>
               <input
+                id="add-task-start-date"
                 type="date"
                 value={startDate}
                 onChange={(e) => setStartDate(e.target.value)}
@@ -721,11 +743,12 @@ export default function AddTaskModal({
             </div>
 
             <div>
-              <label className="block text-[11px] font-bold text-slate-700 uppercase tracking-wider mb-1 flex items-center gap-1">
+              <label htmlFor="add-task-due-date" className="block text-[11px] font-bold text-slate-700 uppercase tracking-wider mb-1 flex items-center gap-1">
                 <Calendar className="w-3.5 h-3.5 text-slate-400" />
                 <span>Due Date</span>
               </label>
               <input
+                id="add-task-due-date"
                 type="date"
                 value={dueDate}
                 onChange={(e) => setDueDate(e.target.value)}

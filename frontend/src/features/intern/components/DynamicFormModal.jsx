@@ -391,10 +391,21 @@ export default function DynamicFormModal({
 
   return (
     <div
+      role="button"
+      tabIndex={0}
       className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs animate-in fade-in duration-150"
       onClick={(e) => {
         if (e.target === e.currentTarget) {
           onClose();
+        }
+      }}
+      onKeyDown={(e) => {
+        if (e.key === 'Enter' || e.key === ' ') {
+          (e) => {
+        if (e.target === e.currentTarget) {
+          onClose();
+        }
+      }
         }
       }}
     >
@@ -492,10 +503,10 @@ export default function DynamicFormModal({
 
                 return (
                   <div key={q.id || idx} className={idx > 0 ? 'pt-4' : ''}>
-                    <label className="block text-xs font-bold text-slate-900 mb-1">
+                    <span className="block text-xs font-bold text-slate-900 mb-1">
                       {idx + 1}. {questionText}
                       {isReq && <span className="text-rose-500 ml-1">*</span>}
-                    </label>
+                    </span>
                     {helpText && (
                       <p className="text-[11px] text-slate-400 mb-1.5">{helpText}</p>
                     )}

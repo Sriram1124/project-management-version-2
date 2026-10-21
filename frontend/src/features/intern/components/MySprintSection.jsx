@@ -149,7 +149,15 @@ export default function MySprintSection({
           return (
             <div
               key={t.id}
+              role="button"
+              tabIndex={0}
               onClick={() => onTaskClick?.(t)}
+              onKeyDown={(e) => {
+                if (e.target === e.currentTarget && (e.key === 'Enter' || e.key === ' ')) {
+                  e.preventDefault();
+                  onTaskClick?.(t);
+                }
+              }}
               className={`p-3 rounded-xl border transition-all cursor-pointer flex items-center justify-between ${
                 isDone
                   ? 'bg-emerald-50/40 border-emerald-200/60 opacity-80'

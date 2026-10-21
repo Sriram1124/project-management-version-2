@@ -132,9 +132,9 @@ export default function ResetPasswordModal({ isOpen, user, onClose, onSuccess })
               </div>
 
               <div>
-                <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">
+                <span className="block text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">
                   Temporary Password
-                </label>
+                </span>
                 <div className="flex items-center gap-2 p-2.5 bg-slate-50 border border-slate-200 rounded-xl">
                   <span className="font-mono text-sm font-black text-slate-900 tracking-wider flex-1 select-all">
                     {tempPassword}

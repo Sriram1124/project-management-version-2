@@ -114,30 +114,30 @@ export default function InternAttendance({ attendanceData, onDrilldown }) {
 
       {/* Breakdown Metrics */}
       <div className="grid grid-cols-3 divide-x divide-slate-100 pt-2 border-t border-slate-100 text-center">
-        <div className="px-1 cursor-pointer hover:bg-slate-50 py-1 rounded-lg transition-colors" onClick={() => onDrilldown?.('present')}>
+        <button type="button" className="w-full text-center px-1 cursor-pointer hover:bg-slate-50 py-1 rounded-lg transition-colors" onClick={() => onDrilldown?.('present')}>
           <div className="text-base font-bold text-slate-800">
             {attendanceData.present}
           </div>
           <div className="text-[11px] font-medium text-slate-400">
             Present
           </div>
-        </div>
-        <div className="px-1 cursor-pointer hover:bg-slate-50 py-1 rounded-lg transition-colors" onClick={() => onDrilldown?.('absent')}>
+        </button>
+        <button type="button" className="w-full text-center px-1 cursor-pointer hover:bg-slate-50 py-1 rounded-lg transition-colors" onClick={() => onDrilldown?.('absent')}>
           <div className="text-base font-bold text-rose-500">
             {attendanceData.absent}
           </div>
           <div className="text-[11px] font-medium text-slate-400">
             Absent
           </div>
-        </div>
-        <div className="px-1 cursor-pointer hover:bg-slate-50 py-1 rounded-lg transition-colors" onClick={() => onDrilldown?.('late')}>
+        </button>
+        <button type="button" className="w-full text-center px-1 cursor-pointer hover:bg-slate-50 py-1 rounded-lg transition-colors" onClick={() => onDrilldown?.('late')}>
           <div className="text-base font-bold text-amber-500">
             {attendanceData.late}
           </div>
           <div className="text-[11px] font-medium text-slate-400">
             Late
           </div>
-        </div>
+        </button>
       </div>
     </div>
   );

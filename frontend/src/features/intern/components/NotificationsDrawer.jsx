@@ -26,10 +26,21 @@ export default function NotificationsDrawer({
 
   return (
     <div
+      role="button"
+      tabIndex={0}
       className="fixed inset-0 z-50 animate-in fade-in duration-150"
       onClick={(e) => {
         if (e.target === e.currentTarget) {
           onClose();
+        }
+      }}
+      onKeyDown={(e) => {
+        if (e.key === 'Enter' || e.key === ' ') {
+          (e) => {
+        if (e.target === e.currentTarget) {
+          onClose();
+        }
+      }
         }
       }}
     >
@@ -79,10 +90,11 @@ export default function NotificationsDrawer({
             </div>
           ) : (
             activeNotifs.map((n) => (
-              <div
+              <button
+                type="button"
                 key={n.id}
                 onClick={() => handleNotificationClick(n)}
-                className={`flex cursor-pointer items-start gap-3 px-3.5 py-3 transition-colors hover:bg-purple-50 ${
+                className={`w-full text-left flex cursor-pointer items-start gap-3 px-3.5 py-3 transition-colors hover:bg-purple-50 ${
                   !n.is_read ? 'bg-purple-50/70' : 'bg-white'
                 }`}
               >
@@ -109,7 +121,7 @@ export default function NotificationsDrawer({
                 {!n.is_read && (
                   <span className="mt-1.5 h-2 w-2 shrink-0 rounded-full bg-purple-600" />
                 )}
-              </div>
+              </button>
             ))
           )}
         </div>

@@ -129,12 +129,13 @@ export default function AddMemberModal({ isOpen, onClose, onSuccess, defaultCoho
           )}
 
           <div>
-            <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1.5">
+            <label htmlFor="add-member-fullname" className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1.5">
               Full Name
             </label>
             <div className="relative">
               <User className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
               <input
+                id="add-member-fullname"
                 type="text"
                 required
                 value={name}
@@ -146,12 +147,13 @@ export default function AddMemberModal({ isOpen, onClose, onSuccess, defaultCoho
           </div>
 
           <div>
-            <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1.5">
+            <label htmlFor="add-member-email" className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1.5">
               Email Address
             </label>
             <div className="relative">
               <Mail className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
               <input
+                id="add-member-email"
                 type="email"
                 required
                 value={email}
@@ -163,9 +165,9 @@ export default function AddMemberModal({ isOpen, onClose, onSuccess, defaultCoho
           </div>
 
           <div>
-            <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-2">
+            <span className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-2">
               Member Type
-            </label>
+            </span>
             <div className="grid grid-cols-2 gap-3">
               <button
                 type="button"
@@ -228,9 +230,9 @@ export default function AddMemberModal({ isOpen, onClose, onSuccess, defaultCoho
 
               {/* Automatically assigned Cohort */}
               <div>
-                <label className="block text-slate-600 font-semibold text-[11px] mb-1">
+                <span className="block text-slate-600 font-semibold text-[11px] mb-1">
                   Assigned Cohort
-                </label>
+                </span>
                 <div className="flex items-center justify-between px-3 py-2 text-xs rounded-lg border border-purple-200 bg-white font-semibold text-slate-800 shadow-2xs">
                   <div className="flex items-center gap-2">
                     <GraduationCap className="w-4 h-4 text-purple-600 shrink-0" />
@@ -243,10 +245,11 @@ export default function AddMemberModal({ isOpen, onClose, onSuccess, defaultCoho
               {/* Batch & Subbatch selectors */}
               <div className="grid grid-cols-2 gap-3">
                 <div className="space-y-1">
-                  <label className="block text-slate-600 font-semibold text-[11px]">
+                  <label htmlFor="add-member-batch" className="block text-slate-600 font-semibold text-[11px]">
                     Batch <span className="text-slate-400 font-normal">(Optional)</span>
                   </label>
                   <select
+                    id="add-member-batch"
                     value={batch}
                     onChange={(e) => handleBatchChange(e.target.value)}
                     className="w-full px-3 py-1.5 text-xs rounded-lg border border-slate-200 bg-white text-slate-800 font-medium focus:outline-none focus:border-purple-600 shadow-2xs cursor-pointer"
@@ -261,10 +264,11 @@ export default function AddMemberModal({ isOpen, onClose, onSuccess, defaultCoho
                 </div>
 
                 <div className="space-y-1">
-                  <label className="block text-slate-600 font-semibold text-[11px]">
+                  <label htmlFor="add-member-subbatch" className="block text-slate-600 font-semibold text-[11px]">
                     Subbatch <span className="text-slate-400 font-normal">(Optional)</span>
                   </label>
                   <select
+                    id="add-member-subbatch"
                     value={subbatch}
                     disabled={!batch}
                     onChange={(e) => setSubbatch(e.target.value)}

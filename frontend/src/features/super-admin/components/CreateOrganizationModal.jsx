@@ -65,12 +65,13 @@ export default function CreateOrganizationModal({ isOpen, onClose, onSuccess }) 
             )}
 
             <div>
-              <label className="block text-xs font-bold text-slate-700 mb-1">
+              <label htmlFor="create-org-name" className="block text-xs font-bold text-slate-700 mb-1">
                 Organization Name <span className="text-rose-500">*</span>
               </label>
               <div className="relative">
                 <Building2 className="w-3.5 h-3.5 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
                 <input
+                  id="create-org-name"
                   type="text"
                   required
                   value={organizationName}

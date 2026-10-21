@@ -283,9 +283,10 @@ export default function BulkImportManagersModal({ isOpen, organization, onClose,
               </div>
 
               {/* Upload Zone */}
-              <div
+              <button
+                type="button"
                 onClick={() => fileInputRef.current?.click()}
-                className="border-2 border-dashed border-slate-200 hover:border-purple-400 hover:bg-purple-50/20 rounded-2xl p-6 text-center cursor-pointer transition-all"
+                className="w-full border-2 border-dashed border-slate-200 hover:border-purple-400 hover:bg-purple-50/20 rounded-2xl p-6 text-center cursor-pointer transition-all"
               >
                 <input
                   type="file"
@@ -299,7 +300,7 @@ export default function BulkImportManagersModal({ isOpen, organization, onClose,
                   {file ? file.name : 'Click or drop a CSV file to upload'}
                 </p>
                 <p className="text-[11px] text-slate-400 mt-0.5">Maximum 100 managers per bulk batch</p>
-              </div>
+              </button>
 
               {/* Validating indicator */}
               {validating && (

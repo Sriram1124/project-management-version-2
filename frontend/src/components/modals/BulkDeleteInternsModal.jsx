@@ -144,11 +144,12 @@ export default function BulkDeleteInternsModal({
 
           {/* Password Verification Field */}
           <div className="space-y-1.5 pt-1">
-            <label className="block text-[11px] font-bold text-slate-700">
+            <label htmlFor="bulk-delete-password" className="block text-[11px] font-bold text-slate-700">
               Account Password <span className="text-rose-500">*</span>
             </label>
             <div className="relative">
               <input
+                id="bulk-delete-password"
                 type={showPassword ? 'text' : 'password'}
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
@@ -172,10 +173,11 @@ export default function BulkDeleteInternsModal({
 
           {/* Final Explicit Confirmation Keyword Input */}
           <div className="space-y-1.5">
-            <label className="block text-[11px] font-bold text-slate-700">
+            <label htmlFor="bulk-delete-confirm" className="block text-[11px] font-bold text-slate-700">
               Type <span className="font-mono text-rose-600 bg-rose-50 px-1 py-0.5 rounded border border-rose-200">DELETE</span> to confirm <span className="text-rose-500">*</span>
             </label>
             <input
+              id="bulk-delete-confirm"
               type="text"
               value={confirmText}
               onChange={(e) => setConfirmText(e.target.value)}

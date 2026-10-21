@@ -792,8 +792,16 @@ export default function ManagerTimesheetsView({
                   return (
                     <tr
                       key={intern.id}
+                      role="button"
+                      tabIndex={0}
                       className="hover:bg-purple-50/30 transition-colors group cursor-pointer"
                       onClick={() => setSelectedIntern(intern)}
+                      onKeyDown={(e) => {
+                        if (e.target === e.currentTarget && (e.key === 'Enter' || e.key === ' ')) {
+                          e.preventDefault();
+                          setSelectedIntern(intern);
+                        }
+                      }}
                     >
                       {/* Intern Info */}
                       <td className="py-3.5 px-4">

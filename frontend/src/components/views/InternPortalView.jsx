@@ -90,7 +90,15 @@ export default function InternPortalView({ onSwitchToManager }) {
           {tasks.map((t) => (
             <div
               key={t.id}
+              role="button"
+              tabIndex={0}
               onClick={() => toggleTask(t.id)}
+              onKeyDown={(e) => {
+                if (e.target === e.currentTarget && (e.key === 'Enter' || e.key === ' ')) {
+                  e.preventDefault();
+                  toggleTask(t.id);
+                }
+              }}
               className={`p-4 rounded-xl border transition-all cursor-pointer flex items-center justify-between ${
                 t.status === 'Completed'
                   ? 'bg-emerald-50/40 border-emerald-200/60 opacity-80'

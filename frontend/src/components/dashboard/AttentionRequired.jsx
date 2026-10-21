@@ -109,10 +109,11 @@ export default function AttentionRequired({
         {exceptions.map((exc) => {
           const Icon = exc.icon;
           return (
-            <div
+            <button
+              type="button"
               key={exc.id}
               onClick={() => onCardClick?.(exc.id)}
-              className={`p-4 rounded-xl border ${exc.borderColor} ${exc.bgGlow} transition-all duration-150 cursor-pointer bg-white flex items-start gap-3 shadow-sm group`}
+              className={`w-full text-left p-4 rounded-xl border ${exc.borderColor} ${exc.bgGlow} transition-all duration-150 cursor-pointer bg-white flex items-start gap-3 shadow-sm group`}
             >
               <div className={`mt-0.5 shrink-0 ${exc.iconColor}`}>
                 <Icon className="w-4 h-4 stroke-[2.2]" />
@@ -125,7 +126,7 @@ export default function AttentionRequired({
                   {exc.description}
                 </p>
               </div>
-            </div>
+            </button>
           );
         })}
       </div>

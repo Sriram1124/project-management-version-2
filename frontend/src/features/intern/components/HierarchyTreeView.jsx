@@ -68,7 +68,15 @@ export default function HierarchyTreeView({
     return (
       <div key={item.id} className="space-y-1">
         <div
+          role="button"
+          tabIndex={0}
           onClick={() => onTaskClick?.(item)}
+          onKeyDown={(e) => {
+            if (e.target === e.currentTarget && (e.key === 'Enter' || e.key === ' ')) {
+              e.preventDefault();
+              onTaskClick?.(item);
+            }
+          }}
           className={`flex items-center justify-between p-3 rounded-xl border transition-all cursor-pointer hover:bg-slate-50 select-none ${
             depth === 0
               ? 'bg-purple-50/30 border-purple-200 shadow-2xs font-semibold'

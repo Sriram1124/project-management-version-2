@@ -743,7 +743,15 @@ export default function MyTasksTab({
                 return (
                   <div
                     key={item.id}
+                    role="button"
+                    tabIndex={0}
                     onClick={() => onOpenTaskModal?.(item)}
+                    onKeyDown={(e) => {
+                      if (e.target === e.currentTarget && (e.key === 'Enter' || e.key === ' ')) {
+                        e.preventDefault();
+                        onOpenTaskModal?.(item);
+                      }
+                    }}
                     className={`p-4 sm:p-5 flex items-center justify-between transition-colors cursor-pointer hover:bg-slate-50/80 select-none ${
                       isOverdue && !isCompleted ? 'bg-rose-50/20' : ''
                     }`}

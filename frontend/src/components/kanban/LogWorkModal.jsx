@@ -31,10 +31,21 @@ export default function LogWorkModal({
 
   return (
     <div
+      role="button"
+      tabIndex={0}
       className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/50 backdrop-blur-xs animate-in fade-in duration-150"
       onClick={(e) => {
         if (e.target === e.currentTarget) {
           onClose();
+        }
+      }}
+      onKeyDown={(e) => {
+        if (e.key === 'Enter' || e.key === ' ') {
+          (e) => {
+        if (e.target === e.currentTarget) {
+          onClose();
+        }
+      }
         }
       }}
     >
@@ -64,9 +75,9 @@ export default function LogWorkModal({
         <form onSubmit={handleSubmit} className="p-6 space-y-4">
           {/* Time Spent (Hours & Minutes) */}
           <div>
-            <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1.5">
+            <span className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1.5">
               Time Spent *
-            </label>
+            </span>
             <div className="grid grid-cols-2 gap-3">
               <div className="flex items-center gap-2">
                 <input
@@ -97,10 +108,11 @@ export default function LogWorkModal({
 
           {/* Date */}
           <div>
-            <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1.5">
+            <label htmlFor="log-work-date" className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1.5">
               Date
             </label>
             <input
+              id="log-work-date"
               type="date"
               value={date}
               onChange={(e) => setDate(e.target.value)}
@@ -110,10 +122,11 @@ export default function LogWorkModal({
 
           {/* Linked Task */}
           <div>
-            <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1.5">
+            <label htmlFor="log-work-task" className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1.5">
               Linked Task (Optional)
             </label>
             <select
+              id="log-work-task"
               value={selectedTaskId}
               onChange={(e) => setSelectedTaskId(e.target.value)}
               className="w-full px-3 py-2 text-xs rounded-xl border border-slate-200 bg-white text-slate-800 focus:outline-none focus:border-purple-500 shadow-2xs"
@@ -129,10 +142,11 @@ export default function LogWorkModal({
 
           {/* Work Description */}
           <div>
-            <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1.5">
+            <label htmlFor="log-work-desc" className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1.5">
               Work Description
             </label>
             <textarea
+              id="log-work-desc"
               rows={2}
               value={description}
               onChange={(e) => setDescription(e.target.value)}

@@ -218,10 +218,21 @@ export default function CompleteSprintModal({
 
   return (
     <div
+      role="button"
+      tabIndex={0}
       className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs animate-in fade-in duration-150"
       onClick={(e) => {
         if (e.target === e.currentTarget) {
           onClose();
+        }
+      }}
+      onKeyDown={(e) => {
+        if (e.key === 'Enter' || e.key === ' ') {
+          (e) => {
+        if (e.target === e.currentTarget) {
+          onClose();
+        }
+      }
         }
       }}
     >
@@ -527,10 +538,11 @@ export default function CompleteSprintModal({
                           {/* Cancellation reason input (required if Cancel is selected) */}
                           {decision.action === 'CANCEL' && (
                             <div className="pt-1.5 pl-2 border-l-2 border-rose-500 animate-in fade-in">
-                              <label className="block text-[10px] font-bold text-rose-700 uppercase tracking-wider mb-1">
+                              <label htmlFor={`cancel-reason-${t.id}`} className="block text-[10px] font-bold text-rose-700 uppercase tracking-wider mb-1">
                                 Cancellation Reason *
                               </label>
                               <input
+                                id={`cancel-reason-${t.id}`}
                                 type="text"
                                 value={decision.cancel_reason || ''}
                                 onChange={(e) => setSingleCancelReason(t.id, e.target.value)}

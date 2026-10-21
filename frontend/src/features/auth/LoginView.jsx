@@ -296,10 +296,11 @@ export default function LoginView() {
                 </div>
 
                 <div>
-                  <label className="mb-1.5 block text-xs font-semibold text-slate-600">Email / User ID</label>
+                  <label htmlFor="root-login-identifier" className="mb-1.5 block text-xs font-semibold text-slate-600">Email / User ID</label>
                   <div className="relative">
                     <User className="absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
                     <input
+                      id="root-login-identifier"
                       type="text"
                       required
                       value={identifier}
@@ -311,10 +312,11 @@ export default function LoginView() {
                 </div>
 
                 <div>
-                  <label className="mb-1.5 block text-xs font-semibold text-slate-600">Password</label>
+                  <label htmlFor="root-login-password" className="mb-1.5 block text-xs font-semibold text-slate-600">Password</label>
                   <div className="relative">
                     <Lock className="absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
                     <input
+                      id="root-login-password"
                       type={showPassword ? 'text' : 'password'}
                       required
                       value={password}
@@ -418,10 +420,11 @@ export default function LoginView() {
                 </div>
 
                 <div>
-                  <label className="mb-1.5 block text-xs font-semibold text-slate-600">Email / User ID</label>
+                  <label htmlFor="org-login-identifier" className="mb-1.5 block text-xs font-semibold text-slate-600">Email / User ID</label>
                   <div className="relative">
                     <User className="absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
                     <input
+                      id="org-login-identifier"
                       type="text"
                       required
                       value={identifier}
@@ -433,10 +436,11 @@ export default function LoginView() {
                 </div>
 
                 <div>
-                  <label className="mb-1.5 block text-xs font-semibold text-slate-600">Password</label>
+                  <label htmlFor="org-login-password" className="mb-1.5 block text-xs font-semibold text-slate-600">Password</label>
                   <div className="relative">
                     <Lock className="absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
                     <input
+                      id="org-login-password"
                       type={showPassword ? 'text' : 'password'}
                       required
                       value={password}
@@ -470,10 +474,11 @@ export default function LoginView() {
                 </div>
 
                 <div>
-                  <label className="mb-1.5 block text-xs font-semibold text-slate-600">Temporary Password</label>
+                  <label htmlFor="force-temp-password" className="mb-1.5 block text-xs font-semibold text-slate-600">Temporary Password</label>
                   <div className="relative">
                     <Lock className="absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
                     <input
+                      id="force-temp-password"
                       type="password"
                       required
                       value={currentPassword}
@@ -484,10 +489,11 @@ export default function LoginView() {
                 </div>
 
                 <div>
-                  <label className="mb-1.5 block text-xs font-semibold text-slate-600">New Password</label>
+                  <label htmlFor="force-new-password" className="mb-1.5 block text-xs font-semibold text-slate-600">New Password</label>
                   <div className="relative">
                     <Lock className="absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
                     <input
+                      id="force-new-password"
                       type={showNewPassword ? 'text' : 'password'}
                       required
                       value={newPassword}
@@ -502,10 +508,11 @@ export default function LoginView() {
                 </div>
 
                 <div>
-                  <label className="mb-1.5 block text-xs font-semibold text-slate-600">Confirm New Password</label>
+                  <label htmlFor="force-confirm-password" className="mb-1.5 block text-xs font-semibold text-slate-600">Confirm New Password</label>
                   <div className="relative">
                     <Lock className="absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
                     <input
+                      id="force-confirm-password"
                       type={showNewPassword ? 'text' : 'password'}
                       required
                       value={confirmPassword}

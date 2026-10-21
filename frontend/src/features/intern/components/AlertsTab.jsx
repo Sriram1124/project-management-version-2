@@ -234,7 +234,15 @@ export default function AlertsTab({ notifications = [], onToast }) {
             return (
               <div
                 key={notif.id}
+                role="button"
+                tabIndex={0}
                 onClick={() => handleOpenAlert(notif)}
+                onKeyDown={(e) => {
+                  if (e.target === e.currentTarget && (e.key === 'Enter' || e.key === ' ')) {
+                    e.preventDefault();
+                    handleOpenAlert(notif);
+                  }
+                }}
                 className={`p-5 rounded-2xl border transition-all cursor-pointer hover:border-purple-300 hover:shadow-sm ${
                   !notif.is_read && !isArchived
                     ? 'bg-purple-50/40 border-purple-200 shadow-xs ring-1 ring-purple-100'
@@ -342,11 +350,22 @@ export default function AlertsTab({ notifications = [], onToast }) {
 
       {/* FULL-MESSAGE DIALOG */}
       {selectedAlert && (
-        <div 
+        <div
+          role="button"
+          tabIndex={0} 
           className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/50 backdrop-blur-xs transition-opacity animate-in fade-in duration-200"
           onClick={(e) => {
             if (e.target === e.currentTarget) {
               setSelectedAlert(null);
+            }
+          }}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter' || e.key === ' ') {
+              (e) => {
+            if (e.target === e.currentTarget) {
+              setSelectedAlert(null);
+            }
+          }
             }
           }}
         >

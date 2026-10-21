@@ -667,7 +667,15 @@ export default function ProjectsDirectoryView({ onSelectProject, isIntern = fals
                       return (
                         <tr 
                           key={proj.id}
+                          role="button"
+                          tabIndex={0}
                           onClick={() => onSelectProject?.(proj.id, proj.name)}
+                          onKeyDown={(e) => {
+                            if (e.target === e.currentTarget && (e.key === 'Enter' || e.key === ' ')) {
+                              e.preventDefault();
+                              onSelectProject?.(proj.id, proj.name);
+                            }
+                          }}
                           className="hover:bg-purple-50/40 transition-colors cursor-pointer group"
                         >
                           {/* Project Details */}
@@ -988,11 +996,22 @@ export default function ProjectsDirectoryView({ onSelectProject, isIntern = fals
 
       {/* CREATE PROJECT MODAL */}
       {isCreateOpen && (
-        <div 
+        <div
+          role="button"
+          tabIndex={0} 
           className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/50 backdrop-blur-xs animate-in fade-in duration-100"
           onClick={(e) => {
             if (e.target === e.currentTarget) {
               setIsCreateOpen(false);
+            }
+          }}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter' || e.key === ' ') {
+              (e) => {
+            if (e.target === e.currentTarget) {
+              setIsCreateOpen(false);
+            }
+          }
             }
           }}
         >
@@ -1021,10 +1040,11 @@ export default function ProjectsDirectoryView({ onSelectProject, isIntern = fals
 
             <form onSubmit={handleCreateSubmit} className="space-y-4">
               <div>
-                <label className="block text-xs font-semibold text-slate-700 mb-1">
+                <label htmlFor="create-proj-name" className="block text-xs font-semibold text-slate-700 mb-1">
                   Project Name <span className="text-rose-500">*</span>
                 </label>
                 <input
+                  id="create-proj-name"
                   type="text"
                   required
                   placeholder="e.g., Student Management System"
@@ -1036,17 +1056,18 @@ export default function ProjectsDirectoryView({ onSelectProject, isIntern = fals
 
               {/* Project Methodology Selector */}
               <div>
-                <label className="block text-xs font-semibold text-slate-700 mb-1.5 flex items-center justify-between">
+                <span className="block text-xs font-semibold text-slate-700 mb-1.5 flex items-center justify-between">
                   <span>Project Methodology <span className="text-rose-500">*</span></span>
                   {!createForm.methodology && (
                     <span className="text-[10px] text-amber-600 font-medium">Please select Scrum or Kanban</span>
                   )}
-                </label>
+                </span>
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
                   {/* Scrum Option Card */}
-                  <div
+                  <button
+                    type="button"
                     onClick={() => setCreateForm({ ...createForm, methodology: 'SCRUM' })}
-                    className={`p-3 rounded-xl border text-left cursor-pointer transition-all ${
+                    className={`w-full p-3 rounded-xl border text-left cursor-pointer transition-all ${
                       createForm.methodology === 'SCRUM'
                         ? 'border-purple-600 bg-purple-50/50 shadow-xs ring-1 ring-purple-600'
                         : 'border-slate-200 bg-white hover:border-slate-300 hover:bg-slate-50/50'
@@ -1075,12 +1096,13 @@ export default function ProjectsDirectoryView({ onSelectProject, isIntern = fals
                       <li>Product &amp; sprint backlog</li>
                       <li>Sprint progress tracking</li>
                     </ul>
-                  </div>
+                  </button>
 
                   {/* Kanban Option Card */}
-                  <div
+                  <button
+                    type="button"
                     onClick={() => setCreateForm({ ...createForm, methodology: 'KANBAN' })}
-                    className={`p-3 rounded-xl border text-left cursor-pointer transition-all ${
+                    className={`w-full p-3 rounded-xl border text-left cursor-pointer transition-all ${
                       createForm.methodology === 'KANBAN'
                         ? 'border-purple-600 bg-purple-50/50 shadow-xs ring-1 ring-purple-600'
                         : 'border-slate-200 bg-white hover:border-slate-300 hover:bg-slate-50/50'
@@ -1109,15 +1131,16 @@ export default function ProjectsDirectoryView({ onSelectProject, isIntern = fals
                       <li>Work-in-progress visibility</li>
                       <li>No mandatory sprint planning</li>
                     </ul>
-                  </div>
+                  </button>
                 </div>
               </div>
 
               <div>
-                <label className="block text-xs font-semibold text-slate-700 mb-1">
+                <label htmlFor="create-proj-desc" className="block text-xs font-semibold text-slate-700 mb-1">
                   Description <span className="text-rose-500">*</span>
                 </label>
                 <textarea
+                  id="create-proj-desc"
                   rows={3}
                   required
                   placeholder="Provide project objectives, scope, or details..."
@@ -1130,9 +1153,9 @@ export default function ProjectsDirectoryView({ onSelectProject, isIntern = fals
               {/* Project Owners Multi-Select Section */}
               <div className="space-y-2">
                 <div className="flex items-center justify-between">
-                  <label className="block text-xs font-semibold text-slate-700">
+                  <span className="block text-xs font-semibold text-slate-700">
                     Project Owners <span className="text-rose-500">*</span>
-                  </label>
+                  </span>
                   {createOwnerIds.filter(Boolean).length > 1 && (
                     <span className="text-[11px] font-semibold text-purple-600">
                       {createOwnerIds.filter(Boolean).length} owners selected
@@ -1197,9 +1220,9 @@ export default function ProjectsDirectoryView({ onSelectProject, isIntern = fals
               {/* Project Members Multi-Select Picker */}
               <div>
                 <div className="flex items-center justify-between mb-1.5">
-                  <label className="block text-xs font-semibold text-slate-700">
+                  <span className="block text-xs font-semibold text-slate-700">
                     Project Members
-                  </label>
+                  </span>
                   <span className="text-[11px] font-semibold text-purple-600">
                     {createSelectedMembers.length} selected
                   </span>
@@ -1244,10 +1267,11 @@ export default function ProjectsDirectoryView({ onSelectProject, isIntern = fals
                     filteredCreateInterns.map((u) => {
                       const isSelected = createSelectedMembers.includes(u.id);
                       return (
-                        <div
+                        <button
+                          type="button"
                           key={u.id}
                           onClick={() => toggleCreateMember(u.id)}
-                          className={`flex items-center justify-between p-2 rounded-lg cursor-pointer transition-colors ${
+                          className={`w-full text-left flex items-center justify-between p-2 rounded-lg cursor-pointer transition-colors ${
                             isSelected ? 'bg-purple-100/70 text-purple-900' : 'hover:bg-white text-slate-700'
                           }`}
                         >
@@ -1278,7 +1302,7 @@ export default function ProjectsDirectoryView({ onSelectProject, isIntern = fals
                           }`}>
                             {isSelected && <Check className="w-3 h-3 stroke-[3]" />}
                           </div>
-                        </div>
+                        </button>
                       );
                     })
                   )}
@@ -1287,10 +1311,11 @@ export default function ProjectsDirectoryView({ onSelectProject, isIntern = fals
 
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="block text-xs font-semibold text-slate-700 mb-1">
+                  <label htmlFor="create-proj-start-date" className="block text-xs font-semibold text-slate-700 mb-1">
                     Start Date
                   </label>
                   <input
+                    id="create-proj-start-date"
                     type="date"
                     value={createForm.start_date}
                     onChange={(e) => setCreateForm({ ...createForm, start_date: e.target.value })}
@@ -1299,10 +1324,11 @@ export default function ProjectsDirectoryView({ onSelectProject, isIntern = fals
                 </div>
 
                 <div>
-                  <label className="block text-xs font-semibold text-slate-700 mb-1">
+                  <label htmlFor="create-proj-end-date" className="block text-xs font-semibold text-slate-700 mb-1">
                     End Date
                   </label>
                   <input
+                    id="create-proj-end-date"
                     type="date"
                     value={createForm.end_date}
                     onChange={(e) => setCreateForm({ ...createForm, end_date: e.target.value })}
@@ -1312,10 +1338,11 @@ export default function ProjectsDirectoryView({ onSelectProject, isIntern = fals
               </div>
 
               <div>
-                <label className="block text-xs font-semibold text-slate-700 mb-1">
+                <label htmlFor="create-proj-status" className="block text-xs font-semibold text-slate-700 mb-1">
                   Initial Status
                 </label>
                 <select
+                  id="create-proj-status"
                   value={createForm.status}
                   onChange={(e) => setCreateForm({ ...createForm, status: e.target.value })}
                   className="w-full px-3 py-2 border border-slate-300 rounded-xl text-xs text-slate-800 focus:outline-hidden focus:border-purple-600 focus:ring-1 focus:ring-purple-600"
@@ -1350,11 +1377,22 @@ export default function ProjectsDirectoryView({ onSelectProject, isIntern = fals
 
       {/* EDIT PROJECT MODAL */}
       {isEditOpen && (
-        <div 
+        <div
+          role="button"
+          tabIndex={0} 
           className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/50 backdrop-blur-xs animate-in fade-in duration-100"
           onClick={(e) => {
             if (e.target === e.currentTarget) {
               setIsEditOpen(false);
+            }
+          }}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter' || e.key === ' ') {
+              (e) => {
+            if (e.target === e.currentTarget) {
+              setIsEditOpen(false);
+            }
+          }
             }
           }}
         >
@@ -1383,10 +1421,11 @@ export default function ProjectsDirectoryView({ onSelectProject, isIntern = fals
 
             <form onSubmit={handleEditSubmit} className="space-y-4">
               <div>
-                <label className="block text-xs font-semibold text-slate-700 mb-1">
+                <label htmlFor="edit-proj-name" className="block text-xs font-semibold text-slate-700 mb-1">
                   Project Name <span className="text-rose-500">*</span>
                 </label>
                 <input
+                  id="edit-proj-name"
                   type="text"
                   required
                   value={editForm.name}
@@ -1397,9 +1436,9 @@ export default function ProjectsDirectoryView({ onSelectProject, isIntern = fals
 
               {/* Project Methodology (Immutable - Read-Only) */}
               <div>
-                <label className="block text-xs font-semibold text-slate-700 mb-1">
+                <span className="block text-xs font-semibold text-slate-700 mb-1">
                   Project Methodology
-                </label>
+                </span>
                 <div className="flex items-center justify-between p-2.5 rounded-xl border border-slate-200 bg-slate-50/80">
                   <div className="flex items-center gap-2">
                     <ProjectMethodologyBadge methodology={editForm.methodology} />
@@ -1412,10 +1451,11 @@ export default function ProjectsDirectoryView({ onSelectProject, isIntern = fals
               </div>
 
               <div>
-                <label className="block text-xs font-semibold text-slate-700 mb-1">
+                <label htmlFor="edit-proj-desc" className="block text-xs font-semibold text-slate-700 mb-1">
                   Description
                 </label>
                 <textarea
+                  id="edit-proj-desc"
                   rows={3}
                   value={editForm.description}
                   onChange={(e) => setEditForm({ ...editForm, description: e.target.value })}
@@ -1426,9 +1466,9 @@ export default function ProjectsDirectoryView({ onSelectProject, isIntern = fals
               {/* Project Owners Multi-Select Section */}
               <div className="space-y-2">
                 <div className="flex items-center justify-between">
-                  <label className="block text-xs font-semibold text-slate-700">
+                  <span className="block text-xs font-semibold text-slate-700">
                     Project Owners <span className="text-rose-500">*</span>
-                  </label>
+                  </span>
                   {editOwnerIds.filter(Boolean).length > 1 && (
                     <span className="text-[11px] font-semibold text-purple-600">
                       {editOwnerIds.filter(Boolean).length} owners selected
@@ -1493,9 +1533,9 @@ export default function ProjectsDirectoryView({ onSelectProject, isIntern = fals
               {/* Project Members Multi-Select Picker */}
               <div>
                 <div className="flex items-center justify-between mb-1.5">
-                  <label className="block text-xs font-semibold text-slate-700">
+                  <span className="block text-xs font-semibold text-slate-700">
                     Project Members
-                  </label>
+                  </span>
                   <div className="flex items-center gap-1.5">
                     {loadingEditMembers && <Loader2 className="w-3 h-3 animate-spin text-purple-600" />}
                     <span className="text-[11px] font-semibold text-purple-600">
@@ -1576,14 +1616,15 @@ export default function ProjectsDirectoryView({ onSelectProject, isIntern = fals
                           {COHORT_OPTIONS.map((cohort) => {
                             const isSelected = editSelectedCohorts.includes(cohort);
                             return (
-                              <div
+                              <button
+                                type="button"
                                 key={cohort}
                                 onClick={() => {
                                   setEditSelectedCohorts((prev) =>
                                     prev.includes(cohort) ? prev.filter((c) => c !== cohort) : [...prev, cohort]
                                   );
                                 }}
-                                className={`flex items-center justify-between px-2 py-1.5 rounded-lg text-xs cursor-pointer transition-colors ${
+                                className={`w-full text-left flex items-center justify-between px-2 py-1.5 rounded-lg text-xs cursor-pointer transition-colors ${
                                   isSelected ? 'bg-purple-50 text-purple-900 font-semibold' : 'hover:bg-slate-50 text-slate-700'
                                 }`}
                               >
@@ -1596,7 +1637,7 @@ export default function ProjectsDirectoryView({ onSelectProject, isIntern = fals
                                 >
                                   {isSelected && <Check className="w-2.5 h-2.5 stroke-[3]" />}
                                 </div>
-                              </div>
+                              </button>
                             );
                           })}
                         </div>
@@ -1624,10 +1665,11 @@ export default function ProjectsDirectoryView({ onSelectProject, isIntern = fals
                     filteredEditInterns.map((u) => {
                       const isSelected = editSelectedMembers.includes(u.id);
                       return (
-                        <div
+                        <button
+                          type="button"
                           key={u.id}
                           onClick={() => toggleEditMember(u.id)}
-                          className={`flex items-center justify-between p-2 rounded-lg cursor-pointer transition-colors ${
+                          className={`w-full text-left flex items-center justify-between p-2 rounded-lg cursor-pointer transition-colors ${
                             isSelected ? 'bg-purple-100/70 text-purple-900' : 'hover:bg-white text-slate-700'
                           }`}
                         >
@@ -1658,7 +1700,7 @@ export default function ProjectsDirectoryView({ onSelectProject, isIntern = fals
                           }`}>
                             {isSelected && <Check className="w-3 h-3 stroke-[3]" />}
                           </div>
-                        </div>
+                        </button>
                       );
                     })
                   )}
@@ -1667,10 +1709,11 @@ export default function ProjectsDirectoryView({ onSelectProject, isIntern = fals
 
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="block text-xs font-semibold text-slate-700 mb-1">
+                  <label htmlFor="edit-proj-start-date" className="block text-xs font-semibold text-slate-700 mb-1">
                     Start Date
                   </label>
                   <input
+                    id="edit-proj-start-date"
                     type="date"
                     value={editForm.start_date}
                     onChange={(e) => setEditForm({ ...editForm, start_date: e.target.value })}
@@ -1679,10 +1722,11 @@ export default function ProjectsDirectoryView({ onSelectProject, isIntern = fals
                 </div>
 
                 <div>
-                  <label className="block text-xs font-semibold text-slate-700 mb-1">
+                  <label htmlFor="edit-proj-end-date" className="block text-xs font-semibold text-slate-700 mb-1">
                     End Date
                   </label>
                   <input
+                    id="edit-proj-end-date"
                     type="date"
                     value={editForm.end_date}
                     onChange={(e) => setEditForm({ ...editForm, end_date: e.target.value })}
@@ -1692,10 +1736,11 @@ export default function ProjectsDirectoryView({ onSelectProject, isIntern = fals
               </div>
 
               <div>
-                <label className="block text-xs font-semibold text-slate-700 mb-1">
+                <label htmlFor="edit-proj-status" className="block text-xs font-semibold text-slate-700 mb-1">
                   Status
                 </label>
                 <select
+                  id="edit-proj-status"
                   value={editForm.status}
                   onChange={(e) => setEditForm({ ...editForm, status: e.target.value })}
                   className="w-full px-3 py-2 border border-slate-300 rounded-xl text-xs text-slate-800 focus:outline-hidden focus:border-purple-600 focus:ring-1 focus:ring-purple-600"
@@ -1747,11 +1792,22 @@ export default function ProjectsDirectoryView({ onSelectProject, isIntern = fals
 
       {/* ARCHIVE CONFIRMATION MODAL */}
       {archiveTarget && (
-        <div 
+        <div
+          role="button"
+          tabIndex={0} 
           className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/50 backdrop-blur-xs animate-in fade-in duration-100"
           onClick={(e) => {
             if (e.target === e.currentTarget) {
               setArchiveTarget(null);
+            }
+          }}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter' || e.key === ' ') {
+              (e) => {
+            if (e.target === e.currentTarget) {
+              setArchiveTarget(null);
+            }
+          }
             }
           }}
         >
@@ -1787,11 +1843,22 @@ export default function ProjectsDirectoryView({ onSelectProject, isIntern = fals
 
       {/* DELETE CONFIRMATION MODAL */}
       {deleteTarget && (
-        <div 
+        <div
+          role="button"
+          tabIndex={0} 
           className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/50 backdrop-blur-xs animate-in fade-in duration-100"
           onClick={(e) => {
             if (e.target === e.currentTarget) {
               setDeleteTarget(null);
+            }
+          }}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter' || e.key === ' ') {
+              (e) => {
+            if (e.target === e.currentTarget) {
+              setDeleteTarget(null);
+            }
+          }
             }
           }}
         >

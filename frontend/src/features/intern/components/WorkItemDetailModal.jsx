@@ -496,10 +496,21 @@ export default function WorkItemDetailModal({
 
   return (
     <div
+      role="button"
+      tabIndex={0}
       className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs animate-in fade-in duration-150"
       onClick={(e) => {
         if (e.target === e.currentTarget) {
           onClose();
+        }
+      }}
+      onKeyDown={(e) => {
+        if (e.key === 'Enter' || e.key === ' ') {
+          (e) => {
+        if (e.target === e.currentTarget) {
+          onClose();
+        }
+      }
         }
       }}
     >
@@ -626,9 +637,9 @@ export default function WorkItemDetailModal({
               {/* Status & Priority Controls Grid */}
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 p-4 bg-purple-50/40 rounded-xl border border-purple-100">
                 <div>
-                  <label className="block text-[11px] font-bold text-slate-700 mb-1">
+                  <span className="block text-[11px] font-bold text-slate-700 mb-1">
                     Status
-                  </label>
+                  </span>
                   {canUpdateStatus ? (
                     <select
                       value={status}
@@ -649,9 +660,9 @@ export default function WorkItemDetailModal({
                 </div>
 
                 <div>
-                  <label className="block text-[11px] font-bold text-slate-700 mb-1">
+                  <span className="block text-[11px] font-bold text-slate-700 mb-1">
                     Priority
-                  </label>
+                  </span>
                   {canEditFields ? (
                     <select
                       value={priority}
@@ -940,8 +951,9 @@ export default function WorkItemDetailModal({
 
                   <div className="grid grid-cols-3 gap-2">
                     <div>
-                      <label className="block text-[10px] font-semibold text-slate-600 mb-0.5">Date</label>
+                      <label htmlFor="work-item-log-date" className="block text-[10px] font-semibold text-slate-600 mb-0.5">Date</label>
                       <input
+                        id="work-item-log-date"
                         type="date"
                         value={logDate}
                         onChange={(e) => setLogDate(e.target.value)}
@@ -950,8 +962,9 @@ export default function WorkItemDetailModal({
                       />
                     </div>
                     <div>
-                      <label className="block text-[10px] font-semibold text-slate-600 mb-0.5">Hours</label>
+                      <label htmlFor="work-item-log-hours" className="block text-[10px] font-semibold text-slate-600 mb-0.5">Hours</label>
                       <input
+                        id="work-item-log-hours"
                         type="number"
                         min="0"
                         max="24"
@@ -962,8 +975,9 @@ export default function WorkItemDetailModal({
                       />
                     </div>
                     <div>
-                      <label className="block text-[10px] font-semibold text-slate-600 mb-0.5">Minutes</label>
+                      <label htmlFor="work-item-log-minutes" className="block text-[10px] font-semibold text-slate-600 mb-0.5">Minutes</label>
                       <input
+                        id="work-item-log-minutes"
                         type="number"
                         min="0"
                         max="59"
@@ -977,8 +991,9 @@ export default function WorkItemDetailModal({
                   </div>
 
                   <div>
-                    <label className="block text-[10px] font-semibold text-slate-600 mb-0.5">Notes (Optional)</label>
+                    <label htmlFor="work-item-log-notes" className="block text-[10px] font-semibold text-slate-600 mb-0.5">Notes (Optional)</label>
                     <textarea
+                      id="work-item-log-notes"
                       rows={2}
                       value={logNotes}
                       onChange={(e) => setLogNotes(e.target.value)}
@@ -1298,7 +1313,7 @@ export default function WorkItemDetailModal({
 
                   <div>
                     <div className="flex items-center justify-between mb-1">
-                      <label className="text-[11px] font-semibold text-slate-700">
+                      <label htmlFor="correction-excess-minutes" className="text-[11px] font-semibold text-slate-700">
                         Excess Minutes to Remove *
                       </label>
                       <span className="text-[10px] text-slate-400">
@@ -1307,6 +1322,7 @@ export default function WorkItemDetailModal({
                     </div>
                     <div className="flex items-center gap-3">
                       <input
+                        id="correction-excess-minutes"
                         type="number"
                         min="1"
                         max={(correctionTargetEntry.duration_minutes || 1) - 1}
@@ -1338,10 +1354,11 @@ export default function WorkItemDetailModal({
                   </div>
 
                   <div>
-                    <label className="block text-[11px] font-semibold text-slate-700 mb-1">
+                    <label htmlFor="correction-reason" className="block text-[11px] font-semibold text-slate-700 mb-1">
                       Reason for Correction *
                     </label>
                     <textarea
+                      id="correction-reason"
                       rows={3}
                       value={correctionReason}
                       onChange={(e) => setCorrectionReason(e.target.value)}

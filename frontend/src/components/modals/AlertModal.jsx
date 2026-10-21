@@ -67,9 +67,9 @@ export default function AlertModal({ isOpen, onClose, onSent }) {
           <form onSubmit={handleSend} className="p-6 space-y-4">
             {/* Target Audience Selector */}
             <div>
-              <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-2">
+              <span className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-2">
                 Target Recipients
-              </label>
+              </span>
               <div className="grid grid-cols-2 gap-2">
                 <button
                   type="button"
@@ -111,9 +111,9 @@ export default function AlertModal({ isOpen, onClose, onSent }) {
 
             {/* Quick Template Presets */}
             <div>
-              <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1.5">
+              <span className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1.5">
                 Quick Template
-              </label>
+              </span>
               <div className="space-y-1">
                 {presets.map((p, idx) => (
                   <button
@@ -130,10 +130,11 @@ export default function AlertModal({ isOpen, onClose, onSent }) {
 
             {/* Message Area */}
             <div>
-              <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1.5">
+              <label htmlFor="alert-broadcast-message" className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1.5">
                 Alert Message
               </label>
               <textarea
+                id="alert-broadcast-message"
                 rows={3}
                 required
                 value={message}

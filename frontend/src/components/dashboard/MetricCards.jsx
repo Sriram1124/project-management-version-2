@@ -128,9 +128,10 @@ export default function MetricCards({
       {/* Top Row: Total Interns & Active Projects */}
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
         {/* 1. Total Interns */}
-        <div 
+        <button
+          type="button" 
           onClick={() => onCardClick?.('interns')}
-          className="bg-white rounded-2xl p-5 border border-slate-200/80 shadow-card hover:shadow-card-hover transition-all duration-200 cursor-pointer flex flex-col justify-between"
+          className="text-left bg-white rounded-2xl p-5 border border-slate-200/80 shadow-card hover:shadow-card-hover transition-all duration-200 cursor-pointer flex flex-col justify-between"
         >
           <div className="flex items-center justify-between">
             <span className="text-xs font-semibold text-slate-500 uppercase tracking-wider">
@@ -149,12 +150,13 @@ export default function MetricCards({
               <span>{metrics?.totalInterns?.change ?? '0 Active'}</span>
             </div>
           </div>
-        </div>
+        </button>
 
         {/* 2. Active Projects */}
-        <div 
+        <button
+          type="button" 
           onClick={() => onCardClick?.('projects')}
-          className="bg-white rounded-2xl p-5 border border-slate-200/80 shadow-card hover:shadow-card-hover transition-all duration-200 cursor-pointer flex flex-col justify-between"
+          className="text-left bg-white rounded-2xl p-5 border border-slate-200/80 shadow-card hover:shadow-card-hover transition-all duration-200 cursor-pointer flex flex-col justify-between"
         >
           <div className="flex items-center justify-between">
             <span className="text-xs font-semibold text-slate-500 uppercase tracking-wider">
@@ -172,13 +174,14 @@ export default function MetricCards({
               {metrics?.activeProjects?.subtitle ?? '0 In Progress'}
             </div>
           </div>
-        </div>
+        </button>
       </div>
 
       {/* Full-Width Portfolio Health Card: Redesigned Donut Chart */}
-      <div 
+      <button
+        type="button" 
         onClick={() => onCardClick?.('projects')}
-        className="w-full bg-white rounded-2xl p-5 sm:p-6 border border-slate-200/80 shadow-card hover:shadow-card-hover transition-all duration-200 cursor-pointer"
+        className="w-full text-left bg-white rounded-2xl p-5 sm:p-6 border border-slate-200/80 shadow-card hover:shadow-card-hover transition-all duration-200 cursor-pointer"
       >
         {/* Header */}
         <div className="flex items-center justify-between pb-3 border-b border-slate-100">
@@ -309,7 +312,7 @@ export default function MetricCards({
             </div>
           </div>
         )}
-      </div>
+      </button>
     </div>
   );
 }

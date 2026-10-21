@@ -33,9 +33,10 @@ export default function LoginView({ onLogin }) {
             <p className="mt-1 text-sm text-slate-500">Use your Dailoqa user credentials to continue.</p>
 
             <div className="mt-5 grid gap-3 sm:grid-cols-2">
-              <div
+              <button
+                type="button"
                 onClick={() => handleSelectRole('manager')}
-                className={`cursor-pointer rounded-2xl border p-4 text-center transition ${
+                className={`w-full cursor-pointer rounded-2xl border p-4 text-center transition ${
                   selectedRole === 'manager'
                     ? 'border-violet-300 bg-white shadow-md'
                     : 'border-violet-100 bg-white/70 hover:border-violet-200'
@@ -44,11 +45,12 @@ export default function LoginView({ onLogin }) {
                 <div className="mx-auto mb-3 flex h-11 w-11 items-center justify-center rounded-full bg-violet-100 text-sm font-bold text-violet-700">SM</div>
                 <div className="text-sm font-bold text-slate-900">Sarah Mitchell</div>
                 <div className="mt-1 text-[11px] font-medium text-violet-700">Program Manager</div>
-              </div>
+              </button>
 
-              <div
+              <button
+                type="button"
                 onClick={() => handleSelectRole('intern')}
-                className={`cursor-pointer rounded-2xl border p-4 text-center transition ${
+                className={`w-full cursor-pointer rounded-2xl border p-4 text-center transition ${
                   selectedRole === 'intern'
                     ? 'border-violet-300 bg-white shadow-md'
                     : 'border-violet-100 bg-white/70 hover:border-violet-200'
@@ -57,23 +59,23 @@ export default function LoginView({ onLogin }) {
                 <div className="mx-auto mb-3 flex h-11 w-11 items-center justify-center rounded-full bg-violet-100 text-sm font-bold text-violet-700">AP</div>
                 <div className="text-sm font-bold text-slate-900">Aarav Patel</div>
                 <div className="mt-1 text-[11px] font-medium text-violet-700">Engineering Intern</div>
-              </div>
+              </button>
             </div>
 
             <form onSubmit={handleSubmit} className="mt-6 space-y-4 text-sm">
               <div>
-                <label className="mb-1.5 block text-xs font-semibold uppercase tracking-[0.1em] text-slate-500">Email</label>
+                <label htmlFor="intern-demo-email" className="mb-1.5 block text-xs font-semibold uppercase tracking-[0.1em] text-slate-500">Email</label>
                 <div className="relative">
                   <Mail className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
-                  <input type="email" value={email} readOnly className="w-full rounded-2xl border border-violet-200 bg-white py-3 pl-10 pr-3 text-slate-700" />
+                  <input id="intern-demo-email" type="email" value={email} readOnly className="w-full rounded-2xl border border-violet-200 bg-white py-3 pl-10 pr-3 text-slate-700" />
                 </div>
               </div>
 
               <div>
-                <label className="mb-1.5 block text-xs font-semibold uppercase tracking-[0.1em] text-slate-500">Password</label>
+                <label htmlFor="intern-demo-password" className="mb-1.5 block text-xs font-semibold uppercase tracking-[0.1em] text-slate-500">Password</label>
                 <div className="relative">
                   <Lock className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
-                  <input type="password" value={password} readOnly className="w-full rounded-2xl border border-violet-200 bg-white py-3 pl-10 pr-3 text-slate-700" />
+                  <input id="intern-demo-password" type="password" value={password} readOnly className="w-full rounded-2xl border border-violet-200 bg-white py-3 pl-10 pr-3 text-slate-700" />
                 </div>
               </div>
 

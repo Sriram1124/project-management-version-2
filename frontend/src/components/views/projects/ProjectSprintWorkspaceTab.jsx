@@ -855,7 +855,15 @@ export default function ProjectSprintWorkspaceTab({
                   return (
                     <tr
                       key={s.id}
+                      role="button"
+                      tabIndex={0}
                       onClick={() => setSelectedSprintId(s.id)}
+                      onKeyDown={(e) => {
+                        if (e.target === e.currentTarget && (e.key === 'Enter' || e.key === ' ')) {
+                          e.preventDefault();
+                          setSelectedSprintId(s.id);
+                        }
+                      }}
                       className={`transition-colors cursor-pointer ${
                         isCurrent
                           ? 'bg-purple-50/60 font-medium'

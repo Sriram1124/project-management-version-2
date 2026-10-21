@@ -337,9 +337,10 @@ export default function BulkImportModal({ isOpen, onClose, onSuccess }) {
               </div>
 
               {/* Upload Dropzone */}
-              <div 
+              <button
+                type="button" 
                 onClick={() => fileInputRef.current?.click()}
-                className="border-2 border-dashed border-slate-200 hover:border-purple-400 rounded-xl py-6 px-4 text-center cursor-pointer transition-colors bg-slate-50/50 hover:bg-purple-50/20"
+                className="w-full border-2 border-dashed border-slate-200 hover:border-purple-400 rounded-xl py-6 px-4 text-center cursor-pointer transition-colors bg-slate-50/50 hover:bg-purple-50/20"
               >
                 <input
                   ref={fileInputRef}
@@ -360,7 +361,7 @@ export default function BulkImportModal({ isOpen, onClose, onSuccess }) {
                     <span className="text-[11px] text-slate-400 mt-0.5 block">Normalized matching: email addresses are matched case-insensitively</span>
                   </div>
                 )}
-              </div>
+              </button>
 
               {/* Field Reference Summary */}
               <div className="p-2.5 bg-slate-50/80 rounded-xl border border-slate-200/80 text-[11px] text-slate-600 space-y-1">
@@ -429,59 +430,64 @@ export default function BulkImportModal({ isOpen, onClose, onSuccess }) {
               {/* 5 Distinct Category Stat Tiles */}
               <div className="grid grid-cols-5 gap-1.5 sm:gap-2">
                 {/* To Create */}
-                <div 
+                <button
+                  type="button" 
                   onClick={() => setPreviewTab('CREATE')}
-                  className={`p-2 rounded-xl border text-center cursor-pointer transition-all ${
+                  className={`w-full p-2 rounded-xl border text-center cursor-pointer transition-all ${
                     previewTab === 'CREATE' ? 'ring-2 ring-emerald-500 bg-emerald-50/80 border-emerald-300' : 'bg-emerald-50/40 border-emerald-200/80 hover:bg-emerald-50/70'
                   }`}
                 >
                   <span className="text-[9px] font-bold uppercase tracking-wider text-emerald-700 block truncate">To Create</span>
                   <span className="text-sm sm:text-base font-black text-emerald-800">{toCreateCount}</span>
-                </div>
+                </button>
 
                 {/* To Update */}
-                <div 
+                <button
+                  type="button" 
                   onClick={() => setPreviewTab('UPDATE')}
-                  className={`p-2 rounded-xl border text-center cursor-pointer transition-all ${
+                  className={`w-full p-2 rounded-xl border text-center cursor-pointer transition-all ${
                     previewTab === 'UPDATE' ? 'ring-2 ring-amber-500 bg-amber-50/80 border-amber-300' : 'bg-amber-50/40 border-amber-200/80 hover:bg-amber-50/70'
                   }`}
                 >
                   <span className="text-[9px] font-bold uppercase tracking-wider text-amber-700 block truncate">To Update</span>
                   <span className="text-sm sm:text-base font-black text-amber-800">{toUpdateCount}</span>
-                </div>
+                </button>
 
                 {/* To Skip */}
-                <div 
+                <button
+                  type="button" 
                   onClick={() => setPreviewTab('SKIP')}
-                  className={`p-2 rounded-xl border text-center cursor-pointer transition-all ${
+                  className={`w-full p-2 rounded-xl border text-center cursor-pointer transition-all ${
                     previewTab === 'SKIP' ? 'ring-2 ring-slate-500 bg-slate-100 border-slate-300' : 'bg-slate-50 border-slate-200/80 hover:bg-slate-100/70'
                   }`}
                 >
                   <span className="text-[9px] font-bold uppercase tracking-wider text-slate-600 block truncate">To Skip</span>
                   <span className="text-sm sm:text-base font-black text-slate-800">{toSkipCount}</span>
-                </div>
+                </button>
 
                 {/* Duplicates in CSV */}
-                <div 
+                <button
+                  type="button" 
                   onClick={() => setPreviewTab('DUPLICATES')}
-                  className={`p-2 rounded-xl border text-center cursor-pointer transition-all ${
+                  className={`w-full p-2 rounded-xl border text-center cursor-pointer transition-all ${
                     previewTab === 'DUPLICATES' ? 'ring-2 ring-purple-500 bg-purple-50/80 border-purple-300' : 'bg-purple-50/40 border-purple-200/80 hover:bg-purple-50/70'
                   }`}
                 >
                   <span className="text-[9px] font-bold uppercase tracking-wider text-purple-700 block truncate">In-CSV Dups</span>
                   <span className="text-sm sm:text-base font-black text-purple-800">{duplicateInCsvCount}</span>
-                </div>
+                </button>
 
                 {/* Invalid / Rejected */}
-                <div 
+                <button
+                  type="button" 
                   onClick={() => setPreviewTab('INVALID')}
-                  className={`p-2 rounded-xl border text-center cursor-pointer transition-all ${
+                  className={`w-full p-2 rounded-xl border text-center cursor-pointer transition-all ${
                     previewTab === 'INVALID' ? 'ring-2 ring-red-500 bg-red-50/80 border-red-300' : 'bg-red-50/40 border-red-200/80 hover:bg-red-50/70'
                   }`}
                 >
                   <span className="text-[9px] font-bold uppercase tracking-wider text-red-700 block truncate">Invalid</span>
                   <span className="text-sm sm:text-base font-black text-red-800">{invalidCount}</span>
-                </div>
+                </button>
               </div>
 
               {/* Explicit Update Confirmation Checkbox (Requirement 3) */}

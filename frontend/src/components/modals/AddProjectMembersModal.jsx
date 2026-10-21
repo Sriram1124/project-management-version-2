@@ -148,10 +148,21 @@ export default function AddProjectMembersModal({
 
   const modalContent = (
     <div
+      role="button"
+      tabIndex={0}
       className="fixed inset-0 z-70 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4 animate-in fade-in duration-200"
       onClick={(e) => {
         if (e.target === e.currentTarget) {
           onClose();
+        }
+      }}
+      onKeyDown={(e) => {
+        if (e.key === 'Enter' || e.key === ' ') {
+          (e) => {
+        if (e.target === e.currentTarget) {
+          onClose();
+        }
+      }
         }
       }}
     >
@@ -324,7 +335,15 @@ export default function AddProjectMembersModal({
                 return (
                   <div
                     key={u.id}
+                    role="button"
+                    tabIndex={0}
                     onClick={() => handleToggleUser(u.id)}
+                    onKeyDown={(e) => {
+                      if (e.target === e.currentTarget && (e.key === 'Enter' || e.key === ' ')) {
+                        e.preventDefault();
+                        handleToggleUser(u.id);
+                      }
+                    }}
                     className={`flex items-center justify-between p-3 rounded-xl border transition-all cursor-pointer select-none ${
                       isSelected
                         ? 'bg-purple-50/80 border-purple-300 ring-1 ring-purple-400/40 shadow-xs'

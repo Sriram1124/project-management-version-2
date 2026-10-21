@@ -587,10 +587,21 @@ export default function TaskDetailModal({
 
   return (
     <div
+      role="button"
+      tabIndex={0}
       className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs animate-in fade-in duration-150"
       onClick={(e) => {
         if (e.target === e.currentTarget) {
           onClose();
+        }
+      }}
+      onKeyDown={(e) => {
+        if (e.key === 'Enter' || e.key === ' ') {
+          (e) => {
+        if (e.target === e.currentTarget) {
+          onClose();
+        }
+      }
         }
       }}
     >
@@ -687,10 +698,11 @@ export default function TaskDetailModal({
           <div>
             {isEditing ? (
               <div>
-                <label className="block text-[11px] font-bold text-slate-700 uppercase tracking-wider mb-1">
+                <label htmlFor="task-detail-title" className="block text-[11px] font-bold text-slate-700 uppercase tracking-wider mb-1">
                   Title
                 </label>
                 <input
+                  id="task-detail-title"
                   type="text"
                   value={title}
                   onChange={(e) => setTitle(e.target.value)}
@@ -812,9 +824,9 @@ export default function TaskDetailModal({
           {/* Status, Priority, Sprint & Story Points Row */}
           <div className={`grid grid-cols-2 ${!isKanbanProject ? 'sm:grid-cols-4' : 'sm:grid-cols-3'} gap-3 p-3.5 bg-slate-50/80 rounded-xl border border-slate-200/70`}>
             <div>
-              <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1">
+              <span className="block text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1">
                 Status
-              </label>
+              </span>
               {canUpdateStatus ? (
                 <select
                   value={status}
@@ -835,9 +847,9 @@ export default function TaskDetailModal({
             </div>
 
             <div>
-              <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1">
+              <span className="block text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1">
                 Priority
-              </label>
+              </span>
               {canEditFields ? (
                 <select
                   value={priority}
@@ -859,9 +871,9 @@ export default function TaskDetailModal({
 
             {Boolean(liveTask.project_id) && liveTask.type !== 'EPIC' && !isKanbanProject && (
               <div>
-                <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1">
+                <span className="block text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1">
                   Sprint
-                </label>
+                </span>
                 {canEditFields ? (
                   <select
                     value={liveTask.sprint_id || 'backlog'}
@@ -885,9 +897,9 @@ export default function TaskDetailModal({
 
             {liveTask.type !== 'EPIC' && (
               <div>
-                <label className="block text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1">
+                <span className="block text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-1">
                   Story Points *
-                </label>
+                </span>
                 {canEditFields && isEditing ? (
                   <input
                     type="number"
@@ -931,9 +943,9 @@ export default function TaskDetailModal({
 
           {/* Description */}
           <div>
-            <label className="block text-[11px] font-bold text-slate-700 uppercase tracking-wider mb-1">
+            <span className="block text-[11px] font-bold text-slate-700 uppercase tracking-wider mb-1">
               Description
-            </label>
+            </span>
             {isEditing ? (
               <textarea
                 rows={4}
@@ -952,10 +964,10 @@ export default function TaskDetailModal({
           <div className="grid grid-cols-2 gap-3">
             <div>
               <div className="flex items-center justify-between mb-1">
-                <label className="text-[11px] font-bold text-slate-700 uppercase tracking-wider flex items-center gap-1">
+                <span className="text-[11px] font-bold text-slate-700 uppercase tracking-wider flex items-center gap-1">
                   <Calendar className="w-3.5 h-3.5 text-slate-400" />
                   <span>Start Date</span>
-                </label>
+                </span>
                 {canEditFields && startDate && (
                   <button
                     type="button"
@@ -983,10 +995,10 @@ export default function TaskDetailModal({
 
             <div>
               <div className="flex items-center justify-between mb-1">
-                <label className="text-[11px] font-bold text-slate-700 uppercase tracking-wider flex items-center gap-1">
+                <span className="text-[11px] font-bold text-slate-700 uppercase tracking-wider flex items-center gap-1">
                   <Calendar className="w-3.5 h-3.5 text-slate-400" />
                   <span>Due Date</span>
-                </label>
+                </span>
                 {canEditFields && dueDate && (
                   <button
                     type="button"
@@ -1045,9 +1057,10 @@ export default function TaskDetailModal({
                   <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block mb-1">
                     Parent Work Item (Click to open)
                   </span>
-                  <div
+                  <button
+                    type="button"
                     onClick={() => fetchTaskDetails(parent.id)}
-                    className="p-2.5 bg-purple-50/70 border border-purple-200/80 rounded-xl flex items-center justify-between cursor-pointer hover:bg-purple-100/70 transition-colors"
+                    className="w-full text-left p-2.5 bg-purple-50/70 border border-purple-200/80 rounded-xl flex items-center justify-between cursor-pointer hover:bg-purple-100/70 transition-colors"
                   >
                     <div className="flex items-center gap-2 min-w-0">
                       <span className="px-1.5 py-0.5 rounded text-[10px] font-bold uppercase bg-purple-200 text-purple-900">
@@ -1060,7 +1073,7 @@ export default function TaskDetailModal({
                     <span className="text-[10px] font-semibold text-purple-700 uppercase">
                       {parent.status}
                     </span>
-                  </div>
+                  </button>
                 </div>
               )}
 
@@ -1155,10 +1168,11 @@ export default function TaskDetailModal({
               ) : (
                 <div className="space-y-1.5">
                   {children.map((child) => (
-                    <div
+                    <button
+                      type="button"
                       key={child.id}
                       onClick={() => fetchTaskDetails(child.id)}
-                      className="p-2 bg-slate-50 hover:bg-slate-100 border border-slate-200 rounded-lg flex items-center justify-between cursor-pointer transition-colors"
+                      className="w-full text-left p-2 bg-slate-50 hover:bg-slate-100 border border-slate-200 rounded-lg flex items-center justify-between cursor-pointer transition-colors"
                       title="Click to view details"
                     >
                       <div className="flex items-center gap-2 min-w-0">
@@ -1189,7 +1203,7 @@ export default function TaskDetailModal({
                           {child.status}
                         </span>
                       </div>
-                    </div>
+                    </button>
                   ))}
                 </div>
               )}
@@ -1200,10 +1214,10 @@ export default function TaskDetailModal({
           {!hideAssignees && Boolean(liveTask.project_id) && (
             <div className="pt-2 border-t border-slate-100">
               <div className="flex items-center justify-between mb-2">
-                <label className="text-[11px] font-bold text-slate-700 uppercase tracking-wider flex items-center gap-1.5">
+                <span className="text-[11px] font-bold text-slate-700 uppercase tracking-wider flex items-center gap-1.5">
                   <User className="w-3.5 h-3.5 text-slate-500" />
                   <span>Assignees ({currentAssignees.length})</span>
-                </label>
+                </span>
               </div>
 
             <div className="space-y-2">

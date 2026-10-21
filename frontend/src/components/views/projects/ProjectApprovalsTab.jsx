@@ -745,10 +745,11 @@ export default function ProjectApprovalsTab({
             {/* Optional Decision Note */}
             <form onSubmit={handleConfirmDecision} className="mt-4 space-y-3">
               <div>
-                <label className="block text-xs font-semibold text-slate-700 mb-1">
+                <label htmlFor="approval-decision-note" className="block text-xs font-semibold text-slate-700 mb-1">
                   Decision Note / Feedback for Intern <span className="text-slate-400 font-normal">(Optional)</span>
                 </label>
                 <textarea
+                  id="approval-decision-note"
                   rows={3}
                   value={decisionNote}
                   onChange={(e) => setDecisionNote(e.target.value)}

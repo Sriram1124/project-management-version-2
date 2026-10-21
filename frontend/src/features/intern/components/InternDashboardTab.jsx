@@ -152,10 +152,11 @@ export default function InternDashboardTab({
             ) : (
               <div className="space-y-2.5">
                 {priorityItems.map((item) => (
-                  <div
+                  <button
+                    type="button"
                     key={item.id}
                     onClick={() => onOpenTaskModal?.(item)}
-                    className="p-3.5 rounded-xl border border-slate-200/80 bg-slate-50/50 hover:bg-purple-50/30 hover:border-purple-200 transition-all cursor-pointer flex items-center justify-between gap-3"
+                    className="w-full text-left p-3.5 rounded-xl border border-slate-200/80 bg-slate-50/50 hover:bg-purple-50/30 hover:border-purple-200 transition-all cursor-pointer flex items-center justify-between gap-3"
                   >
                     <div className="flex items-center gap-2.5 min-w-0">
                       <span className="w-2.5 h-2.5 rounded-full shrink-0 bg-purple-600" />
@@ -167,7 +168,7 @@ export default function InternDashboardTab({
                     <span className="text-[10px] font-bold font-mono px-2 py-0.5 rounded border uppercase shrink-0 bg-purple-50 text-purple-700 border-purple-200">
                       {item.priority}
                     </span>
-                  </div>
+                  </button>
                 ))}
               </div>
             )}
@@ -250,10 +251,11 @@ export default function InternDashboardTab({
               const memberCount = p.members?.length || 0;
               const ownerName = p.lead?.name || 'Project Owner';
               return (
-                <div
+                <button
+                  type="button"
                   key={p.id}
                   onClick={() => onSelectProject?.(p.id)}
-                  className="p-4 rounded-xl border border-slate-200 bg-slate-50/40 hover:bg-white hover:border-purple-300 hover:shadow-xs transition-all cursor-pointer space-y-3"
+                  className="w-full text-left p-4 rounded-xl border border-slate-200 bg-slate-50/40 hover:bg-white hover:border-purple-300 hover:shadow-xs transition-all cursor-pointer space-y-3"
                 >
                   <div className="flex items-start justify-between gap-2">
                     <h4 className="text-sm font-bold text-slate-900 leading-snug">
@@ -272,7 +274,7 @@ export default function InternDashboardTab({
                     <span>Owner: <strong className="text-slate-700 font-semibold">{ownerName}</strong></span>
                     <span>{memberCount} {memberCount === 1 ? 'member' : 'members'}</span>
                   </div>
-                </div>
+                </button>
               );
             })}
           </div>
@@ -294,10 +296,11 @@ export default function InternDashboardTab({
         ) : (
           <div className="space-y-2.5">
             {upcomingItems.map((item) => (
-              <div
+              <button
+                type="button"
                 key={item.id}
                 onClick={() => onOpenTaskModal?.(item)}
-                className="p-3.5 rounded-xl border border-slate-200/80 bg-slate-50/50 hover:bg-white hover:border-purple-200 transition-all cursor-pointer flex items-center justify-between gap-3"
+                className="w-full text-left p-3.5 rounded-xl border border-slate-200/80 bg-slate-50/50 hover:bg-white hover:border-purple-200 transition-all cursor-pointer flex items-center justify-between gap-3"
               >
                 <div className="flex items-center gap-3">
                   <div className="w-10 h-10 rounded-xl bg-purple-50 border border-purple-100 flex flex-col items-center justify-center shrink-0">
@@ -319,7 +322,7 @@ export default function InternDashboardTab({
                 <span className="text-[10px] font-bold font-mono px-2 py-0.5 rounded border uppercase shrink-0 bg-slate-100 text-slate-700 border-slate-200">
                   {item.priority}
                 </span>
-              </div>
+              </button>
             ))}
           </div>
         )}
