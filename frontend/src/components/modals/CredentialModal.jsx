@@ -9,19 +9,27 @@ export default function CredentialModal({ isOpen, onClose, data }) {
 
   const { user, temporary_password } = data;
 
-  const handleCopyId = () => {
+  const handleCopyId = async () => {
     if (user?.user_code) {
-      navigator.clipboard.writeText(user.user_code);
-      setCopiedId(true);
-      setTimeout(() => setCopiedId(false), 2000);
+      try {
+        await navigator.clipboard.writeText(user.user_code);
+        setCopiedId(true);
+        setTimeout(() => setCopiedId(false), 2000);
+      } catch (err) {
+        console.error('Failed to copy user code:', err);
+      }
     }
   };
 
-  const handleCopyPwd = () => {
+  const handleCopyPwd = async () => {
     if (temporary_password) {
-      navigator.clipboard.writeText(temporary_password);
-      setCopiedPwd(true);
-      setTimeout(() => setCopiedPwd(false), 2000);
+      try {
+        await navigator.clipboard.writeText(temporary_password);
+        setCopiedPwd(true);
+        setTimeout(() => setCopiedPwd(false), 2000);
+      } catch (err) {
+        console.error('Failed to copy temporary password:', err);
+      }
     }
   };
 

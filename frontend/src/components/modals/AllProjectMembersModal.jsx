@@ -469,6 +469,8 @@ export default function AllProjectMembersModal({
                     return (
                       <label
                         key={roleKey}
+                        htmlFor={`role-filter-${roleKey}`}
+                        aria-label={label}
                         className={`flex items-center justify-between px-2.5 py-1.5 rounded-lg text-xs font-medium cursor-pointer transition-colors select-none ${
                           isChecked
                             ? 'bg-purple-50 text-purple-900 font-semibold'
@@ -477,6 +479,7 @@ export default function AllProjectMembersModal({
                       >
                         <div className="flex items-center gap-2.5 min-w-0">
                           <input
+                            id={`role-filter-${roleKey}`}
                             type="checkbox"
                             checked={isChecked}
                             onChange={() => handleToggleRole(roleKey)}
@@ -494,6 +497,8 @@ export default function AllProjectMembersModal({
                   {/* Dedicated Custom Option Item */}
                   <div className="pt-1.5 mt-1.5 border-t border-slate-100">
                     <label
+                      htmlFor="custom-roles-filter"
+                      aria-label="Custom Roles"
                       className={`flex items-center justify-between px-2.5 py-2 rounded-lg text-xs font-medium cursor-pointer transition-colors select-none ${
                         isCustomMode
                           ? 'bg-purple-50 text-purple-900 font-bold border border-purple-200/80'
@@ -502,6 +507,7 @@ export default function AllProjectMembersModal({
                     >
                       <div className="flex items-center gap-2.5 min-w-0">
                         <input
+                          id="custom-roles-filter"
                           type="checkbox"
                           checked={isCustomMode}
                           onChange={(e) => {

@@ -348,6 +348,8 @@ export default function CompleteSprintModal({
                     <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
                       {hasUpcoming && (
                         <label
+                          htmlFor="dest-type-existing"
+                          aria-label={`Planned ${Term}`}
                           className={`p-2.5 rounded-lg border text-xs cursor-pointer flex items-center gap-2 transition-colors ${
                             destinationType === 'EXISTING_SPRINT'
                               ? 'border-purple-500 bg-purple-50/50 text-purple-900 font-semibold'
@@ -355,6 +357,7 @@ export default function CompleteSprintModal({
                           }`}
                         >
                           <input
+                            id="dest-type-existing"
                             type="radio"
                             name="destType"
                             checked={destinationType === 'EXISTING_SPRINT'}
@@ -366,6 +369,8 @@ export default function CompleteSprintModal({
                       )}
 
                       <label
+                        htmlFor="dest-type-backlog"
+                        aria-label="Project Backlog"
                         className={`p-2.5 rounded-lg border text-xs cursor-pointer flex items-center gap-2 transition-colors ${
                           destinationType === 'BACKLOG'
                             ? 'border-purple-500 bg-purple-50/50 text-purple-900 font-semibold'
@@ -373,6 +378,7 @@ export default function CompleteSprintModal({
                         }`}
                       >
                         <input
+                          id="dest-type-backlog"
                           type="radio"
                           name="destType"
                           checked={destinationType === 'BACKLOG'}
@@ -383,6 +389,8 @@ export default function CompleteSprintModal({
                       </label>
 
                       <label
+                        htmlFor="dest-type-new"
+                        aria-label={`Create New ${Term}`}
                         className={`p-2.5 rounded-lg border text-xs cursor-pointer flex items-center gap-2 transition-colors ${
                           destinationType === 'NEW_SPRINT'
                             ? 'border-purple-500 bg-purple-50/50 text-purple-900 font-semibold'
@@ -390,6 +398,7 @@ export default function CompleteSprintModal({
                         }`}
                       >
                         <input
+                          id="dest-type-new"
                           type="radio"
                           name="destType"
                           checked={destinationType === 'NEW_SPRINT'}

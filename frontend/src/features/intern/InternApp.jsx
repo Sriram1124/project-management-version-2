@@ -391,7 +391,7 @@ export default function InternApp({ onLogout, onSelectProject, onToast }) {
                         <span>{item.label}</span>
                       </div>
 
-                      {item.badge && (
+                      {Boolean(item.badge) && (
                         <span className="px-1.5 py-0.2 text-[10px] font-mono rounded bg-purple-950/60 text-purple-300 border border-purple-700/40">
                           {item.badge}
                         </span>
@@ -426,7 +426,7 @@ export default function InternApp({ onLogout, onSelectProject, onToast }) {
                         <span>{item.label}</span>
                       </div>
 
-                      {item.badge && (
+                      {Boolean(item.badge) && (
                         <span className={`px-1.5 py-0.2 text-[10px] font-mono rounded ${item.badgeColor ? 'bg-rose-500 text-white' : 'bg-purple-950/60 text-purple-300 border border-purple-700/40'}`}>
                           {item.badge}
                         </span>

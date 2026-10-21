@@ -354,6 +354,8 @@ export default function MyTasksTab({
                             return (
                               <label
                                 key={key}
+                                htmlFor={`my-task-status-${key}`}
+                                aria-label={cfg.label}
                                 className={`flex items-center gap-2 px-2.5 py-1.5 rounded-lg border text-xs cursor-pointer transition-colors ${
                                   checked
                                     ? 'bg-purple-50/70 border-purple-200 text-purple-900 font-semibold'
@@ -361,6 +363,7 @@ export default function MyTasksTab({
                                 }`}
                               >
                                 <input
+                                  id={`my-task-status-${key}`}
                                   type="checkbox"
                                   checked={checked}
                                   onChange={() => toggleFilter('statuses', key)}
@@ -383,6 +386,8 @@ export default function MyTasksTab({
                         return (
                           <label
                             key={key}
+                            htmlFor={`my-task-priority-${key}`}
+                            aria-label={cfg.label}
                             className={`flex items-center gap-2 px-2.5 py-1.5 rounded-lg border text-xs cursor-pointer transition-colors ${
                               checked
                                 ? 'bg-purple-50/70 border-purple-200 text-purple-900 font-semibold'
@@ -390,6 +395,7 @@ export default function MyTasksTab({
                             }`}
                           >
                             <input
+                              id={`my-task-priority-${key}`}
                               type="checkbox"
                               checked={checked}
                               onChange={() => toggleFilter('priorities', key)}
@@ -415,6 +421,8 @@ export default function MyTasksTab({
                         return (
                           <label
                             key={key}
+                            htmlFor={`my-task-duedate-${key}`}
+                            aria-label={label}
                             className={`flex items-center gap-2 px-2.5 py-1.5 rounded-lg border text-xs cursor-pointer transition-colors ${
                               checked
                                 ? 'bg-purple-50/70 border-purple-200 text-purple-900 font-semibold'
@@ -422,6 +430,7 @@ export default function MyTasksTab({
                             }`}
                           >
                             <input
+                              id={`my-task-duedate-${key}`}
                               type="checkbox"
                               checked={checked}
                               onChange={() => toggleFilter('dueDates', key)}

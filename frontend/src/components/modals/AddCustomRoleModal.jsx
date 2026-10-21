@@ -438,6 +438,8 @@ export default function AddCustomRoleModal({
                           return (
                             <label
                               key={p.id || p.name}
+                              htmlFor={`perm-${p.id || p.name}`}
+                              aria-label={p.label || p.name}
                               className={`flex items-start gap-2.5 p-2 rounded-lg border text-left cursor-pointer transition-all select-none ${
                                 !isAssignable
                                   ? 'bg-slate-50/70 border-slate-200 text-slate-400 opacity-60 cursor-not-allowed'
@@ -447,6 +449,7 @@ export default function AddCustomRoleModal({
                               }`}
                             >
                               <input
+                                id={`perm-${p.id || p.name}`}
                                 type="checkbox"
                                 checked={isChecked}
                                 disabled={!isAssignable}

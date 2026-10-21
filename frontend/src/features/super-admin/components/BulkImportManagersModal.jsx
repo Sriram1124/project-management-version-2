@@ -106,7 +106,7 @@ export default function BulkImportManagersModal({ isOpen, organization, onClose,
     }
   };
 
-  const handleCopyCredentials = () => {
+  const handleCopyCredentials = async () => {
     if (!importResult?.createdManagers) return;
     const lines = [
       `Organization: ${organization.name}`,
@@ -116,9 +116,13 @@ export default function BulkImportManagersModal({ isOpen, organization, onClose,
         (m) => `Name: ${m.name} | Email: ${m.email} | User Code: ${m.user_code || 'N/A'} | Temporary Password: ${m.temporary_password}`
       ),
     ];
-    navigator.clipboard.writeText(lines.join('\n'));
-    setCopied(true);
-    setTimeout(() => setCopied(false), 2000);
+    try {
+      await navigator.clipboard.writeText(lines.join('\n'));
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    } catch (err) {
+      console.error('Failed to copy credentials to clipboard:', err);
+    }
   };
 
   const handleDownloadCredentialsCsv = () => {

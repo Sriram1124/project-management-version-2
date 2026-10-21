@@ -329,6 +329,8 @@ export default function BroadcastAlert({
                           return (
                             <label
                               key={sb}
+                              htmlFor={`subbatch-${sb}`}
+                              aria-label={sb}
                               className={`flex items-center gap-2 px-2 py-1 rounded-md text-xs font-medium cursor-pointer transition-colors border select-none ${
                                 isChecked
                                   ? 'bg-purple-50/70 border-purple-200 text-purple-900 font-semibold'
@@ -336,6 +338,7 @@ export default function BroadcastAlert({
                               }`}
                             >
                               <input
+                                id={`subbatch-${sb}`}
                                 type="checkbox"
                                 checked={isChecked}
                                 onChange={() => handleToggleSubbatch(sb)}

@@ -259,9 +259,10 @@ export default function CreateFormModal({ form, cohorts: initialCohorts, onClose
 
             <div className="space-y-2">
               {/* All Cohorts multiple selective choice master switch */}
-              <label className="flex items-center justify-between px-3 py-2 rounded-xl bg-purple-50/70 border border-purple-200/80 cursor-pointer select-none hover:bg-purple-100/60 transition-colors">
+              <label htmlFor="select-all-cohorts-checkbox" aria-label="All Cohorts" className="flex items-center justify-between px-3 py-2 rounded-xl bg-purple-50/70 border border-purple-200/80 cursor-pointer select-none hover:bg-purple-100/60 transition-colors">
                 <div className="flex items-center gap-2.5">
                   <input
+                    id="select-all-cohorts-checkbox"
                     type="checkbox"
                     checked={isAllCohorts}
                     onChange={handleToggleAll}
@@ -282,6 +283,8 @@ export default function CreateFormModal({ form, cohorts: initialCohorts, onClose
                     return (
                       <label
                         key={c.id}
+                        htmlFor={`cohort-select-${c.id}`}
+                        aria-label={c.name}
                         className={`flex items-center gap-2 px-2.5 py-1.5 rounded-lg border text-xs cursor-pointer transition-colors select-none ${
                           isSelected
                             ? 'bg-purple-100/80 border-purple-300 text-purple-900 font-bold'
@@ -289,6 +292,7 @@ export default function CreateFormModal({ form, cohorts: initialCohorts, onClose
                         }`}
                       >
                         <input
+                          id={`cohort-select-${c.id}`}
                           type="checkbox"
                           checked={isSelected}
                           onChange={() => handleToggleCohort(c.id)}

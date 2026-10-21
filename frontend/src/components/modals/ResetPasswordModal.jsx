@@ -24,11 +24,15 @@ export default function ResetPasswordModal({ isOpen, user, onClose, onSuccess })
     }
   };
 
-  const handleCopy = () => {
+  const handleCopy = async () => {
     if (!tempPassword) return;
-    navigator.clipboard.writeText(tempPassword);
-    setCopied(true);
-    setTimeout(() => setCopied(false), 2000);
+    try {
+      await navigator.clipboard.writeText(tempPassword);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    } catch (err) {
+      console.error('Failed to copy password:', err);
+    }
   };
 
   const handleClose = () => {

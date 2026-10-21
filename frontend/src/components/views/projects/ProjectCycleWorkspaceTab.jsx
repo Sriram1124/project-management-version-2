@@ -949,8 +949,9 @@ export default function ProjectCycleWorkspaceTab({
                   Handling Incomplete Deliverables:
                 </span>
                 <div className="space-y-2 text-xs">
-                  <label className="flex items-start gap-2 p-2.5 rounded-lg border border-slate-200 hover:bg-slate-50 cursor-pointer">
+                  <label htmlFor="close-action-keep" aria-label="Keep in Closed Cycle (Recommended)" className="flex items-start gap-2 p-2.5 rounded-lg border border-slate-200 hover:bg-slate-50 cursor-pointer">
                     <input
+                      id="close-action-keep"
                       type="radio"
                       name="closeAction"
                       checked={closeAction === 'KEEP_IN_CYCLE'}
@@ -965,8 +966,9 @@ export default function ProjectCycleWorkspaceTab({
                     </div>
                   </label>
 
-                  <label className="flex items-start gap-2 p-2.5 rounded-lg border border-slate-200 hover:bg-slate-50 cursor-pointer">
+                  <label htmlFor="close-action-move" aria-label="Return to Unassigned Continuous Flow" className="flex items-start gap-2 p-2.5 rounded-lg border border-slate-200 hover:bg-slate-50 cursor-pointer">
                     <input
+                      id="close-action-move"
                       type="radio"
                       name="closeAction"
                       checked={closeAction === 'MOVE_TO_BACKLOG'}

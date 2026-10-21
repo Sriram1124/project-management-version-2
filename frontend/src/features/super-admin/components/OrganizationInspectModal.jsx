@@ -121,13 +121,17 @@ export default function OrganizationInspectModal({
     }
   };
 
-  const handleCopyTempPassword = () => {
+  const handleCopyTempPassword = async () => {
     if (!tempCredentials) return;
-    navigator.clipboard.writeText(
+    try {
+      await navigator.clipboard.writeText(
       `Manager: ${tempCredentials.name}\nTemporary Password: ${tempCredentials.temporary_password}`
     );
-    setCopiedCreds(true);
-    setTimeout(() => setCopiedCreds(false), 2000);
+      setCopiedCreds(true);
+      setTimeout(() => setCopiedCreds(false), 2000);
+    } catch (err) {
+      console.error('Failed to copy temporary password:', err);
+    }
   };
 
   const handleManagerOperationSuccess = () => {
