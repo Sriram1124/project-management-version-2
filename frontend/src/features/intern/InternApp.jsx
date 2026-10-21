@@ -197,10 +197,40 @@ export default function InternApp({ onLogout, onSelectProject, onToast }) {
       knownNotificationIds = new Set(loadedNotifications.map((notification) => notification.id));
       hasLoadedNotifications = true;
     });
-    const notificationRefreshInterval = window.setInterval(() => {
-      if (typeof document !== 'undefined' && document.hidden) return;
-      notificationsService.loadNotifications();
-    }, 20000);
+    // Smart notification polling with automatic visibility pause and resume
+    let pollInterval = null;
+
+    const startPolling = () => {
+      if (pollInterval) clearInterval(pollInterval);
+      pollInterval = setInterval(() => {
+        if (typeof document !== 'undefined' && document.hidden) return;
+        notificationsService.loadNotifications();
+      }, 30000);
+    };
+
+    const stopPolling = () => {
+      if (pollInterval) {
+        clearInterval(pollInterval);
+        pollInterval = null;
+      }
+    };
+
+    const handleVisibilityChange = () => {
+      if (typeof document === 'undefined') return;
+      if (document.hidden) {
+        stopPolling();
+      } else {
+        notificationsService.loadNotifications();
+        startPolling();
+      }
+    };
+
+    if (typeof document !== 'undefined') {
+      document.addEventListener('visibilitychange', handleVisibilityChange);
+      if (!document.hidden) {
+        startPolling();
+      }
+    }
 
     const handleWorkItemsSync = (e) => {
       const detail = e?.detail;
@@ -234,7 +264,10 @@ export default function InternApp({ onLogout, onSelectProject, onToast }) {
     return () => {
       unsubForms();
       unsubNotifs();
-      window.clearInterval(notificationRefreshInterval);
+      stopPolling();
+      if (typeof document !== 'undefined') {
+        document.removeEventListener('visibilitychange', handleVisibilityChange);
+      }
       window.removeEventListener('work-items-updated', handleWorkItemsSync);
     };
   }, []);

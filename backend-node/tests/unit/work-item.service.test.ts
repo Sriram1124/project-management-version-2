@@ -562,4 +562,89 @@ describe('getKanbanSummary', () => {
       ).rejects.toThrow('Forbidden: you are not authorized to access board metrics for this project');
     });
   });
+  describe('listWorkItems query and payload optimization', () => {
+    it('omits raw time_entries by default while accurately aggregating logged_minutes and time_by_intern', async () => {
+      mockPrisma.workItem.findMany.mockResolvedValueOnce([
+        {
+          id: 'wi-perf-1',
+          title: 'Optimized Task',
+          type: WorkItemType.TASK,
+          status: WorkItemStatus.IN_PROGRESS,
+          priority: WorkItemPriority.MEDIUM,
+          due_date: new Date('2026-11-01'),
+          assignees: [
+            {
+              user_id: 'user-intern-1',
+              user: { id: 'user-intern-1', name: 'Alice Intern', email: 'alice@test.com' },
+            },
+          ],
+          time_entries: [
+            { duration_minutes: 60, user_id: 'user-intern-1' },
+            { duration_minutes: 45, user_id: 'user-intern-1' },
+          ],
+          extension_requests: [],
+          children: [],
+        },
+      ]);
+
+      const results = await WorkItemService.listWorkItems(mockManager, { project_id: 'proj-123' });
+
+      expect(results).toHaveLength(1);
+      const item = results[0];
+      expect(item.id).toBe('wi-perf-1');
+      expect(item.logged_minutes).toBe(105);
+      expect(item.time_by_intern).toEqual([
+        {
+          user_id: 'user-intern-1',
+          name: 'Alice Intern',
+          email: 'alice@test.com',
+          logged_minutes: 105,
+        },
+      ]);
+      // Verify raw time_entries is stripped to save network bandwidth on list views
+      expect(item.time_entries).toBeUndefined();
+
+      // Verify Prisma query inspects only lightweight time fields and only pending extensions
+      const callArgs = mockPrisma.workItem.findMany.mock.calls[mockPrisma.workItem.findMany.mock.calls.length - 1][0];
+      expect(callArgs.include.time_entries).toEqual({
+        select: { duration_minutes: true, user_id: true },
+      });
+      expect(callArgs.include.extension_requests).toEqual({
+        where: { status: 'PENDING' },
+        take: 1,
+        select: expect.objectContaining({ id: true, status: true }),
+      });
+    });
+
+    it('retains raw time_entries array when include_time_entries is explicitly requested', async () => {
+      mockPrisma.workItem.findMany.mockResolvedValueOnce([
+        {
+          id: 'wi-perf-2',
+          title: 'Full Worklog Task',
+          type: WorkItemType.TASK,
+          status: WorkItemStatus.IN_PROGRESS,
+          assignees: [],
+          time_entries: [
+            { id: 'te-1', duration_minutes: 30, date: new Date(), user_id: 'u-1', user: { id: 'u-1', name: 'Bob' } },
+          ],
+          extension_requests: [],
+          children: [],
+        },
+      ]);
+
+      const results = await WorkItemService.listWorkItems(mockManager, {
+        project_id: 'proj-123',
+        include_time_entries: true,
+      });
+
+      expect(results).toHaveLength(1);
+      expect(results[0].time_entries).toBeDefined();
+      expect(results[0].time_entries).toHaveLength(1);
+      expect(results[0].logged_minutes).toBe(30);
+
+      const callArgs = mockPrisma.workItem.findMany.mock.calls[mockPrisma.workItem.findMany.mock.calls.length - 1][0];
+      expect(callArgs.include.time_entries.select).toHaveProperty('date');
+      expect(callArgs.include.time_entries.select).toHaveProperty('user');
+    });
+  });
 });

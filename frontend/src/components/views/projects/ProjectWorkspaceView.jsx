@@ -1,13 +1,69 @@
-import React, { useState, useEffect, useMemo } from 'react';
-import { FolderKanban, AlertCircle } from 'lucide-react';
+import React, { useState, useEffect, useMemo, lazy, Suspense } from 'react';
+import { FolderKanban, AlertCircle, Loader2 } from 'lucide-react';
 import ProjectOverviewTab from './ProjectOverviewTab';
-import ProjectRoadmapTab from './ProjectRoadmapTab';
-import ProjectSprintWorkspaceTab from './ProjectSprintWorkspaceTab';
-import ProjectCycleWorkspaceTab from './ProjectCycleWorkspaceTab';
-import ProjectBacklogTab from './ProjectBacklogTab';
-import KanbanBoard from '../../kanban/KanbanBoard';
-import ProjectMomTab from './ProjectMomTab';
-import ProjectApprovalsTab from './ProjectApprovalsTab';
+
+// Lazy-loaded workspace sub-tabs for on-demand bundle splitting
+const ProjectRoadmapTab = lazy(() => import('./ProjectRoadmapTab'));
+const ProjectSprintWorkspaceTab = lazy(() => import('./ProjectSprintWorkspaceTab'));
+const ProjectBacklogTab = lazy(() => import('./ProjectBacklogTab'));
+const KanbanBoard = lazy(() => import('../../kanban/KanbanBoard'));
+const ProjectMomTab = lazy(() => import('./ProjectMomTab'));
+const ProjectApprovalsTab = lazy(() => import('./ProjectApprovalsTab'));
+
+function TabLoadingFallback({ tabName = 'workspace module' }) {
+  return (
+    <div className="bg-white rounded-2xl p-12 border border-slate-200/80 shadow-xs flex flex-col items-center justify-center min-h-[320px]">
+      <Loader2 className="w-8 h-8 text-purple-600 animate-spin mb-3" />
+      <span className="text-xs font-semibold text-slate-600">Loading {tabName}...</span>
+    </div>
+  );
+}
+
+class TabErrorBoundary extends React.Component {
+  constructor(props) {
+    super(props);
+    this.state = { hasError: false, error: null };
+  }
+
+  static getDerivedStateFromError(error) {
+    return { hasError: true, error };
+  }
+
+  componentDidCatch(error, errorInfo) {
+    console.error('Error loading tab chunk:', error, errorInfo);
+  }
+
+  componentDidUpdate(prevProps) {
+    if (prevProps.tabKey !== this.props.tabKey && this.state.hasError) {
+      this.setState({ hasError: false, error: null });
+    }
+  }
+
+  render() {
+    if (this.state.hasError) {
+      return (
+        <div className="bg-white rounded-2xl p-8 border border-rose-200 shadow-xs text-center max-w-lg mx-auto my-8">
+          <div className="w-12 h-12 rounded-2xl bg-rose-50 text-rose-600 flex items-center justify-center mx-auto mb-3">
+            <AlertCircle className="w-6 h-6" />
+          </div>
+          <h3 className="text-base font-bold text-slate-900 mb-1">
+            Unable to load module
+          </h3>
+          <p className="text-xs text-slate-500 leading-relaxed max-w-md mx-auto mb-4">
+            There was a problem loading this workspace tab. Check your connection and try again.
+          </p>
+          <button
+            onClick={() => this.setState({ hasError: false, error: null })}
+            className="px-4 py-2 text-xs font-semibold text-white bg-purple-600 rounded-xl hover:bg-purple-700 transition-colors cursor-pointer"
+          >
+            Retry
+          </button>
+        </div>
+      );
+    }
+    return this.props.children;
+  }
+}
 import { projectsService } from '../../../services/projects.service';
 import { useAuth } from '../../../context/AuthContext';
 import { getProjectMethodology, getProjectTabs, isKanbanProject } from '../../../utils/methodology';
@@ -178,7 +234,9 @@ export default function ProjectWorkspaceView({
 
       {/* Render Current Tab Content */}
       <div className="pt-2 sm:pt-2.5">
-        {currentTab === 'overview' ? (
+        <TabErrorBoundary tabKey={currentTab}>
+          <Suspense fallback={<TabLoadingFallback tabName={tabs.find((t) => t.id === currentTab)?.label || 'tab'} />}>
+            {currentTab === 'overview' ? (
           <ProjectOverviewTab 
             projectId={projectId} 
             project={liveProject}
@@ -249,7 +307,9 @@ export default function ProjectWorkspaceView({
               Action Items module is active.
             </p>
           </div>
-        )}
+            )}
+          </Suspense>
+        </TabErrorBoundary>
       </div>
     </div>
   );

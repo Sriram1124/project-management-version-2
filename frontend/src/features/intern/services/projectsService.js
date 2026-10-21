@@ -1,6 +1,20 @@
 import api from '../../../services/api';
 
 let cachedProjects = [];
+let lastFetchedAt = 0;
+let inFlightPromise = null;
+const CACHE_TTL_MS = 30_000; // 30 seconds TTL
+
+export function invalidateProjectsCache() {
+  cachedProjects = [];
+  lastFetchedAt = 0;
+  inFlightPromise = null;
+}
+
+if (typeof window !== 'undefined') {
+  window.addEventListener('project-updated', invalidateProjectsCache);
+  window.addEventListener('projects-invalidated', invalidateProjectsCache);
+}
 
 export const normalizeProject = (p) => {
   if (!p) return null;
@@ -46,13 +60,32 @@ export const normalizeProject = (p) => {
 };
 
 export const projectsService = {
-  // Returns only projects the intern belongs to from live backend API
-  getMyProjects: async () => {
+  // Returns only projects the intern belongs to with 30s TTL cache and in-flight deduplication
+  getMyProjects: async (options = {}) => {
+    const forceRefresh = options?.forceRefresh === true;
+    const isFresh = !forceRefresh && cachedProjects.length > 0 && (Date.now() - lastFetchedAt) < CACHE_TTL_MS;
+
+    if (isFresh) {
+      return cachedProjects;
+    }
+
+    if (inFlightPromise) {
+      return inFlightPromise;
+    }
+
     try {
-      const res = await api.get('/projects?my=true');
-      const list = (res.projects || []).map(normalizeProject);
-      cachedProjects = list;
-      return list;
+      inFlightPromise = api.get('/projects?my=true')
+        .then((res) => {
+          const list = (res.projects || []).map(normalizeProject);
+          cachedProjects = list;
+          lastFetchedAt = Date.now();
+          return list;
+        })
+        .finally(() => {
+          inFlightPromise = null;
+        });
+
+      return await inFlightPromise;
     } catch (err) {
       console.error('Failed to get my projects:', err);
       return cachedProjects;
@@ -78,4 +111,6 @@ export const projectsService = {
       return cachedProjects.find((p) => p.id === projectId) || null;
     }
   },
+
+  invalidateCache: invalidateProjectsCache,
 };

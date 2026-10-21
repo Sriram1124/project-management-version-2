@@ -451,6 +451,7 @@ model WorkItemAssignee {
   user      User     @relation(fields: [user_id], references: [id], onDelete: Cascade)
 
   @@id([work_item_id, user_id])
+  @@index([user_id])
   @@map("work_item_assignees")
 }
 

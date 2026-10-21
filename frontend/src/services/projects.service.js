@@ -1,13 +1,49 @@
 import api from './api';
 
+// In-memory client cache and deduplication for /projects?my=true
+let cachedMyProjects = null;
+let lastMyProjectsFetchAt = 0;
+let inFlightMyProjectsPromise = null;
+const MY_PROJECTS_CACHE_TTL_MS = 30_000; // 30 seconds
+
+export function invalidateCentralProjectsCache() {
+  cachedMyProjects = null;
+  lastMyProjectsFetchAt = 0;
+  inFlightMyProjectsPromise = null;
+  if (typeof window !== 'undefined') {
+    window.dispatchEvent(new CustomEvent('project-updated'));
+  }
+}
+
 export const projectsService = {
-  async getProjects(params = {}) {
+  async getProjects(params = {}, options = {}) {
+    const isMyOnly = params.my === true && !params.status && !options.forceRefresh;
+    if (isMyOnly) {
+      const isFresh = cachedMyProjects !== null && (Date.now() - lastMyProjectsFetchAt) < MY_PROJECTS_CACHE_TTL_MS;
+      if (isFresh) return cachedMyProjects;
+      if (inFlightMyProjectsPromise) return inFlightMyProjectsPromise;
+    }
+
     const query = new URLSearchParams();
     if (params.status) query.append('status', params.status);
     if (params.my) query.append('my', 'true');
     const qs = query.toString() ? `?${query.toString()}` : '';
-    const res = await api.get(`/projects${qs}`);
-    return res.projects || [];
+
+    const fetchPromise = api.get(`/projects${qs}`)
+      .then((res) => {
+        const list = res.projects || [];
+        if (isMyOnly) {
+          cachedMyProjects = list;
+          lastMyProjectsFetchAt = Date.now();
+        }
+        return list;
+      })
+      .finally(() => {
+        if (isMyOnly) inFlightMyProjectsPromise = null;
+      });
+
+    if (isMyOnly) inFlightMyProjectsPromise = fetchPromise;
+    return await fetchPromise;
   },
 
   async getHealthOverview(params = {}) {
@@ -30,21 +66,25 @@ export const projectsService = {
 
   async createProject(data) {
     const res = await api.post('/projects', data);
+    invalidateCentralProjectsCache();
     return res.project;
   },
 
   async updateProject(id, data) {
     const res = await api.patch(`/projects/${id}`, data);
+    invalidateCentralProjectsCache();
     return res.project;
   },
 
   async archiveProject(id) {
     const res = await api.post(`/projects/${id}/archive`);
+    invalidateCentralProjectsCache();
     return res.project;
   },
 
   async deleteProject(id) {
     const res = await api.delete(`/projects/${id}`);
+    invalidateCentralProjectsCache();
     return res;
   },
 
@@ -64,20 +104,25 @@ export const projectsService = {
 
   async addMember(id, userId, role) {
     const res = await api.post(`/projects/${id}/members`, { userId, role });
+    invalidateCentralProjectsCache();
     return res.member || res;
   },
 
   async addMembers(id, userIds, role) {
     const res = await api.post(`/projects/${id}/members`, { userIds, role });
+    invalidateCentralProjectsCache();
     return res.members || (res.member ? [res.member] : []);
   },
 
   async removeMember(id, userId) {
-    return await api.delete(`/projects/${id}/members/${userId}`);
+    const res = await api.delete(`/projects/${id}/members/${userId}`);
+    invalidateCentralProjectsCache();
+    return res;
   },
 
   async updateMemberRoles(id, roles) {
     const res = await api.patch(`/projects/${id}/members/roles`, { roles });
+    invalidateCentralProjectsCache();
     const members = res.members || [];
     return members.slice().sort((a, b) => {
       const aIsLead = a.project_role === 'TECH_LEAD' || a.role === 'TECH_LEAD';
@@ -92,6 +137,7 @@ export const projectsService = {
 
   async updateMemberPermissions(id, userId, permissions) {
     const res = await api.patch(`/projects/${id}/members/${userId}/permissions`, { permissions });
+    invalidateCentralProjectsCache();
     const members = res.members || [];
     return members.slice().sort((a, b) => {
       const aIsLead = a.project_role === 'TECH_LEAD' || a.role === 'TECH_LEAD';
@@ -172,4 +218,6 @@ export const projectsService = {
     const res = await api.get(`/projects/${id}/extension-requests${qs}`);
     return res.extension_requests || res.requests || res.data || [];
   },
+
+  invalidateCache: invalidateCentralProjectsCache,
 };

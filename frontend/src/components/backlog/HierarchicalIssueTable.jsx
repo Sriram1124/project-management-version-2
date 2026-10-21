@@ -297,7 +297,7 @@ export function getEpicSprintSummary(epic, allWorkItems = [], sprints = [], isKa
 /**
  * Individual Interactive Row
  */
-function HierarchicalRow({
+const HierarchicalRow = React.memo(function HierarchicalRow({
   item,
   level = 0,
   children = [],
@@ -547,6 +547,7 @@ function HierarchicalRow({
             onSelectIssue?.(item);
           }
         }}
+        style={{ contentVisibility: 'auto', containIntrinsicSize: '0 40px' }}
         className={`grid ${isKanban ? 'grid-cols-[minmax(260px,2.5fr)_90px_120px_110px_60px_85px_95px_75px]' : 'grid-cols-[minmax(260px,2.5fr)_90px_120px_110px_minmax(140px,1.3fr)_60px_85px_95px_75px]'} items-center gap-2 px-3 py-2 text-xs transition-colors cursor-pointer select-none ${
           isSelected
             ? 'bg-purple-50/90 border-l-2 border-l-purple-600'
@@ -1111,12 +1112,12 @@ function HierarchicalRow({
       </div>
     </div>
   );
-}
+});
 
 /**
  * Recursive Tree Node renderer
  */
-function HierarchicalNode({
+const HierarchicalNode = React.memo(function HierarchicalNode({
   node,
   level = 0,
   expandedIds,
@@ -1202,7 +1203,7 @@ function HierarchicalNode({
       )}
     </>
   );
-}
+});
 
 /**
  * Main Jira-style Expandable Table

@@ -43,6 +43,7 @@ export interface WorkItemFilter {
   my_personal?: boolean;
   overdue_only?: boolean;
   limit?: number;
+  include_time_entries?: boolean;
 }
 
 export interface WorkItemAnalyticsFilter {
@@ -532,16 +533,24 @@ export class WorkItemService {
       ? item.time_entries.reduce((sum: number, entry: any) => sum + (Number(entry.duration_minutes) || 0), 0)
       : 0;
 
+    const userMap = new Map<string, { name: string; email: string | null }>();
+    for (const a of formattedAssignees) {
+      if (a.user_id) {
+        userMap.set(a.user_id, { name: a.name || 'Intern', email: a.email || null });
+      }
+    }
+
     const time_by_intern = Array.isArray(item.time_entries)
       ? Object.values(
           item.time_entries.reduce((acc: any, entry: any) => {
             const uid = entry.user_id;
             if (!uid) return acc;
             if (!acc[uid]) {
+              const uInfo = userMap.get(uid);
               acc[uid] = {
                 user_id: uid,
-                name: entry.user?.name || 'Intern',
-                email: entry.user?.email || null,
+                name: entry.user?.name || uInfo?.name || 'Intern',
+                email: entry.user?.email || uInfo?.email || null,
                 logged_minutes: 0,
               };
             }
@@ -1014,17 +1023,25 @@ export class WorkItemService {
             },
           },
         },
-        time_entries: {
-          select: {
-            id: true,
-            duration_minutes: true,
-            date: true,
-            user_id: true,
-            user: { select: { id: true, name: true, email: true } },
-          },
-        },
+        time_entries: filters?.include_time_entries
+          ? {
+              select: {
+                id: true,
+                duration_minutes: true,
+                date: true,
+                user_id: true,
+                user: { select: { id: true, name: true, email: true } },
+              },
+            }
+          : {
+              select: {
+                duration_minutes: true,
+                user_id: true,
+              },
+            },
         extension_requests: {
-          orderBy: { created_at: 'desc' },
+          where: { status: 'PENDING' },
+          take: 1,
           select: {
             id: true,
             status: true,
@@ -1038,7 +1055,13 @@ export class WorkItemService {
       orderBy: { created_at: 'desc' },
     });
 
-    const formatted = items.map((item) => this.formatWorkItem(item));
+    const formatted = items.map((item) => {
+      const f = this.formatWorkItem(item);
+      if (!filters?.include_time_entries) {
+        delete f.time_entries;
+      }
+      return f;
+    });
     if (filters?.overdue_only) {
       return formatted.filter((item) => item?.is_overdue);
     }

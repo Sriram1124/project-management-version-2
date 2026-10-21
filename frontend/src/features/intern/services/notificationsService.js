@@ -2,6 +2,7 @@ import { notificationsService as apiNotifications } from '../../../services/noti
 
 let notificationsData = [];
 let listeners = [];
+let inFlightLoadPromise = null;
 
 function notifyListeners() {
   listeners.forEach((l) => l([...notificationsData]));
@@ -21,38 +22,46 @@ export const notificationsService = {
   getUnreadCount: () => notificationsData.filter((n) => !n.is_read).length,
 
   loadNotifications: async () => {
-    try {
-      const data = await apiNotifications.getNotifications();
-      const nextData = (data || [])
-        .filter((n) => !n.is_archived && !n.archived_at)
-        .map((n) => ({
-          id: n.id,
-          title: n.title,
-          message: n.message,
-          type: n.type,
-          is_read: n.is_read,
-          is_archived: false,
-          archived_at: null,
-          created_at: n.created_at ? new Date(n.created_at).toLocaleDateString([], { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' }) : 'Just now',
-          raw: n,
-        }));
+    if (inFlightLoadPromise) return inFlightLoadPromise;
 
-      const hasChanged =
-        nextData.length !== notificationsData.length ||
-        nextData.some((n, idx) => {
-          const prev = notificationsData[idx];
-          return !prev || prev.id !== n.id || prev.is_read !== n.is_read;
-        });
+    inFlightLoadPromise = (async () => {
+      try {
+        const data = await apiNotifications.getNotifications();
+        const nextData = (data || [])
+          .filter((n) => !n.is_archived && !n.archived_at)
+          .map((n) => ({
+            id: n.id,
+            title: n.title,
+            message: n.message,
+            type: n.type,
+            is_read: n.is_read,
+            is_archived: false,
+            archived_at: null,
+            created_at: n.created_at ? new Date(n.created_at).toLocaleDateString([], { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' }) : 'Just now',
+            raw: n,
+          }));
 
-      if (hasChanged) {
-        notificationsData = nextData;
-        notifyListeners();
+        const hasChanged =
+          nextData.length !== notificationsData.length ||
+          nextData.some((n, idx) => {
+            const prev = notificationsData[idx];
+            return !prev || prev.id !== n.id || prev.is_read !== n.is_read;
+          });
+
+        if (hasChanged) {
+          notificationsData = nextData;
+          notifyListeners();
+        }
+        return notificationsData;
+      } catch (err) {
+        console.error('Failed to load notifications from API:', err);
+        return notificationsData;
+      } finally {
+        inFlightLoadPromise = null;
       }
-      return notificationsData;
-    } catch (err) {
-      console.error('Failed to load notifications from API:', err);
-      return notificationsData;
-    }
+    })();
+
+    return inFlightLoadPromise;
   },
 
   markAsRead: async (id) => {
@@ -98,24 +107,4 @@ export const notificationsService = {
       return [];
     }
   },
-
-  archiveNotification: async (id) => {
-    try {
-      await apiNotifications.archiveNotification(id);
-    } catch (err) {
-      console.error('Failed to archive notification:', err);
-    }
-    notificationsData = notificationsData.filter((n) => n.id !== id);
-    notifyListeners();
-  },
-
-  unarchiveNotification: async (id) => {
-    try {
-      await apiNotifications.unarchiveNotification(id);
-      await notificationsService.loadNotifications();
-    } catch (err) {
-      console.error('Failed to unarchive notification:', err);
-    }
-  },
 };
-

@@ -90,7 +90,7 @@ export class WorkItemController {
   static async list(req: Request, res: Response): Promise<void> {
     try {
       const user = (req as any).fullUser;
-      const { project_id, sprint_id, type, status, priority, assigned_to_me, my_personal, overdue_only, limit } = req.query;
+      const { project_id, sprint_id, type, status, priority, assigned_to_me, my_personal, overdue_only, limit, include_time_entries } = req.query;
 
       let validatedLimit: number | undefined = undefined;
       if (limit !== undefined && limit !== null && limit !== '') {
@@ -116,6 +116,7 @@ export class WorkItemController {
         my_personal: my_personal === 'true',
         overdue_only: overdue_only === 'true',
         limit: validatedLimit,
+        include_time_entries: include_time_entries === 'true',
       });
 
       res.status(200).json({ work_items: workItems });
