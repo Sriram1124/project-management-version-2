@@ -20,8 +20,8 @@ export async function connectMongoDB(customUri?: string, options?: MongoConnecti
     throw new Error('MONGODB_URI is not defined in the environment configuration.');
   }
 
-  const maxPoolSize = options?.maxPoolSize || parseInt(process.env.MONGODB_MAX_POOL_SIZE || '50', 10);
-  const minPoolSize = options?.minPoolSize || parseInt(process.env.MONGODB_MIN_POOL_SIZE || '5', 10);
+  const maxPoolSize = options?.maxPoolSize || Number.parseInt(process.env.MONGODB_MAX_POOL_SIZE || '50', 10);
+  const minPoolSize = options?.minPoolSize || Number.parseInt(process.env.MONGODB_MIN_POOL_SIZE || '5', 10);
   const serverSelectionTimeoutMS = options?.serverSelectionTimeoutMS || 10000;
   const connectTimeoutMS = options?.connectTimeoutMS || 15000;
 

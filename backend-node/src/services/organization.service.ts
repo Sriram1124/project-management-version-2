@@ -153,7 +153,7 @@ export class OrganizationService {
     if (!managerName?.trim()) {
       throw new Error('Manager name is required');
     }
-    if (!managerEmail?.trim() || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(managerEmail.trim())) {
+    if (!managerEmail?.trim() || !/^[^\s@]+@[^\s@.]+\.[^\s@]+$/.test(managerEmail.trim())) {
       throw new Error('A valid manager email is required');
     }
 
@@ -260,7 +260,7 @@ export class OrganizationService {
     if (!managerName?.trim()) {
       throw new Error('Manager name is required');
     }
-    if (!managerEmail?.trim() || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(managerEmail.trim())) {
+    if (!managerEmail?.trim() || !/^[^\s@]+@[^\s@.]+\.[^\s@]+$/.test(managerEmail.trim())) {
       throw new Error('A valid manager email is required');
     }
 
@@ -426,7 +426,7 @@ export class OrganizationService {
       };
     }
 
-    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    const emailRegex = /^[^\s@]+@[^\s@.]+\.[^\s@]+$/;
     const emailCounts = new Map<string, number>();
     const parsedRows: Array<{ rowNumber: number; name: string; email: string }> = [];
 

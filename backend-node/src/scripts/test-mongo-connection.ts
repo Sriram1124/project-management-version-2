@@ -12,7 +12,24 @@ async function testConnection() {
   }
 
   // Mask credentials safely for logging
-  const maskedUri = uri.replace(/\/\/([^:]+):([^@]+)@/, '//$1:*****@');
+  let maskedUri = uri;
+  try {
+    const parsed = new URL(uri);
+    if (parsed.password) {
+      parsed.password = '*****';
+    }
+    maskedUri = parsed.toString();
+  } catch {
+    const atIndex = uri.indexOf('@');
+    const schemeIndex = uri.indexOf('://');
+    if (atIndex !== -1 && schemeIndex !== -1 && atIndex > schemeIndex + 3) {
+      const authPart = uri.substring(schemeIndex + 3, atIndex);
+      const colonIndex = authPart.indexOf(':');
+      if (colonIndex !== -1) {
+        maskedUri = `${uri.substring(0, schemeIndex + 3)}${authPart.substring(0, colonIndex)}:*****${uri.substring(atIndex)}`;
+      }
+    }
+  }
   console.log(`Testing MongoDB connection to: ${maskedUri}`);
 
   try {
@@ -47,4 +64,7 @@ async function testConnection() {
   }
 }
 
-testConnection();
+void testConnection().catch((err) => {
+  console.error('Unexpected error during connection test:', err);
+  process.exit(1);
+});

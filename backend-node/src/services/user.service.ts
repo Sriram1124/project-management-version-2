@@ -226,7 +226,8 @@ export class UserService {
     cols.push(cur.trim());
     return cols.map((col) =>
       col
-        .replace(/^[\uFEFF\u200B\u00A0\s"']+|[\uFEFF\u200B\u00A0\s"']+$/g, '')
+        .replace(/^[\uFEFF\u200B\u00A0\s"']+/, '')
+        .replace(/[\uFEFF\u200B\u00A0\s"']+$/, '')
         .trim()
     );
   }
@@ -248,7 +249,7 @@ export class UserService {
       throw new Error('Email is required');
     }
     const normalizedEmail = email.trim().toLowerCase();
-    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    const emailRegex = /^[^\s@]+@[^\s@.]+\.[^\s@]+$/;
     if (!emailRegex.test(normalizedEmail)) {
       throw new Error('Invalid email format');
     }
@@ -462,7 +463,8 @@ export class UserService {
     const rawHeaders = this.parseCsvLine(lines[0], delimiter).map((h) =>
       h
         .toLowerCase()
-        .replace(/^[\uFEFF\u200B\u00A0\s"']+|[\uFEFF\u200B\u00A0\s"']+$/g, '')
+        .replace(/^[\uFEFF\u200B\u00A0\s"']+/, '')
+        .replace(/[\uFEFF\u200B\u00A0\s"']+$/, '')
         .replace(/[\s\-_]+/g, '_')
         .trim()
     );
@@ -562,7 +564,7 @@ export class UserService {
       cohortMap.set(c.name.toLowerCase().trim(), { id: c.id, name: c.name, code: c.code });
     }
 
-    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    const emailRegex = /^[^\s@]+@[^\s@.]+\.[^\s@]+$/;
 
     // Pass 1: Parse rows and normalize
     const parsedDataRows: Array<{
@@ -944,7 +946,7 @@ export class UserService {
       cohortMap.set(c.name.toLowerCase().trim(), c.id);
     }
 
-    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    const emailRegex = /^[^\s@]+@[^\s@.]+\.[^\s@]+$/;
 
     // Output tracking
     const createdUsers: Array<{
