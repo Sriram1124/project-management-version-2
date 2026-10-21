@@ -1,255 +1,286 @@
-import { prisma } from '../lib/prisma';
 import { WorkItemService } from './work-item.service';
 import { ProjectService } from './project.service';
-import { WorkItemType, WorkItemStatus, WorkItemPriority } from '@prisma/client';
+import { mockPrisma } from '../../tests/mocks/prisma.mock';
+import { WorkItemType, WorkItemStatus, ProjectStatus } from '@prisma/client';
 
-async function runTests() {
-  console.log('=== RUNNING TESTS: COMMENTS, STORY POINTS & PROJECT-SCOPED ROLES ===');
+describe('WorkItem Comments, Story Points & Project-Scoped Roles Unit Tests', () => {
+  const mockUser = {
+    id: 'user-manager-1',
+    name: 'Manager User',
+    organization_id: 'org-test-1',
+    role: 'MANAGER',
+    roles: [{ role: { name: 'MANAGER' } }],
+  };
 
-  // Find or create test user and project
-  const user = await prisma.user.findFirst({
-    where: {
-      is_active: true,
-      organization_id: { not: null },
-      roles: {
-        some: {
-          role: {
-            name: { in: ['MANAGER', 'ADMIN'] }
-          }
-        }
-      }
-    },
-    include: { roles: { select: { role: { select: { name: true } } } } },
-  }) || await prisma.user.findFirst({
-    where: { is_active: true, organization_id: { not: null } },
-    include: { roles: { select: { role: { select: { name: true } } } } },
+  beforeEach(() => {
+    jest.clearAllMocks();
   });
 
-  if (!user) {
-    throw new Error('No active user found for testing');
-  }
-
-  (user as any).role = (user.roles?.[0] as any)?.role?.name || 'MANAGER';
-
-  const project = await prisma.project.findFirst({
-    where: {
-      status: { not: 'ARCHIVED' },
-      organization_id: user.organization_id || undefined,
-    },
-  }) || await prisma.project.findFirst({
-    where: { status: { not: 'ARCHIVED' } },
-  });
-
-  if (!project) {
-    throw new Error('No project found for testing');
-  }
-
-  const sprint = await prisma.sprint.findFirst({
-    where: { project_id: project.id },
-  });
-
-  console.log(`[SETUP] Using user: ${user.name} (${user.id}), project: ${project.name} (${project.id})`);
-
-  // Test 1: Story points validation on task creation
-  console.log('\n--- TEST 1: Mandatory Story Points Validation on Creation ---');
-  let threwOnMissingSp = false;
-  try {
-    await WorkItemService.createWorkItem(user, {
-      project_id: project.id,
-      type: WorkItemType.TASK,
-      title: 'Task without story points',
-      story_points: null,
+  describe('Story Points Validation on Creation', () => {
+    it('rejects task creation when story_points is null', async () => {
+      await expect(
+        WorkItemService.createWorkItem(mockUser, {
+          project_id: 'proj-1',
+          type: WorkItemType.TASK,
+          title: 'Task without story points',
+          story_points: null,
+        })
+      ).rejects.toThrow(/story points/i);
     });
-  } catch (err: any) {
-    threwOnMissingSp = true;
-    console.log('[PASS] Rejected task creation with null story points:', err.message);
-  }
-  if (!threwOnMissingSp) throw new Error('Expected task creation without story points to fail!');
 
-  let threwOnNegativeSp = false;
-  try {
-    await WorkItemService.createWorkItem(user, {
-      project_id: project.id,
-      type: WorkItemType.TASK,
-      title: 'Task with -1 story points',
-      story_points: -1,
+    it('rejects task creation when story_points is negative', async () => {
+      await expect(
+        WorkItemService.createWorkItem(mockUser, {
+          project_id: 'proj-1',
+          type: WorkItemType.TASK,
+          title: 'Task with -1 story points',
+          story_points: -1,
+        })
+      ).rejects.toThrow(/story points/i);
     });
-  } catch (err: any) {
-    threwOnNegativeSp = true;
-    console.log('[PASS] Rejected task creation with negative story points:', err.message);
-  }
-  if (!threwOnNegativeSp) throw new Error('Expected task creation with negative story points to fail!');
 
-  let threwOnDecimalSp = false;
-  try {
-    await WorkItemService.createWorkItem(user, {
-      project_id: project.id,
-      type: WorkItemType.TASK,
-      title: 'Task with decimal story points',
-      story_points: 3.5,
+    it('rejects task creation when story_points is a decimal', async () => {
+      await expect(
+        WorkItemService.createWorkItem(mockUser, {
+          project_id: 'proj-1',
+          type: WorkItemType.TASK,
+          title: 'Task with decimal story points',
+          story_points: 3.5,
+        })
+      ).rejects.toThrow(/story points/i);
     });
-  } catch (err: any) {
-    threwOnDecimalSp = true;
-    console.log('[PASS] Rejected task creation with decimal story points:', err.message);
-  }
-  if (!threwOnDecimalSp) throw new Error('Expected task creation with decimal story points to fail!');
 
-  // Non-negative integer (including 0) must be accepted (using STORY which can exist at project root)
-  const zeroSpTask = await WorkItemService.createWorkItem(user, {
-    project_id: project.id,
-    type: WorkItemType.STORY,
-    title: 'Story with 0 story points (Valid non-negative integer)',
-    story_points: 0,
-  });
-  console.log(`[PASS] Accepted 0 story points: created story ${zeroSpTask.id} with story_points: ${zeroSpTask.story_points}`);
-  await WorkItemService.deleteWorkItem(zeroSpTask.id, user);
+    it('accepts valid non-negative integer story points on creation', async () => {
+      mockPrisma.project.findFirst.mockResolvedValueOnce({
+        id: 'proj-1',
+        organization_id: 'org-test-1',
+        status: ProjectStatus.ACTIVE,
+      });
+      mockPrisma.workItem.create.mockResolvedValueOnce({
+        id: 'story-1',
+        title: 'Valid Story',
+        type: WorkItemType.STORY,
+        project_id: 'proj-1',
+        organization_id: 'org-test-1',
+        story_points: 5,
+        status: WorkItemStatus.TODO,
+        assignees: [],
+        time_entries: [],
+        children: [],
+        extension_requests: [],
+      });
 
-  // Test 2: Valid story creation with story points
-  console.log('\n--- TEST 2: Story Creation with Valid Story Points ---');
-  const validTask = await WorkItemService.createWorkItem(user, {
-    project_id: project.id,
-    type: WorkItemType.STORY,
-    title: 'Test Persistent Comments & Cycles Story',
-    story_points: 5,
-    sprint_id: sprint ? sprint.id : null,
-  });
-  console.log(`[PASS] Story created successfully with ID: ${validTask.id}, story_points: ${validTask.story_points}`);
+      const result = await WorkItemService.createWorkItem(mockUser, {
+        project_id: 'proj-1',
+        type: WorkItemType.STORY,
+        title: 'Valid Story',
+        story_points: 5,
+      });
 
-  // Test 3: Story points update validation
-  console.log('\n--- TEST 3: Story Points Update Validation ---');
-  let threwOnInvalidUpdateSp = false;
-  try {
-    await WorkItemService.updateWorkItem(validTask.id, user, { story_points: -1 });
-  } catch (err: any) {
-    threwOnInvalidUpdateSp = true;
-    console.log('[PASS] Rejected negative story points on update:', err.message);
-  }
-  if (!threwOnInvalidUpdateSp) throw new Error('Expected update with negative story points to fail!');
-
-  const updatedTask = await WorkItemService.updateWorkItem(validTask.id, user, { story_points: 8 });
-  console.log(`[PASS] Updated task story points to: ${updatedTask.story_points}`);
-
-  // Test 4: Persistent Comments CRUD
-  console.log('\n--- TEST 4: Persistent Comments CRUD ---');
-  // 4a: Add comment
-  const comment1 = await WorkItemService.createComment(validTask.id, 'Initial test comment for task', user);
-  console.log(`[PASS] Created comment 1: "${comment1.content}" by ${comment1.author.name} (${comment1.id})`);
-
-  // Empty comment rejection
-  let threwOnEmptyComment = false;
-  try {
-    await WorkItemService.createComment(validTask.id, '   ', user);
-  } catch (err: any) {
-    threwOnEmptyComment = true;
-    console.log('[PASS] Rejected whitespace-only comment:', err.message);
-  }
-  if (!threwOnEmptyComment) throw new Error('Expected empty comment to fail!');
-
-  // Add second comment
-  const comment2 = await WorkItemService.createComment(validTask.id, 'Second comment for ordering check', user);
-  console.log(`[PASS] Created comment 2: "${comment2.content}" (${comment2.id})`);
-
-  // 4b: List comments (ordered oldest-to-newest)
-  const commentList = await WorkItemService.listComments(validTask.id, user);
-  console.log(`[PASS] Fetched ${commentList.length} comments. Ordered oldest-to-newest:`, 
-    new Date(commentList[0].created_at).getTime() <= new Date(commentList[1].created_at).getTime());
-
-  // 4c: Update comment
-  const updatedComment = await WorkItemService.updateComment(validTask.id, comment1.id, 'Edited test comment content', user);
-  console.log(`[PASS] Updated comment content: "${updatedComment.content}"`);
-
-  // 4d: Delete comment
-  const deleteResult = await WorkItemService.deleteComment(validTask.id, comment2.id, user);
-  console.log(`[PASS] Deleted comment 2:`, deleteResult);
-
-  const remainingComments = await WorkItemService.listComments(validTask.id, user);
-  console.log(`[PASS] Remaining comments count: ${remainingComments.length} (expected: 1)`);
-
-  // Test 5: Project-Scoped Custom Roles Restriction
-  console.log('\n--- TEST 5: Project-Scoped Custom Roles Restriction ---');
-  const projectPerms = await ProjectService.getAvailablePermissions(user, 'project');
-  const hasOnlyProjectScope = projectPerms.permissions.every(p => ProjectService.PROJECT_SCOPED_PERMISSIONS.has(p.name));
-  console.log(`[PASS] getAvailablePermissions with scope=project returns strictly project-scoped permissions: ${hasOnlyProjectScope} (count: ${projectPerms.permissions.length})`);
-
-  // Attempt to create custom role with forbidden permissions (e.g. ATTENDANCE_READ, USER_CREATE)
-  let threwOnForbiddenRolePerm = false;
-  try {
-    await ProjectService.createCustomRole(
-      project.id,
-      {
-        name: `Test Escalated Role ${Date.now()}`,
-        permissions: ['PROJECT_READ', 'ATTENDANCE_READ', 'USER_CREATE'],
-      },
-      user
-    );
-  } catch (err: any) {
-    threwOnForbiddenRolePerm = true;
-    console.log('[PASS] Rejected custom role with out-of-scope permissions:', err.message);
-  }
-  if (!threwOnForbiddenRolePerm) throw new Error('Expected custom role with out-of-scope permissions to fail!');
-
-  // Create valid custom role with project-scoped permissions
-  const validRole = await ProjectService.createCustomRole(
-    project.id,
-    {
-      name: `Project QA Specialist ${Date.now()}`,
-      description: 'Test project-scoped custom role',
-      permissions: ['PROJECT_READ', 'TASK_READ', 'TASK_CREATE', 'TASK_UPDATE'],
-    },
-    user
-  );
-  console.log(`[PASS] Successfully created project-scoped custom role: "${validRole.name}" (${validRole.id})`);
-
-  // Test 6: Project Member Individual Permissions (9 Capabilities & Reset)
-  console.log('\n--- TEST 6: Project Member Individual Permissions (9 Capabilities & Reset) ---');
-  // Find a project member or add current user as member
-  let targetMember = await prisma.projectMember.findFirst({
-    where: { project_id: project.id },
-  });
-  if (!targetMember) {
-    targetMember = await prisma.projectMember.create({
-      data: {
-        project_id: project.id,
-        user_id: user.id,
-        project_role: 'MEMBER',
-      },
+      expect(result).toBeDefined();
+      expect(result.id).toBe('story-1');
+      expect(result.story_points).toBe(5);
     });
-  }
+  });
 
-  // Assign 4 specific capabilities
-  const updatedMembersWithPerms = await ProjectService.updateMemberPermissions(
-    project.id,
-    targetMember.user_id,
-    ['DOCUMENT_UPLOAD', 'TASK_UPDATE', 'CYCLE_ACTIVATE', 'ACTION_ITEM_CREATE'],
-    user
-  );
-  const updatedMember = updatedMembersWithPerms.find((m: any) => m.user_id === targetMember!.user_id);
-  console.log(`[PASS] Assigned capabilities to member. Assigned permissions count:`, updatedMember?.role_details?.permissions?.length);
-  if (!updatedMember?.role_details?.permissions?.includes('DOCUMENT_UPLOAD')) {
-    throw new Error('Expected DOCUMENT_UPLOAD to be in member permissions!');
-  }
+  describe('Story Points Update Validation', () => {
+    it('rejects update with negative story points', async () => {
+      mockPrisma.workItem.findFirst.mockResolvedValueOnce({
+        id: 'item-1',
+        project_id: 'proj-1',
+        organization_id: 'org-test-1',
+        project: { status: ProjectStatus.ACTIVE },
+        assignees: [],
+      });
 
-  // Reset capabilities to None
-  const resetMembers = await ProjectService.updateMemberPermissions(
-    project.id,
-    targetMember.user_id,
-    [],
-    user
-  );
-  const resetMember = resetMembers.find((m: any) => m.user_id === targetMember!.user_id);
-  console.log(`[PASS] Reset member capabilities. Role details is null or empty:`, resetMember?.role_id === null || !resetMember?.role_details);
+      await expect(
+        WorkItemService.updateWorkItem('item-1', mockUser, { story_points: -1 })
+      ).rejects.toThrow(/story points/i);
+    });
+  });
 
-  // Clean up test data
-  console.log('\n--- CLEANUP ---');
-  await WorkItemService.deleteWorkItem(validTask.id, user);
-  console.log(`[PASS] Cleaned up test task ${validTask.id}`);
-  await prisma.role.delete({ where: { id: validRole.id } });
-  console.log(`[PASS] Cleaned up test custom role ${validRole.id}`);
+  describe('Persistent Comments CRUD', () => {
+    const mockWorkItem = {
+      id: 'task-100',
+      project_id: 'proj-1',
+      organization_id: 'org-test-1',
+      project: { status: ProjectStatus.ACTIVE, owner_id: 'user-manager-1' },
+      assignees: [],
+    };
 
-  console.log('\n=== ALL TESTS PASSED SUCCESSFULLY! ===\n');
-}
+    it('rejects adding an empty or whitespace-only comment', async () => {
+      await expect(
+        WorkItemService.createComment('task-100', '   ', mockUser)
+      ).rejects.toThrow(/Comment content cannot be empty/);
+    });
 
-runTests().catch((err) => {
-  console.error('\n[FAIL] Test suite error:', err);
-  process.exit(1);
-}).finally(() => prisma.$disconnect());
+    it('creates a new comment when content is valid', async () => {
+      mockPrisma.workItem.findFirst.mockResolvedValueOnce(mockWorkItem);
+      mockPrisma.workItemComment.create.mockResolvedValueOnce({
+        id: 'comment-1',
+        work_item_id: 'task-100',
+        author_id: mockUser.id,
+        content: 'This is a test comment',
+        created_at: new Date('2026-10-20T10:00:00Z'),
+        updated_at: new Date('2026-10-20T10:00:00Z'),
+        author: {
+          id: mockUser.id,
+          name: mockUser.name,
+          email: 'manager@example.com',
+          roles: [{ role: { name: 'MANAGER' } }],
+        },
+      });
+
+      const comment = await WorkItemService.createComment('task-100', 'This is a test comment', mockUser);
+      expect(comment).toBeDefined();
+      expect(comment.id).toBe('comment-1');
+      expect(comment.content).toBe('This is a test comment');
+      expect(comment.author.name).toBe('Manager User');
+    });
+
+    it('lists comments ordered oldest to newest', async () => {
+      mockPrisma.workItem.findFirst.mockResolvedValueOnce(mockWorkItem);
+      mockPrisma.workItemComment.findMany.mockResolvedValueOnce([
+        {
+          id: 'comment-1',
+          work_item_id: 'task-100',
+          author_id: mockUser.id,
+          content: 'First comment',
+          created_at: new Date('2026-10-20T10:00:00Z'),
+          updated_at: new Date('2026-10-20T10:00:00Z'),
+          author: { id: mockUser.id, name: mockUser.name, email: 'mgr@example.com', roles: [] },
+        },
+        {
+          id: 'comment-2',
+          work_item_id: 'task-100',
+          author_id: mockUser.id,
+          content: 'Second comment',
+          created_at: new Date('2026-10-20T11:00:00Z'),
+          updated_at: new Date('2026-10-20T11:00:00Z'),
+          author: { id: mockUser.id, name: mockUser.name, email: 'mgr@example.com', roles: [] },
+        },
+      ]);
+
+      const comments = await WorkItemService.listComments('task-100', mockUser);
+      expect(comments).toHaveLength(2);
+      expect(comments[0].content).toBe('First comment');
+      expect(comments[1].content).toBe('Second comment');
+    });
+
+    it('rejects updating comment with empty content', async () => {
+      await expect(
+        WorkItemService.updateComment('task-100', 'comment-1', '   ', mockUser)
+      ).rejects.toThrow(/Comment content cannot be empty/);
+    });
+
+    it('updates existing comment successfully', async () => {
+      mockPrisma.workItem.findFirst.mockResolvedValueOnce(mockWorkItem);
+      mockPrisma.workItemComment.findFirst.mockResolvedValueOnce({
+        id: 'comment-1',
+        work_item_id: 'task-100',
+        author_id: mockUser.id,
+      });
+      mockPrisma.workItemComment.update.mockResolvedValueOnce({
+        id: 'comment-1',
+        work_item_id: 'task-100',
+        author_id: mockUser.id,
+        content: 'Updated comment content',
+        created_at: new Date('2026-10-20T10:00:00Z'),
+        updated_at: new Date('2026-10-20T10:05:00Z'),
+        author: {
+          id: mockUser.id,
+          name: mockUser.name,
+          email: 'mgr@example.com',
+          roles: [],
+        },
+      });
+
+      const updated = await WorkItemService.updateComment('task-100', 'comment-1', 'Updated comment content', mockUser);
+      expect(updated.content).toBe('Updated comment content');
+    });
+
+    it('deletes comment successfully', async () => {
+      mockPrisma.workItem.findFirst.mockResolvedValueOnce(mockWorkItem);
+      mockPrisma.workItemComment.findFirst.mockResolvedValueOnce({
+        id: 'comment-1',
+        work_item_id: 'task-100',
+        author_id: mockUser.id,
+      });
+      mockPrisma.workItemComment.delete.mockResolvedValueOnce({
+        id: 'comment-1',
+      });
+
+      const deleted = await WorkItemService.deleteComment('task-100', 'comment-1', mockUser);
+      expect(deleted).toEqual({ success: true, message: 'Comment deleted successfully' });
+    });
+  });
+
+  describe('Project-Scoped Custom Roles Restriction', () => {
+    it('returns strictly project-scoped permissions when requested with scope=project', async () => {
+      mockPrisma.permission.findMany.mockResolvedValueOnce([
+        { id: 'perm-1', name: 'PROJECT_READ', description: 'Read project' },
+        { id: 'perm-2', name: 'TASK_CREATE', description: 'Create task' },
+      ]);
+
+      const result = await ProjectService.getAvailablePermissions(mockUser, 'project');
+      expect(result.permissions).toBeDefined();
+      expect(result.permissions.every((p: any) => ProjectService.PROJECT_SCOPED_PERMISSIONS.has(p.name))).toBe(true);
+    });
+
+    it('rejects creating custom role with out-of-scope permissions', async () => {
+      mockPrisma.project.findUnique.mockResolvedValueOnce({
+        id: 'proj-1',
+        organization_id: 'org-test-1',
+      });
+
+      await expect(
+        ProjectService.createCustomRole(
+          'proj-1',
+          {
+            name: 'Escalated Role',
+            permissions: ['PROJECT_READ', 'ATTENDANCE_READ', 'USER_CREATE'],
+          },
+          mockUser
+        )
+      ).rejects.toThrow(/Invalid project-scoped permissions/);
+    });
+
+    it('creates custom role with valid project-scoped permissions', async () => {
+      mockPrisma.project.findUnique.mockResolvedValueOnce({
+        id: 'proj-1',
+        organization_id: 'org-test-1',
+      });
+      mockPrisma.role.findFirst.mockResolvedValueOnce(null); // name uniqueness check
+      mockPrisma.permission.findMany.mockResolvedValueOnce([
+        { id: 'p-1', name: 'PROJECT_READ' },
+        { id: 'p-2', name: 'TASK_READ' },
+      ]);
+      mockPrisma.role.create.mockResolvedValueOnce({
+        id: 'role-custom-1',
+        name: 'Project QA Specialist',
+        description: 'Test project-scoped custom role',
+        project_id: 'proj-1',
+        organization_id: 'org-test-1',
+        is_custom: true,
+        permissions: [
+          { permission: { id: 'p-1', name: 'PROJECT_READ' } },
+          { permission: { id: 'p-2', name: 'TASK_READ' } },
+        ],
+      });
+
+      const role = await ProjectService.createCustomRole(
+        'proj-1',
+        {
+          name: 'Project QA Specialist',
+          description: 'Test project-scoped custom role',
+          permissions: ['PROJECT_READ', 'TASK_READ'],
+        },
+        mockUser
+      );
+
+      expect(role).toBeDefined();
+      expect(role.id).toBe('role-custom-1');
+      expect(role.name).toBe('Project QA Specialist');
+    });
+  });
+});

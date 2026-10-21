@@ -8,6 +8,7 @@ import {
   checkProjectMemberPermission,
   invalidateUserSessionCache,
   setUserSessionInCache,
+  getUserSessionFromCache,
 } from '../../src/middleware/auth.middleware';
 import { prisma } from '../../src/lib/prisma';
 import { mockPrisma } from '../mocks/prisma.mock';
@@ -49,10 +50,41 @@ describe('Auth Middleware Unit Tests', () => {
   });
 
   describe('Session Cache helpers', () => {
-    it('sets, retrieves, and invalidates cache per user and globally', () => {
-      setUserSessionInCache('user-1', { id: 'user-1', name: 'User 1' });
+    it('sets, retrieves, and invalidates cache per user and globally', async () => {
+      const mockUser = {
+        id: 'user-1',
+        name: 'User 1',
+        is_active: true,
+        organization_id: 'org-1',
+        organization: { id: 'org-1', is_active: true },
+        roles: [{ role: { name: 'INTERN' } }],
+      };
+      setUserSessionInCache('user-1', mockUser);
+      expect(getUserSessionFromCache('user-1')).toEqual(mockUser);
+
+      // Verify that warm cache is utilized by authenticate middleware without querying database
+      const token = jwt.sign({ userId: 'user-1' }, ACCESS_SECRET);
+      const { req, res, next } = createMockReqRes({
+        headers: { authorization: `Bearer ${token}` },
+      });
+      await authenticate(req, res, next);
+      expect(next).toHaveBeenCalled();
+      expect(req.fullUser).toEqual(mockUser);
+      expect(mockPrisma.user.findUnique).not.toHaveBeenCalled();
+
+      // Invalidate specific user cache
       invalidateUserSessionCache('user-1');
+      expect(getUserSessionFromCache('user-1')).toBeNull();
+
+      // Verify global cache clear
+      setUserSessionInCache('user-1', mockUser);
+      setUserSessionInCache('user-2', { id: 'user-2', name: 'User 2', role: 'MANAGER' });
+      expect(getUserSessionFromCache('user-1')).toBeDefined();
+      expect(getUserSessionFromCache('user-2')).toBeDefined();
+
       invalidateUserSessionCache(); // global clear
+      expect(getUserSessionFromCache('user-1')).toBeNull();
+      expect(getUserSessionFromCache('user-2')).toBeNull();
     });
   });
 

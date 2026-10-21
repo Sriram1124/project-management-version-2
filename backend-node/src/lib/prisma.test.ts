@@ -1,73 +1,67 @@
-import { getEffectiveDatabaseUrl, getSanitizedDatabaseInfo } from './prisma';
+const { getEffectiveDatabaseUrl, getSanitizedDatabaseInfo } = jest.requireActual('./prisma');
 
-function runTests() {
-  console.log('=== PRISMA CONFIGURATION & CONNECTION LIFECYCLE TESTS ===\n');
-  let passed = 0;
-  let total = 0;
-
-  function assert(name: string, condition: boolean, details?: any) {
-    total++;
-    if (condition) {
-      console.log(`[PASS] ${name}`);
-      passed++;
-    } else {
-      console.error(`[FAIL] ${name}`, details || '');
-    }
-  }
-
-  // 1. Should upgrade Supabase session pooler (port 5432) to transaction pooler (port 6543)
-  {
+describe('Prisma Configuration & Connection Lifecycle Tests', () => {
+  it('rewrites Supabase session pooler port from 5432 to 6543 and sets transaction pooler params', () => {
     const input = 'postgresql://user:pass@aws-0-ap-south-1.pooler.supabase.com:5432/postgres';
-    const effective = getEffectiveDatabaseUrl(input)!;
-    const u = new URL(effective);
-    assert('Supabase pooler port rewrites from 5432 to 6543', u.port === '6543', { port: u.port });
-    assert('pgbouncer=true is enforced for transaction pooler', u.searchParams.get('pgbouncer') === 'true');
-    assert('Default connection_limit=3 is set for serverless', u.searchParams.get('connection_limit') === '3');
-    assert('Default pool_timeout=30 is set', u.searchParams.get('pool_timeout') === '30');
-  }
+    const effective = getEffectiveDatabaseUrl(input);
+    expect(effective).not.toBeNull();
+    const u = new URL(effective!);
+    expect(u.port).toBe('6543');
+    expect(u.searchParams.get('pgbouncer')).toBe('true');
+    expect(u.searchParams.get('connection_limit')).toBe('3');
+    expect(u.searchParams.get('pool_timeout')).toBe('30');
+  });
 
-  // 2. Should retain port 6543 if already set and enforce pgbouncer
-  {
+  it('retains port 6543 when already configured and enforces pgbouncer', () => {
     const input = 'postgresql://user:pass@aws-0-ap-south-1.pooler.supabase.com:6543/postgres';
-    const effective = getEffectiveDatabaseUrl(input)!;
-    const u = new URL(effective);
-    assert('Retains port 6543 when already configured', u.port === '6543');
-    assert('pgbouncer=true is set when port 6543 was already present', u.searchParams.get('pgbouncer') === 'true');
-  }
+    const effective = getEffectiveDatabaseUrl(input);
+    expect(effective).not.toBeNull();
+    const u = new URL(effective!);
+    expect(u.port).toBe('6543');
+    expect(u.searchParams.get('pgbouncer')).toBe('true');
+  });
 
-  // 3. Should preserve custom PRISMA_CONNECTION_LIMIT if present in URL
-  {
+  it('preserves custom PRISMA_CONNECTION_LIMIT if present in URL', () => {
     const input = 'postgresql://user:pass@aws-0-ap-south-1.pooler.supabase.com:5432/postgres?connection_limit=3';
-    const effective = getEffectiveDatabaseUrl(input)!;
-    const u = new URL(effective);
-    assert('Preserves custom connection_limit from URL', u.searchParams.get('connection_limit') === '3');
-  }
+    const effective = getEffectiveDatabaseUrl(input);
+    expect(effective).not.toBeNull();
+    const u = new URL(effective!);
+    expect(u.searchParams.get('connection_limit')).toBe('3');
+  });
 
-  // 4. Non-Supabase pooler (e.g. direct localhost) should NOT rewrite port or add pgbouncer
-  {
+  it('does NOT rewrite port or add pgbouncer for non-Supabase database (e.g. localhost)', () => {
     const input = 'postgresql://postgres:postgres@localhost:5432/mydb';
-    const effective = getEffectiveDatabaseUrl(input)!;
-    const u = new URL(effective);
-    assert('Localhost port 5432 is untouched', u.port === '5432');
-    assert('pgbouncer is NOT added to non-pooler database', u.searchParams.get('pgbouncer') === null);
-    assert('connection_limit is still set for serverless container', u.searchParams.get('connection_limit') === '3');
-  }
+    const effective = getEffectiveDatabaseUrl(input);
+    expect(effective).not.toBeNull();
+    const u = new URL(effective!);
+    expect(u.port).toBe('5432');
+    expect(u.searchParams.get('pgbouncer')).toBeNull();
+    expect(u.searchParams.get('connection_limit')).toBe('3');
+  });
 
-  // 5. getSanitizedDatabaseInfo should never return password or user credentials
-  {
-    const info = getSanitizedDatabaseInfo();
-    assert('Database info returns configured status', info.configured === true);
-    assert('Database info does not contain password field', !('password' in info));
-    assert('Database info does not contain secret in string', !JSON.stringify(info).includes('pass'));
-    assert('Database info correctly identifies pool mode as transaction', info.pool_mode === 'transaction');
-    assert('Database info reports pgbouncer enabled', info.pgbouncer === true);
-  }
+  it('getSanitizedDatabaseInfo never returns password or user credentials', () => {
+    const origUrl = process.env.DATABASE_URL;
+    try {
+      process.env.DATABASE_URL = 'postgresql://user:secretpassword@aws-0-ap-south-1.pooler.supabase.com:5432/postgres';
+      const info = getSanitizedDatabaseInfo();
+      expect(info.configured).toBe(true);
+      expect(info).not.toHaveProperty('password');
+      expect(JSON.stringify(info)).not.toContain('secretpassword');
+      expect(info.pool_mode).toBe('transaction');
+      expect(info.pgbouncer).toBe(true);
+    } finally {
+      process.env.DATABASE_URL = origUrl;
+    }
+  });
 
-  console.log(`\nTests completed: ${passed}/${total} passed.`);
-  if (passed !== total) {
-    process.exit(1);
-  }
-}
-
-runTests();
-
+  it('getSanitizedDatabaseInfo returns configured: false when DATABASE_URL is not set', () => {
+    const origUrl = process.env.DATABASE_URL;
+    try {
+      delete process.env.DATABASE_URL;
+      const info = getSanitizedDatabaseInfo();
+      expect(info.configured).toBe(false);
+    } finally {
+      process.env.DATABASE_URL = origUrl;
+    }
+  });
+});
