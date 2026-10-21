@@ -630,7 +630,7 @@ export class WorkItemService {
 
       if (isTaskLike) {
         const rawSp: any = (data as any).story_points;
-        const sp = rawSp !== undefined && rawSp !== null && rawSp !== '' ? Number(rawSp) : NaN;
+        const sp = rawSp !== undefined && rawSp !== null && rawSp !== '' ? Number(rawSp) : Number.NaN;
         if (
           rawSp === undefined ||
           rawSp === null ||
@@ -793,7 +793,7 @@ export class WorkItemService {
       data.type === WorkItemType.BUG
     ) {
       const rawSp: any = (data as any).story_points;
-      const sp = rawSp !== undefined && rawSp !== null && rawSp !== '' ? Number(rawSp) : NaN;
+      const sp = rawSp !== undefined && rawSp !== null && rawSp !== '' ? Number(rawSp) : Number.NaN;
       if (
         rawSp === undefined ||
         rawSp === null ||
@@ -1324,7 +1324,7 @@ export class WorkItemService {
     if (input.story_points !== undefined) {
       if (effectiveType === WorkItemType.STORY) {
         const rawSp: any = (input as any).story_points;
-        const sp = rawSp !== null && rawSp !== undefined && rawSp !== '' ? Number(rawSp) : NaN;
+        const sp = rawSp !== null && rawSp !== undefined && rawSp !== '' ? Number(rawSp) : Number.NaN;
         if (
           rawSp === null ||
           rawSp === undefined ||
@@ -1346,7 +1346,7 @@ export class WorkItemService {
 
         if (isApplicableType) {
           const rawSp: any = (input as any).story_points;
-          const sp = rawSp !== null && rawSp !== undefined && rawSp !== '' ? Number(rawSp) : NaN;
+          const sp = rawSp !== null && rawSp !== undefined && rawSp !== '' ? Number(rawSp) : Number.NaN;
           if (
             rawSp === null ||
             rawSp === undefined ||

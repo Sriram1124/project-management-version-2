@@ -305,7 +305,6 @@ export default function LoginView() {
                       value={identifier}
                       onChange={(e) => setIdentifier(e.target.value)}
                       placeholder="superadmin@dailoqa.com"
-                      autoFocus
                       className="w-full rounded-2xl border border-violet-200 bg-violet-50/40 py-3 pl-11 pr-4 text-sm text-slate-800 placeholder:text-slate-400 focus:border-violet-400 focus:outline-none focus:ring-2 focus:ring-violet-200"
                     />
                   </div>

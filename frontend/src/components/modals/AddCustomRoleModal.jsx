@@ -290,7 +290,6 @@ export default function AddCustomRoleModal({
               placeholder="e.g. Lead QA Specialist, Security Reviewer, Scrum Master"
               className="w-full px-3.5 py-2 text-xs bg-slate-50 border border-slate-200 rounded-xl text-slate-900 placeholder:text-slate-400 focus:bg-white focus:outline-hidden focus:ring-2 focus:ring-purple-500/20 focus:border-purple-500 transition-all font-medium"
               required
-              autoFocus
             />
             <p className="text-[11px] text-slate-400 mt-1">
               Must be unique within this project and easy for team members to recognize.

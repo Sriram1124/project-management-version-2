@@ -351,7 +351,6 @@ export default function ProjectFilesSection({ projectId, projectName = '', onToa
                         if (e.key === 'Escape') setRenameFile(null);
                       }}
                       className="flex-1 px-1.5 py-0.5 text-xs border border-purple-400 rounded focus:outline-hidden"
-                      autoFocus
                     />
                     <button
                       onClick={handleConfirmRename}

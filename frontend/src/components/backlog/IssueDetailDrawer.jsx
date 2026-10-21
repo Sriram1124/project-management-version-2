@@ -1276,7 +1276,7 @@ export default function IssueDetailDrawer({
 
         {/* Description */}
         <div className="space-y-1">
-          <label className="text-xs font-semibold text-slate-700 flex items-center gap-1.5">
+          <label htmlFor="drawer-issue-description" className="text-xs font-semibold text-slate-700 flex items-center gap-1.5">
             <span>Description</span>
             {updatingField === 'description' && (
               <Loader2 className="w-3 h-3 text-purple-600 animate-spin shrink-0" />
@@ -1284,6 +1284,7 @@ export default function IssueDetailDrawer({
           </label>
           {canEditTitleAndDesc ? (
             <textarea
+              id="drawer-issue-description"
               rows={3}
               value={editedDesc}
               disabled={updatingField === 'description'}
@@ -1542,8 +1543,9 @@ export default function IssueDetailDrawer({
 
                   <div className="grid grid-cols-3 gap-2">
                     <div>
-                      <label className="block text-[10px] font-semibold text-slate-600 mb-0.5">Date</label>
+                      <label htmlFor="log-work-date" className="block text-[10px] font-semibold text-slate-600 mb-0.5">Date</label>
                       <input
+                        id="log-work-date"
                         type="date"
                         value={logDate}
                         onChange={(e) => setLogDate(e.target.value)}
@@ -1552,8 +1554,9 @@ export default function IssueDetailDrawer({
                       />
                     </div>
                     <div>
-                      <label className="block text-[10px] font-semibold text-slate-600 mb-0.5">Hours</label>
+                      <label htmlFor="log-work-hours" className="block text-[10px] font-semibold text-slate-600 mb-0.5">Hours</label>
                       <input
+                        id="log-work-hours"
                         type="number"
                         min="0"
                         max="24"
@@ -1564,8 +1567,9 @@ export default function IssueDetailDrawer({
                       />
                     </div>
                     <div>
-                      <label className="block text-[10px] font-semibold text-slate-600 mb-0.5">Minutes</label>
+                      <label htmlFor="log-work-minutes" className="block text-[10px] font-semibold text-slate-600 mb-0.5">Minutes</label>
                       <input
+                        id="log-work-minutes"
                         type="number"
                         min="0"
                         max="59"
@@ -1579,8 +1583,9 @@ export default function IssueDetailDrawer({
                   </div>
 
                   <div>
-                    <label className="block text-[10px] font-semibold text-slate-600 mb-0.5">Work Notes</label>
+                    <label htmlFor="log-work-notes" className="block text-[10px] font-semibold text-slate-600 mb-0.5">Work Notes</label>
                     <textarea
+                      id="log-work-notes"
                       rows={2}
                       value={logNotes}
                       onChange={(e) => setLogNotes(e.target.value)}
@@ -1735,10 +1740,11 @@ export default function IssueDetailDrawer({
               </div>
 
               <div>
-                <label className="block text-[11px] font-bold uppercase text-slate-400 mb-1">
+                <label htmlFor="extension-due-date" className="block text-[11px] font-bold uppercase text-slate-400 mb-1">
                   Requested New Due Date <span className="text-rose-500">*</span>
                 </label>
                 <input
+                  id="extension-due-date"
                   type="date"
                   required
                   min={
@@ -1753,10 +1759,11 @@ export default function IssueDetailDrawer({
               </div>
 
               <div>
-                <label className="block text-[11px] font-bold uppercase text-slate-400 mb-1">
+                <label htmlFor="extension-reason" className="block text-[11px] font-bold uppercase text-slate-400 mb-1">
                   Reason for Extension <span className="text-rose-500">*</span>
                 </label>
                 <textarea
+                  id="extension-reason"
                   required
                   rows={3}
                   maxLength={2000}

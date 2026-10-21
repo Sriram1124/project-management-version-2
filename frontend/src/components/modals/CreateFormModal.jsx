@@ -221,7 +221,6 @@ export default function CreateFormModal({ form, cohorts: initialCohorts, onClose
           <div>
             <label className="block text-xs font-bold text-slate-700 mb-1">Form Title *</label>
             <input
-              autoFocus
               type="text"
               className="w-full text-sm p-2.5 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-purple-500/20 focus:border-purple-500"
               placeholder="e.g. Weekly Cohort Evaluation"

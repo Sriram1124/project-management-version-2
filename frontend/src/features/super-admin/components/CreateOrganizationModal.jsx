@@ -73,7 +73,6 @@ export default function CreateOrganizationModal({ isOpen, onClose, onSuccess }) 
                 <input
                   type="text"
                   required
-                  autoFocus
                   value={organizationName}
                   onChange={(e) => {
                     setOrganizationName(e.target.value);

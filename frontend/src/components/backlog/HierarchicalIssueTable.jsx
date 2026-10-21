@@ -884,7 +884,7 @@ function HierarchicalRow({
                 type="number"
                 min={isStory ? '1' : '0'}
                 max="999"
-                autoFocus
+                aria-label="Story Points"
                 value={pointsValue}
                 onChange={(e) => setPointsValue(e.target.value)}
                 onBlur={handlePointsSubmit}
@@ -943,10 +943,11 @@ function HierarchicalRow({
 
           {canChangeDueDate && menuOpen === 'date' && (
             <div className={`absolute right-0 w-44 bg-white rounded-md shadow-lg border border-slate-200 p-2 z-50 ${openUpward ? 'bottom-full mb-1' : 'top-full mt-1'}`}>
-              <label className="block text-[10px] font-bold text-slate-500 uppercase mb-1">
+              <label htmlFor={`due-date-${item.id}`} className="block text-[10px] font-bold text-slate-500 uppercase mb-1">
                 Set Due Date
               </label>
               <input
+                id={`due-date-${item.id}`}
                 type="date"
                 defaultValue={item.due_date ? new Date(item.due_date).toISOString().split('T')[0] : ''}
                 onChange={(e) => {

@@ -380,7 +380,17 @@ export default function CreateIssueModal({
 
           {/* Issue Type Selector */}
           <div>
-            <label className="block text-slate-700 font-semibold mb-1">Issue Type</label>
+            <label htmlFor="issue-type" className="block text-slate-700 font-semibold mb-1">Issue Type</label>
+            <select
+              id="issue-type"
+              value={issueType}
+              onChange={(e) => handleTypeChange(e.target.value)}
+              className="sr-only"
+            >
+              {effectiveAllowedTypes.map((t) => (
+                <option key={t} value={t}>{t}</option>
+              ))}
+            </select>
             <div className="flex items-center gap-1.5">
               {[
                 { type: 'Story', icon: Bookmark, color: 'text-emerald-600' },
@@ -409,13 +419,13 @@ export default function CreateIssueModal({
 
           {/* Summary / Title */}
           <div>
-            <label className="block text-slate-700 font-semibold mb-1">
+            <label htmlFor="summary" className="block text-slate-700 font-semibold mb-1">
               {issueType === 'Epic' ? 'Epic Name' : 'Summary'} <span className="text-rose-500">*</span>
             </label>
             <input
+              id="summary"
               type="text"
               required
-              autoFocus
               value={summary}
               onChange={(e) => setSummary(e.target.value)}
               placeholder={issueType === 'Epic' ? 'e.g. Core Authentication & RBAC' : 'What needs to be done?'}
@@ -425,8 +435,9 @@ export default function CreateIssueModal({
 
           {/* Description */}
           <div>
-            <label className="block text-slate-700 font-semibold mb-1">Description</label>
+            <label htmlFor="description" className="block text-slate-700 font-semibold mb-1">Description</label>
             <textarea
+              id="description"
               rows={3}
               value={description}
               onChange={(e) => setDescription(e.target.value)}
@@ -439,7 +450,7 @@ export default function CreateIssueModal({
             <div className={`grid ${isKanban ? 'grid-cols-1' : 'grid-cols-2'} gap-3`}>
               {/* Parent Selector */}
               <div>
-                <label className="block text-slate-700 font-semibold mb-1 flex items-center gap-1">
+                <label htmlFor="parent-item" className="block text-slate-700 font-semibold mb-1 flex items-center gap-1">
                   <GitFork className="w-3 h-3 text-purple-600" />
                   <span>
                     {parentItem
@@ -474,6 +485,7 @@ export default function CreateIssueModal({
                   </div>
                 ) : (
                   <select
+                    id="parent-item"
                     value={parentId}
                     onChange={(e) => setParentId(e.target.value)}
                     required={!['Story', 'Bug'].includes(issueType)}
@@ -500,10 +512,11 @@ export default function CreateIssueModal({
               {/* Sprint / Cycle Selector (hidden in Kanban) */}
               {!isKanban && (
                 <div>
-                  <label className="block text-slate-700 font-semibold mb-1">
+                  <label htmlFor="sprint-cycle" className="block text-slate-700 font-semibold mb-1">
                     {isKanban ? 'Cycle' : 'Sprint'}
                   </label>
                   <select
+                    id="sprint-cycle"
                     value={sprintId}
                     onChange={(e) => setSprintId(e.target.value)}
                     className="w-full px-2.5 py-1.5 rounded border border-slate-200 bg-white text-slate-800 focus:outline-none focus:border-purple-600"
@@ -530,10 +543,11 @@ export default function CreateIssueModal({
           <div className="grid grid-cols-3 gap-3">
             {/* Assignee */}
             <div>
-              <label className="block text-slate-700 font-semibold mb-1">
+              <label htmlFor="assignee" className="block text-slate-700 font-semibold mb-1">
                 {issueType === 'Epic' ? 'Epic Lead' : 'Assignee'}
               </label>
               <select
+                id="assignee"
                 value={assigneeId}
                 onChange={(e) => setAssigneeId(e.target.value)}
                 className="w-full px-2.5 py-1.5 rounded border border-slate-200 bg-white text-slate-800 focus:outline-none focus:border-purple-600"
@@ -554,8 +568,9 @@ export default function CreateIssueModal({
 
             {/* Status */}
             <div>
-              <label className="block text-slate-700 font-semibold mb-1">Status</label>
+              <label htmlFor="status" className="block text-slate-700 font-semibold mb-1">Status</label>
               <select
+                id="status"
                 value={status}
                 onChange={(e) => setStatus(e.target.value)}
                 className="w-full px-2.5 py-1.5 rounded border border-slate-200 bg-white text-slate-800 focus:outline-none focus:border-purple-600"
@@ -570,8 +585,9 @@ export default function CreateIssueModal({
 
             {/* Priority */}
             <div>
-              <label className="block text-slate-700 font-semibold mb-1">Priority</label>
+              <label htmlFor="priority" className="block text-slate-700 font-semibold mb-1">Priority</label>
               <select
+                id="priority"
                 value={priority}
                 onChange={(e) => setPriority(e.target.value)}
                 className="w-full px-2.5 py-1.5 rounded border border-slate-200 bg-white text-slate-800 focus:outline-none focus:border-purple-600"
@@ -587,8 +603,9 @@ export default function CreateIssueModal({
           {/* Dates: Start Date & Due Date */}
           <div className="grid grid-cols-2 gap-3">
             <div>
-              <label className="block text-slate-700 font-semibold mb-1">Start Date</label>
+              <label htmlFor="start-date" className="block text-slate-700 font-semibold mb-1">Start Date</label>
               <input
+                id="start-date"
                 type="date"
                 value={startDate}
                 onChange={(e) => setStartDate(e.target.value)}
@@ -596,8 +613,9 @@ export default function CreateIssueModal({
               />
             </div>
             <div>
-              <label className="block text-slate-700 font-semibold mb-1">Due Date</label>
+              <label htmlFor="due-date" className="block text-slate-700 font-semibold mb-1">Due Date</label>
               <input
+                id="due-date"
                 type="date"
                 value={dueDate}
                 onChange={(e) => setDueDate(e.target.value)}
@@ -609,10 +627,11 @@ export default function CreateIssueModal({
           {/* Story Points (for non-epics) */}
           {issueType !== 'Epic' && (
             <div>
-              <label className="block text-slate-700 font-semibold mb-1">
+              <label htmlFor="story-points" className="block text-slate-700 font-semibold mb-1">
                 Story Points *
               </label>
               <input
+                id="story-points"
                 type="number"
                 min={issueType === 'Story' ? 1 : 0}
                 max={100}

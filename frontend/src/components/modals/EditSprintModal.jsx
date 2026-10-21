@@ -169,13 +169,13 @@ export default function EditSprintModal({
           )}
 
           <div>
-            <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1.5">
+            <label htmlFor="edit-sprint-name" className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1.5">
               {iterationLabel} Name <span className="text-rose-500">*</span>
             </label>
             <input
+              id="edit-sprint-name"
               type="text"
               required
-              autoFocus
               value={name}
               onChange={(e) => setName(e.target.value)}
               placeholder={`e.g., ${iterationLabel} 01 or ${iterationLabel} 02`}
@@ -184,10 +184,11 @@ export default function EditSprintModal({
           </div>
 
           <div>
-            <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1.5">
+            <label htmlFor="edit-sprint-goal" className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1.5">
               {iterationLabel} Goal
             </label>
             <textarea
+              id="edit-sprint-goal"
               rows={2}
               value={goal}
               onChange={(e) => setGoal(e.target.value)}
@@ -197,10 +198,11 @@ export default function EditSprintModal({
           </div>
 
           <div>
-            <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1.5">
+            <label htmlFor="edit-sprint-status" className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1.5">
               Status
             </label>
             <select
+              id="edit-sprint-status"
               value={status}
               onChange={(e) => setStatus(e.target.value)}
               className="w-full px-3 py-2 text-xs bg-slate-50 border border-slate-200 rounded-xl text-slate-800 focus:bg-white focus:outline-hidden focus:ring-2 focus:ring-purple-500/20 focus:border-purple-500 transition-all font-medium cursor-pointer"
@@ -222,10 +224,11 @@ export default function EditSprintModal({
 
           <div className="grid grid-cols-2 gap-3">
             <div>
-              <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1.5">
+              <label htmlFor="edit-sprint-start-date" className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1.5">
                 Start Date
               </label>
               <input
+                id="edit-sprint-start-date"
                 type="date"
                 value={startDate}
                 onChange={(e) => setStartDate(e.target.value)}
@@ -233,10 +236,11 @@ export default function EditSprintModal({
               />
             </div>
             <div>
-              <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1.5">
+              <label htmlFor="edit-sprint-end-date" className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1.5">
                 End Date
               </label>
               <input
+                id="edit-sprint-end-date"
                 type="date"
                 value={endDate}
                 onChange={(e) => setEndDate(e.target.value)}

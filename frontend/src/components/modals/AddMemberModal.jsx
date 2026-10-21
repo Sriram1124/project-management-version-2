@@ -140,7 +140,6 @@ export default function AddMemberModal({ isOpen, onClose, onSuccess, defaultCoho
                 value={name}
                 onChange={(e) => setName(e.target.value)}
                 placeholder="e.g. Rahul Sharma"
-                autoFocus
                 className="w-full pl-9 pr-3 py-2.5 text-xs rounded-xl border border-slate-200 focus:outline-none focus:border-purple-600 text-slate-800 placeholder:text-slate-400 font-medium"
               />
             </div>

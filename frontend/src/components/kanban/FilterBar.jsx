@@ -137,7 +137,6 @@ export default function FilterBar({
                     onChange={(e) => setAssigneeSearchQuery(e.target.value)}
                     placeholder="Search assignees..."
                     className="w-full pl-7 pr-6 py-1 text-xs rounded-md border border-slate-200 bg-slate-50 focus:bg-white focus:outline-none focus:ring-1 focus:ring-purple-600 focus:border-purple-600 transition-colors placeholder:text-slate-400"
-                    autoFocus
                   />
                   {assigneeSearchQuery && (
                     <button

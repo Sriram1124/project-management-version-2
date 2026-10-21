@@ -118,13 +118,13 @@ export default function CreateSprintModal({
           )}
 
           <div>
-            <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1.5">
+            <label htmlFor="sprint-name" className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1.5">
               {isKanban ? 'Cycle Name' : 'Sprint Name'} <span className="text-rose-500">*</span>
             </label>
             <input
+              id="sprint-name"
               type="text"
               required
-              autoFocus
               value={name}
               onChange={(e) => setName(e.target.value)}
               placeholder={isKanban ? 'e.g., Cycle 1 - Core Flow' : 'e.g., Sprint 01 or Sprint 02'}
@@ -133,10 +133,11 @@ export default function CreateSprintModal({
           </div>
 
           <div>
-            <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1.5">
+            <label htmlFor="sprint-goal" className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1.5">
               {isKanban ? 'Cycle Goal / Scope' : 'Sprint Goal'}
             </label>
             <textarea
+              id="sprint-goal"
               rows={2}
               value={goal}
               onChange={(e) => setGoal(e.target.value)}
@@ -147,10 +148,11 @@ export default function CreateSprintModal({
 
           <div className="grid grid-cols-2 gap-3">
             <div>
-              <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1.5">
+              <label htmlFor="sprint-start-date" className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1.5">
                 Start Date
               </label>
               <input
+                id="sprint-start-date"
                 type="date"
                 value={startDate}
                 onChange={(e) => setStartDate(e.target.value)}
@@ -158,10 +160,11 @@ export default function CreateSprintModal({
               />
             </div>
             <div>
-              <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1.5">
+              <label htmlFor="sprint-end-date" className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1.5">
                 End Date
               </label>
               <input
+                id="sprint-end-date"
                 type="date"
                 value={endDate}
                 onChange={(e) => setEndDate(e.target.value)}

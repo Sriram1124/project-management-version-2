@@ -254,7 +254,6 @@ export default function IssueRow({
                 <CornerDownRight className="w-3 h-3 text-slate-300 shrink-0" />
                 <input
                   type="text"
-                  autoFocus
                   value={newSubtaskTitle}
                   onChange={(e) => setNewSubtaskTitle(e.target.value)}
                   placeholder={`${
