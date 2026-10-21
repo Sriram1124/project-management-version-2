@@ -31,8 +31,14 @@ const allowedOrigins: string[] = [
 ].filter((origin): origin is string => Boolean(origin));
 
 app.use(cors({
-  origin: allowedOrigins,
-  credentials: true,
+  origin: (origin, callback) => {
+    if (!origin) return callback(null, true);
+    if (allowedOrigins.includes(origin) || origin.endsWith('.vercel.app')) {
+      return callback(null, true);
+    }
+    return callback(new Error(`Origin ${origin} not allowed by CORS`));
+ },
+ credentials: true,
 }));
 
 // Production-safe body size limits to prevent Denial-of-Service via memory exhaustion (S5689)
