@@ -1,0 +1,630 @@
+import {
+  ProjectMethodology,
+  WorkItemType,
+  WorkItemStatus,
+  WorkItemPriority,
+} from '@prisma/client';
+
+export const PROJECTS_SPEC_PART3: any[] = [
+  // =========================================================================
+  // PROJECT 6: Ticket Management System (TMS-AUTO) - KANBAN
+  // =========================================================================
+  {
+    name: 'Ticket Management System',
+    code: 'TMS-AUTO',
+    description:
+      'Continuous finding and vulnerability lifecycle automation with WebSocket live pushes, LangGraph AI triage agent, and security finding queues.',
+    methodology: ProjectMethodology.KANBAN,
+    members: [
+      { email: 'divyansh.agarwal@dailoqa.com', role: 'TECH_LEAD' },
+      { email: 'sameer.shukla@dailoqa.com', role: 'DEVELOPER' },
+      { email: 'himanshu.gupta@dailoqa.com', role: 'DEVELOPER' },
+      { email: 'anshuman.mishra@dailoqa.com', role: 'DEVOPS_ENGINEER' },
+      { email: 'nishant.sindhu@dailoqa.com', role: 'DEVELOPER' },
+    ],
+    epics: [
+      {
+        title: 'Security Finding Ingestion & WebSockets',
+        desc: 'Real-time WebSocket event bus, SAST/DAST finding intake, and code snippet evidence uploads.',
+        stories: [
+          {
+            title: 'Real-time WebSocket Push Bus for Queue Updates',
+            desc: 'Broadcast ticket lifecycle events to active analyst dashboards without polling.',
+            status: WorkItemStatus.COMPLETED,
+            priority: WorkItemPriority.HIGH,
+            tasks: [
+              {
+                title: 'Set up WebSocket room partitioning by organization and project',
+                type: WorkItemType.TASK,
+                status: WorkItemStatus.COMPLETED,
+                priority: WorkItemPriority.HIGH,
+                sp: 5,
+                desc: 'Prevent cross-tenant broadcast leaks using JWT room authorization.',
+                acceptance: ['Clients only receive messages for authorized project rooms'],
+              },
+              {
+                title: 'Add reconnection backoff and message deduplication in client hook',
+                type: WorkItemType.TASK,
+                status: WorkItemStatus.COMPLETED,
+                priority: WorkItemPriority.MEDIUM,
+                sp: 3,
+                desc: 'Exponential backoff with jitter up to 30s reconnect window.',
+                acceptance: ['Recovers gracefully from socket disconnects'],
+              },
+            ],
+          },
+          {
+            title: 'Structured Vulnerability Finding Creation',
+            desc: 'Include CWE ID, CVSS v3.1 vector, source code file path, and line range.',
+            status: WorkItemStatus.COMPLETED,
+            priority: WorkItemPriority.MEDIUM,
+            tasks: [
+              {
+                title: 'Build CVSS score calculator modal with interactive vector builder',
+                type: WorkItemType.TASK,
+                status: WorkItemStatus.COMPLETED,
+                priority: WorkItemPriority.MEDIUM,
+                sp: 5,
+                desc: 'Calculate Base, Temporal, and Environmental scores from standard vector string.',
+                acceptance: ['Outputs standard CVSS 3.1 vector string'],
+              },
+              {
+                title: 'Code snippet syntax highlighter component with line marker',
+                type: WorkItemType.TASK,
+                status: WorkItemStatus.COMPLETED,
+                priority: WorkItemPriority.LOW,
+                sp: 2,
+                desc: 'Display vulnerable code block with red highlight on vulnerable line range.',
+                acceptance: ['Supports JavaScript, TypeScript, Python, Java syntax'],
+              },
+            ],
+          },
+        ],
+      },
+      {
+        title: 'LangGraph AI Chatbot Assistant',
+        desc: 'AI chatbot for intent classification, automated ticket creation, and knowledge retrieval.',
+        stories: [
+          {
+            title: 'AI Intent Classification & Ticket Lookup',
+            desc: 'LangGraph stateful workflow classifying user prompts into lookup, create, or escalate.',
+            status: WorkItemStatus.IN_PROGRESS,
+            priority: WorkItemPriority.HIGH,
+            tasks: [
+              {
+                title: 'Implement LangGraph tool nodes for querying ticket database',
+                type: WorkItemType.TASK,
+                status: WorkItemStatus.IN_PROGRESS,
+                priority: WorkItemPriority.HIGH,
+                sp: 8,
+                desc: 'Equip agent with tools to search by CVE, title, and status.',
+                acceptance: ['Accurately identifies existing open duplicates'],
+                subtasks: [
+                  { title: 'Write mock test cases for ambiguous user prompts', status: WorkItemStatus.IN_PROGRESS, sp: 2, desc: 'Prompt testing' },
+                ],
+              },
+              {
+                title: 'Rate limiter for AI chatbot conversational query endpoint',
+                type: WorkItemType.TASK,
+                status: WorkItemStatus.IN_REVIEW,
+                priority: WorkItemPriority.MEDIUM,
+                sp: 3,
+                desc: 'Limit users to 20 AI queries per minute using Redis token bucket.',
+                acceptance: ['Returns 429 Too Many Requests when exceeded'],
+              },
+              {
+                title: 'Fix prompt injection vulnerability in ticket summary generator',
+                type: WorkItemType.BUG,
+                status: WorkItemStatus.BLOCKED,
+                priority: WorkItemPriority.URGENT,
+                sp: 5,
+                desc: 'Sanitize malicious markdown inside bug descriptions before passing to LLM context.',
+                acceptance: ['Neutralizes prompt injection attempts'],
+              },
+            ],
+          },
+          {
+            title: 'Agent Queue Kanban Workflow & Triage',
+            desc: 'Continuous flow board: TRIAGE -> UNDER_REVIEW -> PATCH_IN_PROGRESS -> VERIFIED -> CLOSED.',
+            status: WorkItemStatus.IN_PROGRESS,
+            priority: WorkItemPriority.MEDIUM,
+            tasks: [
+              {
+                title: 'Build automated finding severity reclassification rule',
+                type: WorkItemType.TASK,
+                status: WorkItemStatus.IN_PROGRESS,
+                priority: WorkItemPriority.MEDIUM,
+                sp: 5,
+                desc: 'Promote finding from MEDIUM to HIGH if production asset is tagged in ticket.',
+                acceptance: ['Automatic trigger updates card priority tag'],
+              },
+              {
+                title: 'Overdue critical security finding reminder ping',
+                type: WorkItemType.TASK,
+                status: WorkItemStatus.TODO,
+                priority: WorkItemPriority.URGENT,
+                sp: 3,
+                desc: 'Urgent task to notify assigned security engineer of findings nearing SLA breach.',
+                acceptance: ['Dispatches browser desktop notification'],
+              },
+            ],
+          },
+        ],
+      },
+      {
+        title: 'Audit Logs & Compliance Reporting',
+        desc: 'Immutable status change logs, SOC2 audit trails, and executive vulnerability summaries.',
+        stories: [
+          {
+            title: 'Immutable Status Transition Audit Log',
+            desc: 'Log every state change with actor identity, IP, before/after snapshot, and timestamp.',
+            status: WorkItemStatus.TODO,
+            priority: WorkItemPriority.MEDIUM,
+            tasks: [
+              {
+                title: 'Build audit log export API with SHA-256 cryptographic chain verification',
+                type: WorkItemType.TASK,
+                status: WorkItemStatus.TODO,
+                priority: WorkItemPriority.HIGH,
+                sp: 8,
+                desc: 'Verify tamper-evident hash linking between successive audit log records.',
+                acceptance: ['Detects any database row tampering instantly'],
+              },
+            ],
+          },
+        ],
+      },
+    ],
+  },
+
+  // =========================================================================
+  // PROJECT 7: FinCredit AI- Credit Health & Loan Planning - SCRUM
+  // =========================================================================
+  {
+    name: 'FinCredit AI- Credit Health & Loan Planning',
+    code: 'FINCREDIT-AI',
+    description:
+      'AI-driven credit assessment, debt-to-income planning, loan restructuring simulations, and alternative data underwriting engine.',
+    methodology: ProjectMethodology.SCRUM,
+    members: [
+      { email: 'aakash.yadav@dailoqa.com', role: 'TECH_LEAD' },
+      { email: 'anushka.sharma@dailoqa.com', role: 'QA_TESTER' },
+      { email: 'vaivashvat.upadhyay@dailoqa.com', role: 'BUSINESS_ANALYST' },
+      { email: 'titirsha.singh@dailoqa.com', role: 'DEVELOPER' },
+      { email: 'nikhil.bisla@dailoqa.com', role: 'DEVELOPER' },
+    ],
+    epics: [
+      {
+        title: 'Applicant Onboarding & Credit Ingestion',
+        desc: 'Credit bureau API integration, bank statement OCR, and alternative data parsing.',
+        stories: [
+          {
+            title: 'CIBIL & Experian Credit Bureau Connector',
+            desc: 'Ingest XML/JSON credit reports with automated tradeline and payment history extraction.',
+            sprintIndex: 0,
+            status: WorkItemStatus.COMPLETED,
+            priority: WorkItemPriority.HIGH,
+            tasks: [
+              {
+                title: 'Develop secure credit bureau API adapter with Mutual TLS',
+                type: WorkItemType.TASK,
+                status: WorkItemStatus.COMPLETED,
+                priority: WorkItemPriority.HIGH,
+                sp: 5,
+                sprintIndex: 0,
+                desc: 'Authenticate using mTLS client certificates and parse bureau response payload.',
+                acceptance: ['Handles bureau timeout with 3x exponential retry'],
+              },
+              {
+                title: 'Tradeline delinquent payment history analyzer',
+                type: WorkItemType.TASK,
+                status: WorkItemStatus.COMPLETED,
+                priority: WorkItemPriority.MEDIUM,
+                sp: 3,
+                sprintIndex: 0,
+                desc: 'Extract 30/60/90 days past due (DPD) occurrences over past 24 months.',
+                acceptance: ['Summarizes DPD counts by credit facility'],
+              },
+            ],
+          },
+          {
+            title: 'Bank Statement OCR & Cash Flow Categorization',
+            desc: 'Extract transaction ledger from PDF statements and identify recurring income/debits.',
+            sprintIndex: 0,
+            status: WorkItemStatus.COMPLETED,
+            priority: WorkItemPriority.MEDIUM,
+            tasks: [
+              {
+                title: 'Build PDF bank statement OCR extraction worker using AWS Textract',
+                type: WorkItemType.TASK,
+                status: WorkItemStatus.COMPLETED,
+                priority: WorkItemPriority.HIGH,
+                sp: 5,
+                sprintIndex: 0,
+                desc: 'Parse table geometries and reconstruct transaction rows accurately.',
+                acceptance: ['Reconciles opening/closing balance within 0.01 tolerance'],
+              },
+              {
+                title: 'Salary credit detection and employer matching heuristic',
+                type: WorkItemType.TASK,
+                status: WorkItemStatus.COMPLETED,
+                priority: WorkItemPriority.MEDIUM,
+                sp: 3,
+                sprintIndex: 0,
+                desc: 'Identify monthly salary credits and correlate with stated employer name.',
+                acceptance: ['Detects salary date consistency across 6 months'],
+              },
+            ],
+          },
+        ],
+      },
+      {
+        title: 'AI Scoring Engine & Risk Tiering',
+        desc: 'Machine learning credit score, default probability model, and risk tier categorization.',
+        stories: [
+          {
+            title: 'XGBoost Credit Default Risk Predictor',
+            desc: 'Deploy ML pipeline scoring applicant default probability within 12 months.',
+            sprintIndex: 1,
+            status: WorkItemStatus.COMPLETED,
+            priority: WorkItemPriority.HIGH,
+            tasks: [
+              {
+                title: 'Serve model inference endpoint with FastAPI and ONNX runtime',
+                type: WorkItemType.TASK,
+                status: WorkItemStatus.COMPLETED,
+                priority: WorkItemPriority.HIGH,
+                sp: 5,
+                sprintIndex: 1,
+                desc: 'Return credit score (300-900) and risk tier (PRIME, NEAR_PRIME, SUBPRIME).',
+                acceptance: ['Inference latency under 75ms at p99'],
+              },
+              {
+                title: 'Fix feature normalization drift on missing utility bill records',
+                type: WorkItemType.BUG,
+                status: WorkItemStatus.COMPLETED,
+                priority: WorkItemPriority.MEDIUM,
+                sp: 3,
+                sprintIndex: 1,
+                desc: 'Handle null alternative data features using median imputation.',
+                acceptance: ['Prevents NaN score generation for unbanked applicants'],
+              },
+            ],
+          },
+          {
+            title: 'Debt-to-Income (DTI) & FOIR Calculator',
+            desc: 'Compute Fixed Obligation to Income Ratio against lending policy limits.',
+            sprintIndex: 1,
+            status: WorkItemStatus.COMPLETED,
+            priority: WorkItemPriority.MEDIUM,
+            tasks: [
+              {
+                title: 'Implement dynamic FOIR threshold check based on income tier',
+                type: WorkItemType.TASK,
+                status: WorkItemStatus.COMPLETED,
+                priority: WorkItemPriority.MEDIUM,
+                sp: 3,
+                sprintIndex: 1,
+                desc: 'Cap maximum allowed FOIR at 50% for <50k income, 65% for >150k income.',
+                acceptance: ['Flags loan applications exceeding threshold for underwriter review'],
+              },
+            ],
+          },
+        ],
+      },
+      {
+        title: 'Loan Restructuring & Advisory Simulator',
+        desc: 'Interactive what-if calculator for loan tenure extension, interest reduction, and consolidation.',
+        stories: [
+          {
+            title: 'Multi-Loan Consolidation Simulator',
+            desc: 'Allow applicants to consolidate credit card debt into lower-interest personal loans.',
+            sprintIndex: 2,
+            status: WorkItemStatus.IN_PROGRESS,
+            priority: WorkItemPriority.HIGH,
+            tasks: [
+              {
+                title: 'Build interactive amortization schedule recalculator component',
+                type: WorkItemType.TASK,
+                status: WorkItemStatus.IN_PROGRESS,
+                priority: WorkItemPriority.HIGH,
+                sp: 8,
+                sprintIndex: 2,
+                desc: 'Client-side EMI calculator recalculating total interest savings in real time.',
+                acceptance: ['Matches banking standard EMI formula within 1 rupee'],
+                subtasks: [
+                  { title: 'Add comparison chart for baseline vs consolidated total outlay', status: WorkItemStatus.IN_PROGRESS, sp: 2, desc: 'Chart verification' },
+                ],
+              },
+              {
+                title: 'Credit score recovery roadmap generation service',
+                type: WorkItemType.TASK,
+                status: WorkItemStatus.IN_PROGRESS,
+                priority: WorkItemPriority.MEDIUM,
+                sp: 5,
+                sprintIndex: 2,
+                desc: 'Provide step-by-step advice on which credit card balances to pay off first.',
+                acceptance: ['Calculates potential 6-month score improvement trajectory'],
+              },
+              {
+                title: 'Blocked upstream credit score simulation sandbox credentials',
+                type: WorkItemType.TASK,
+                status: WorkItemStatus.BLOCKED,
+                priority: WorkItemPriority.HIGH,
+                sp: 3,
+                sprintIndex: 2,
+                desc: 'Awaiting sandbox API key refresh from partner credit bureau.',
+                acceptance: ['Resume integration testing once sandbox credentials valid'],
+              },
+            ],
+          },
+          {
+            title: 'Underwriter Review Portal & Sanction Letter Generation',
+            desc: 'Digital sanction letter PDF generation with digital signature placeholder.',
+            sprintIndex: 2,
+            status: WorkItemStatus.IN_PROGRESS,
+            priority: WorkItemPriority.MEDIUM,
+            tasks: [
+              {
+                title: 'Generate personalized sanction letter PDF with terms and schedule',
+                type: WorkItemType.TASK,
+                status: WorkItemStatus.TODO,
+                priority: WorkItemPriority.MEDIUM,
+                sp: 5,
+                sprintIndex: 2,
+                desc: 'Compile approved loan offer, APR, processing fees, and disbursement account.',
+                acceptance: ['Generates PDF in < 2 seconds with company seal'],
+              },
+            ],
+          },
+        ],
+      },
+      {
+        title: 'Fraud Check & Identity Verification',
+        desc: 'Aadhaar/PAN verification, face liveness detection, and AML sanctions screening.',
+        stories: [
+          {
+            title: 'Instant KYC & Sanctions List Screening',
+            desc: 'Screen applicant name against OFAC and domestic financial sanction lists.',
+            sprintIndex: 3,
+            status: WorkItemStatus.TODO,
+            priority: WorkItemPriority.HIGH,
+            tasks: [
+              {
+                title: 'Connect instant AML screening API with fuzzy string matching',
+                type: WorkItemType.TASK,
+                status: WorkItemStatus.TODO,
+                priority: WorkItemPriority.HIGH,
+                sp: 5,
+                sprintIndex: 3,
+                desc: 'Match name with Jaro-Winkler distance threshold > 0.85.',
+                acceptance: ['Returns positive hits for manual review'],
+              },
+            ],
+          },
+        ],
+      },
+    ],
+  },
+
+  // =========================================================================
+  // PROJECT 8: NEXORA - Portfolio & Growth Intelligence - SCRUM
+  // =========================================================================
+  {
+    name: 'NEXORA - AI-Powered Company Portfolio Management',
+    code: 'NEXORA',
+    description:
+      'AI-powered company portfolio management, financial analytics, RAG-grounded business analyst chatbot, and what-if financial scenario simulation.',
+    methodology: ProjectMethodology.SCRUM,
+    members: [
+      { email: 'anant.vaibhav@dailoqa.com', role: 'TECH_LEAD' },
+      { email: 'anant.sharma@dailoqa.com', role: 'DEVELOPER' },
+      { email: 'athira.r.pillai@dailoqa.com', role: 'DEVELOPER' },
+      { email: 'piyush.yadav@dailoqa.com', role: 'DEVELOPER' },
+      { email: 'arth.saxena@dailoqa.com', role: 'QA_TESTER' },
+    ],
+    epics: [
+      {
+        title: 'Company & Portfolio Financial Modeling',
+        desc: 'Entity master data, business unit hierarchies, P&L statements, and KPI dashboards.',
+        stories: [
+          {
+            title: 'Multi-Entity Financial Ledger Consolidation',
+            desc: 'Consolidate revenue, COGS, EBITDA, and burn rate across subsidiaries.',
+            sprintIndex: 0,
+            status: WorkItemStatus.COMPLETED,
+            priority: WorkItemPriority.HIGH,
+            tasks: [
+              {
+                title: 'Build multi-currency exchange rate conversion service',
+                type: WorkItemType.TASK,
+                status: WorkItemStatus.COMPLETED,
+                priority: WorkItemPriority.HIGH,
+                sp: 5,
+                sprintIndex: 0,
+                desc: 'Support daily conversion rates with historical currency fixing.',
+                acceptance: ['Accurately converts USD/EUR/INR financials to reporting base currency'],
+              },
+              {
+                title: 'Interactive EBITDA margin breakdown chart component',
+                type: WorkItemType.TASK,
+                status: WorkItemStatus.COMPLETED,
+                priority: WorkItemPriority.MEDIUM,
+                sp: 3,
+                sprintIndex: 0,
+                desc: 'Waterfall chart illustrating Gross Profit down to Net Operating Income.',
+                acceptance: ['Responsive on all desktop resolutions'],
+              },
+            ],
+          },
+          {
+            title: 'KPI Telemetry & Growth Trend Cards',
+            desc: 'Track CAC, LTV, Net Retention Rate (NRR), and runway in months.',
+            sprintIndex: 0,
+            status: WorkItemStatus.COMPLETED,
+            priority: WorkItemPriority.MEDIUM,
+            tasks: [
+              {
+                title: 'Develop automated SaaS metrics calculation worker',
+                type: WorkItemType.TASK,
+                status: WorkItemStatus.COMPLETED,
+                priority: WorkItemPriority.MEDIUM,
+                sp: 5,
+                sprintIndex: 0,
+                desc: 'Compute Magic Number, Quick Ratio, and Rule of 40 score for portfolio companies.',
+                acceptance: ['Calculations verified against audited investor pitch decks'],
+              },
+            ],
+          },
+        ],
+      },
+      {
+        title: 'AI/ML Forecasting & Anomaly Detection',
+        desc: 'Time-series forecasting, revenue outlier detection, and unexpected expense alerts.',
+        stories: [
+          {
+            title: 'Prophet & NeuralProphet Revenue Projections',
+            desc: 'Forecast next 4 quarters revenue with upper/lower 95% confidence intervals.',
+            sprintIndex: 1,
+            status: WorkItemStatus.COMPLETED,
+            priority: WorkItemPriority.HIGH,
+            tasks: [
+              {
+                title: 'Build Python ML microservice for 12-month forward revenue projection',
+                type: WorkItemType.TASK,
+                status: WorkItemStatus.COMPLETED,
+                priority: WorkItemPriority.HIGH,
+                sp: 8,
+                sprintIndex: 1,
+                desc: 'Fit Prophet model with seasonality and trend changepoint parameters.',
+                acceptance: ['Returns forecast series with upper/lower bounds'],
+              },
+              {
+                title: 'Outlier expense detection with Isolation Forest',
+                type: WorkItemType.TASK,
+                status: WorkItemStatus.COMPLETED,
+                priority: WorkItemPriority.MEDIUM,
+                sp: 5,
+                sprintIndex: 1,
+                desc: 'Flag line items deviating by > 3 standard deviations from trailing 6-month mean.',
+                acceptance: ['Highlights suspicious spikes in red on expense dashboard'],
+              },
+            ],
+          },
+          {
+            title: 'What-If Scenario Simulation Engine',
+            desc: 'Simulate business decisions: marketing spend hike, hiring ramp-up, or price change.',
+            sprintIndex: 1,
+            status: WorkItemStatus.COMPLETED,
+            priority: WorkItemPriority.MEDIUM,
+            tasks: [
+              {
+                title: 'Develop scenario comparison slider panel with live forecast recalculation',
+                type: WorkItemType.TASK,
+                status: WorkItemStatus.COMPLETED,
+                priority: WorkItemPriority.HIGH,
+                sp: 5,
+                sprintIndex: 1,
+                desc: 'Adjust headcount and marketing levers to see updated runway projection.',
+                acceptance: ['Recalculates updated runway within 50ms'],
+              },
+            ],
+          },
+        ],
+      },
+      {
+        title: 'RAG Business Analyst & Natural Language QA',
+        desc: 'Ask questions about approved company pitch decks, 10-K filings, and balance sheets.',
+        stories: [
+          {
+            title: 'Financial Document Vector Store & Chunking Pipeline',
+            desc: 'Ingest annual reports, SEC filings, and pitch decks into Qdrant/pgvector.',
+            sprintIndex: 2,
+            status: WorkItemStatus.IN_PROGRESS,
+            priority: WorkItemPriority.HIGH,
+            tasks: [
+              {
+                title: 'Implement financial table markdown chunker with header context preservation',
+                type: WorkItemType.TASK,
+                status: WorkItemStatus.IN_PROGRESS,
+                priority: WorkItemPriority.HIGH,
+                sp: 8,
+                sprintIndex: 2,
+                desc: 'Preserve column headers in each table row chunk for accurate LLM semantic retrieval.',
+                acceptance: ['Zero loss of table context during vector similarity search'],
+                subtasks: [
+                  { title: 'Benchmark retrieval accuracy on complex multi-column P&L tables', status: WorkItemStatus.IN_PROGRESS, sp: 2, desc: 'Retrieval benchmarking' },
+                ],
+              },
+              {
+                title: 'Grounded citation generator linking answer to source page and paragraph',
+                type: WorkItemType.TASK,
+                status: WorkItemStatus.IN_PROGRESS,
+                priority: WorkItemPriority.HIGH,
+                sp: 5,
+                sprintIndex: 2,
+                desc: 'Include clickable citation chips opening document viewer at exact bounding box.',
+                acceptance: ['Each claim includes at least 1 verified document citation'],
+              },
+              {
+                title: 'Memory leak during large 500-page SEC 10-K document embedding',
+                type: WorkItemType.BUG,
+                status: WorkItemStatus.BLOCKED,
+                priority: WorkItemPriority.URGENT,
+                sp: 5,
+                sprintIndex: 2,
+                desc: 'Worker node runs out of memory when processing documents > 200MB.',
+                acceptance: ['Stream document chunks in batches of 25 with garbage collection'],
+              },
+            ],
+          },
+          {
+            title: 'Executive Financial Summarizer Agent',
+            desc: 'Generate executive briefing memos synthesizing multiple portfolio companies.',
+            sprintIndex: 2,
+            status: WorkItemStatus.IN_PROGRESS,
+            priority: WorkItemPriority.MEDIUM,
+            tasks: [
+              {
+                title: 'Build automated portfolio quarterly review markdown briefing memo',
+                type: WorkItemType.TASK,
+                status: WorkItemStatus.TODO,
+                priority: WorkItemPriority.MEDIUM,
+                sp: 5,
+                sprintIndex: 2,
+                desc: 'Synthesize top performers, revenue laggards, and key risks in structured format.',
+                acceptance: ['Renders exportable executive briefing document'],
+              },
+            ],
+          },
+        ],
+      },
+      {
+        title: 'Investor Portal & Board Deck Export',
+        desc: 'Shareable investor dashboards, secure password links, and PowerPoint deck export.',
+        stories: [
+          {
+            title: 'Automated PowerPoint Investor Deck Generator',
+            desc: 'Export current financials and forecasts into branded company slide deck.',
+            sprintIndex: 3,
+            status: WorkItemStatus.TODO,
+            priority: WorkItemPriority.MEDIUM,
+            tasks: [
+              {
+                title: 'Implement pptxgenjs slide template generator for quarterly metrics',
+                type: WorkItemType.TASK,
+                status: WorkItemStatus.TODO,
+                priority: WorkItemPriority.MEDIUM,
+                sp: 5,
+                sprintIndex: 3,
+                desc: 'Generate 10-slide quarterly update with charts and executive commentary.',
+                acceptance: ['Produces valid PPTX matching corporate brand style guide'],
+              },
+            ],
+          },
+        ],
+      },
+    ],
+  },
+];
+

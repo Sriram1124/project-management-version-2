@@ -109,30 +109,6 @@ export interface CsvValidationResult {
 }
 
 export class UserService {
-   * Safely trim leading and trailing BOM, zero-width space, non-breaking space, quotes, and whitespace
-   * in linear O(N) time without regular expression backtracking.
-   */
-  private static trimCell(str: string): string {
-    if (!str) return '';
-    let start = 0;
-    let end = str.length;
-    const isTrimChar = (ch: string) =>
-      ch === '\uFEFF' ||
-      ch === '\u200B' ||
-      ch === '\u00A0' ||
-      ch === '"' ||
-      ch === "'" ||
-      /\s/.test(ch);
-
-    while (start < end && isTrimChar(str[start])) {
-      start++;
-    }
-    while (end > start && isTrimChar(str[end - 1])) {
-      end--;
-    }
-    return str.slice(start, end).trim();
-  }
-
   /**
    * Cryptographically secure temporary password generator
    */
@@ -144,30 +120,6 @@ export class UserService {
       pwd += chars[randomBytes[i] % chars.length];
     }
     return pwd;
-  }
-
-   * Safely trim leading and trailing BOM, zero-width space, non-breaking space, quotes, and whitespace
-   * in linear O(N) time without regular expression backtracking.
-   */
-  private static trimCell(str: string): string {
-    if (!str) return '';
-    let start = 0;
-    let end = str.length;
-    const isTrimChar = (ch: string) =>
-      ch === '\uFEFF' ||
-      ch === '\u200B' ||
-      ch === '\u00A0' ||
-      ch === '"' ||
-      ch === "'" ||
-      /\s/.test(ch);
-
-    while (start < end && isTrimChar(str[start])) {
-      start++;
-    }
-    while (end > start && isTrimChar(str[end - 1])) {
-      end--;
-    }
-    return str.slice(start, end).trim();
   }
 
   /**
@@ -231,79 +183,7 @@ export class UserService {
     return candidate;
   }
 
-   * Safely trim leading and trailing BOM, zero-width space, non-breaking space, quotes, and whitespace
-   * in linear O(N) time without regular expression backtracking.
-   */
-  private static trimCell(str: string): string {
-    if (!str) return '';
-    let start = 0;
-    let end = str.length;
-    const isTrimChar = (ch: string) =>
-      ch === '\uFEFF' ||
-      ch === '\u200B' ||
-      ch === '\u00A0' ||
-      ch === '"' ||
-      ch === "'" ||
-      /\s/.test(ch);
-
-    while (start < end && isTrimChar(str[start])) {
-      start++;
-    }
-    while (end > start && isTrimChar(str[end - 1])) {
-      end--;
-    }
-    return str.slice(start, end).trim();
-  }
-
   /**
-   * Safely trim leading and trailing BOM, zero-width space, non-breaking space, quotes, and whitespace
-   * in linear O(N) time without regular expression backtracking.
-   */
-  private static trimCell(str: string): string {
-    if (!str) return "";
-    let start = 0;
-    let end = str.length;
-    const isTrimChar = (ch: string) =>
-      ch === "\uFEFF" ||
-      ch === "\u200B" ||
-      ch === "\u00A0" ||
-      ch === '"' ||
-      ch === "'" ||
-      /\s/.test(ch);
-
-    while (start < end && isTrimChar(str[start])) {
-      start++;
-    }
-    while (end > start && isTrimChar(str[end - 1])) {
-      end--;
-    }
-    return str.slice(start, end).trim();
-  }
-
-   * Safely trim leading and trailing BOM, zero-width space, non-breaking space, quotes, and whitespace
-   * in linear O(N) time without regular expression backtracking.
-   */
-  private static trimCell(str: string): string {
-    if (!str) return '';
-    let start = 0;
-    let end = str.length;
-    const isTrimChar = (ch: string) =>
-      ch === '\uFEFF' ||
-      ch === '\u200B' ||
-      ch === '\u00A0' ||
-      ch === '"' ||
-      ch === "'" ||
-      /\s/.test(ch);
-
-    while (start < end && isTrimChar(str[start])) {
-      start++;
-    }
-    while (end > start && isTrimChar(str[end - 1])) {
-      end--;
-    }
-    return str.slice(start, end).trim();
-  }
-
   /**
    * Detect delimiter (comma, semicolon, tab) from CSV header line
    */
@@ -319,6 +199,7 @@ export class UserService {
     return ',';
   }
 
+  /**
    * Safely trim leading and trailing BOM, zero-width space, non-breaking space, quotes, and whitespace
    * in linear O(N) time without regular expression backtracking.
    */
@@ -342,7 +223,6 @@ export class UserService {
     }
     return str.slice(start, end).trim();
   }
-
   /**
    * Parse a single CSV line handling quotes, escaped quotes, and trimmed values
    */
@@ -369,30 +249,6 @@ export class UserService {
     }
     cols.push(cur.trim());
     return cols.map((col) => UserService.trimCell(col));
-  }
-
-   * Safely trim leading and trailing BOM, zero-width space, non-breaking space, quotes, and whitespace
-   * in linear O(N) time without regular expression backtracking.
-   */
-  private static trimCell(str: string): string {
-    if (!str) return '';
-    let start = 0;
-    let end = str.length;
-    const isTrimChar = (ch: string) =>
-      ch === '\uFEFF' ||
-      ch === '\u200B' ||
-      ch === '\u00A0' ||
-      ch === '"' ||
-      ch === "'" ||
-      /\s/.test(ch);
-
-    while (start < end && isTrimChar(str[start])) {
-      start++;
-    }
-    while (end > start && isTrimChar(str[end - 1])) {
-      end--;
-    }
-    return str.slice(start, end).trim();
   }
 
   /**
@@ -563,30 +419,6 @@ export class UserService {
       }
       throw err;
     }
-  }
-
-   * Safely trim leading and trailing BOM, zero-width space, non-breaking space, quotes, and whitespace
-   * in linear O(N) time without regular expression backtracking.
-   */
-  private static trimCell(str: string): string {
-    if (!str) return '';
-    let start = 0;
-    let end = str.length;
-    const isTrimChar = (ch: string) =>
-      ch === '\uFEFF' ||
-      ch === '\u200B' ||
-      ch === '\u00A0' ||
-      ch === '"' ||
-      ch === "'" ||
-      /\s/.test(ch);
-
-    while (start < end && isTrimChar(str[start])) {
-      start++;
-    }
-    while (end > start && isTrimChar(str[end - 1])) {
-      end--;
-    }
-    return str.slice(start, end).trim();
   }
 
   /**
@@ -1058,30 +890,6 @@ export class UserService {
     };
   }
 
-   * Safely trim leading and trailing BOM, zero-width space, non-breaking space, quotes, and whitespace
-   * in linear O(N) time without regular expression backtracking.
-   */
-  private static trimCell(str: string): string {
-    if (!str) return '';
-    let start = 0;
-    let end = str.length;
-    const isTrimChar = (ch: string) =>
-      ch === '\uFEFF' ||
-      ch === '\u200B' ||
-      ch === '\u00A0' ||
-      ch === '"' ||
-      ch === "'" ||
-      /\s/.test(ch);
-
-    while (start < end && isTrimChar(str[start])) {
-      start++;
-    }
-    while (end > start && isTrimChar(str[end - 1])) {
-      end--;
-    }
-    return str.slice(start, end).trim();
-  }
-
   /**
    * Generates dynamic CSV template aligned with authoritative database schema and org cohorts.
    * Supports both existing master data (Name,Batch,Subbatch,Email) and full format (name,email,type,batch,subbatch,cohort).
@@ -1099,30 +907,6 @@ export class UserService {
     const sampleMaster = `Aditya Yadav,aditya.yadav@example.com,,A,A1,\n`;
     const sampleEmployee = `Jordan Lee,jordan.lee@example.com,EMPLOYEE,,,\n`;
     return header + sampleIntern + sampleMaster + sampleEmployee;
-  }
-
-   * Safely trim leading and trailing BOM, zero-width space, non-breaking space, quotes, and whitespace
-   * in linear O(N) time without regular expression backtracking.
-   */
-  private static trimCell(str: string): string {
-    if (!str) return '';
-    let start = 0;
-    let end = str.length;
-    const isTrimChar = (ch: string) =>
-      ch === '\uFEFF' ||
-      ch === '\u200B' ||
-      ch === '\u00A0' ||
-      ch === '"' ||
-      ch === "'" ||
-      /\s/.test(ch);
-
-    while (start < end && isTrimChar(str[start])) {
-      start++;
-    }
-    while (end > start && isTrimChar(str[end - 1])) {
-      end--;
-    }
-    return str.slice(start, end).trim();
   }
 
   /**
@@ -1610,30 +1394,6 @@ export class UserService {
     };
   }
 
-   * Safely trim leading and trailing BOM, zero-width space, non-breaking space, quotes, and whitespace
-   * in linear O(N) time without regular expression backtracking.
-   */
-  private static trimCell(str: string): string {
-    if (!str) return '';
-    let start = 0;
-    let end = str.length;
-    const isTrimChar = (ch: string) =>
-      ch === '\uFEFF' ||
-      ch === '\u200B' ||
-      ch === '\u00A0' ||
-      ch === '"' ||
-      ch === "'" ||
-      /\s/.test(ch);
-
-    while (start < end && isTrimChar(str[start])) {
-      start++;
-    }
-    while (end > start && isTrimChar(str[end - 1])) {
-      end--;
-    }
-    return str.slice(start, end).trim();
-  }
-
   /**
    * Canonical definition of the intern population:
    * Distinct users with the organization-wide role 'INTERN'
@@ -1709,30 +1469,6 @@ export class UserService {
   } = {}): Promise<number> {
     const where = this.getCanonicalInternWhereClause(filters);
     return prisma.user.count({ where });
-  }
-
-   * Safely trim leading and trailing BOM, zero-width space, non-breaking space, quotes, and whitespace
-   * in linear O(N) time without regular expression backtracking.
-   */
-  private static trimCell(str: string): string {
-    if (!str) return '';
-    let start = 0;
-    let end = str.length;
-    const isTrimChar = (ch: string) =>
-      ch === '\uFEFF' ||
-      ch === '\u200B' ||
-      ch === '\u00A0' ||
-      ch === '"' ||
-      ch === "'" ||
-      /\s/.test(ch);
-
-    while (start < end && isTrimChar(str[start])) {
-      start++;
-    }
-    while (end > start && isTrimChar(str[end - 1])) {
-      end--;
-    }
-    return str.slice(start, end).trim();
   }
 
   /**
@@ -1908,30 +1644,6 @@ export class UserService {
     return filtered;
   }
 
-   * Safely trim leading and trailing BOM, zero-width space, non-breaking space, quotes, and whitespace
-   * in linear O(N) time without regular expression backtracking.
-   */
-  private static trimCell(str: string): string {
-    if (!str) return '';
-    let start = 0;
-    let end = str.length;
-    const isTrimChar = (ch: string) =>
-      ch === '\uFEFF' ||
-      ch === '\u200B' ||
-      ch === '\u00A0' ||
-      ch === '"' ||
-      ch === "'" ||
-      /\s/.test(ch);
-
-    while (start < end && isTrimChar(str[start])) {
-      start++;
-    }
-    while (end > start && isTrimChar(str[end - 1])) {
-      end--;
-    }
-    return str.slice(start, end).trim();
-  }
-
   /**
    * Update authenticated user's profile
    */
@@ -1995,30 +1707,6 @@ export class UserService {
       organization_id: updatedUser.organization_id,
       updated_at: updatedUser.updated_at,
     };
-  }
-
-   * Safely trim leading and trailing BOM, zero-width space, non-breaking space, quotes, and whitespace
-   * in linear O(N) time without regular expression backtracking.
-   */
-  private static trimCell(str: string): string {
-    if (!str) return '';
-    let start = 0;
-    let end = str.length;
-    const isTrimChar = (ch: string) =>
-      ch === '\uFEFF' ||
-      ch === '\u200B' ||
-      ch === '\u00A0' ||
-      ch === '"' ||
-      ch === "'" ||
-      /\s/.test(ch);
-
-    while (start < end && isTrimChar(str[start])) {
-      start++;
-    }
-    while (end > start && isTrimChar(str[end - 1])) {
-      end--;
-    }
-    return str.slice(start, end).trim();
   }
 
   /**
@@ -2095,30 +1783,6 @@ export class UserService {
     };
   }
 
-   * Safely trim leading and trailing BOM, zero-width space, non-breaking space, quotes, and whitespace
-   * in linear O(N) time without regular expression backtracking.
-   */
-  private static trimCell(str: string): string {
-    if (!str) return '';
-    let start = 0;
-    let end = str.length;
-    const isTrimChar = (ch: string) =>
-      ch === '\uFEFF' ||
-      ch === '\u200B' ||
-      ch === '\u00A0' ||
-      ch === '"' ||
-      ch === "'" ||
-      /\s/.test(ch);
-
-    while (start < end && isTrimChar(str[start])) {
-      start++;
-    }
-    while (end > start && isTrimChar(str[end - 1])) {
-      end--;
-    }
-    return str.slice(start, end).trim();
-  }
-
   /**
    * Manager deactivates organization user
    */
@@ -2184,30 +1848,6 @@ export class UserService {
         is_active: false,
       },
     };
-  }
-
-   * Safely trim leading and trailing BOM, zero-width space, non-breaking space, quotes, and whitespace
-   * in linear O(N) time without regular expression backtracking.
-   */
-  private static trimCell(str: string): string {
-    if (!str) return '';
-    let start = 0;
-    let end = str.length;
-    const isTrimChar = (ch: string) =>
-      ch === '\uFEFF' ||
-      ch === '\u200B' ||
-      ch === '\u00A0' ||
-      ch === '"' ||
-      ch === "'" ||
-      /\s/.test(ch);
-
-    while (start < end && isTrimChar(str[start])) {
-      start++;
-    }
-    while (end > start && isTrimChar(str[end - 1])) {
-      end--;
-    }
-    return str.slice(start, end).trim();
   }
 
   /**
@@ -2430,30 +2070,6 @@ export class UserService {
     };
   }
 
-   * Safely trim leading and trailing BOM, zero-width space, non-breaking space, quotes, and whitespace
-   * in linear O(N) time without regular expression backtracking.
-   */
-  private static trimCell(str: string): string {
-    if (!str) return '';
-    let start = 0;
-    let end = str.length;
-    const isTrimChar = (ch: string) =>
-      ch === '\uFEFF' ||
-      ch === '\u200B' ||
-      ch === '\u00A0' ||
-      ch === '"' ||
-      ch === "'" ||
-      /\s/.test(ch);
-
-    while (start < end && isTrimChar(str[start])) {
-      start++;
-    }
-    while (end > start && isTrimChar(str[end - 1])) {
-      end--;
-    }
-    return str.slice(start, end).trim();
-  }
-
   /**
    * Authenticated user changes temporary password on first login
    */
@@ -2492,30 +2108,6 @@ export class UserService {
     });
 
     return { success: true, message: 'Password changed successfully.' };
-  }
-
-   * Safely trim leading and trailing BOM, zero-width space, non-breaking space, quotes, and whitespace
-   * in linear O(N) time without regular expression backtracking.
-   */
-  private static trimCell(str: string): string {
-    if (!str) return '';
-    let start = 0;
-    let end = str.length;
-    const isTrimChar = (ch: string) =>
-      ch === '\uFEFF' ||
-      ch === '\u200B' ||
-      ch === '\u00A0' ||
-      ch === '"' ||
-      ch === "'" ||
-      /\s/.test(ch);
-
-    while (start < end && isTrimChar(str[start])) {
-      start++;
-    }
-    while (end > start && isTrimChar(str[end - 1])) {
-      end--;
-    }
-    return str.slice(start, end).trim();
   }
 
   /**
@@ -2682,30 +2274,6 @@ export class UserService {
     };
   }
 
-   * Safely trim leading and trailing BOM, zero-width space, non-breaking space, quotes, and whitespace
-   * in linear O(N) time without regular expression backtracking.
-   */
-  private static trimCell(str: string): string {
-    if (!str) return '';
-    let start = 0;
-    let end = str.length;
-    const isTrimChar = (ch: string) =>
-      ch === '\uFEFF' ||
-      ch === '\u200B' ||
-      ch === '\u00A0' ||
-      ch === '"' ||
-      ch === "'" ||
-      /\s/.test(ch);
-
-    while (start < end && isTrimChar(str[start])) {
-      start++;
-    }
-    while (end > start && isTrimChar(str[end - 1])) {
-      end--;
-    }
-    return str.slice(start, end).trim();
-  }
-
   /**
    * Manager retrieves an intern's base, granted, and effective permissions
    */
@@ -2786,30 +2354,6 @@ export class UserService {
       effectivePermissions,
       availablePermissions: DELEGABLE_MANAGER_PERMISSIONS,
     };
-  }
-
-   * Safely trim leading and trailing BOM, zero-width space, non-breaking space, quotes, and whitespace
-   * in linear O(N) time without regular expression backtracking.
-   */
-  private static trimCell(str: string): string {
-    if (!str) return '';
-    let start = 0;
-    let end = str.length;
-    const isTrimChar = (ch: string) =>
-      ch === '\uFEFF' ||
-      ch === '\u200B' ||
-      ch === '\u00A0' ||
-      ch === '"' ||
-      ch === "'" ||
-      /\s/.test(ch);
-
-    while (start < end && isTrimChar(str[start])) {
-      start++;
-    }
-    while (end > start && isTrimChar(str[end - 1])) {
-      end--;
-    }
-    return str.slice(start, end).trim();
   }
 
   /**
