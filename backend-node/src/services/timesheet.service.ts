@@ -1068,13 +1068,50 @@ export class TimesheetService {
       throw new Error('Forbidden: you can only update your own time entries');
     }
 
-    const startTime = toDate(input.start_time) || entry.start_time;
-    const endTime = toDate(input.end_time) || entry.end_time;
+    let targetTaskId = entry.task_id;
+    let targetProjectId = entry.project_id;
+    if (input.task_id && input.task_id !== entry.task_id) {
+      const task = await prisma.workItem.findUnique({
+        where: { id: input.task_id },
+        select: { id: true, project_id: true, organization_id: true },
+      });
+      if (!task) {
+        throw new Error('Task not found');
+      }
+      if (task.organization_id !== entry.organization_id) {
+        throw new Error('Task does not belong to the same organization');
+      }
+      targetTaskId = task.id;
+      targetProjectId = task.project_id;
+    }
+
+    let durationMinutes = input.duration_minutes !== undefined && input.duration_minutes !== null
+      ? Number(input.duration_minutes)
+      : entry.duration_minutes;
+
+    if (isNaN(durationMinutes) || durationMinutes <= 0) {
+      throw new Error('Time entry duration must be greater than zero');
+    }
+
+    let startTime = toDate(input.start_time) || new Date(entry.start_time);
+
+    let targetDate = entry.date;
+    if (input.date) {
+      targetDate = new Date(input.date);
+      if (isNaN(targetDate.getTime())) {
+        throw new Error('Invalid date provided');
+      }
+      const hours = startTime.getHours();
+      const minutes = startTime.getMinutes();
+      const seconds = startTime.getSeconds();
+      startTime = new Date(targetDate);
+      startTime.setHours(hours, minutes, seconds, 0);
+    }
+
+    let endTime = toDate(input.end_time) || new Date(startTime.getTime() + durationMinutes * MINUTE_MS);
     if (endTime <= startTime) {
       throw new Error('Time entry end time must be after the start time');
     }
-
-    const durationMinutes = Number(input.duration_minutes ?? diffMinutes(startTime, endTime));
 
     const overlap = await prisma.timeEntry.findFirst({
       where: {
@@ -1087,19 +1124,24 @@ export class TimesheetService {
     });
 
     if (overlap) {
-      throw new Error('Updated time entry overlaps with an existing entry.');
+      if (!input.start_time || !input.end_time) {
+        startTime = new Date(overlap.end_time.getTime() + MINUTE_MS);
+        endTime = new Date(startTime.getTime() + durationMinutes * MINUTE_MS);
+      } else {
+        throw new Error('Updated time entry overlaps with an existing entry.');
+      }
     }
 
     return prisma.timeEntry.update({
       where: { id: timeEntryId },
       data: {
-        ...(input.task_id ? { task_id: input.task_id } : {}),
-        ...(input.project_id !== undefined ? { project_id: input.project_id || null } : {}),
-        ...(input.date ? { date: new Date(input.date) } : {}),
+        task_id: targetTaskId,
+        project_id: targetProjectId,
+        date: targetDate,
         start_time: startTime,
         end_time: endTime,
         duration_minutes: durationMinutes,
-        notes: input.notes ?? entry.notes,
+        notes: input.notes !== undefined ? (input.notes || null) : entry.notes,
       },
       include: {
         task: true,

@@ -30,10 +30,10 @@ router.get('/:id/extension-requests', requirePermission('PROJECT_READ'), Project
 
 // ── Project Members & Roles ────────────────────────────────────────────────────
 router.get('/:id/members', requirePermission('PROJECT_READ'), ProjectController.getMembers);
-router.post('/:id/members', requirePermission('PROJECT_UPDATE'), ProjectController.addMember);
+router.post('/:id/members', requireAnyPermission('PROJECT_UPDATE', 'PROJECT_MEMBER_MANAGE', 'PROJECT_MEMBER_CREATE'), ProjectController.addMember);
 router.patch('/:id/members/roles', requireAnyPermission('ROLE_ASSIGN', 'PROJECT_ROLE_ASSIGN', 'PROJECT_UPDATE'), ProjectController.updateMemberRoles);
 router.patch('/:id/members/:userId/permissions', requireRoleOrPermission(['ADMIN', 'MANAGER', 'SUPER_ADMIN']), ProjectController.updateMemberPermissions);
-router.delete('/:id/members/:userId', requirePermission('PROJECT_UPDATE'), ProjectController.removeMember);
+router.delete('/:id/members/:userId', requireAnyPermission('PROJECT_UPDATE', 'PROJECT_MEMBER_MANAGE', 'PROJECT_MEMBER_DELETE'), ProjectController.removeMember);
 router.get('/:id/roles', requirePermission('PROJECT_READ'), ProjectController.getProjectRoles);
 router.post('/:id/roles', requirePermission('PROJECT_UPDATE'), ProjectController.createCustomRole);
 

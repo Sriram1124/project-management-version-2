@@ -139,10 +139,10 @@ export default function IssueDetailDrawer({
   const canCompleteStatus = canManageProject;
   const canChangePriority = canManageProject || hasTaskUpdate || !isIntern;
   const canChangeAssignee = canManageProject || hasTaskUpdate || memberPerms.has('ROLE_ASSIGN') || !isIntern;
-  const canChangeSprint = canManageProject || hasTaskUpdate || !isIntern;
-  const canChangeEpic = canManageProject || hasTaskUpdate || !isIntern;
-  const canChangeStoryPoints = canManageProject || hasTaskUpdate || !isIntern;
-  const canChangeDueDate = canManageProject || hasTaskUpdate || !isIntern;
+  const canChangeSprint = canManageProject || hasTaskUpdate || isAssignedToMe || isCreator || !isIntern;
+  const canChangeEpic = canManageProject || hasTaskUpdate || isAssignedToMe || isCreator || !isIntern;
+  const canChangeStoryPoints = canManageProject || hasTaskUpdate || isAssignedToMe || isCreator || !isIntern;
+  const canChangeDueDate = canManageProject || hasTaskUpdate || isAssignedToMe || isCreator || !isIntern;
   const canAddChildItems = canManageProject || hasTaskCreate || !isIntern;
 
   const [updatingField, setUpdatingField] = useState(null); // 'assignee' | 'status' | 'priority' | 'sprint' | 'epic' | 'storyPoints' | 'dueDate' | 'title' | 'description'

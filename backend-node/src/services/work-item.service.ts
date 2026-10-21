@@ -1995,14 +1995,19 @@ export class WorkItemService {
       // No specific project provided in filters
       authorizedLeadProjects = orgId ? await this.getAuthorizedLeadProjectIds(user, orgId) : [];
       isLeadAnyProject = authorizedLeadProjects.length > 0;
-      const isInternRole = !isMgr && !this.isOrgTechLead(user) && !isLeadAnyProject;
-      if (isMgr || isLeadAnyProject) {
+      const isInternRole = !isMgr && !this.isOrgTechLead(user);
+      if (isInternRole) {
+        if (filters?.user_id && filters.user_id !== user.id) {
+          throw new Error('Forbidden: interns can only view their own performance analytics');
+        }
+        targetUserId = user.id;
+      } else if (isMgr || isLeadAnyProject) {
         isActingAsLead = true;
         if (filters?.user_id) {
           targetUserId = filters.user_id;
         }
       } else {
-        // Regular intern with no lead projects
+        // Regular user with no lead projects
         if (filters?.user_id && filters.user_id !== user.id) {
           throw new Error('Forbidden: interns can only view their own performance analytics');
         }

@@ -26,7 +26,7 @@ import AddProjectMembersModal from '../../modals/AddProjectMembersModal';
 import AddCustomRoleModal from '../../modals/AddCustomRoleModal';
 import ProjectTaskCharts from './ProjectTaskCharts';
 
-export default function ProjectOverviewTab({ projectId, project, onNavigateTab, onToast, onDeleted, readOnly = false, isTechLead = false }) {
+export default function ProjectOverviewTab({ projectId, project, onNavigateTab, onToast, onDeleted, readOnly = false, isTechLead = false, isIntern = false }) {
   const { user: authUser } = useAuth();
   const currentUserId = authUser?.id || authUser?.user_id;
   const authRole = String(authUser?.role?.name || authUser?.role || authUser?.type || authUser?.user_type || '').toUpperCase();
@@ -60,7 +60,8 @@ export default function ProjectOverviewTab({ projectId, project, onNavigateTab, 
     isManager ||
     isTechLeadOnProject;
 
-  const canAssignRoles = isManager;
+  const canAssignRoles = isManager || isTechLeadOnProject;
+  const canRemoveMembers = isManager || isTechLeadOnProject;
   const canAddMembers = isManager || isTechLeadOnProject;
 
   const loadMembers = (force = false) => {
@@ -347,6 +348,7 @@ export default function ProjectOverviewTab({ projectId, project, onNavigateTab, 
         members={members || project?.members || []}
         onNavigateTab={onNavigateTab}
         readOnly={readOnly && !canManageProject}
+        isIntern={isIntern}
       />
 
       {/* 3. Project Files Section (Real Document Metadata API - Last) */}
@@ -368,7 +370,7 @@ export default function ProjectOverviewTab({ projectId, project, onNavigateTab, 
         projectName={projectName}
         projectId={projectId || project?.id}
         canAssignRoles={canAssignRoles}
-        canRemoveMembers={canAssignRoles}
+        canRemoveMembers={canRemoveMembers}
         canAddMembers={canAddMembers}
         canEditPermissions={isManager}
         onOpenAssignRoles={handleOpenAssignRoles}

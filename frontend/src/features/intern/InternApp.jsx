@@ -632,7 +632,7 @@ export default function InternApp({ onLogout, onSelectProject, onToast }) {
             )}
 
             {currentTab === 'analytics' && (
-              <ProjectTaskCharts />
+              <ProjectTaskCharts isIntern={true} internUserId={currentUserId} />
             )}
 
             {currentTab === 'forms' && (

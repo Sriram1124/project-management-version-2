@@ -118,10 +118,19 @@ function AnalyticsSkeleton() {
   );
 }
 
-export default function ProjectTaskCharts({ projectId = null, project = null, members = [], onNavigateTab = null, readOnly = false }) {
+export default function ProjectTaskCharts({ 
+  projectId = null, 
+  project = null, 
+  members = [], 
+  onNavigateTab = null, 
+  readOnly = false,
+  isIntern = false,
+  internUserId = null,
+}) {
   const { user: authUser } = useAuth();
   const authRole = String(authUser?.role?.name || authUser?.role || authUser?.type || authUser?.user_type || '').toUpperCase();
-  const currentUserId = authUser?.id || authUser?.user_id;
+  const currentUserId = internUserId || authUser?.id || authUser?.user_id;
+  const isSystemIntern = isIntern || authRole === 'INTERN';
 
   // Filters State
   const [selectedProjectId, setSelectedProjectId] = useState(projectId || '');
@@ -174,18 +183,20 @@ export default function ProjectTaskCharts({ projectId = null, project = null, me
     return [];
   }, [members, analyticsData]);
 
-  const isManager = authRole === 'MANAGER' || authRole === 'ADMIN' || authRole === 'SUPER_ADMIN';
+  const isManager = !isSystemIntern && (authRole === 'MANAGER' || authRole === 'ADMIN' || authRole === 'SUPER_ADMIN');
   const isTechLead = 
-    authRole === 'TECH_LEAD' || 
-    Boolean(authUser?.is_tech_lead) || 
-    Boolean(analyticsData?.is_tech_lead) || 
-    effectiveMembers.some((m) => 
-      (m.user_id === currentUserId || m.id === currentUserId) && 
-      (m.project_role === 'TECH_LEAD' || m.role === 'TECH_LEAD')
+    !isSystemIntern && (
+      authRole === 'TECH_LEAD' || 
+      Boolean(authUser?.is_tech_lead) || 
+      Boolean(analyticsData?.is_tech_lead) || 
+      effectiveMembers.some((m) => 
+        (m.user_id === currentUserId || m.id === currentUserId) && 
+        (m.project_role === 'TECH_LEAD' || m.role === 'TECH_LEAD')
+      )
     );
 
-  const hasFullTeamAccess = isManager || isTechLead;
-  const isInternUser = !hasFullTeamAccess;
+  const hasFullTeamAccess = !isSystemIntern && (isManager || isTechLead);
+  const isInternUser = isSystemIntern || !hasFullTeamAccess;
 
   // Tab View Mode:
   // Intern: 'TASKS' (Tab A: Tasks & Graphs) | 'PERFORMANCE' (Tab B: Individual Performance)
@@ -267,6 +278,9 @@ export default function ProjectTaskCharts({ projectId = null, project = null, me
         filterPayload.start_date = start;
         filterPayload.end_date = end;
       }
+      if (isInternUser && currentUserId) {
+        filterPayload.user_id = currentUserId;
+      }
       if (isManualRefresh) {
         filterPayload.fresh = true;
       }
@@ -303,7 +317,7 @@ export default function ProjectTaskCharts({ projectId = null, project = null, me
         setIsRefreshing(false);
       }
     }
-  }, [selectedProjectId, projectId, selectedSprintId, dateRangeFilter, isManager]);
+  }, [selectedProjectId, projectId, selectedSprintId, dateRangeFilter, isManager, isInternUser, currentUserId]);
 
   useEffect(() => {
     fetchAnalytics();

@@ -405,18 +405,17 @@ export async function checkProjectMemberPermission(
     }
 
     // Organization Manager / Admin has full project permissions
+    const userRoleName = String((req as any).user?.role || fullUser.role || '').toUpperCase();
     const isOrgManager =
-      (req as any).user?.role === 'ADMIN' ||
-      (req as any).user?.role === 'MANAGER' ||
-      (req as any).user?.role === 'SUPER_ADMIN' ||
-      fullUser.roles?.some(
-        (ur: any) =>
-          ur.role?.name === 'ADMIN' ||
-          ur.role?.name === 'MANAGER' ||
-          ur.role?.name === 'SUPER_ADMIN'
-      );
+      userRoleName === 'ADMIN' ||
+      userRoleName === 'MANAGER' ||
+      userRoleName === 'SUPER_ADMIN' ||
+      fullUser.roles?.some((ur: any) => {
+        const rName = String(ur.role?.name || ur.name || '').toUpperCase();
+        return rName === 'ADMIN' || rName === 'MANAGER' || rName === 'SUPER_ADMIN';
+      });
 
-    if (isOrgManager && (!project.organization_id || project.organization_id === fullUser.organization_id)) {
+    if (isOrgManager) {
       return true;
     }
 
@@ -424,16 +423,20 @@ export async function checkProjectMemberPermission(
     if (Array.isArray(fullUser.user_permissions)) {
       const directPerms = new Set(fullUser.user_permissions.map((up: any) => up.permission?.name));
       if (directPerms.has(permissionToCheck)) {
-        if (!project.organization_id || project.organization_id === fullUser.organization_id) {
-          return true;
-        }
+        return true;
       }
       if (permissionToCheck === 'TASK_STATUS_TRANSITION' && directPerms.has('TASK_UPDATE')) {
-        if (!project.organization_id || project.organization_id === fullUser.organization_id) {
-          return true;
-        }
+        return true;
       }
     }
+
+    // Check if user is Tech Lead across the org or has tech lead project memberships
+    const isOrgTechLead =
+      userRoleName === 'TECH_LEAD' ||
+      (Array.isArray(fullUser.roles) &&
+        fullUser.roles.some((ur: any) => String(ur.role?.name || ur.name || '').toUpperCase() === 'TECH_LEAD')) ||
+      (Array.isArray((fullUser as any).project_memberships) &&
+        (fullUser as any).project_memberships.some((pm: any) => pm.project_id === projectId));
 
     // Query Project Membership with custom role and associated permissions
     const membership = await prisma.projectMember.findFirst({
@@ -454,8 +457,26 @@ export async function checkProjectMemberPermission(
       },
     });
 
+    if (!membership && isOrgTechLead) {
+      return true;
+    }
+
     if (!membership) {
       return false;
+    }
+
+    // Tech Leads and Managers on this project always have full project & member management permissions
+    const isProjectTechLead =
+      String(membership.project_role || '').toUpperCase() === 'TECH_LEAD' ||
+      String(membership.role?.name || '').toUpperCase() === 'TECH_LEAD' ||
+      isOrgTechLead;
+
+    const isProjectManager =
+      String(membership.project_role || '').toUpperCase() === 'MANAGER' ||
+      String(membership.role?.name || '').toUpperCase() === 'MANAGER';
+
+    if (isProjectTechLead || isProjectManager) {
+      return true;
     }
 
     // 1. If assigned a Custom Role (or standard role via role_id)
@@ -474,13 +495,17 @@ export async function checkProjectMemberPermission(
         return true;
       }
 
-      // If user has PROJECT_UPDATE, allow non-destructive project management
+      // If user has PROJECT_UPDATE, allow non-destructive project management & member actions
       if (
         grantedPermissions.has('PROJECT_UPDATE') &&
         (permissionToCheck === 'SPRINT_MANAGE' ||
           permissionToCheck === 'ROADMAP_MANAGE' ||
           permissionToCheck === 'DOCUMENT_UPLOAD' ||
-          permissionToCheck === 'DOCUMENT_DELETE')
+          permissionToCheck === 'DOCUMENT_DELETE' ||
+          permissionToCheck === 'PROJECT_MEMBER_MANAGE' ||
+          permissionToCheck === 'PROJECT_MEMBER_DELETE' ||
+          permissionToCheck === 'PROJECT_MEMBER_CREATE' ||
+          permissionToCheck === 'ROLE_ASSIGN')
       ) {
         return true;
       }
@@ -497,10 +522,6 @@ export async function checkProjectMemberPermission(
     }
 
     // 2. Standard Built-in project roles fallback
-    const isOrgTechLead =
-      Array.isArray(fullUser.roles) &&
-      fullUser.roles.some((ur: any) => ur.role?.name === 'TECH_LEAD');
-
     if (
       membership.project_role === 'TECH_LEAD' ||
       membership.project_role === 'MANAGER' ||
@@ -571,22 +592,30 @@ export const requirePermission = (requiredPermission: string) => {
       return;
     }
 
-    const userRole = (req as any).user?.role;
+    const userRole = String((req as any).user?.role || fullUser.role || '').toUpperCase();
     const isSuperAdmin = 
       userRole === 'SUPER_ADMIN' ||
-      fullUser.roles?.some((ur: any) => ur.role?.name === 'SUPER_ADMIN' || ur.name === 'SUPER_ADMIN');
+      fullUser.roles?.some((ur: any) => String(ur.role?.name || ur.name || '').toUpperCase() === 'SUPER_ADMIN');
 
     if (isSuperAdmin) {
       return next();
     }
 
-    if (userRole === 'ADMIN' || userRole === 'MANAGER') {
+    const isManagerOrAdmin =
+      userRole === 'ADMIN' ||
+      userRole === 'MANAGER' ||
+      fullUser.roles?.some((ur: any) => {
+        const rName = String(ur.role?.name || ur.name || '').toUpperCase();
+        return rName === 'ADMIN' || rName === 'MANAGER' || rName === 'SUPER_ADMIN';
+      });
+
+    if (isManagerOrAdmin) {
       return next();
     }
 
     let hasPermission = false;
     for (const ur of fullUser.roles || []) {
-      const rName = ur.role?.name || ur.name;
+      const rName = String(ur.role?.name || ur.name || '').toUpperCase();
       if (rName === 'ADMIN' || rName === 'MANAGER' || rName === 'SUPER_ADMIN') {
         hasPermission = true;
         break;
@@ -637,22 +666,30 @@ export const requireAnyPermission = (...requiredPermissions: string[]) => {
       return;
     }
 
-    const userRole = (req as any).user?.role;
+    const userRole = String((req as any).user?.role || fullUser.role || '').toUpperCase();
     const isSuperAdmin = 
       userRole === 'SUPER_ADMIN' ||
-      fullUser.roles?.some((ur: any) => ur.role?.name === 'SUPER_ADMIN' || ur.name === 'SUPER_ADMIN');
+      fullUser.roles?.some((ur: any) => String(ur.role?.name || ur.name || '').toUpperCase() === 'SUPER_ADMIN');
 
     if (isSuperAdmin) {
       return next();
     }
 
-    if (userRole === 'ADMIN' || userRole === 'MANAGER') {
+    const isManagerOrAdmin =
+      userRole === 'ADMIN' ||
+      userRole === 'MANAGER' ||
+      fullUser.roles?.some((ur: any) => {
+        const rName = String(ur.role?.name || ur.name || '').toUpperCase();
+        return rName === 'ADMIN' || rName === 'MANAGER' || rName === 'SUPER_ADMIN';
+      });
+
+    if (isManagerOrAdmin) {
       return next();
     }
 
     let hasPermission = false;
     for (const ur of fullUser.roles || []) {
-      const rName = ur.role?.name || ur.name;
+      const rName = String(ur.role?.name || ur.name || '').toUpperCase();
       if (rName === 'ADMIN' || rName === 'MANAGER' || rName === 'SUPER_ADMIN') {
         hasPermission = true;
         break;

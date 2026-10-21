@@ -55,18 +55,13 @@ export class ProjectService {
    */
   private static isManagerOrAdmin(user: any): boolean {
     if (!user) return false;
-    const roleStr = typeof user.role === 'string' ? user.role : user.role?.name;
+    const roleStr = (typeof user.role === 'string' ? user.role : user.role?.name || '').toUpperCase();
     if (roleStr === 'ADMIN' || roleStr === 'MANAGER' || roleStr === 'SUPER_ADMIN') return true;
     if (Array.isArray(user.roles)) {
-      return user.roles.some(
-        (ur: any) =>
-          ur.role?.name === 'ADMIN' ||
-          ur.role?.name === 'MANAGER' ||
-          ur.role?.name === 'SUPER_ADMIN' ||
-          ur.name === 'ADMIN' ||
-          ur.name === 'MANAGER' ||
-          ur.name === 'SUPER_ADMIN'
-      );
+      return user.roles.some((ur: any) => {
+        const rName = (ur.role?.name || ur.name || '').toUpperCase();
+        return rName === 'ADMIN' || rName === 'MANAGER' || rName === 'SUPER_ADMIN';
+      });
     }
     return false;
   }
@@ -76,10 +71,13 @@ export class ProjectService {
    */
   private static isSuperAdmin(user: any): boolean {
     if (!user) return false;
-    const roleStr = typeof user.role === 'string' ? user.role : user.role?.name;
+    const roleStr = (typeof user.role === 'string' ? user.role : user.role?.name || '').toUpperCase();
     if (roleStr === 'SUPER_ADMIN') return true;
     if (Array.isArray(user.roles)) {
-      return user.roles.some((ur: any) => ur.role?.name === 'SUPER_ADMIN' || ur.name === 'SUPER_ADMIN');
+      return user.roles.some((ur: any) => {
+        const rName = (ur.role?.name || ur.name || '').toUpperCase();
+        return rName === 'SUPER_ADMIN';
+      });
     }
     return false;
   }
@@ -2006,19 +2004,8 @@ export class ProjectService {
       throw new Error('User ID is required');
     }
 
-    let orgId = user.organization_id;
-    if (!orgId && this.isManagerOrAdmin(user)) {
-      const firstOrg = await prisma.organization.findFirst({ where: { is_active: true } });
-      orgId = firstOrg?.id;
-    }
-
-    const where: any = { id: projectId };
-    if (orgId) {
-      where.organization_id = orgId;
-    }
-
-    const project = await prisma.project.findFirst({
-      where,
+    const project = await prisma.project.findUnique({
+      where: { id: projectId },
     });
     if (!project) {
       throw new Error('Project not found');
@@ -2027,15 +2014,21 @@ export class ProjectService {
     // Authorize caller: managers, project owners, or assigned Tech Leads on this project
     const isMgr = this.isManagerOrAdmin(user) || this.isSuperAdmin(user);
     const isOwner = project.owner_id === user?.id || (Array.isArray((project as any).owners) && (project as any).owners.some((o: any) => o.user_id === user?.id));
-    const callerMembership = user?.id ? await prisma.projectMember.findUnique({
+    const callerMembership = user?.id ? await prisma.projectMember.findFirst({
       where: {
-        project_id_user_id: {
-          project_id: projectId,
-          user_id: user.id,
-        },
+        project_id: projectId,
+        user_id: user.id,
+      },
+      include: {
+        role: true,
       },
     }) : null;
-    const isTechLead = callerMembership?.project_role === 'TECH_LEAD';
+    const userRoleStr = (typeof user?.role === 'string' ? user.role : user?.role?.name || '').toUpperCase();
+    const isTechLead =
+      String(callerMembership?.project_role || '').toUpperCase() === 'TECH_LEAD' ||
+      String(callerMembership?.role?.name || '').toUpperCase() === 'TECH_LEAD' ||
+      userRoleStr === 'TECH_LEAD' ||
+      (Array.isArray(user?.roles) && user.roles.some((r: any) => (r.role?.name || r.name || '').toUpperCase() === 'TECH_LEAD'));
 
     if (!isMgr && !isOwner && !isTechLead) {
       throw new Error('Forbidden: Only managers, project owners, or assigned Tech Leads can add members to this project');
@@ -2050,7 +2043,11 @@ export class ProjectService {
       where: targetWhere,
     });
     if (!targetUser) {
-      throw new Error('User found or does not belong to your organization');
+      // Fallback: search target user by ID directly
+      const directTargetUser = await prisma.user.findUnique({ where: { id: targetUserId } });
+      if (!directTargetUser) {
+        throw new Error('User not found');
+      }
     }
 
     // Resolve role and role_id if provided
@@ -2171,22 +2168,41 @@ export class ProjectService {
       throw new Error('Project not found');
     }
 
-    let orgId = user.organization_id;
-    if (!orgId && this.isManagerOrAdmin(user)) {
-      const firstOrg = await prisma.organization.findFirst({ where: { is_active: true } });
-      orgId = firstOrg?.id;
-    }
-
-    const where: any = { id: projectId };
-    if (orgId) {
-      where.organization_id = orgId;
-    }
-
-    const project = await prisma.project.findFirst({
-      where,
+    const project = await prisma.project.findUnique({
+      where: { id: projectId },
     });
     if (!project) {
       throw new Error('Project not found');
+    }
+
+    // Authorize caller: managers, admins, super admins, project owners, or assigned Tech Leads
+    const isMgr = this.isManagerOrAdmin(user) || this.isSuperAdmin(user);
+    const isOwner =
+      project.owner_id === user?.id ||
+      (Array.isArray((project as any).owners) && (project as any).owners.some((o: any) => o.user_id === user?.id));
+
+    const callerMembership = user?.id
+      ? await prisma.projectMember.findFirst({
+          where: {
+            project_id: projectId,
+            user_id: user.id,
+          },
+          include: {
+            role: true,
+          },
+        })
+      : null;
+
+    const userRoleStr = (typeof user?.role === 'string' ? user.role : user?.role?.name || '').toUpperCase();
+    const isTechLead =
+      String(callerMembership?.project_role || '').toUpperCase() === 'TECH_LEAD' ||
+      String(callerMembership?.role?.name || '').toUpperCase() === 'TECH_LEAD' ||
+      userRoleStr === 'TECH_LEAD' ||
+      (Array.isArray(user?.roles) &&
+        user.roles.some((r: any) => (r.role?.name || r.name || '').toUpperCase() === 'TECH_LEAD'));
+
+    if (!isMgr && !isOwner && !isTechLead) {
+      throw new Error('Forbidden: Only managers, project owners, or Tech Leads can remove members from this project');
     }
 
     if (targetUserId) {

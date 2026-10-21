@@ -24,6 +24,7 @@ import {
   ChevronDown,
   ChevronUp,
   SlidersHorizontal,
+  Pencil,
 } from 'lucide-react';
 import { timesheetService } from '../../services/timesheet.service';
 import { useAuth } from '../../context/AuthContext';
@@ -177,6 +178,16 @@ export default function TimesheetView({
   const [correctionReason, setCorrectionReason] = useState('');
   const [correctionSubmitting, setCorrectionSubmitting] = useState(false);
   const [correctionError, setCorrectionError] = useState('');
+
+  // Edit Logged Time Entry Modal State
+  const [editingEntry, setEditingEntry] = useState(null);
+  const [editTaskId, setEditTaskId] = useState('');
+  const [editDate, setEditDate] = useState('');
+  const [editHours, setEditHours] = useState('0');
+  const [editMinutes, setEditMinutes] = useState('0');
+  const [editNotes, setEditNotes] = useState('');
+  const [editSubmitting, setEditSubmitting] = useState(false);
+  const [editError, setEditError] = useState('');
 
   // Week Details Modal in Month View
   const [weekModalData, setWeekModalData] = useState(null); // { task, weekGroup, weekMins }
@@ -627,6 +638,75 @@ export default function TimesheetView({
     }
   };
 
+  // Open Edit Modal for an existing time entry
+  const handleOpenEditModal = (entry, task = null) => {
+    const totalMins = Number(entry.duration_minutes) || 0;
+    const hrs = Math.floor(totalMins / 60);
+    const mins = totalMins % 60;
+    let entryDateStr = '';
+    if (entry.date) {
+      entryDateStr = toLocalDateString(new Date(entry.date));
+    } else if (cellModalData?.date) {
+      entryDateStr = cellModalData.date;
+    } else {
+      entryDateStr = toLocalDateString(new Date());
+    }
+
+    setEditingEntry({
+      ...entry,
+      task_id: entry.task_id || task?.id,
+      task_title: task?.title || entry.task?.title || 'Selected Task',
+    });
+    setEditTaskId(entry.task_id || task?.id || (availableTasks[0]?.id || ''));
+    setEditDate(entryDateStr);
+    setEditHours(String(hrs));
+    setEditMinutes(String(mins));
+    setEditNotes(entry.notes || '');
+    setEditError('');
+  };
+
+  // Submit update for an existing time entry
+  const handleSaveEditEntry = async (e) => {
+    e?.preventDefault();
+    if (!editingEntry) return;
+
+    const hrs = parseInt(editHours, 10) || 0;
+    const mins = parseInt(editMinutes, 10) || 0;
+    const totalMinutes = hrs * 60 + mins;
+
+    if (totalMinutes <= 0) {
+      setEditError('Duration must be greater than 0 minutes. Please enter a positive time value.');
+      return;
+    }
+    if (!editDate) {
+      setEditError('Please select a valid date for this time entry.');
+      return;
+    }
+
+    try {
+      setEditSubmitting(true);
+      setEditError('');
+
+      await timesheetService.updateEntry(editingEntry.id, {
+        task_id: editTaskId || editingEntry.task_id,
+        date: editDate,
+        duration_minutes: totalMinutes,
+        notes: editNotes.trim() || null,
+      });
+
+      onToast?.('Time entry updated successfully.');
+      setEditingEntry(null);
+      setCellModalData(null);
+      setWeekModalData(null);
+      await loadTimesheet();
+    } catch (err) {
+      console.error('Failed to update time entry:', err);
+      setEditError(err.message || 'Failed to update time entry');
+    } finally {
+      setEditSubmitting(false);
+    }
+  };
+
   // Submit General Manual Time Log Modal
   const handleManualLogSubmit = async (e) => {
     e.preventDefault();
@@ -814,34 +894,30 @@ export default function TimesheetView({
             </div>
 
             <h1 className="text-xl sm:text-2xl font-bold text-slate-900 tracking-tight mt-1.5">
-              {currentIntern
+              {readOnly && currentIntern
                 ? `${currentIntern.name}'s ${viewMode === 'MONTH' ? 'Monthly' : 'Weekly'} Timesheet`
-                : `${viewMode === 'MONTH' ? 'Monthly' : 'Weekly'} Timesheet`}
+                : 'Timesheet'}
             </h1>
 
-            <div className="flex flex-wrap items-center gap-x-2.5 gap-y-1 text-xs text-slate-500 mt-1.5">
-              {currentIntern ? (
-                <>
-                  <span className="text-slate-700 font-medium">{currentIntern.email}</span>
-                  {currentIntern.cohort?.name && (
-                    <>
-                      <span>•</span>
-                      <span className="font-semibold text-purple-700 bg-purple-50 px-2 py-0.5 rounded border border-purple-200/60">
-                        {currentIntern.cohort.name}
-                      </span>
-                    </>
-                  )}
-                  {currentIntern.batch && (
-                    <>
-                      <span>•</span>
-                      <span>{currentIntern.batch} {currentIntern.subbatch || ''}</span>
-                    </>
-                  )}
-                </>
-              ) : (
-                <span>Log, track, and review real task effort across work days</span>
-              )}
-            </div>
+            {readOnly && currentIntern && (
+              <div className="flex flex-wrap items-center gap-x-2.5 gap-y-1 text-xs text-slate-500 mt-1.5">
+                <span className="text-slate-700 font-medium">{currentIntern.email}</span>
+                {currentIntern.cohort?.name && (
+                  <>
+                    <span>•</span>
+                    <span className="font-semibold text-purple-700 bg-purple-50 px-2 py-0.5 rounded border border-purple-200/60">
+                      {currentIntern.cohort.name}
+                    </span>
+                  </>
+                )}
+                {currentIntern.batch && (
+                  <>
+                    <span>•</span>
+                    <span>{currentIntern.batch} {currentIntern.subbatch || ''}</span>
+                  </>
+                )}
+              </div>
+            )}
           </div>
 
           {/* Right: Action Buttons & Nav */}
@@ -949,45 +1025,6 @@ export default function TimesheetView({
             >
               <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} />
             </button>
-
-            {/* Start Timer Button (Intern Only, when no timer is active) */}
-            {!readOnly && !isManager && !activeSession && (
-              <button
-                type="button"
-                disabled={Boolean(timerActionTaskId)}
-                onClick={() => {
-                  if (availableTasks.length > 0 && !startTimerTaskId) {
-                    setStartTimerTaskId(availableTasks[0].id);
-                  }
-                  setIsStartTimerModalOpen(true);
-                }}
-                className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-semibold transition-colors cursor-pointer shadow-xs disabled:opacity-50"
-              >
-                {timerActionTaskId ? (
-                  <RefreshCw className="w-3.5 h-3.5 animate-spin" />
-                ) : (
-                  <Play className="w-3.5 h-3.5 fill-current" />
-                )}
-                <span>Start Timer</span>
-              </button>
-            )}
-
-            {/* Log Time Button (Intern Only) */}
-            {!readOnly && (
-              <button
-                type="button"
-                onClick={() => {
-                  if (availableTasks.length > 0 && !manualTaskId) {
-                    setManualTaskId(availableTasks[0].id);
-                  }
-                  setIsLogModalOpen(true);
-                }}
-                className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-purple-600 hover:bg-purple-700 text-white font-semibold transition-colors cursor-pointer shadow-xs"
-              >
-                <Plus className="w-3.5 h-3.5" />
-                <span>Log Time</span>
-              </button>
-            )}
           </div>
         </div>
       </div>
@@ -1236,19 +1273,9 @@ export default function TimesheetView({
             <div>
               <h3 className="text-sm font-bold text-slate-800">No Task Rows Found</h3>
               <p className="text-xs text-slate-400 mt-1">
-                You have no assigned tasks or time entries recorded for this week. Use the &quot;Log Time&quot; button to manually log work or assign tasks to yourself.
+                You have no assigned tasks or time entries recorded for this period.
               </p>
             </div>
-            {!readOnly && (
-              <button
-                type="button"
-                onClick={() => setIsLogModalOpen(true)}
-                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-purple-600 hover:bg-purple-700 text-white font-semibold transition-colors cursor-pointer"
-              >
-                <Plus className="w-3.5 h-3.5" />
-                <span>Log Time Manually</span>
-              </button>
-            )}
           </div>
         ) : filteredTaskRows.length === 0 ? (
           /* Empty State: Filter yielded no matches */
@@ -1426,20 +1453,6 @@ export default function TimesheetView({
                                   )}
                                 </button>
                               </div>
-                            ) : !isManager && !readOnly ? (
-                              <button
-                                type="button"
-                                onClick={() => handleStartTimer(task.id)}
-                                disabled={actionLoading || Boolean(timerActionTaskId)}
-                                title={activeSession ? `Switch timer to "${task.title}" (will stop current timer)` : 'Start Timer for this task'}
-                                className="p-1.5 rounded-lg bg-purple-50 text-purple-600 hover:bg-purple-100 transition-colors cursor-pointer opacity-80 group-hover:opacity-100 disabled:opacity-50"
-                              >
-                                {timerActionTaskId === task.id ? (
-                                  <RefreshCw className="w-3.5 h-3.5 animate-spin text-purple-600" />
-                                ) : (
-                                  <Play className="w-3.5 h-3.5 fill-current" />
-                                )}
-                              </button>
                             ) : null}
                           </div>
                         </div>
@@ -1518,7 +1531,7 @@ export default function TimesheetView({
                                 )}
 
                                 <span className="hidden group-hover/cell:inline-flex items-center justify-center p-1 rounded-md text-purple-600 hover:bg-purple-200/60 transition-colors">
-                                  <Plus className="w-3 h-3" />
+                                  {mins > 0 ? <Pencil className="w-3 h-3" /> : <Eye className="w-3 h-3" />}
                                 </span>
                               </td>
                             );
@@ -2033,6 +2046,15 @@ export default function TimesheetView({
                           <div className="flex items-center gap-1.5 shrink-0">
                             <button
                               type="button"
+                              onClick={() => handleOpenEditModal(entry, cellModalData.task)}
+                              title="Edit this time entry"
+                              className="px-2.5 py-1 rounded-lg text-purple-700 bg-purple-50 hover:bg-purple-100 border border-purple-200/80 transition-colors flex items-center gap-1 text-[10px] font-bold cursor-pointer"
+                            >
+                              <Pencil className="w-3 h-3 text-purple-600" />
+                              <span>Edit</span>
+                            </button>
+                            <button
+                              type="button"
                               onClick={() => {
                                 handleOpenCorrectionModal(entry, cellModalData.task);
                               }}
@@ -2059,87 +2081,15 @@ export default function TimesheetView({
                 )}
               </div>
 
-              {/* Add New Entry Form (Intern Only) */}
-              {!readOnly ? (
-                <form onSubmit={handleAddCellEntry} className="pt-3 border-t border-slate-100 space-y-3">
-                  <h4 className="text-[11px] font-bold uppercase tracking-wider text-slate-700">
-                    + Add Time Entry
-                  </h4>
-
-                  <div className="grid grid-cols-2 gap-3">
-                    <div>
-                      <label className="block text-[11px] font-semibold text-slate-600 mb-1">
-                        Hours
-                      </label>
-                      <input
-                        type="number"
-                        min="0"
-                        max="24"
-                        placeholder="0"
-                        value={cellFormHours}
-                        onChange={(e) => setCellFormHours(e.target.value)}
-                        className="w-full px-3 py-1.5 rounded-xl border border-slate-200 focus:outline-none focus:border-purple-600 text-slate-900 font-mono"
-                      />
-                    </div>
-
-                    <div>
-                      <label className="block text-[11px] font-semibold text-slate-600 mb-1">
-                        Minutes
-                      </label>
-                      <input
-                        type="number"
-                        min="0"
-                        max="59"
-                        step="5"
-                        placeholder="30"
-                        value={cellFormMinutes}
-                        onChange={(e) => setCellFormMinutes(e.target.value)}
-                        className="w-full px-3 py-1.5 rounded-xl border border-slate-200 focus:outline-none focus:border-purple-600 text-slate-900 font-mono"
-                      />
-                    </div>
-                  </div>
-
-                  <div>
-                    <label className="block text-[11px] font-semibold text-slate-600 mb-1">
-                      Notes (Optional)
-                    </label>
-                    <textarea
-                      rows={2}
-                      value={cellFormNotes}
-                      onChange={(e) => setCellFormNotes(e.target.value)}
-                      placeholder="What did you work on?"
-                      className="w-full px-3 py-1.5 rounded-xl border border-slate-200 focus:outline-none focus:border-purple-600 text-slate-900 resize-none"
-                    />
-                  </div>
-
-                  <div className="flex items-center justify-end gap-2 pt-2">
-                    <button
-                      type="button"
-                      onClick={() => setCellModalData(null)}
-                      className="px-3 py-1.5 rounded-xl border border-slate-200 hover:bg-slate-50 font-semibold text-slate-600"
-                    >
-                      Cancel
-                    </button>
-                    <button
-                      type="submit"
-                      disabled={actionLoading}
-                      className="px-4 py-1.5 rounded-xl bg-purple-600 hover:bg-purple-700 text-white font-semibold transition-colors disabled:opacity-50"
-                    >
-                      {actionLoading ? 'Saving...' : 'Save Log'}
-                    </button>
-                  </div>
-                </form>
-              ) : (
-                <div className="pt-3 border-t border-slate-100 flex justify-end">
-                  <button
-                    type="button"
-                    onClick={() => setCellModalData(null)}
-                    className="px-4 py-1.5 rounded-xl bg-slate-100 hover:bg-slate-200 font-semibold text-slate-700 cursor-pointer"
-                  >
-                    Close
-                  </button>
-                </div>
-              )}
+              <div className="pt-3 border-t border-slate-100 flex justify-end">
+                <button
+                  type="button"
+                  onClick={() => setCellModalData(null)}
+                  className="px-4 py-1.5 rounded-xl bg-slate-100 hover:bg-slate-200 font-semibold text-slate-700 cursor-pointer"
+                >
+                  Close
+                </button>
+              </div>
             </div>
           </div>
         </div>
@@ -2255,6 +2205,15 @@ export default function TimesheetView({
                                     <div className="flex items-center gap-1 shrink-0">
                                       <button
                                         type="button"
+                                        onClick={() => handleOpenEditModal(entry, weekModalData.task)}
+                                        title="Edit this time entry"
+                                        className="px-2 py-0.5 rounded text-purple-700 bg-purple-50 hover:bg-purple-100 border border-purple-200/80 transition-colors flex items-center gap-1 text-[10px] font-bold cursor-pointer"
+                                      >
+                                        <Pencil className="w-2.5 h-2.5 text-purple-600" />
+                                        <span>Edit</span>
+                                      </button>
+                                      <button
+                                        type="button"
                                         onClick={() => handleOpenCorrectionModal(entry, weekModalData.task)}
                                         title="Request correction for this entry"
                                         className="px-2 py-0.5 rounded text-amber-700 bg-amber-50 hover:bg-amber-100 border border-amber-200/80 transition-colors flex items-center gap-1 text-[10px] font-bold cursor-pointer"
@@ -2286,113 +2245,15 @@ export default function TimesheetView({
                 )}
               </div>
 
-              {/* Add New Entry Form (Intern Only) */}
-              {!readOnly ? (
-                <form onSubmit={handleAddWeekEntry} className="pt-3 border-t border-slate-100 space-y-3">
-                  <h4 className="text-[11px] font-bold uppercase tracking-wider text-slate-700">
-                    + Add Time Entry for this Week
-                  </h4>
-
-                  <div className="grid grid-cols-3 gap-2">
-                    <div>
-                      <label className="block text-[11px] font-semibold text-slate-600 mb-1">
-                        Select Date *
-                      </label>
-                      <select
-                        value={weekFormDate}
-                        onChange={(e) => setWeekFormDate(e.target.value)}
-                        required
-                        className="w-full px-2 py-1.5 rounded-xl border border-slate-200 focus:outline-none focus:border-purple-600 text-slate-900 text-xs bg-white"
-                      >
-                        {(weekModalData.weekGroup?.days || []).map((dStr) => {
-                          const dObj = new Date(dStr + 'T00:00:00');
-                          const dLabel = dObj.toLocaleDateString('en-US', {
-                            weekday: 'short',
-                            month: 'short',
-                            day: 'numeric',
-                          });
-                          return (
-                            <option key={dStr} value={dStr}>
-                              {dLabel}
-                            </option>
-                          );
-                        })}
-                      </select>
-                    </div>
-
-                    <div>
-                      <label className="block text-[11px] font-semibold text-slate-600 mb-1">
-                        Hours
-                      </label>
-                      <input
-                        type="number"
-                        min="0"
-                        max="24"
-                        placeholder="0"
-                        value={weekFormHours}
-                        onChange={(e) => setWeekFormHours(e.target.value)}
-                        className="w-full px-3 py-1.5 rounded-xl border border-slate-200 focus:outline-none focus:border-purple-600 text-slate-900 font-mono"
-                      />
-                    </div>
-
-                    <div>
-                      <label className="block text-[11px] font-semibold text-slate-600 mb-1">
-                        Minutes
-                      </label>
-                      <input
-                        type="number"
-                        min="0"
-                        max="59"
-                        step="5"
-                        placeholder="30"
-                        value={weekFormMinutes}
-                        onChange={(e) => setWeekFormMinutes(e.target.value)}
-                        className="w-full px-3 py-1.5 rounded-xl border border-slate-200 focus:outline-none focus:border-purple-600 text-slate-900 font-mono"
-                      />
-                    </div>
-                  </div>
-
-                  <div>
-                    <label className="block text-[11px] font-semibold text-slate-600 mb-1">
-                      Notes (Optional)
-                    </label>
-                    <textarea
-                      rows={2}
-                      value={weekFormNotes}
-                      onChange={(e) => setWeekFormNotes(e.target.value)}
-                      placeholder="What did you work on?"
-                      className="w-full px-3 py-1.5 rounded-xl border border-slate-200 focus:outline-none focus:border-purple-600 text-slate-900 resize-none"
-                    />
-                  </div>
-
-                  <div className="flex items-center justify-end gap-2 pt-2">
-                    <button
-                      type="button"
-                      onClick={() => setWeekModalData(null)}
-                      className="px-3 py-1.5 rounded-xl border border-slate-200 hover:bg-slate-50 font-semibold text-slate-600"
-                    >
-                      Cancel
-                    </button>
-                    <button
-                      type="submit"
-                      disabled={actionLoading}
-                      className="px-4 py-1.5 rounded-xl bg-purple-600 hover:bg-purple-700 text-white font-semibold transition-colors disabled:opacity-50"
-                    >
-                      {actionLoading ? 'Saving...' : 'Save Log'}
-                    </button>
-                  </div>
-                </form>
-              ) : (
-                <div className="pt-3 border-t border-slate-100 flex justify-end">
-                  <button
-                    type="button"
-                    onClick={() => setWeekModalData(null)}
-                    className="px-4 py-1.5 rounded-xl bg-slate-100 hover:bg-slate-200 font-semibold text-slate-700 cursor-pointer"
-                  >
-                    Close
-                  </button>
-                </div>
-              )}
+               <div className="pt-3 border-t border-slate-100 flex justify-end">
+                 <button
+                   type="button"
+                   onClick={() => setWeekModalData(null)}
+                   className="px-4 py-1.5 rounded-xl bg-slate-100 hover:bg-slate-200 font-semibold text-slate-700 cursor-pointer"
+                 >
+                   Close
+                 </button>
+               </div>
             </div>
           </div>
         </div>
@@ -2792,6 +2653,181 @@ export default function TimesheetView({
                 >
                   <RotateCcw className="w-3.5 h-3.5" />
                   <span>{correctionSubmitting ? 'Submitting...' : 'Submit Request'}</span>
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* 8. EDIT LOGGED TIME ENTRY MODAL */}
+      {!readOnly && Boolean(editingEntry) && (
+        <div className="fixed inset-0 z-50 bg-black/40 backdrop-blur-2xs flex items-center justify-center p-4 animate-in fade-in duration-150">
+          <div className="bg-white rounded-2xl shadow-2xl border border-slate-200 max-w-md w-full overflow-hidden text-xs">
+            <div className="flex items-center justify-between p-4 border-b border-slate-100 bg-slate-50/70">
+              <div className="flex items-center gap-2">
+                <span className="p-1.5 rounded-lg bg-purple-100 text-purple-700">
+                  <Pencil className="w-4 h-4" />
+                </span>
+                <div>
+                  <h3 className="text-sm font-bold text-slate-900">Edit Time Entry</h3>
+                  <p className="text-[11px] text-slate-500">Modify logged effort duration, date, or task</p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setEditingEntry(null)}
+                className="p-1 rounded-lg text-slate-400 hover:text-slate-700 hover:bg-slate-100 cursor-pointer"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <form onSubmit={handleSaveEditEntry} className="p-4 space-y-3.5">
+              {editError && (
+                <div className="p-2.5 rounded-xl bg-rose-50 border border-rose-200 text-rose-700 text-xs flex items-center gap-2">
+                  <AlertCircle className="w-4 h-4 shrink-0 text-rose-600" />
+                  <span>{editError}</span>
+                </div>
+              )}
+
+              {/* Task Select */}
+              <div>
+                <label className="block text-[11px] font-semibold text-slate-700 mb-1">
+                  Task
+                </label>
+                {availableTasks.length > 0 ? (
+                  <select
+                    value={editTaskId}
+                    onChange={(e) => setEditTaskId(e.target.value)}
+                    className="w-full px-3 py-2 rounded-xl border border-slate-200 bg-white font-medium text-slate-900 focus:outline-none focus:border-purple-500"
+                  >
+                    {availableTasks.map((t) => (
+                      <option key={t.id} value={t.id}>
+                        {t.title} {t.project?.name ? `(${t.project.name})` : ''}
+                      </option>
+                    ))}
+                  </select>
+                ) : (
+                  <div className="px-3 py-2 rounded-xl border border-slate-200 bg-slate-50 text-slate-800 font-medium">
+                    {editingEntry?.task_title || 'Current Task'}
+                  </div>
+                )}
+              </div>
+
+              {/* Date Input */}
+              <div>
+                <label className="block text-[11px] font-semibold text-slate-700 mb-1">
+                  Date *
+                </label>
+                <input
+                  type="date"
+                  value={editDate}
+                  onChange={(e) => setEditDate(e.target.value)}
+                  required
+                  className="w-full px-3 py-2 rounded-xl border border-slate-200 text-slate-900 focus:outline-none focus:border-purple-500"
+                />
+              </div>
+
+              {/* Duration Inputs: Hours and Minutes */}
+              <div>
+                <label className="block text-[11px] font-semibold text-slate-700 mb-1">
+                  Duration *
+                </label>
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <div className="flex items-center gap-1.5">
+                      <input
+                        type="number"
+                        min="0"
+                        max="24"
+                        value={editHours}
+                        onChange={(e) => setEditHours(e.target.value)}
+                        placeholder="0"
+                        className="w-full px-3 py-2 rounded-xl border border-slate-200 text-slate-900 focus:outline-none focus:border-purple-500 font-mono"
+                      />
+                      <span className="text-slate-500 text-xs font-medium">hrs</span>
+                    </div>
+                  </div>
+                  <div>
+                    <div className="flex items-center gap-1.5">
+                      <input
+                        type="number"
+                        min="0"
+                        max="59"
+                        value={editMinutes}
+                        onChange={(e) => setEditMinutes(e.target.value)}
+                        placeholder="0"
+                        className="w-full px-3 py-2 rounded-xl border border-slate-200 text-slate-900 focus:outline-none focus:border-purple-500 font-mono"
+                      />
+                      <span className="text-slate-500 text-xs font-medium">mins</span>
+                    </div>
+                  </div>
+                </div>
+                <div className="flex items-center gap-1.5 mt-2 flex-wrap">
+                  <span className="text-[10px] text-slate-400 mr-1">Quick presets:</span>
+                  {[
+                    { label: '30m', h: '0', m: '30' },
+                    { label: '1h', h: '1', m: '0' },
+                    { label: '1.5h', h: '1', m: '30' },
+                    { label: '2h', h: '2', m: '0' },
+                    { label: '4h', h: '4', m: '0' },
+                    { label: '8h', h: '8', m: '0' },
+                  ].map((preset) => (
+                    <button
+                      key={preset.label}
+                      type="button"
+                      onClick={() => {
+                        setEditHours(preset.h);
+                        setEditMinutes(preset.m);
+                      }}
+                      className="px-2 py-0.5 rounded-lg border border-slate-200 hover:bg-purple-50 hover:border-purple-300 hover:text-purple-700 text-slate-600 text-[10px] font-medium transition-colors cursor-pointer"
+                    >
+                      {preset.label}
+                    </button>
+                  ))}
+                </div>
+                <p className="text-[10px] text-slate-400 mt-1">
+                  Duration must be greater than 0 minutes.
+                </p>
+              </div>
+
+              {/* Notes */}
+              <div>
+                <label className="block text-[11px] font-semibold text-slate-700 mb-1">
+                  Notes / Description
+                </label>
+                <textarea
+                  rows={2}
+                  value={editNotes}
+                  onChange={(e) => setEditNotes(e.target.value)}
+                  placeholder="Optional description of work done..."
+                  className="w-full px-3 py-2 rounded-xl border border-slate-200 text-slate-900 focus:outline-none focus:border-purple-500 text-xs placeholder:text-slate-400"
+                />
+              </div>
+
+              <div className="flex items-center justify-end gap-2 pt-2 border-t border-slate-100">
+                <button
+                  type="button"
+                  onClick={() => setEditingEntry(null)}
+                  disabled={editSubmitting}
+                  className="px-3 py-1.5 rounded-xl border border-slate-200 hover:bg-slate-50 font-semibold text-slate-600 cursor-pointer"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={editSubmitting}
+                  className="flex items-center gap-1.5 px-4 py-1.5 rounded-xl bg-purple-600 hover:bg-purple-700 text-white font-semibold transition-colors disabled:opacity-50 cursor-pointer"
+                >
+                  {editSubmitting ? (
+                    <>
+                      <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                      <span>Saving...</span>
+                    </>
+                  ) : (
+                    <span>Save Changes</span>
+                  )}
                 </button>
               </div>
             </form>

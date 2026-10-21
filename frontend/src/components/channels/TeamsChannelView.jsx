@@ -50,6 +50,8 @@ export default function TeamsChannelView({
   const [selectedFormBuilder, setSelectedFormBuilder] = useState(null);
   const [selectedFormForEdit, setSelectedFormForEdit] = useState(null);
   const [chatMessage, setChatMessage] = useState('');
+  const [revertingForm, setRevertingForm] = useState(null);
+  const [isReverting, setIsReverting] = useState(false);
 
   // Overdue report & statistics state
   const [overdueStats, setOverdueStats] = useState({
