@@ -228,12 +228,10 @@ export default function EditMemberPermissionsModal({
       }}
       onKeyDown={(e) => {
         if (e.key === 'Enter' || e.key === ' ') {
-          (e) => {
-        if (e.target === e.currentTarget) {
+          if (e.target === e.currentTarget) {
           onClose();
         }
       }
-        }
       }}
     >
       <div
@@ -315,6 +313,8 @@ export default function EditMemberPermissionsModal({
             return (
               <label
                 key={cap.key}
+                htmlFor={`cap-${cap.key}`}
+                aria-label={cap.label}
                 className={`flex items-start gap-3 p-3 rounded-xl border cursor-pointer transition-all ${
                   isChecked
                     ? 'bg-purple-50/50 border-purple-300 ring-1 ring-purple-400/20 shadow-2xs'
@@ -322,6 +322,7 @@ export default function EditMemberPermissionsModal({
                 }`}
               >
                 <input
+                  id={`cap-${cap.key}`}
                   type="checkbox"
                   checked={isChecked}
                   onChange={() => handleToggle(cap.key)}

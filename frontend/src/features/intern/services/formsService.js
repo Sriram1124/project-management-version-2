@@ -19,7 +19,7 @@ export const formsService = {
         if (active) callback(forms);
       } catch (e) { }
     };
-    load();
+    void load();
     return () => { active = false; };
   }
 };

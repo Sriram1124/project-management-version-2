@@ -156,10 +156,13 @@ export default function FillFormModal({ form, isOpen, onClose, onSubmitResponse 
                   {q.options?.map((opt) => (
                     <label 
                       key={opt}
+                      htmlFor={`fill-form-opt-${q.id}-${opt}`}
+                      aria-label={opt}
                       className="flex items-center gap-2.5 p-2 rounded-lg border border-slate-200 hover:bg-slate-50 cursor-pointer text-xs"
                     >
                       <input
                         type="radio"
+                        id={`fill-form-opt-${q.id}-${opt}`}
                         name={q.id}
                         value={opt}
                         checked={answers[q.id] === opt}
@@ -176,8 +179,9 @@ export default function FillFormModal({ form, isOpen, onClose, onSubmitResponse 
 
           {/* Timesheet confirmation checkbox */}
           <div className="pt-2 border-t border-slate-100">
-            <label className="flex items-start gap-2.5 cursor-pointer text-xs text-slate-600">
+            <label htmlFor="timesheet-confirmed-checkbox" aria-label="I certify that all responses provided in this form are accurate and complete." className="flex items-start gap-2.5 cursor-pointer text-xs text-slate-600">
               <input
+                id="timesheet-confirmed-checkbox"
                 type="checkbox"
                 checked={timesheetConfirmed}
                 onChange={(e) => setTimesheetConfirmed(e.target.checked)}

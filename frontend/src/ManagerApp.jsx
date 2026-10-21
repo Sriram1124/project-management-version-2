@@ -244,8 +244,8 @@ export default function ManagerApp() {
 
   const handleCustomAlertFromBar = async (alertData, recipientIds = []) => {
     try {
-      const title = typeof alertData === 'object' && alertData.title ? alertData.title : 'Broadcast Announcement';
-      const message = typeof alertData === 'object' && alertData.message ? alertData.message : String(alertData);
+      const title = alertData && typeof alertData === 'object' && alertData.title ? alertData.title : 'Broadcast Announcement';
+      const message = alertData && typeof alertData === 'object' && alertData.message ? alertData.message : String(alertData || '');
 
       await notificationsService.sendBroadcast({
         title,

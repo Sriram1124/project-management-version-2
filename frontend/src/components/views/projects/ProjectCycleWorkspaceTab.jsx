@@ -101,7 +101,7 @@ export default function ProjectCycleWorkspaceTab({
   }, [projectId, propSelectedCycleId, onToast]);
 
   useEffect(() => {
-    loadData();
+    void loadData();
   }, [loadData]);
 
   useEffect(() => {
@@ -117,7 +117,7 @@ export default function ProjectCycleWorkspaceTab({
         setSelectedTask((prev) => (prev && prev.id === detail.id ? null : prev));
         return;
       }
-      loadData(true);
+      void loadData(true);
     };
     window.addEventListener('work-items-updated', handleSync);
     return () => window.removeEventListener('work-items-updated', handleSync);
@@ -206,7 +206,7 @@ export default function ProjectCycleWorkspaceTab({
       });
       setIsCreateCycleOpen(false);
       setSelectedCycleId(created.id);
-      loadData();
+      void loadData();
       onToast?.(`Planning cycle "${created.name}" created`);
     } catch (err) {
       console.error('Failed to create cycle:', err);
@@ -238,7 +238,7 @@ export default function ProjectCycleWorkspaceTab({
         end_date: cycleFormEndDate || null,
       });
       setIsEditCycleOpen(false);
-      loadData();
+      void loadData();
       onToast?.(`Planning cycle "${cycleFormName.trim()}" updated`);
     } catch (err) {
       console.error('Failed to update cycle:', err);
@@ -251,7 +251,7 @@ export default function ProjectCycleWorkspaceTab({
   const handleActivateCycle = async (cycleId) => {
     try {
       await sprintsService.startSprint(projectId, cycleId);
-      loadData();
+      void loadData();
       onToast?.('Planning cycle activated');
     } catch (err) {
       console.error('Failed to activate cycle:', err);
@@ -266,7 +266,7 @@ export default function ProjectCycleWorkspaceTab({
         unfinished_action: closeAction,
       });
       setIsCloseCycleOpen(false);
-      loadData();
+      void loadData();
       onToast?.(`Planning cycle "${currentCycle.name}" closed`);
     } catch (err) {
       console.error('Failed to close cycle:', err);
@@ -282,7 +282,7 @@ export default function ProjectCycleWorkspaceTab({
     try {
       await sprintsService.deleteSprint(projectId, currentCycle.id);
       setSelectedCycleId(null);
-      loadData();
+      void loadData();
       onToast?.('Planning cycle deleted');
     } catch (err) {
       console.error('Failed to delete cycle:', err);
@@ -294,7 +294,7 @@ export default function ProjectCycleWorkspaceTab({
   const handleAssignItemToCycle = async (itemId, targetCycleId) => {
     try {
       await workItemsService.updateWorkItem(itemId, { sprint_id: targetCycleId });
-      loadData();
+      void loadData();
       onToast?.(targetCycleId ? 'Item assigned to cycle' : 'Item returned to continuous flow');
     } catch (err) {
       console.error('Failed to update item cycle assignment:', err);
@@ -440,7 +440,7 @@ export default function ProjectCycleWorkspaceTab({
               {currentCycle?.status === 'PLANNED' && (
                 <button
                   type="button"
-                  onClick={() => handleActivateCycle(currentCycle.id)}
+                  onClick={() => { void handleActivateCycle(currentCycle.id); }}
                   className="px-3 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-semibold transition-colors flex items-center gap-1.5 shadow-xs cursor-pointer"
                 >
                   <Play className="w-3.5 h-3.5 fill-current" />
@@ -592,7 +592,7 @@ export default function ProjectCycleWorkspaceTab({
                       {!readOnly && (
                         <button
                           type="button"
-                          onClick={() => handleAssignItemToCycle(item.id, null)}
+                          onClick={() => { void handleAssignItemToCycle(item.id, null); }}
                           className="px-2 py-1 rounded text-[11px] font-medium text-slate-500 hover:text-rose-600 hover:bg-rose-50 transition-colors cursor-pointer"
                           title="Remove from cycle (returns to continuous flow)"
                         >
@@ -661,7 +661,7 @@ export default function ProjectCycleWorkspaceTab({
                     {!readOnly && currentCycle && (
                       <button
                         type="button"
-                        onClick={() => handleAssignItemToCycle(item.id, currentCycle.id)}
+                        onClick={() => { void handleAssignItemToCycle(item.id, currentCycle.id); }}
                         className="px-2.5 py-1 rounded-md text-[11px] font-semibold bg-indigo-50 hover:bg-indigo-100 text-indigo-700 border border-indigo-200 transition-colors flex items-center gap-1 cursor-pointer shrink-0"
                         title={`Assign to ${currentCycle.name}`}
                       >
@@ -878,7 +878,7 @@ export default function ProjectCycleWorkspaceTab({
                   type="button"
                   onClick={() => {
                     setIsEditCycleOpen(false);
-                    handleDeleteCycle();
+                    void handleDeleteCycle();
                   }}
                   className="text-xs text-rose-600 hover:text-rose-700 font-semibold flex items-center gap-1 cursor-pointer"
                 >
@@ -949,8 +949,9 @@ export default function ProjectCycleWorkspaceTab({
                   Handling Incomplete Deliverables:
                 </span>
                 <div className="space-y-2 text-xs">
-                  <label className="flex items-start gap-2 p-2.5 rounded-lg border border-slate-200 hover:bg-slate-50 cursor-pointer">
+                  <label htmlFor="close-action-keep" aria-label="Keep in Closed Cycle (Recommended)" className="flex items-start gap-2 p-2.5 rounded-lg border border-slate-200 hover:bg-slate-50 cursor-pointer">
                     <input
+                      id="close-action-keep"
                       type="radio"
                       name="closeAction"
                       checked={closeAction === 'KEEP_IN_CYCLE'}
@@ -965,8 +966,9 @@ export default function ProjectCycleWorkspaceTab({
                     </div>
                   </label>
 
-                  <label className="flex items-start gap-2 p-2.5 rounded-lg border border-slate-200 hover:bg-slate-50 cursor-pointer">
+                  <label htmlFor="close-action-move" aria-label="Return to Unassigned Continuous Flow" className="flex items-start gap-2 p-2.5 rounded-lg border border-slate-200 hover:bg-slate-50 cursor-pointer">
                     <input
+                      id="close-action-move"
                       type="radio"
                       name="closeAction"
                       checked={closeAction === 'MOVE_TO_BACKLOG'}
@@ -993,7 +995,7 @@ export default function ProjectCycleWorkspaceTab({
                 </button>
                 <button
                   type="button"
-                  onClick={handleCloseCycleConfirm}
+                  onClick={() => { void handleCloseCycleConfirm(); }}
                   className="px-4 py-2 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-semibold shadow-xs cursor-pointer"
                 >
                   Confirm &amp; Close Cycle

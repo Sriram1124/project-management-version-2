@@ -68,7 +68,7 @@ export default function AssignProjectRolesModal({
       setRoleMap(initialMap);
       setSearchQuery('');
       setError('');
-      fetchRoles();
+      void fetchRoles();
     }
   }, [isOpen, members, fetchRoles]);
 
@@ -162,12 +162,10 @@ export default function AssignProjectRolesModal({
       }}
       onKeyDown={(e) => {
         if (e.key === 'Enter' || e.key === ' ') {
-          (e) => {
-        if (e.target === e.currentTarget) {
+          if (e.target === e.currentTarget) {
           onClose();
         }
       }
-        }
       }}
     >
       <div 
@@ -374,7 +372,7 @@ export default function AssignProjectRolesModal({
           projectId={projectId}
           projectName={projectName}
           onRoleCreated={(newRole) => {
-            fetchRoles();
+            void fetchRoles();
             onToast?.({
               type: 'success',
               title: 'Custom Role Available',

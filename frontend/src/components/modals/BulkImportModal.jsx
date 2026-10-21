@@ -493,8 +493,9 @@ export default function BulkImportModal({ isOpen, onClose, onSuccess }) {
               {/* Explicit Update Confirmation Checkbox (Requirement 3) */}
               {toUpdateCount > 0 && (
                 <div className="p-3 bg-amber-50/90 border border-amber-200/90 rounded-xl">
-                  <label className="flex items-start gap-2.5 cursor-pointer">
+                  <label htmlFor="confirm-update-existing-checkbox" aria-label={`Confirm update to permitted fields for ${toUpdateCount} existing members`} className="flex items-start gap-2.5 cursor-pointer">
                     <input
+                      id="confirm-update-existing-checkbox"
                       type="checkbox"
                       checked={confirmUpdateExisting}
                       onChange={(e) => setConfirmUpdateExisting(e.target.checked)}

@@ -81,18 +81,18 @@ export default function ScopedProjectView({
   };
 
   useEffect(() => {
-    loadProjectWorkItems();
+    void loadProjectWorkItems();
   }, [project?.id]);
 
   const handleToggleTask = async (taskOrId) => {
-    const targetItem = typeof taskOrId === 'object' ? taskOrId : projectWorkItems.find((w) => w.id === taskOrId);
+    const targetItem = taskOrId && typeof taskOrId === 'object' ? taskOrId : projectWorkItems.find((w) => w.id === taskOrId);
     if (targetItem && !canToggleItem(targetItem)) {
       onToast?.('You can only update status for tasks assigned to you.');
       return;
     }
     try {
       const updated = await workItemsService.toggleComplete(taskOrId);
-      loadProjectWorkItems();
+      void loadProjectWorkItems();
       onToast?.(
         updated?.status === 'COMPLETED'
           ? `Marked "${updated.title}" completed!`
@@ -363,7 +363,7 @@ export default function ScopedProjectView({
                       type="button"
                       onClick={(e) => {
                         e.stopPropagation();
-                        handleDownloadDoc(doc);
+                        void handleDownloadDoc(doc);
                       }}
                       className="px-2.5 py-1 text-xs font-semibold text-purple-700 hover:bg-purple-100 rounded-lg transition-colors shrink-0 cursor-pointer"
                     >
@@ -383,7 +383,7 @@ export default function ScopedProjectView({
           file={previewFile}
           projectId={project.id}
           onClose={() => setPreviewFile(null)}
-          onDownload={(f) => handleDownloadDoc(f)}
+          onDownload={(f) => { void handleDownloadDoc(f); }}
         />
       )}
 
@@ -576,7 +576,7 @@ export default function ScopedProjectView({
                           title={!canToggle ? 'Only the assigned intern or manager can update status' : undefined}
                           onClick={(e) => {
                             e.stopPropagation();
-                            handleToggleTask(item);
+                            void handleToggleTask(item);
                           }}
                           className={`w-5 h-5 rounded-lg border flex items-center justify-center transition-colors shrink-0 ${
                             !canToggle ? 'opacity-40 cursor-not-allowed ' : 'cursor-pointer '

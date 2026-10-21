@@ -87,7 +87,7 @@ export default function DynamicFormModal({
       setAnswers(initial);
     };
 
-    initializeForm();
+    void initializeForm();
   }, [isOpen, form]);
 
   if (!isOpen || !form) return null;
@@ -250,6 +250,8 @@ export default function DynamicFormModal({
               return (
                 <label
                   key={opt}
+                  htmlFor={`q-${q.id}-${opt}`}
+                  aria-label={opt}
                   className={`flex items-center gap-2.5 p-2.5 rounded-xl border cursor-pointer text-xs transition-colors ${
                     isChecked
                       ? 'bg-purple-50/80 border-purple-300 text-purple-950 font-bold'
@@ -257,6 +259,7 @@ export default function DynamicFormModal({
                   } ${isReadOnly ? 'pointer-events-none opacity-90' : ''}`}
                 >
                   <input
+                    id={`q-${q.id}-${opt}`}
                     type="radio"
                     name={q.id}
                     disabled={isReadOnly}
@@ -285,6 +288,8 @@ export default function DynamicFormModal({
               return (
                 <label
                   key={opt}
+                  htmlFor={`q-${q.id}-${opt}`}
+                  aria-label={opt}
                   className={`flex items-center gap-2.5 p-2.5 rounded-xl border cursor-pointer text-xs transition-colors ${
                     isChecked
                       ? 'bg-purple-50/80 border-purple-300 text-purple-950 font-bold'
@@ -292,6 +297,7 @@ export default function DynamicFormModal({
                   } ${isReadOnly ? 'pointer-events-none opacity-90' : ''}`}
                 >
                   <input
+                    id={`q-${q.id}-${opt}`}
                     type="checkbox"
                     disabled={isReadOnly}
                     checked={isChecked}
@@ -357,7 +363,7 @@ export default function DynamicFormModal({
                 <span>Uploaded Attachment: {value || 'Document Attached'}</span>
               </div>
             ) : (
-              <label className="flex flex-col items-center justify-center p-4 border-2 border-dashed border-slate-200 hover:border-purple-400 rounded-xl cursor-pointer bg-slate-50/50 hover:bg-purple-50/20 transition-all">
+              <label htmlFor={`file-upload-${q.id}`} aria-label={files[q.id] || 'Upload file'} className="flex flex-col items-center justify-center p-4 border-2 border-dashed border-slate-200 hover:border-purple-400 rounded-xl cursor-pointer bg-slate-50/50 hover:bg-purple-50/20 transition-all">
                 <UploadCloud className="w-6 h-6 text-purple-600 mb-1" />
                 <span className="text-xs font-semibold text-slate-700">
                   {files[q.id] || 'Click to select file or drag here'}
@@ -366,6 +372,7 @@ export default function DynamicFormModal({
                   PDF, DOCX, PNG, JPG up to 5MB
                 </span>
                 <input
+                  id={`file-upload-${q.id}`}
                   type="file"
                   className="hidden"
                   onChange={(e) => handleFileChange(q.id, e)}
@@ -401,12 +408,10 @@ export default function DynamicFormModal({
       }}
       onKeyDown={(e) => {
         if (e.key === 'Enter' || e.key === ' ') {
-          (e) => {
-        if (e.target === e.currentTarget) {
+          if (e.target === e.currentTarget) {
           onClose();
         }
       }
-        }
       }}
     >
       <div

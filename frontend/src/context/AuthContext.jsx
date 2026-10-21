@@ -98,7 +98,7 @@ export const AuthProvider = ({ children }) => {
       }
     };
 
-    initAuth();
+    void initAuth();
 
     return () => {
       isMounted = false;

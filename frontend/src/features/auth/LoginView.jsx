@@ -69,7 +69,7 @@ export default function LoginView() {
 
   // Proactive background fetch on mount: pre-warms cache before user clicks "Organization Portal"
   useEffect(() => {
-    fetchOrganizations(true);
+    void fetchOrganizations(true);
   }, []);
 
   const fetchOrganizations = async (isBackground = false) => {
@@ -119,7 +119,7 @@ export default function LoginView() {
     } else {
       setStep('ORG_SELECT');
       if (organizations.length === 0 || orgLoadFailed) {
-        fetchOrganizations();
+        void fetchOrganizations();
       }
     }
   };
@@ -374,7 +374,7 @@ export default function LoginView() {
                       <span>Failed to load organizations.</span>
                       <button
                         type="button"
-                        onClick={fetchOrganizations}
+                        onClick={() => { void fetchOrganizations(); }}
                         className="rounded-xl bg-violet-600 px-4 py-1.5 text-xs font-semibold text-white transition hover:bg-violet-700"
                       >
                         Retry

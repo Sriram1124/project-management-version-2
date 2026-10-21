@@ -86,8 +86,8 @@ export default function OrganizationInspectModal({
 
   useEffect(() => {
     if (isOpen && orgId) {
-      fetchOrganizationDetails();
-      fetchMembers(1, '', 'ALL');
+      void fetchOrganizationDetails();
+      void fetchMembers(1, '', 'ALL');
     } else {
       setOrgDetails(null);
       setMembers([]);
@@ -100,7 +100,7 @@ export default function OrganizationInspectModal({
   useEffect(() => {
     if (!isOpen || !orgId) return;
     const timer = setTimeout(() => {
-      fetchMembers(1, memberSearch, memberRoleFilter);
+      void fetchMembers(1, memberSearch, memberRoleFilter);
     }, 300);
     return () => clearTimeout(timer);
   }, [memberSearch, memberRoleFilter, isOpen, orgId, fetchMembers]);
@@ -121,18 +121,22 @@ export default function OrganizationInspectModal({
     }
   };
 
-  const handleCopyTempPassword = () => {
+  const handleCopyTempPassword = async () => {
     if (!tempCredentials) return;
-    navigator.clipboard.writeText(
+    try {
+      await navigator.clipboard.writeText(
       `Manager: ${tempCredentials.name}\nTemporary Password: ${tempCredentials.temporary_password}`
     );
-    setCopiedCreds(true);
-    setTimeout(() => setCopiedCreds(false), 2000);
+      setCopiedCreds(true);
+      setTimeout(() => setCopiedCreds(false), 2000);
+    } catch (err) {
+      console.error('Failed to copy temporary password:', err);
+    }
   };
 
   const handleManagerOperationSuccess = () => {
-    fetchOrganizationDetails();
-    fetchMembers(1);
+    void fetchOrganizationDetails();
+    void fetchMembers(1);
     onOrganizationUpdated?.();
   };
 
@@ -193,7 +197,7 @@ export default function OrganizationInspectModal({
             </div>
             <div>
               <button
-                onClick={fetchOrganizationDetails}
+                onClick={() => { void fetchOrganizationDetails(); }}
                 className="px-4 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg text-xs font-semibold"
               >
                 Retry
@@ -324,7 +328,7 @@ export default function OrganizationInspectModal({
 
                         <div className="flex items-center gap-2">
                           <button
-                            onClick={() => handleResetPassword(m.id, m.name)}
+                            onClick={() => { void handleResetPassword(m.id, m.name); }}
                             title="Reset manager password and revoke active sessions"
                             className="flex items-center gap-1.5 px-2.5 py-1.5 bg-white hover:bg-amber-50 text-amber-700 border border-slate-200 hover:border-amber-300 rounded-lg text-xs font-bold transition-colors cursor-pointer"
                           >
@@ -404,7 +408,7 @@ export default function OrganizationInspectModal({
                             </span>
                             {isManager && (
                               <button
-                                onClick={() => handleResetPassword(u.id, u.name)}
+                                onClick={() => { void handleResetPassword(u.id, u.name); }}
                                 title="Reset Manager Password"
                                 className="flex items-center gap-1 px-2 py-1 bg-white hover:bg-amber-50 border border-slate-200 hover:border-amber-300 text-amber-700 rounded-lg text-[10px] font-bold transition-colors cursor-pointer"
                               >
@@ -426,14 +430,14 @@ export default function OrganizationInspectModal({
                     <div className="flex items-center gap-1">
                       <button
                         disabled={memberPage <= 1}
-                        onClick={() => fetchMembers(memberPage - 1)}
+                        onClick={() => { void fetchMembers(memberPage - 1); }}
                         className="p-1 rounded border border-slate-200 disabled:opacity-40 cursor-pointer"
                       >
                         <ChevronLeft className="w-3.5 h-3.5" />
                       </button>
                       <button
                         disabled={memberPage >= totalMemberPages}
-                        onClick={() => fetchMembers(memberPage + 1)}
+                        onClick={() => { void fetchMembers(memberPage + 1); }}
                         className="p-1 rounded border border-slate-200 disabled:opacity-40 cursor-pointer"
                       >
                         <ChevronRight className="w-3.5 h-3.5" />

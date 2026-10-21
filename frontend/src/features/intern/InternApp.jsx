@@ -172,7 +172,7 @@ export default function InternApp({ onLogout, onSelectProject, onToast }) {
   };
 
   useEffect(() => {
-    loadWorkItems();
+    void loadWorkItems();
     const unsubForms = formsService.subscribe(setForms);
     let knownNotificationIds = new Set(
       notificationsService.getAllNotifications().map((notification) => notification.id)
@@ -193,9 +193,11 @@ export default function InternApp({ onLogout, onSelectProject, onToast }) {
 
       knownNotificationIds = new Set(nextNotifications.map((notification) => notification.id));
     });
-    notificationsService.loadNotifications().then((loadedNotifications) => {
+    void notificationsService.loadNotifications().then((loadedNotifications) => {
       knownNotificationIds = new Set(loadedNotifications.map((notification) => notification.id));
       hasLoadedNotifications = true;
+    }).catch((err) => {
+      console.error('Failed to load notifications on mount:', err);
     });
     // Smart notification polling with automatic visibility pause and resume
     let pollInterval = null;
@@ -204,7 +206,7 @@ export default function InternApp({ onLogout, onSelectProject, onToast }) {
       if (pollInterval) clearInterval(pollInterval);
       pollInterval = setInterval(() => {
         if (typeof document !== 'undefined' && document.hidden) return;
-        notificationsService.loadNotifications();
+        void notificationsService.loadNotifications();
       }, 30000);
     };
 
@@ -220,7 +222,7 @@ export default function InternApp({ onLogout, onSelectProject, onToast }) {
       if (document.hidden) {
         stopPolling();
       } else {
-        notificationsService.loadNotifications();
+        void notificationsService.loadNotifications();
         startPolling();
       }
     };
@@ -257,7 +259,7 @@ export default function InternApp({ onLogout, onSelectProject, onToast }) {
         setSelectedTask((prev) => (prev && prev.id === detail.id ? null : prev));
         return;
       }
-      loadWorkItems(true);
+      void loadWorkItems(true);
     };
     window.addEventListener('work-items-updated', handleWorkItemsSync);
 
@@ -391,7 +393,7 @@ export default function InternApp({ onLogout, onSelectProject, onToast }) {
                         <span>{item.label}</span>
                       </div>
 
-                      {item.badge && (
+                      {Boolean(item.badge) && (
                         <span className="px-1.5 py-0.2 text-[10px] font-mono rounded bg-purple-950/60 text-purple-300 border border-purple-700/40">
                           {item.badge}
                         </span>
@@ -426,7 +428,7 @@ export default function InternApp({ onLogout, onSelectProject, onToast }) {
                         <span>{item.label}</span>
                       </div>
 
-                      {item.badge && (
+                      {Boolean(item.badge) && (
                         <span className={`px-1.5 py-0.2 text-[10px] font-mono rounded ${item.badgeColor ? 'bg-rose-500 text-white' : 'bg-purple-950/60 text-purple-300 border border-purple-700/40'}`}>
                           {item.badge}
                         </span>
@@ -716,7 +718,7 @@ export default function InternApp({ onLogout, onSelectProject, onToast }) {
             setWorkItems((prev) => prev.map((w) => (w.id === updated.id ? { ...w, ...updated } : w)));
             setSelectedTask((prev) => (prev && prev.id === updated.id ? { ...prev, ...updated } : prev));
           } else {
-            loadWorkItems(true);
+            void loadWorkItems(true);
           }
         }}
         onTaskDeleted={(deletedId) => {
@@ -724,7 +726,7 @@ export default function InternApp({ onLogout, onSelectProject, onToast }) {
           if (deletedId) {
             setWorkItems((prev) => prev.filter((w) => w.id !== deletedId));
           } else {
-            loadWorkItems(true);
+            void loadWorkItems(true);
           }
         }}
         onToast={onToast}
@@ -741,7 +743,7 @@ export default function InternApp({ onLogout, onSelectProject, onToast }) {
       <CreatePersonalTaskModal
         isOpen={isCreatePersonalOpen}
         onClose={() => setIsCreatePersonalOpen(false)}
-        onTaskCreated={() => loadWorkItems()}
+        onTaskCreated={() => { void loadWorkItems(); }}
         onToast={onToast}
       />
 
@@ -749,14 +751,22 @@ export default function InternApp({ onLogout, onSelectProject, onToast }) {
         isOpen={isNotificationsOpen}
         onClose={() => setIsNotificationsOpen(false)}
         notifications={notifications}
-        onOpenTarget={(notif) => {
+        onOpenTarget={async (notif) => {
           setIsNotificationsOpen(false);
           if (notif.target_type === 'task') {
-            const item = workItemsService.getWorkItemById(notif.target_id);
-            if (item) setSelectedTask(item);
+            try {
+              const item = await workItemsService.getWorkItemById(notif.target_id);
+              if (item) setSelectedTask(item);
+            } catch (err) {
+              console.error('Failed to load notification task target:', err);
+            }
           } else if (notif.target_type === 'form') {
-            const form = formsService.getFormById(notif.target_id);
-            if (form) setSelectedForm(form);
+            try {
+              const form = await formsService.getFormById(notif.target_id);
+              if (form) setSelectedForm(form);
+            } catch (err) {
+              console.error('Failed to load notification form target:', err);
+            }
           } else {
             handleTabChange('alerts');
           }

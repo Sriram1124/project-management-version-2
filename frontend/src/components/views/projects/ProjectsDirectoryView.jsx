@@ -143,8 +143,14 @@ export default function ProjectsDirectoryView({ onSelectProject, isIntern = fals
   };
 
   useEffect(() => {
-    fetchProjects();
-    fetchOrgUsers();
+    const loadData = async () => {
+      try {
+        await Promise.all([fetchProjects(), fetchOrgUsers()]);
+      } catch (err) {
+        console.error('Failed to load projects directory data:', err);
+      }
+    };
+    void loadData();
 
     const handleSync = () => {
       projectsService.getProjects(isIntern ? { my: true } : {})
@@ -601,7 +607,7 @@ export default function ProjectsDirectoryView({ onSelectProject, isIntern = fals
             <span>{error}</span>
           </div>
           <button
-            onClick={fetchProjects}
+            onClick={() => { void fetchProjects(); }}
             className="px-3 py-1 bg-white border border-rose-200 hover:bg-rose-100 rounded-lg text-rose-700 font-semibold cursor-pointer"
           >
             Retry
@@ -799,7 +805,7 @@ export default function ProjectsDirectoryView({ onSelectProject, isIntern = fals
                                 <>
                                   <button 
                                     title="Edit Project"
-                                    onClick={(e) => handleOpenEdit(proj, e)}
+                                    onClick={(e) => { void handleOpenEdit(proj, e); }}
                                     className="p-1.5 text-slate-400 hover:text-purple-600 hover:bg-purple-50 rounded-lg transition-colors cursor-pointer"
                                   >
                                     <Edit3 className="w-4 h-4" />
@@ -807,7 +813,7 @@ export default function ProjectsDirectoryView({ onSelectProject, isIntern = fals
                                   {proj.status === 'ARCHIVED' ? (
                                     <button 
                                       title="Reactivate Project"
-                                      onClick={(e) => handleReactivate(proj, e)}
+                                      onClick={(e) => { void handleReactivate(proj, e); }}
                                       className="p-1.5 text-slate-400 hover:text-emerald-600 hover:bg-emerald-50 rounded-lg transition-colors cursor-pointer"
                                     >
                                       <RotateCcw className="w-4 h-4" />
@@ -947,7 +953,7 @@ export default function ProjectsDirectoryView({ onSelectProject, isIntern = fals
                           <>
                             <button 
                               title="Edit Project"
-                              onClick={(e) => handleOpenEdit(proj, e)}
+                              onClick={(e) => { void handleOpenEdit(proj, e); }}
                               className="p-1.5 text-slate-400 hover:text-purple-600 hover:bg-purple-50 rounded-lg transition-colors cursor-pointer"
                             >
                               <Edit3 className="w-4 h-4" />
@@ -955,7 +961,7 @@ export default function ProjectsDirectoryView({ onSelectProject, isIntern = fals
                             {proj.status === 'ARCHIVED' ? (
                               <button 
                                 title="Reactivate Project"
-                                onClick={(e) => handleReactivate(proj, e)}
+                                onClick={(e) => { void handleReactivate(proj, e); }}
                                 className="p-1.5 text-slate-400 hover:text-emerald-600 hover:bg-emerald-50 rounded-lg transition-colors cursor-pointer"
                               >
                                 <RotateCcw className="w-4 h-4" />
@@ -1007,12 +1013,10 @@ export default function ProjectsDirectoryView({ onSelectProject, isIntern = fals
           }}
           onKeyDown={(e) => {
             if (e.key === 'Enter' || e.key === ' ') {
-              (e) => {
-            if (e.target === e.currentTarget) {
+              if (e.target === e.currentTarget) {
               setIsCreateOpen(false);
             }
           }
-            }
           }}
         >
           <div 
@@ -1388,12 +1392,10 @@ export default function ProjectsDirectoryView({ onSelectProject, isIntern = fals
           }}
           onKeyDown={(e) => {
             if (e.key === 'Enter' || e.key === ' ') {
-              (e) => {
-            if (e.target === e.currentTarget) {
+              if (e.target === e.currentTarget) {
               setIsEditOpen(false);
             }
           }
-            }
           }}
         >
           <div 
@@ -1803,12 +1805,10 @@ export default function ProjectsDirectoryView({ onSelectProject, isIntern = fals
           }}
           onKeyDown={(e) => {
             if (e.key === 'Enter' || e.key === ' ') {
-              (e) => {
-            if (e.target === e.currentTarget) {
+              if (e.target === e.currentTarget) {
               setArchiveTarget(null);
             }
           }
-            }
           }}
         >
           <div 
@@ -1854,12 +1854,10 @@ export default function ProjectsDirectoryView({ onSelectProject, isIntern = fals
           }}
           onKeyDown={(e) => {
             if (e.key === 'Enter' || e.key === ' ') {
-              (e) => {
-            if (e.target === e.currentTarget) {
+              if (e.target === e.currentTarget) {
               setDeleteTarget(null);
             }
           }
-            }
           }}
         >
           <div 

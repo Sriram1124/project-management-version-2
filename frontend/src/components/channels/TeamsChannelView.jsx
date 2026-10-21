@@ -625,12 +625,10 @@ export default function TeamsChannelView({
           }}
           onKeyDown={(e) => {
             if (e.key === 'Enter' || e.key === ' ') {
-              (e) => {
-            if (e.target === e.currentTarget && !isReverting) {
+              if (e.target === e.currentTarget && !isReverting) {
               setRevertingForm(null);
             }
           }
-            }
           }}
         >
           <div

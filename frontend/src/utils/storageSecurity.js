@@ -80,7 +80,7 @@ export function sanitizeUser(rawUser) {
       : 'User';
 
   const email =
-    typeof rawUser.email === 'string' && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(rawUser.email.trim())
+    typeof rawUser.email === 'string' && /^[^\s@]+@[^\s@.]+(\.[^\s@.]+)+$/.test(rawUser.email.trim())
       ? rawUser.email.trim().slice(0, 255)
       : '';
 

@@ -367,13 +367,13 @@ export default function TimesheetView({
   }, [viewMode, selectedDate, targetUserId, statusFilter, priorityFilter, timeFilter, taskSearchQuery, readOnly]);
 
   useEffect(() => {
-    loadTimesheet();
+    void loadTimesheet();
   }, [loadTimesheet]);
 
   // Multi-tab and timer event synchronization
   useEffect(() => {
     const handleSync = () => {
-      loadTimesheet({ isBackground: true });
+      void loadTimesheet({ isBackground: true });
     };
 
     window.addEventListener('timer-session-updated', handleSync);
@@ -401,7 +401,7 @@ export default function TimesheetView({
     const updateElapsed = () => {
       const cutoff = getSessionCutoffMs(activeSession.started_at);
       if (cutoff && Date.now() >= cutoff) {
-        loadTimesheet({ isBackground: true });
+        void loadTimesheet({ isBackground: true });
         return;
       }
       setElapsedText(formatElapsed(activeSession.started_at));
@@ -1019,7 +1019,7 @@ export default function TimesheetView({
             {/* Refresh */}
             <button
               type="button"
-              onClick={loadTimesheet}
+              onClick={() => { void loadTimesheet(); }}
               disabled={loading}
               className="p-2 rounded-xl border border-slate-200 bg-white hover:bg-slate-50 text-slate-600 transition-colors cursor-pointer disabled:opacity-50"
               title="Refresh Timesheet"
@@ -1041,7 +1041,7 @@ export default function TimesheetView({
                 <button
                   type="button"
                   disabled={Boolean(timerActionTaskId)}
-                  onClick={handleStopTimer}
+                  onClick={() => { void handleStopTimer(); }}
                   className="flex items-center gap-1 px-2.5 py-1 rounded-lg bg-rose-600 hover:bg-rose-700 text-white text-[11px] font-bold transition-colors cursor-pointer shadow-xs disabled:opacity-50"
                   title="Stop and save logged time"
                 >
@@ -1086,7 +1086,7 @@ export default function TimesheetView({
           </div>
           <button
             type="button"
-            onClick={loadTimesheet}
+            onClick={() => { void loadTimesheet(); }}
             className="px-2.5 py-1 bg-white border border-rose-300 rounded-lg text-xs font-semibold hover:bg-rose-100"
           >
             Retry
@@ -1489,7 +1489,7 @@ export default function TimesheetView({
                                 </span>
                                 <button
                                   type="button"
-                                  onClick={handleStopTimer}
+                                  onClick={() => { void handleStopTimer(); }}
                                   disabled={actionLoading || Boolean(timerActionTaskId)}
                                   title="Stop Timer"
                                   className="p-1 rounded-md bg-rose-50 text-rose-600 hover:bg-rose-100 transition-colors cursor-pointer disabled:opacity-50"
@@ -1505,7 +1505,7 @@ export default function TimesheetView({
                               <button
                                 type="button"
                                 disabled={actionLoading || Boolean(timerActionTaskId)}
-                                onClick={() => handleStartTimer(task.id)}
+                                onClick={() => { void handleStartTimer(task.id); }}
                                 title={activeSession ? `Switch timer to "${task.title}" (will stop current timer)` : `Start timer for "${task.title}"`}
                                 className="p-1.5 rounded-lg text-slate-400 hover:text-emerald-700 hover:bg-emerald-50 transition-colors cursor-pointer opacity-70 group-hover:opacity-100 disabled:opacity-50"
                               >
@@ -2160,7 +2160,7 @@ export default function TimesheetView({
                             </button>
                             <button
                               type="button"
-                              onClick={() => handleDeleteEntry(entry.id)}
+                              onClick={() => { void handleDeleteEntry(entry.id); }}
                               disabled={actionLoading}
                               title="Delete entry"
                               className="p-1 rounded-lg text-slate-400 hover:text-rose-600 hover:bg-rose-50 transition-colors cursor-pointer"
@@ -2317,7 +2317,7 @@ export default function TimesheetView({
                                       </button>
                                       <button
                                         type="button"
-                                        onClick={() => handleDeleteEntry(entry.id)}
+                                        onClick={() => { void handleDeleteEntry(entry.id); }}
                                         disabled={actionLoading}
                                         title="Delete entry"
                                         className="p-1 rounded text-slate-400 hover:text-rose-600 hover:bg-rose-50 transition-colors cursor-pointer"

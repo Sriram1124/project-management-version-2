@@ -171,7 +171,7 @@ export default function MySprintSection({
                   type="button"
                   onClick={(e) => {
                     e.stopPropagation();
-                    onToggleTask?.(t.id);
+                    void onToggleTask?.(t.id);
                   }}
                   className={`w-4 h-4 rounded border flex items-center justify-center transition-colors shrink-0 ${
                     isDone

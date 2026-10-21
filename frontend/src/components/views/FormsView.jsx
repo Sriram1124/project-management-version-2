@@ -28,14 +28,14 @@ export default function FormsView({ onToast }) {
   };
 
   useEffect(() => {
-    loadForms();
+    void loadForms();
   }, []);
 
   const handlePublish = async (id) => {
     try {
       await formsService.publishForm(id);
       onToast?.('Form published successfully');
-      loadForms();
+      await loadForms();
     } catch (e) {
       onToast?.('Failed to publish form');
     }
@@ -48,7 +48,7 @@ export default function FormsView({ onToast }) {
       await formsService.revertForm(revertingForm.id);
       onToast?.(`Form "${revertingForm.title}" reverted to draft successfully`);
       setRevertingForm(null);
-      loadForms();
+      await loadForms();
     } catch (e) {
       onToast?.('Failed to revert form');
     } finally {
@@ -126,7 +126,7 @@ export default function FormsView({ onToast }) {
               
               {form.status === 'DRAFT' && (
                 <button
-                  onClick={() => handlePublish(form.id)}
+                  onClick={() => { void handlePublish(form.id); }}
                   className="mt-3 w-full py-2 bg-slate-50 hover:bg-purple-50 text-purple-700 font-bold text-xs rounded-lg transition-colors border border-purple-100"
                 >
                   Publish Form
@@ -158,12 +158,10 @@ export default function FormsView({ onToast }) {
           }}
           onKeyDown={(e) => {
             if (e.key === 'Enter' || e.key === ' ') {
-              (e) => {
-            if (e.target === e.currentTarget && !isReverting) {
+              if (e.target === e.currentTarget && !isReverting) {
               setRevertingForm(null);
             }
           }
-            }
           }}
         >
           <div
@@ -211,7 +209,7 @@ export default function FormsView({ onToast }) {
               </button>
               <button
                 type="button"
-                onClick={handleConfirmRevert}
+                onClick={() => { void handleConfirmRevert(); }}
                 disabled={isReverting}
                 className="px-4 py-2 text-xs font-semibold text-white bg-amber-600 hover:bg-amber-700 active:bg-amber-800 rounded-xl transition-colors disabled:opacity-50 flex items-center gap-1.5 cursor-pointer shadow-xs"
               >
@@ -237,7 +235,7 @@ export default function FormsView({ onToast }) {
           onClose={() => setIsCreateOpen(false)}
           onSuccess={() => {
             setIsCreateOpen(false);
-            loadForms();
+            void loadForms();
           }}
         />
       )}
@@ -246,7 +244,7 @@ export default function FormsView({ onToast }) {
         <FormBuilderDrawer
           form={selectedForm}
           onClose={() => setSelectedForm(null)}
-          onUpdate={loadForms}
+          onUpdate={() => { void loadForms(); }}
         />
       )}
 

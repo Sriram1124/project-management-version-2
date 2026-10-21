@@ -271,7 +271,7 @@ export default function ProjectFilesSection({ projectId, projectName = '', onToa
             <input
               type="file"
               ref={fileInputRef}
-              onChange={handleFileInputChange}
+              onChange={(e) => { void handleFileInputChange(e); }}
               multiple
               className="hidden"
             />
@@ -350,13 +350,13 @@ export default function ProjectFilesSection({ projectId, projectName = '', onToa
                       value={newName}
                       onChange={(e) => setNewName(e.target.value)}
                       onKeyDown={(e) => {
-                        if (e.key === 'Enter') handleConfirmRename();
+                        if (e.key === 'Enter') void handleConfirmRename();
                         if (e.key === 'Escape') setRenameFile(null);
                       }}
                       className="flex-1 px-1.5 py-0.5 text-xs border border-purple-400 rounded focus:outline-hidden"
                     />
                     <button
-                      onClick={handleConfirmRename}
+                      onClick={() => { void handleConfirmRename(); }}
                       className="p-1 rounded hover:bg-emerald-50 text-emerald-600"
                     >
                       <Check className="w-3.5 h-3.5" />
@@ -387,7 +387,7 @@ export default function ProjectFilesSection({ projectId, projectName = '', onToa
                     <span>·</span>
                     <button
                       type="button"
-                      onClick={(e) => handleDownload(file, e)}
+                      onClick={(e) => { void handleDownload(file, e); }}
                       className="text-slate-500 hover:text-slate-700 font-medium hover:underline text-[11px]"
                     >
                       Download
@@ -417,7 +417,7 @@ export default function ProjectFilesSection({ projectId, projectName = '', onToa
                       <span>Preview</span>
                     </button>
                     <button
-                      onClick={(e) => handleDownload(file, e)}
+                      onClick={(e) => { void handleDownload(file, e); }}
                       className="w-full px-3 py-1.5 text-left text-xs text-slate-700 hover:bg-slate-50 flex items-center gap-2 cursor-pointer"
                     >
                       <Download className="w-3.5 h-3.5 text-slate-400" />
@@ -473,7 +473,7 @@ export default function ProjectFilesSection({ projectId, projectName = '', onToa
           file={previewFile}
           projectId={projectId}
           onClose={() => setPreviewFile(null)}
-          onDownload={(f) => handleDownload(f)}
+          onDownload={(f) => { void handleDownload(f); }}
         />
       )}
 
@@ -486,7 +486,7 @@ export default function ProjectFilesSection({ projectId, projectName = '', onToa
         projectId={projectId}
         readOnly={readOnly}
         onPreview={(file) => handlePreview(file)}
-        onDownload={(file) => handleDownload(file)}
+        onDownload={(file) => { void handleDownload(file); }}
         onDelete={(file) => handlePromptDelete(file)}
       />
 
@@ -503,12 +503,10 @@ export default function ProjectFilesSection({ projectId, projectName = '', onToa
           }}
           onKeyDown={(e) => {
             if (e.key === 'Enter' || e.key === ' ') {
-              (e) => {
-            if (e.target === e.currentTarget && !isDeleting) {
+              if (e.target === e.currentTarget && !isDeleting) {
               handleCloseDeleteModal();
             }
           }
-            }
           }}
         >
           <div 
@@ -584,7 +582,7 @@ export default function ProjectFilesSection({ projectId, projectName = '', onToa
               </button>
               <button
                 type="button"
-                onClick={handleConfirmDelete}
+                onClick={() => { void handleConfirmDelete(); }}
                 disabled={isDeleting}
                 className="inline-flex items-center gap-1.5 px-4 py-2 text-xs font-semibold text-white bg-rose-600 hover:bg-rose-700 rounded-xl shadow-xs transition-colors disabled:opacity-50 cursor-pointer"
               >

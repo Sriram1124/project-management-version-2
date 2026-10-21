@@ -226,8 +226,9 @@ export default function PostFormModal({ isOpen, onClose, onPostForm }) {
                     <div className="flex items-center gap-3 mt-1.5 text-[10px] text-slate-500">
                       <span>Type: <strong className="text-slate-700">{q.type}</strong></span>
                       <span>•</span>
-                      <label className="flex items-center gap-1 cursor-pointer">
+                      <label htmlFor={`post-form-required-${q.id || idx}`} aria-label="Required" className="flex items-center gap-1 cursor-pointer">
                         <input
+                          id={`post-form-required-${q.id || idx}`}
                           type="checkbox"
                           checked={q.required}
                           onChange={(e) => {

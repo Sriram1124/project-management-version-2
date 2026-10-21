@@ -197,7 +197,7 @@ export default function IssueDetailDrawer({
 
   useEffect(() => {
     if (isOpen && issue?.id) {
-      loadIssueExtensions();
+      void loadIssueExtensions();
       setDecisionNote('');
     }
   }, [isOpen, issue?.id, loadIssueExtensions]);
@@ -340,14 +340,14 @@ export default function IssueDetailDrawer({
 
   useEffect(() => {
     if (isOpen && issue?.id) {
-      loadTaskTimeData();
+      void loadTaskTimeData();
     }
   }, [isOpen, issue?.id, loadTaskTimeData]);
 
   useEffect(() => {
     if (!isOpen || !issue?.id) return;
     const handleSync = () => {
-      loadTaskTimeData();
+      void loadTaskTimeData();
     };
 
     window.addEventListener('timer-session-updated', handleSync);
@@ -381,7 +381,7 @@ export default function IssueDetailDrawer({
       const secs = diffSecs % 60;
       setElapsedText(`${String(hrs).padStart(2, '0')}:${String(mins).padStart(2, '0')}:${String(secs).padStart(2, '0')}`);
       if (cutoff && Date.now() >= cutoff) {
-        loadTaskTimeData();
+        void loadTaskTimeData();
       }
     };
     updateElapsed();
@@ -963,7 +963,7 @@ export default function IssueDetailDrawer({
               value={editedTitle}
               disabled={updatingField === 'title'}
               onChange={(e) => setEditedTitle(e.target.value)}
-              onBlur={handleTitleBlur}
+              onBlur={() => { void handleTitleBlur(); }}
               placeholder="Issue summary..."
               className="w-full text-sm font-bold text-slate-900 border border-transparent hover:border-slate-200 focus:border-purple-500 focus:bg-white p-1.5 rounded-md resize-none transition-colors outline-none disabled:opacity-60"
             />
@@ -1164,7 +1164,7 @@ export default function IssueDetailDrawer({
                   disabled={updatingField === 'storyPoints'}
                   value={editedStoryPoints}
                   onChange={(e) => setEditedStoryPoints(e.target.value)}
-                  onBlur={handleSPBlur}
+                  onBlur={() => { void handleSPBlur(); }}
                   onKeyDown={handleSPKeyDown}
                   className="w-16 px-2 py-0.5 rounded border border-slate-200 text-xs font-mono font-semibold bg-white text-slate-800 text-right focus:outline-none focus:border-purple-600 focus:ring-1 focus:ring-purple-500 shadow-2xs disabled:opacity-60"
                 />
@@ -1196,7 +1196,7 @@ export default function IssueDetailDrawer({
                     onChange={(e) => {
                       const val = e.target.value;
                       const isoDate = val ? new Date(val).toISOString() : null;
-                      handleDueDateChange(isoDate);
+                      void handleDueDateChange(isoDate);
                     }}
                     className="px-2 py-0.5 rounded border border-slate-200 text-xs font-medium bg-white text-slate-800 focus:outline-none focus:border-purple-600 cursor-pointer shadow-2xs disabled:opacity-60"
                   />
@@ -1204,7 +1204,7 @@ export default function IssueDetailDrawer({
                     <button
                       type="button"
                       disabled={updatingField === 'dueDate'}
-                      onClick={() => handleDueDateChange(null)}
+                      onClick={() => { void handleDueDateChange(null); }}
                       title="Clear due date"
                       className="p-1 rounded hover:bg-slate-200 text-slate-400 hover:text-slate-600 cursor-pointer transition-colors disabled:opacity-60"
                     >
@@ -1329,7 +1329,7 @@ export default function IssueDetailDrawer({
                   activeSession ? (
                     <button
                       type="button"
-                      onClick={handleStopTaskTimer}
+                      onClick={() => { void handleStopTaskTimer(); }}
                       disabled={timeActionLoading}
                       className="flex items-center gap-1 px-2 py-0.5 rounded bg-rose-600 hover:bg-rose-700 text-white font-mono font-bold text-xs transition-colors cursor-pointer shadow-2xs"
                       title="Stop active timer"
@@ -1340,7 +1340,7 @@ export default function IssueDetailDrawer({
                   ) : (
                     <button
                       type="button"
-                      onClick={handleStartTaskTimer}
+                      onClick={() => { void handleStartTaskTimer(); }}
                       disabled={timeActionLoading}
                       className="flex items-center gap-1 px-2 py-0.5 rounded bg-purple-600 hover:bg-purple-700 text-white font-bold text-xs transition-colors cursor-pointer shadow-2xs"
                       title="Start timer for this task"
@@ -1381,7 +1381,7 @@ export default function IssueDetailDrawer({
               value={editedDesc}
               disabled={updatingField === 'description'}
               onChange={(e) => setEditedDesc(e.target.value)}
-              onBlur={handleDescBlur}
+              onBlur={() => { void handleDescBlur(); }}
               placeholder="Add a detailed description..."
               className="w-full text-xs text-slate-800 p-2.5 rounded-md border border-slate-200 focus:border-purple-500 focus:outline-none resize-y disabled:opacity-60"
             />
@@ -1617,7 +1617,7 @@ export default function IssueDetailDrawer({
               {/* Inline Add Worklog Form */}
               {!isManager && isLogModalOpen && (
                 <form
-                  onSubmit={handleSaveWorklog}
+                  onSubmit={(e) => { void handleSaveWorklog(e); }}
                   className="p-3 bg-purple-50/50 border border-purple-200 rounded-xl space-y-2.5 animate-in fade-in duration-150"
                 >
                   <div className="flex items-center justify-between">
@@ -1809,7 +1809,7 @@ export default function IssueDetailDrawer({
               </div>
             )}
 
-            <form onSubmit={handleInternRequestExtension} className="mt-4 space-y-4">
+            <form onSubmit={(e) => { void handleInternRequestExtension(e); }} className="mt-4 space-y-4">
               <div>
                 <div className="block text-[11px] font-bold uppercase text-slate-400 mb-1">
                   Task

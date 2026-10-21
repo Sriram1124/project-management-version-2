@@ -105,13 +105,13 @@ export default function SuperAdminDashboardView({ onNavigateTab }) {
 
   // Initial load
   useEffect(() => {
-    fetchOverview();
+    void fetchOverview();
   }, [fetchOverview]);
 
   // Debounced directory search & filter triggers
   useEffect(() => {
     const timer = setTimeout(() => {
-      fetchOrganizations(1, search, statusFilter, sortBy, sortOrder, pageSize);
+      void fetchOrganizations(1, search, statusFilter, sortBy, sortOrder, pageSize);
     }, 250);
     return () => clearTimeout(timer);
   }, [search, statusFilter, sortBy, sortOrder, pageSize, fetchOrganizations]);
@@ -124,8 +124,8 @@ export default function SuperAdminDashboardView({ onNavigateTab }) {
   }, []);
 
   const handleManualRefresh = () => {
-    fetchOverview();
-    fetchOrganizations(page, search, statusFilter, sortBy, sortOrder, pageSize);
+    void fetchOverview();
+    void fetchOrganizations(page, search, statusFilter, sortBy, sortOrder, pageSize);
   };
 
   const handleToggleStatus = async (org, e) => {
@@ -138,8 +138,8 @@ export default function SuperAdminDashboardView({ onNavigateTab }) {
 
     try {
       await organizationService.toggleStatus(org.id, !org.is_active);
-      fetchOrganizations(page, search, statusFilter, sortBy, sortOrder, pageSize);
-      fetchOverview();
+      void fetchOrganizations(page, search, statusFilter, sortBy, sortOrder, pageSize);
+      void fetchOverview();
       showNotification(`Organization "${org.name}" successfully ${org.is_active ? 'suspended' : 'reactivated'}.`);
     } catch (err) {
       alert(err.message || `Failed to ${actionLabel} organization`);
@@ -154,8 +154,8 @@ export default function SuperAdminDashboardView({ onNavigateTab }) {
       setIsRenaming(true);
       await organizationService.updateOrganization(editingOrg.id, { name: newName.trim() });
       setEditingOrg(null);
-      fetchOrganizations(page, search, statusFilter, sortBy, sortOrder, pageSize);
-      fetchOverview();
+      void fetchOrganizations(page, search, statusFilter, sortBy, sortOrder, pageSize);
+      void fetchOverview();
       showNotification('Organization name updated successfully.');
     } catch (err) {
       alert(err.message || 'Failed to rename organization');
@@ -172,8 +172,8 @@ export default function SuperAdminDashboardView({ onNavigateTab }) {
   };
 
   const handleCreateSuccess = (newOrg) => {
-    fetchOrganizations(1, '', 'all', sortBy, sortOrder, pageSize);
-    fetchOverview();
+    void fetchOrganizations(1, '', 'all', sortBy, sortOrder, pageSize);
+    void fetchOverview();
     showNotification(`Organization "${newOrg?.name || 'New Organization'}" provisioned successfully.`);
   };
 
@@ -721,7 +721,7 @@ export default function SuperAdminDashboardView({ onNavigateTab }) {
                         <td className="py-3.5 px-4 text-right">
                           <div className="flex items-center justify-end gap-1.5">
                             <button
-                              onClick={(e) => handleToggleStatus(org, e)}
+                              onClick={(e) => { void handleToggleStatus(org, e); }}
                               title={org.is_active ? 'Suspend organization' : 'Reactivate organization'}
                               className={`px-3 py-1 rounded-lg text-xs font-semibold border transition-colors cursor-pointer ${
                                 org.is_active
@@ -798,7 +798,7 @@ export default function SuperAdminDashboardView({ onNavigateTab }) {
               <div className="flex items-center gap-1">
                 <button
                   disabled={page <= 1}
-                  onClick={() => fetchOrganizations(page - 1, search, statusFilter, sortBy, sortOrder, pageSize)}
+                  onClick={() => { void fetchOrganizations(page - 1, search, statusFilter, sortBy, sortOrder, pageSize); }}
                   className="p-1.5 rounded-lg border border-slate-200 text-slate-600 hover:bg-white disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer"
                 >
                   <ChevronLeft className="w-3.5 h-3.5" />
@@ -810,7 +810,7 @@ export default function SuperAdminDashboardView({ onNavigateTab }) {
 
                 <button
                   disabled={page >= totalPages}
-                  onClick={() => fetchOrganizations(page + 1, search, statusFilter, sortBy, sortOrder, pageSize)}
+                  onClick={() => { void fetchOrganizations(page + 1, search, statusFilter, sortBy, sortOrder, pageSize); }}
                   className="p-1.5 rounded-lg border border-slate-200 text-slate-600 hover:bg-white disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer"
                 >
                   <ChevronRight className="w-3.5 h-3.5" />
@@ -827,8 +827,8 @@ export default function SuperAdminDashboardView({ onNavigateTab }) {
         orgId={inspectOrgId}
         onClose={() => setInspectOrgId(null)}
         onOrganizationUpdated={() => {
-          fetchOrganizations(page, search, statusFilter, sortBy, sortOrder, pageSize);
-          fetchOverview();
+          void fetchOrganizations(page, search, statusFilter, sortBy, sortOrder, pageSize);
+          void fetchOverview();
         }}
       />
 

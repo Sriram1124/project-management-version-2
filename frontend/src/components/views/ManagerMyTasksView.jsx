@@ -87,7 +87,7 @@ export default function ManagerMyTasksView({ onToast }) {
   }, [onToast]);
 
   useEffect(() => {
-    loadWorkItems();
+    void loadWorkItems();
   }, [loadWorkItems]);
 
   // Real-time KPIs derived directly from manager's personal tasks
@@ -414,6 +414,8 @@ export default function ManagerMyTasksView({ onToast }) {
                             return (
                               <label
                                 key={key}
+                                htmlFor={`filter-status-${key}`}
+                                aria-label={cfg.label}
                                 className={`flex items-center gap-2 px-2.5 py-1.5 rounded-lg border text-xs cursor-pointer transition-colors ${
                                   checked
                                     ? 'bg-purple-50/70 border-purple-200 text-purple-900 font-semibold'
@@ -421,6 +423,7 @@ export default function ManagerMyTasksView({ onToast }) {
                                 }`}
                               >
                                 <input
+                                  id={`filter-status-${key}`}
                                   type="checkbox"
                                   checked={checked}
                                   onChange={() => toggleFilter('statuses', key)}
@@ -445,6 +448,8 @@ export default function ManagerMyTasksView({ onToast }) {
                         return (
                           <label
                             key={key}
+                            htmlFor={`filter-priority-${key}`}
+                            aria-label={cfg.label}
                             className={`flex items-center gap-2 px-2.5 py-1.5 rounded-lg border text-xs cursor-pointer transition-colors ${
                               checked
                                 ? 'bg-purple-50/70 border-purple-200 text-purple-900 font-semibold'
@@ -452,6 +457,7 @@ export default function ManagerMyTasksView({ onToast }) {
                             }`}
                           >
                             <input
+                              id={`filter-priority-${key}`}
                               type="checkbox"
                               checked={checked}
                               onChange={() => toggleFilter('priorities', key)}
@@ -480,6 +486,8 @@ export default function ManagerMyTasksView({ onToast }) {
                         return (
                           <label
                             key={key}
+                            htmlFor={`filter-duedate-${key}`}
+                            aria-label={label}
                             className={`flex items-center gap-2 px-2.5 py-1.5 rounded-lg border text-xs cursor-pointer transition-colors ${
                               checked
                                 ? 'bg-purple-50/70 border-purple-200 text-purple-900 font-semibold'
@@ -487,6 +495,7 @@ export default function ManagerMyTasksView({ onToast }) {
                             }`}
                           >
                             <input
+                              id={`filter-duedate-${key}`}
                               type="checkbox"
                               checked={checked}
                               onChange={() => toggleFilter('dueDates', key)}
@@ -862,7 +871,7 @@ export default function ManagerMyTasksView({ onToast }) {
                           {!isCompleted ? (
                             <button
                               type="button"
-                              onClick={() => handleToggleTask(item.id)}
+                              onClick={() => { void handleToggleTask(item.id); }}
                               className="inline-flex items-center gap-1 px-2.5 py-1.5 text-[11px] font-semibold text-emerald-700 bg-emerald-50 hover:bg-emerald-100 border border-emerald-200 rounded-lg transition-colors cursor-pointer"
                               title="Mark as done and archive"
                             >
@@ -872,7 +881,7 @@ export default function ManagerMyTasksView({ onToast }) {
                           ) : (
                             <button
                               type="button"
-                              onClick={() => handleToggleTask(item.id)}
+                              onClick={() => { void handleToggleTask(item.id); }}
                               className="inline-flex items-center gap-1 px-2.5 py-1.5 text-[11px] font-semibold text-slate-600 bg-slate-100 hover:bg-slate-200 border border-slate-200 rounded-lg transition-colors cursor-pointer"
                               title="Reopen task and move to active"
                             >
@@ -907,11 +916,11 @@ export default function ManagerMyTasksView({ onToast }) {
         onClose={() => setSelectedTask(null)}
         hideAssignees={true}
         onTaskUpdated={() => {
-          loadWorkItems();
+          void loadWorkItems();
         }}
         onTaskDeleted={() => {
           setSelectedTask(null);
-          loadWorkItems();
+          void loadWorkItems();
           onToast?.('Task deleted successfully');
         }}
         onToast={onToast}
@@ -922,7 +931,7 @@ export default function ManagerMyTasksView({ onToast }) {
         isOpen={isCreatePersonalOpen}
         onClose={() => setIsCreatePersonalOpen(false)}
         onTaskCreated={() => {
-          loadWorkItems();
+          void loadWorkItems();
         }}
         onToast={onToast}
       />

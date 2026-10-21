@@ -367,7 +367,7 @@ export default function TechLeadsView({ onRebalanceLead, onSelectProject }) {
   const [selectedProjectForHealth, setSelectedProjectForHealth] = useState(null);
 
   useEffect(() => {
-    loadTechLeads();
+    void loadTechLeads();
   }, []);
 
   const loadTechLeads = async () => {
@@ -508,7 +508,7 @@ export default function TechLeadsView({ onRebalanceLead, onSelectProject }) {
 
         <button
           type="button"
-          onClick={loadTechLeads}
+          onClick={() => { void loadTechLeads(); }}
           className="text-xs font-semibold text-purple-700 hover:text-purple-800 hover:underline shrink-0 cursor-pointer self-end sm:self-auto"
         >
           Refresh Data

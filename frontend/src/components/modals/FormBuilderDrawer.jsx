@@ -8,7 +8,7 @@ export default function FormBuilderDrawer({ form: initialForm, onClose, onUpdate
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    loadQuestions();
+    void loadQuestions();
   }, [initialForm.id]);
 
   const loadQuestions = async () => {
@@ -30,7 +30,7 @@ export default function FormBuilderDrawer({ form: initialForm, onClose, onUpdate
         is_required: true,
         options: type === 'SINGLE_SELECT' || type === 'MULTI_SELECT' ? ['Option 1'] : []
       });
-      loadQuestions();
+      void loadQuestions();
     } catch (e) {
       alert('Failed to add question');
     }
@@ -39,7 +39,7 @@ export default function FormBuilderDrawer({ form: initialForm, onClose, onUpdate
   const handleDelete = async (qId) => {
     try {
       await formsService.deleteQuestion(form.id, qId);
-      loadQuestions();
+      void loadQuestions();
     } catch (e) {
       alert('Failed to delete question');
     }
@@ -51,7 +51,7 @@ export default function FormBuilderDrawer({ form: initialForm, onClose, onUpdate
       setQuestions(prev => prev.map(q => q.id === qId ? { ...q, ...updates } : q));
       await formsService.updateQuestion(form.id, qId, updates);
     } catch (e) {
-      loadQuestions(); // Revert on fail
+      void loadQuestions(); // Revert on fail
     }
   };
 
@@ -80,7 +80,7 @@ export default function FormBuilderDrawer({ form: initialForm, onClose, onUpdate
             {questions.map((q, i) => (
               <div key={q.id} className="bg-white border border-slate-200 rounded-xl p-4 shadow-sm relative group">
                 <div className="absolute top-4 right-4 opacity-0 group-hover:opacity-100 transition-opacity">
-                  <button onClick={() => handleDelete(q.id)} className="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg">
+                  <button onClick={() => { void handleDelete(q.id); }} className="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg">
                     <Trash2 className="w-4 h-4" />
                   </button>
                 </div>
@@ -89,7 +89,7 @@ export default function FormBuilderDrawer({ form: initialForm, onClose, onUpdate
                   <input
                     type="text"
                     value={q.text}
-                    onChange={(e) => handleUpdate(q.id, { text: e.target.value })}
+                    onChange={(e) => { void handleUpdate(q.id, { text: e.target.value }); }}
                     className="w-full text-sm font-bold text-slate-800 border-none p-0 focus:ring-0 placeholder:text-slate-300"
                     placeholder="Question text"
                   />
@@ -97,7 +97,7 @@ export default function FormBuilderDrawer({ form: initialForm, onClose, onUpdate
                   <div className="flex items-center gap-4">
                     <select
                       value={q.type}
-                      onChange={(e) => handleUpdate(q.id, { type: e.target.value })}
+                      onChange={(e) => { void handleUpdate(q.id, { type: e.target.value }); }}
                       className="text-xs font-medium text-slate-600 bg-slate-50 border border-slate-200 rounded-lg px-2 py-1 focus:outline-none"
                     >
                       <option value="SHORT_TEXT">Short Text</option>
@@ -109,11 +109,12 @@ export default function FormBuilderDrawer({ form: initialForm, onClose, onUpdate
                       <option value="DATE">Date</option>
                     </select>
 
-                    <label className="flex items-center gap-1.5 text-xs font-medium text-slate-600 cursor-pointer">
+                    <label htmlFor={`q-required-${q.id}`} aria-label="Required" className="flex items-center gap-1.5 text-xs font-medium text-slate-600 cursor-pointer">
                       <input
+                        id={`q-required-${q.id}`}
                         type="checkbox"
                         checked={q.is_required}
-                        onChange={(e) => handleUpdate(q.id, { is_required: e.target.checked })}
+                        onChange={(e) => { void handleUpdate(q.id, { is_required: e.target.checked }); }}
                         className="rounded border-slate-300 text-purple-600 focus:ring-purple-500"
                       />
                       Required
@@ -131,14 +132,14 @@ export default function FormBuilderDrawer({ form: initialForm, onClose, onUpdate
                             onChange={(e) => {
                               const newOpts = [...q.options];
                               newOpts[oIdx] = e.target.value;
-                              handleUpdate(q.id, { options: newOpts });
+                              void handleUpdate(q.id, { options: newOpts });
                             }}
                             className="text-sm flex-1 bg-transparent border-b border-transparent hover:border-slate-200 focus:border-purple-500 focus:outline-none px-1 py-0.5"
                           />
                           <button
                             onClick={() => {
                               const newOpts = q.options.filter((_, idx) => idx !== oIdx);
-                              handleUpdate(q.id, { options: newOpts });
+                              void handleUpdate(q.id, { options: newOpts });
                             }}
                             className="p-1 text-slate-400 hover:text-rose-500"
                           >
@@ -147,7 +148,7 @@ export default function FormBuilderDrawer({ form: initialForm, onClose, onUpdate
                         </div>
                       ))}
                       <button
-                        onClick={() => handleUpdate(q.id, { options: [...(q.options||[]), `Option ${(q.options?.length||0)+1}`] })}
+                        onClick={() => { void handleUpdate(q.id, { options: [...(q.options||[]), `Option ${(q.options?.length||0)+1}`] }); }}
                         className="text-xs font-semibold text-purple-600 hover:text-purple-700 flex items-center gap-1 mt-1"
                       >
                         <Plus className="w-3 h-3" /> Add Option
@@ -163,10 +164,10 @@ export default function FormBuilderDrawer({ form: initialForm, onClose, onUpdate
 
       <div className="p-4 border-t border-slate-100 bg-slate-50 flex items-center gap-2 overflow-x-auto">
         <span className="text-xs font-bold text-slate-500 mr-2 whitespace-nowrap">ADD FIELD:</span>
-        <button onClick={() => handleAddQuestion('SHORT_TEXT')} className="px-3 py-1.5 bg-white border border-slate-200 rounded-lg text-xs font-semibold text-slate-700 hover:border-purple-300 flex items-center gap-1.5 shadow-sm whitespace-nowrap"><Type className="w-3.5 h-3.5 text-purple-500"/> Text</button>
-        <button onClick={() => handleAddQuestion('LONG_TEXT')} className="px-3 py-1.5 bg-white border border-slate-200 rounded-lg text-xs font-semibold text-slate-700 hover:border-purple-300 flex items-center gap-1.5 shadow-sm whitespace-nowrap"><Type className="w-3.5 h-3.5 text-purple-500"/> Paragraph</button>
-        <button onClick={() => handleAddQuestion('SINGLE_SELECT')} className="px-3 py-1.5 bg-white border border-slate-200 rounded-lg text-xs font-semibold text-slate-700 hover:border-purple-300 flex items-center gap-1.5 shadow-sm whitespace-nowrap"><List className="w-3.5 h-3.5 text-purple-500"/> Select</button>
-        <button onClick={() => handleAddQuestion('BOOLEAN')} className="px-3 py-1.5 bg-white border border-slate-200 rounded-lg text-xs font-semibold text-slate-700 hover:border-purple-300 flex items-center gap-1.5 shadow-sm whitespace-nowrap"><CheckSquare className="w-3.5 h-3.5 text-purple-500"/> Yes/No</button>
+        <button onClick={() => { void handleAddQuestion('SHORT_TEXT'); }} className="px-3 py-1.5 bg-white border border-slate-200 rounded-lg text-xs font-semibold text-slate-700 hover:border-purple-300 flex items-center gap-1.5 shadow-sm whitespace-nowrap"><Type className="w-3.5 h-3.5 text-purple-500"/> Text</button>
+        <button onClick={() => { void handleAddQuestion('LONG_TEXT'); }} className="px-3 py-1.5 bg-white border border-slate-200 rounded-lg text-xs font-semibold text-slate-700 hover:border-purple-300 flex items-center gap-1.5 shadow-sm whitespace-nowrap"><Type className="w-3.5 h-3.5 text-purple-500"/> Paragraph</button>
+        <button onClick={() => { void handleAddQuestion('SINGLE_SELECT'); }} className="px-3 py-1.5 bg-white border border-slate-200 rounded-lg text-xs font-semibold text-slate-700 hover:border-purple-300 flex items-center gap-1.5 shadow-sm whitespace-nowrap"><List className="w-3.5 h-3.5 text-purple-500"/> Select</button>
+        <button onClick={() => { void handleAddQuestion('BOOLEAN'); }} className="px-3 py-1.5 bg-white border border-slate-200 rounded-lg text-xs font-semibold text-slate-700 hover:border-purple-300 flex items-center gap-1.5 shadow-sm whitespace-nowrap"><CheckSquare className="w-3.5 h-3.5 text-purple-500"/> Yes/No</button>
       </div>
     </div>
   );

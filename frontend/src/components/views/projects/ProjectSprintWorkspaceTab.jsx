@@ -110,7 +110,7 @@ export default function ProjectSprintWorkspaceTab({
   }, [projectId]);
 
   useEffect(() => {
-    loadData();
+    void loadData();
   }, [loadData]);
 
   useEffect(() => {
@@ -126,7 +126,7 @@ export default function ProjectSprintWorkspaceTab({
         setSelectedTask((prev) => (prev && prev.id === detail.id ? null : prev));
         return;
       }
-      loadData(true);
+      void loadData(true);
     };
     window.addEventListener('work-items-updated', handleSync);
     return () => window.removeEventListener('work-items-updated', handleSync);
@@ -304,7 +304,7 @@ export default function ProjectSprintWorkspaceTab({
         notes: description || null,
       });
       onToast?.(`Logged ${hours}h ${minutes}m successfully`);
-      loadData();
+      void loadData();
     } catch (err) {
       console.error('Failed to log work:', err);
       onToast?.(err.message || 'Failed to log work');
@@ -325,7 +325,7 @@ export default function ProjectSprintWorkspaceTab({
       setStartingSprint(true);
       await sprintsService.startSprint(projectId, sprintId);
       onToast?.('Sprint started successfully');
-      loadData();
+      void loadData();
     } catch (err) {
       console.error('Failed to start sprint:', err);
       onToast?.(err?.response?.data?.error || err.message || 'Failed to start sprint');
@@ -346,7 +346,7 @@ export default function ProjectSprintWorkspaceTab({
     try {
       await sprintsService.reopenSprint(projectId, sprintId);
       onToast?.('Sprint reopened successfully');
-      loadData();
+      void loadData();
     } catch (err) {
       console.error('Failed to reopen sprint:', err);
       onToast?.(err?.response?.data?.error || err.message || 'Failed to reopen sprint');
@@ -361,7 +361,7 @@ export default function ProjectSprintWorkspaceTab({
         : { target_sprint_id: optionsOrTarget };
       await sprintsService.completeSprint(projectId, currentSprint.id, payload);
       onToast?.(payload.unfinished_action === 'CONTINUE' ? `Sprint "${currentSprint.name}" continued` : `Sprint "${currentSprint.name}" completed successfully`);
-      loadData();
+      void loadData();
     } catch (err) {
       console.error('Failed to complete sprint:', err);
       onToast?.(err.message || 'Failed to complete sprint');
@@ -441,7 +441,7 @@ export default function ProjectSprintWorkspaceTab({
           existingSprints={sprints}
           onSuccess={() => {
             onToast?.('Sprint created successfully');
-            loadData();
+            void loadData();
           }}
         />
       </div>
@@ -559,7 +559,7 @@ export default function ProjectSprintWorkspaceTab({
             <div className="flex items-center gap-2 self-start shrink-0">
               {currentSprint?.status === 'PLANNED' && (
                 <button
-                  onClick={() => handleStartSprint(currentSprint.id)}
+                  onClick={() => { void handleStartSprint(currentSprint.id); }}
                   disabled={startingSprint}
                   className="px-3 py-1.5 rounded-md bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-semibold transition-colors flex items-center gap-1.5 shadow-xs cursor-pointer disabled:opacity-50"
                 >
@@ -580,7 +580,7 @@ export default function ProjectSprintWorkspaceTab({
 
               {currentSprint?.status === 'COMPLETED' && (
                 <button
-                  onClick={() => handleReopenSprint(currentSprint.id)}
+                  onClick={() => { void handleReopenSprint(currentSprint.id); }}
                   className="px-3 py-1.5 rounded-md border border-slate-200 hover:bg-slate-50 text-slate-700 text-xs font-medium transition-colors flex items-center gap-1.5 cursor-pointer"
                   title="Reopen completed sprint"
                 >
@@ -1050,7 +1050,7 @@ export default function ProjectSprintWorkspaceTab({
                 onDragLeave={(e) => {
                   if (dragOverColId === col.id) setDragOverColId(null);
                 }}
-                onDrop={(e) => handleDropTask(e, col.id)}
+                onDrop={(e) => { void handleDropTask(e, col.id); }}
                 className={`rounded-lg p-2.5 border flex flex-col min-h-[380px] transition-colors ${
                   dragOverColId === col.id
                     ? 'bg-purple-50/50 border-purple-400 border-dashed'
@@ -1245,7 +1245,7 @@ export default function ProjectSprintWorkspaceTab({
         isKanban={false}
         onSuccess={() => {
           onToast?.('Sprint created successfully');
-          loadData();
+          void loadData();
         }}
       />
 
@@ -1258,12 +1258,12 @@ export default function ProjectSprintWorkspaceTab({
         isKanban={false}
         onSuccess={(updated) => {
           onToast?.(`Sprint "${updated?.name || 'Sprint'}" updated successfully`);
-          loadData();
+          void loadData();
         }}
         onDelete={(deleted) => {
           onToast?.(`Sprint "${deleted?.name || 'Sprint'}" deleted successfully`);
           setSelectedSprintId(null);
-          loadData();
+          void loadData();
         }}
       />
     </div>

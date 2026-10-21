@@ -42,7 +42,7 @@ export default function SuperAdminAuditLogsView() {
   };
 
   useEffect(() => {
-    fetchLogs(1);
+    void fetchLogs(1);
   }, [actionFilter, targetTypeFilter]);
 
   return (
@@ -180,14 +180,14 @@ export default function SuperAdminAuditLogsView() {
             <div className="flex items-center gap-1">
               <button
                 disabled={page <= 1}
-                onClick={() => fetchLogs(page - 1)}
+                onClick={() => { void fetchLogs(page - 1); }}
                 className="p-1.5 rounded-lg border border-slate-200 text-slate-600 hover:bg-white disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer"
               >
                 <ChevronLeft className="w-4 h-4" />
               </button>
               <button
                 disabled={page >= totalPages}
-                onClick={() => fetchLogs(page + 1)}
+                onClick={() => { void fetchLogs(page + 1); }}
                 className="p-1.5 rounded-lg border border-slate-200 text-slate-600 hover:bg-white disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer"
               >
                 <ChevronRight className="w-4 h-4" />

@@ -111,8 +111,8 @@ export default function InternProfileTab({ onSelectProject, onToast }) {
   }, []);
 
   useEffect(() => {
-    fetchProfile();
-    fetchProjects();
+    void fetchProfile();
+    void fetchProjects();
   }, [fetchProfile, fetchProjects]);
 
   // Computed display values
@@ -515,7 +515,7 @@ export default function InternProfileTab({ onSelectProject, onToast }) {
                 <p className="text-xs text-rose-600 font-medium">{projectsError}</p>
                 <button
                   type="button"
-                  onClick={fetchProjects}
+                  onClick={() => { void fetchProjects(); }}
                   className="text-xs text-purple-700 underline font-medium"
                 >
                   Try again

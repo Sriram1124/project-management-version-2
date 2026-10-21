@@ -60,12 +60,10 @@ export default function AllProjectFilesModal({
       }}
       onKeyDown={(e) => {
         if (e.key === 'Enter' || e.key === ' ') {
-          (e) => {
-        if (e.target === e.currentTarget) {
+          if (e.target === e.currentTarget) {
           onClose();
         }
       }
-        }
       }}
     >
       <div 
@@ -183,7 +181,7 @@ export default function AllProjectFilesModal({
                     {/* Option 2: Download */}
                     <button
                       type="button"
-                      onClick={(e) => handleDownloadFile(file, e)}
+                      onClick={(e) => { void handleDownloadFile(file, e); }}
                       disabled={downloadingId === file.id}
                       className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold text-white bg-purple-600 hover:bg-purple-700 transition-colors cursor-pointer shadow-2xs disabled:opacity-50"
                       title={`Download ${file.name}`}

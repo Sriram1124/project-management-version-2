@@ -90,7 +90,7 @@ export default function WorkItemComments({
   }, [workItemId]);
 
   useEffect(() => {
-    fetchComments();
+    void fetchComments();
   }, [fetchComments]);
 
   const canModifyComment = (comment) => {
@@ -198,7 +198,7 @@ export default function WorkItemComments({
 
       {/* Add Comment Input */}
       {!readOnly && (
-        <form onSubmit={handleAddComment} className="space-y-2">
+        <form onSubmit={(e) => { void handleAddComment(e); }} className="space-y-2">
           <div className="relative">
             <textarea
               rows={2}
@@ -310,7 +310,7 @@ export default function WorkItemComments({
                         </button>
                         <button
                           type="button"
-                          onClick={() => handleDeleteComment(c.id)}
+                          onClick={() => { void handleDeleteComment(c.id); }}
                           disabled={isDeleting}
                           className="p-1 rounded text-slate-400 hover:text-rose-600 hover:bg-rose-50 transition-colors cursor-pointer"
                           title="Delete comment"
@@ -346,7 +346,7 @@ export default function WorkItemComments({
                       </button>
                       <button
                         type="button"
-                        onClick={() => handleSaveEdit(c.id)}
+                        onClick={() => { void handleSaveEdit(c.id); }}
                         disabled={savingEdit || !editingText.trim()}
                         className="inline-flex items-center gap-1 px-2.5 py-1 rounded bg-purple-600 hover:bg-purple-700 disabled:opacity-40 text-white text-[11px] font-semibold transition-colors cursor-pointer"
                       >

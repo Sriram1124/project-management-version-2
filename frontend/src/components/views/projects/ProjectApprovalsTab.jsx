@@ -88,7 +88,7 @@ export default function ProjectApprovalsTab({
   }, [projectId]);
 
   useEffect(() => {
-    loadRequests();
+    void loadRequests();
   }, [loadRequests]);
 
   // Counts for tabs
@@ -169,7 +169,7 @@ export default function ProjectApprovalsTab({
 
       setConfirmTarget(null);
       // Re-fetch to guarantee complete DB sync
-      loadRequests();
+      void loadRequests();
     } catch (err) {
       console.error('Failed to submit decision:', err);
       setDecisionError(err?.message || 'Failed to submit decision. Please try again.');
@@ -232,7 +232,7 @@ export default function ProjectApprovalsTab({
           <div className="flex items-center gap-2 self-end md:self-auto">
             <button
               type="button"
-              onClick={loadRequests}
+              onClick={() => { void loadRequests(); }}
               disabled={loading}
               title="Refresh requests"
               className="p-2 text-slate-500 hover:text-purple-600 hover:bg-purple-50 rounded-xl border border-slate-200 transition-colors disabled:opacity-50 cursor-pointer"
@@ -352,7 +352,7 @@ export default function ProjectApprovalsTab({
             <p className="text-xs text-rose-600 mb-4">{error}</p>
             <button
               type="button"
-              onClick={loadRequests}
+              onClick={() => { void loadRequests(); }}
               className="px-3 py-1.5 text-xs font-semibold rounded-lg bg-purple-600 text-white hover:bg-purple-700 cursor-pointer"
             >
               Retry
@@ -434,7 +434,7 @@ export default function ProjectApprovalsTab({
                           <div className="min-w-0 max-w-[200px]">
                             <button
                               type="button"
-                              onClick={() => handleInspectTask(req.task_id)}
+                              onClick={() => { void handleInspectTask(req.task_id); }}
                               className="font-semibold text-slate-900 hover:text-purple-600 truncate block text-xs cursor-pointer group-hover:underline text-left"
                               title={req.task?.title || 'Deliverable'}
                             >
@@ -807,7 +807,7 @@ export default function ProjectApprovalsTab({
           onClose={() => setSelectedIssue(null)}
           onUpdateIssue={async (updated) => {
             setSelectedIssue((prev) => ({ ...prev, ...updated }));
-            loadRequests();
+            void loadRequests();
           }}
           readOnly={readOnly}
         />

@@ -15,13 +15,17 @@ export default function NotificationsDrawer({
   const unreadCount = activeNotifs.filter((n) => !n.is_read).length;
 
   const handleMarkAll = () => {
-    notificationsService.markAllAsRead();
+    notificationsService.markAllAsRead().catch((err) => {
+      console.error(err);
+    });
     onToast?.('All notifications marked as read');
   };
 
   const handleNotificationClick = (notif) => {
-    notificationsService.markAsRead(notif.id);
-    onOpenTarget?.(notif);
+    notificationsService.markAsRead(notif.id).catch((err) => {
+      console.error(err);
+    });
+    void onOpenTarget?.(notif);
   };
 
   return (
@@ -36,12 +40,10 @@ export default function NotificationsDrawer({
       }}
       onKeyDown={(e) => {
         if (e.key === 'Enter' || e.key === ' ') {
-          (e) => {
-        if (e.target === e.currentTarget) {
+          if (e.target === e.currentTarget) {
           onClose();
         }
       }
-        }
       }}
     >
       <div

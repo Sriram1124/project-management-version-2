@@ -37,6 +37,8 @@ export default function ManagerDashboardView({
     ]).then(([projData, workData]) => {
       setProjects(Array.isArray(projData) ? projData : (projData?.projects || []));
       setWorkItems(Array.isArray(workData) ? workData : []);
+    }).catch((err) => {
+      console.error('Failed to load global manager dashboard data:', err);
     });
   }, []);
 
@@ -58,13 +60,16 @@ export default function ManagerDashboardView({
       setUsers(loadedUsers);
       setHealthOverview(healthData);
       setHealthLoading(false);
+    }).catch((err) => {
+      console.error('Failed to load cohort manager dashboard data:', err);
+      setHealthLoading(false);
     });
   }, [selectedCohort?.id]);
 
   // Initial load: fetch global data once on mount
   useEffect(() => {
     setLoading(true);
-    fetchGlobalData().finally(() => {
+    void fetchGlobalData().finally(() => {
       setLoading(false);
     });
   }, [fetchGlobalData]);
@@ -74,14 +79,14 @@ export default function ManagerDashboardView({
     if (selectedCohort?.id) {
       setUsers([]);
       setHealthOverview(null);
-      fetchCohortData();
+      void fetchCohortData();
     }
   }, [fetchCohortData, selectedCohort?.id]);
 
   useEffect(() => {
     const handleSync = () => {
       fetchGlobalData();
-      fetchCohortData();
+      void fetchCohortData();
     };
     window.addEventListener('work-items-updated', handleSync);
     return () => window.removeEventListener('work-items-updated', handleSync);

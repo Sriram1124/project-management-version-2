@@ -32,16 +32,20 @@ export default function AddManagerModal({ isOpen, onClose, organization, onSucce
     }
   };
 
-  const handleCopyCredentials = () => {
+  const handleCopyCredentials = async () => {
     if (!createdResult?.manager) return;
     const text = `Organization: ${organization.name}
 Manager: ${createdResult.manager.name}
 Email: ${createdResult.manager.email}
 User Code: ${createdResult.manager.user_code}
 Temporary Password: ${createdResult.manager.temporary_password}`;
-    navigator.clipboard.writeText(text);
-    setCopied(true);
-    setTimeout(() => setCopied(false), 2000);
+    try {
+      await navigator.clipboard.writeText(text);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    } catch (err) {
+      console.error('Failed to copy credentials to clipboard:', err);
+    }
   };
 
   return (

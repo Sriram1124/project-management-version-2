@@ -88,7 +88,7 @@ export default function FilterBar({
             placeholder="Search tasks..."
             className="w-full pl-8 pr-6 py-1 rounded-md border border-slate-200 text-xs text-slate-800 placeholder-slate-400 bg-white hover:border-slate-300 focus:outline-none focus:ring-1 focus:ring-purple-600 focus:border-purple-600 transition-colors"
           />
-          {searchQuery && (
+          {Boolean(searchQuery) && (
             <button
               onClick={() => onSearchChange?.('')}
               className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 p-0.5"
@@ -138,7 +138,7 @@ export default function FilterBar({
                     placeholder="Search assignees..."
                     className="w-full pl-7 pr-6 py-1 text-xs rounded-md border border-slate-200 bg-slate-50 focus:bg-white focus:outline-none focus:ring-1 focus:ring-purple-600 focus:border-purple-600 transition-colors placeholder:text-slate-400"
                   />
-                  {assigneeSearchQuery && (
+                  {Boolean(assigneeSearchQuery) && (
                     <button
                       type="button"
                       onClick={() => setAssigneeSearchQuery('')}
@@ -256,7 +256,7 @@ export default function FilterBar({
           >
             <span className="truncate max-w-[100px]">
               {selectedEpic && selectedEpic !== 'All Epics'
-                ? typeof selectedEpic === 'object' ? selectedEpic.name || selectedEpic.title : selectedEpic
+                ? (typeof selectedEpic === 'object' && selectedEpic !== null ? selectedEpic.name || selectedEpic.title || 'Epic' : selectedEpic)
                 : 'Epic'}
             </span>
             <ChevronDown className="w-3 h-3 text-slate-400" />
@@ -315,7 +315,7 @@ export default function FilterBar({
               className="flex items-center gap-1.5 px-2.5 py-1 rounded-md border border-slate-200 text-xs font-medium text-slate-700 bg-white hover:bg-slate-50 transition-colors"
             >
               <span className="truncate max-w-[130px]">
-                {typeof selectedSprint === 'object' ? selectedSprint.name : selectedSprint}
+                {selectedSprint?.name || (typeof selectedSprint === 'string' ? selectedSprint : 'All Sprints')}
               </span>
               <ChevronDown className="w-3 h-3 text-slate-400" />
             </button>

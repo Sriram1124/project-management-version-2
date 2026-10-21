@@ -124,7 +124,7 @@ export default function PersonalKanbanBoard({
             key={col.id}
             onDragOver={(e) => handleDragOver(e, col.id)}
             onDragLeave={handleDragLeave}
-            onDrop={(e) => handleDrop(e, col.id)}
+            onDrop={(e) => { void handleDrop(e, col.id); }}
             className={`w-[260px] sm:w-[270px] min-w-[260px] shrink-0 rounded-xl p-3 border transition-colors flex flex-col min-h-[500px] ${
               isHovered
                 ? 'bg-purple-50/60 border-purple-400 ring-2 ring-purple-400/20'

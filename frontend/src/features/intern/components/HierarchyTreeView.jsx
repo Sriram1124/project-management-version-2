@@ -97,7 +97,7 @@ export default function HierarchyTreeView({
               title={!canToggle ? 'Only the assigned intern or manager can update status' : undefined}
               onClick={(e) => {
                 e.stopPropagation();
-                onToggleTask?.(item.id);
+                void onToggleTask?.(item.id);
               }}
               className={`w-4 h-4 rounded border flex items-center justify-center transition-colors shrink-0 ${
                 !canToggle ? 'opacity-40 cursor-not-allowed ' : 'cursor-pointer '
