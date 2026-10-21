@@ -2,7 +2,7 @@
 
 This repository contains the complete, source-code-discovered API test suite for the **InternHub Project Management & Internship Operations Platform** (`project-management-version-2`).
 
-The collection includes **149 total requests** spanning all **13 application modules**, complete with automated token extraction, dynamic variable chaining, response schema validations, positive happy-paths, negative error cases, and role-based access control (RBAC) tests.
+The collection includes **150 total requests** spanning all **13 application modules**, complete with automated token extraction, dynamic variable chaining, response schema validations, positive happy-paths, negative error cases, and role-based access control (RBAC) tests.
 
 ---
 
@@ -70,7 +70,7 @@ The test collection implements full end-to-end chaining without hardcoding IDs:
 
 1. **Token Extraction:**
    - `POST /api/auth/login` extracts `accessToken`, `refreshToken`, and `sessionId` into collection variables.
-   - All subsequent authenticated requests automatically inject `Authorization: Bearer {{accessToken}}` or appropriate role token.
+   - All subsequent authenticated requests automatically inject `Authorization: Bearer {{accessToken}}`.
 2. **Resource ID Capture:**
    - Listing projects sets `{{projectId}}`.
    - Creating a temporary project sets `{{testProjectId}}`.
@@ -80,3 +80,12 @@ The test collection implements full end-to-end chaining without hardcoding IDs:
 3. **Safe Teardown:**
    - Temporary resources created during the run (temporary projects, test sprints, test documents, test forms, test action items) are deleted in their respective teardown steps, ensuring zero database pollution.
 
+---
+
+## 🛡️ Security & Boundary Test Cases
+
+The collection tests key negative and boundary scenarios:
+- **Authentication:** Invalid password (401), missing login body (400), unauthenticated access to `/me` (401).
+- **Multi-Tenancy & RBAC:** Non-SuperAdmin attempting SuperAdmin operations (403).
+- **Data Integrity:** Negative story points (`-5`) rejected with 400.
+- **Resource Existence:** Non-existent UUIDs on projects, forms, work items, and action items verified to cleanly return 404.

@@ -110,31 +110,6 @@ export interface CsvValidationResult {
 
 export class UserService {
   /**
-   * Safely trim leading and trailing BOM, zero-width space, non-breaking space, quotes, and whitespace
-   * in linear O(N) time without regular expression backtracking.
-   */
-  private static trimCell(str: string): string {
-    if (!str) return '';
-    let start = 0;
-    let end = str.length;
-    const isTrimChar = (ch: string) =>
-      ch === '\uFEFF' ||
-      ch === '\u200B' ||
-      ch === '\u00A0' ||
-      ch === '"' ||
-      ch === "'" ||
-      /\s/.test(ch);
-
-    while (start < end && isTrimChar(str[start])) {
-      start++;
-    }
-    while (end > start && isTrimChar(str[end - 1])) {
-      end--;
-    }
-    return str.slice(start, end).trim();
-  }
-
-  /**
    * Cryptographically secure temporary password generator
    */
   private static generateTemporaryPassword(): string {
@@ -225,6 +200,30 @@ export class UserService {
   }
 
   /**
+   * Safely trim leading and trailing BOM, zero-width space, non-breaking space, quotes, and whitespace
+   * in linear O(N) time without regular expression backtracking.
+   */
+  private static trimCell(str: string): string {
+    if (!str) return '';
+    let start = 0;
+    let end = str.length;
+    const isTrimChar = (ch: string) =>
+      ch === '\uFEFF' ||
+      ch === '\u200B' ||
+      ch === '\u00A0' ||
+      ch === '"' ||
+      ch === "'" ||
+      /\s/.test(ch);
+
+    while (start < end && isTrimChar(str[start])) {
+      start++;
+    }
+    while (end > start && isTrimChar(str[end - 1])) {
+      end--;
+    }
+    return str.slice(start, end).trim();
+  }
+  /**
    * Parse a single CSV line handling quotes, escaped quotes, and trimmed values
    */
   private static parseCsvLine(line: string, delimiter = ','): string[] {
@@ -249,7 +248,7 @@ export class UserService {
       }
     }
     cols.push(cur.trim());
-    return cols.map((col) => this.trimCell(col));
+    return cols.map((col) => UserService.trimCell(col));
   }
 
   /**
@@ -481,7 +480,7 @@ export class UserService {
 
     const delimiter = this.detectDelimiter(lines[0]);
     const rawHeaders = this.parseCsvLine(lines[0], delimiter).map((h) =>
-      this.trimCell(h.toLowerCase())
+      UserService.trimCell(h.toLowerCase())
         .replace(/[\s\-_]+/g, '_')
         .trim()
     );

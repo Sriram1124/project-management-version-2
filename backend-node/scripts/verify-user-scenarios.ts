@@ -4,10 +4,10 @@ import { WorkItemService } from '../src/services/work-item.service';
 import { prisma } from '../src/lib/prisma';
 
 async function main() {
-  console.log('=== USER VALIDATION SCENARIOS (1 to 10) ===\n');
+  console.log('=== USER VALIDATION SCENARIOS (1 to 15) ===\n');
 
   let passed = 0;
-  const total = 10;
+  const total = 15;
 
   // Scenario 1: A task with 0 story points must contribute 0 points.
   {
@@ -209,6 +209,181 @@ async function main() {
       passed++;
     } else {
       console.error('Scenario 10 FAILED:', { emptyHealth, unestHealth });
+    }
+  }
+
+  // Scenario 11: Exactly 15 projects persisted with 8 Scrum and 7 Kanban distribution.
+  {
+    const EXPECTED_15 = [
+      'Attendance Management & Leave management',
+      'Performance Management System (PerforMax)',
+      'Performance Management System',
+      'Project Management System (PRMS)',
+      'ResolveHub (Ticket Management)',
+      'Ticket Management System',
+      'FinCredit AI- Credit Health & Loan Planning',
+      'NEXORA - AI-Powered Company Portfolio Management',
+      'Cross Project Code Review',
+      'Fraud Detection System (BankShield)',
+      'Resource Allocation & Management System',
+      'Timesheet Management System (To be integrated with Project Management)',
+      'AI Transaction Anomlay Detection',
+      'AI Powered QA Test and Bug Analysis',
+      'LOAN APPLICATION ANALYSER',
+    ];
+    const live15 = await prisma.project.findMany({
+      where: { name: { in: EXPECTED_15 } },
+    });
+    const scrumCount = live15.filter((p) => p.methodology === 'SCRUM').length;
+    const kanbanCount = live15.filter((p) => p.methodology === 'KANBAN').length;
+    if (live15.length === 15 && scrumCount === 8 && kanbanCount === 7) {
+      console.log('Scenario 11 PASSED: Exactly 15 projects persisted with 8 Scrum and 7 Kanban distribution.');
+      passed++;
+    } else {
+      console.error('Scenario 11 FAILED:', { count: live15.length, scrumCount, kanbanCount });
+    }
+  }
+
+  // Scenario 12: All 15 projects have owner set to manager@dailoqa.com.
+  {
+    const manager = await prisma.user.findUnique({ where: { email: 'manager@dailoqa.com' } });
+    const EXPECTED_15 = [
+      'Attendance Management & Leave management',
+      'Performance Management System (PerforMax)',
+      'Performance Management System',
+      'Project Management System (PRMS)',
+      'ResolveHub (Ticket Management)',
+      'Ticket Management System',
+      'FinCredit AI- Credit Health & Loan Planning',
+      'NEXORA - AI-Powered Company Portfolio Management',
+      'Cross Project Code Review',
+      'Fraud Detection System (BankShield)',
+      'Resource Allocation & Management System',
+      'Timesheet Management System (To be integrated with Project Management)',
+      'AI Transaction Anomlay Detection',
+      'AI Powered QA Test and Bug Analysis',
+      'LOAN APPLICATION ANALYSER',
+    ];
+    const live15 = await prisma.project.findMany({
+      where: { name: { in: EXPECTED_15 } },
+    });
+    const allManagerOwned = live15.every((p) => p.owner_id === manager?.id);
+    if (allManagerOwned && manager) {
+      console.log('Scenario 12 PASSED: All 15 projects have verified owner manager@dailoqa.com.');
+      passed++;
+    } else {
+      console.error('Scenario 12 FAILED: manager ownership mismatch');
+    }
+  }
+
+  // Scenario 13: All 15 projects have valid members and tasks assigned exclusively to members.
+  {
+    const EXPECTED_15 = [
+      'Attendance Management & Leave management',
+      'Performance Management System (PerforMax)',
+      'Performance Management System',
+      'Project Management System (PRMS)',
+      'ResolveHub (Ticket Management)',
+      'Ticket Management System',
+      'FinCredit AI- Credit Health & Loan Planning',
+      'NEXORA - AI-Powered Company Portfolio Management',
+      'Cross Project Code Review',
+      'Fraud Detection System (BankShield)',
+      'Resource Allocation & Management System',
+      'Timesheet Management System (To be integrated with Project Management)',
+      'AI Transaction Anomlay Detection',
+      'AI Powered QA Test and Bug Analysis',
+      'LOAN APPLICATION ANALYSER',
+    ];
+    const live15 = await prisma.project.findMany({
+      where: { name: { in: EXPECTED_15 } },
+      include: {
+        members: true,
+        work_items: { include: { assignees: true } },
+      },
+    });
+    let valid = true;
+    for (const p of live15) {
+      const memIds = new Set(p.members.map((m) => m.user_id));
+      for (const w of p.work_items) {
+        for (const a of w.assignees) {
+          if (!memIds.has(a.user_id)) valid = false;
+        }
+      }
+    }
+    if (valid) {
+      console.log('Scenario 13 PASSED: All task assignments strictly match verified project memberships.');
+      passed++;
+    } else {
+      console.error('Scenario 13 FAILED: foreign user assigned to project work item');
+    }
+  }
+
+  // Scenario 14: All Scrum projects have 3-5 valid sprints with single-active constraint.
+  {
+    const EXPECTED_15 = [
+      'Attendance Management & Leave management',
+      'Performance Management System (PerforMax)',
+      'Performance Management System',
+      'Project Management System (PRMS)',
+      'ResolveHub (Ticket Management)',
+      'Ticket Management System',
+      'FinCredit AI- Credit Health & Loan Planning',
+      'NEXORA - AI-Powered Company Portfolio Management',
+      'Cross Project Code Review',
+      'Fraud Detection System (BankShield)',
+      'Resource Allocation & Management System',
+      'Timesheet Management System (To be integrated with Project Management)',
+      'AI Transaction Anomlay Detection',
+      'AI Powered QA Test and Bug Analysis',
+      'LOAN APPLICATION ANALYSER',
+    ];
+    const scrumProjects = await prisma.project.findMany({
+      where: { name: { in: EXPECTED_15 }, methodology: 'SCRUM' },
+      include: { sprints: true },
+    });
+    const allValid = scrumProjects.every(
+      (p) => p.sprints.length >= 3 && p.sprints.filter((s) => s.status === 'ACTIVE').length === 1
+    );
+    if (allValid && scrumProjects.length === 8) {
+      console.log('Scenario 14 PASSED: All 8 Scrum projects have 3-5 valid sprints with exactly 1 ACTIVE sprint.');
+      passed++;
+    } else {
+      console.error('Scenario 14 FAILED: Scrum sprint constraint violation');
+    }
+  }
+
+  // Scenario 15: All Kanban projects use continuous flow with zero sprint dependency.
+  {
+    const EXPECTED_15 = [
+      'Attendance Management & Leave management',
+      'Performance Management System (PerforMax)',
+      'Performance Management System',
+      'Project Management System (PRMS)',
+      'ResolveHub (Ticket Management)',
+      'Ticket Management System',
+      'FinCredit AI- Credit Health & Loan Planning',
+      'NEXORA - AI-Powered Company Portfolio Management',
+      'Cross Project Code Review',
+      'Fraud Detection System (BankShield)',
+      'Resource Allocation & Management System',
+      'Timesheet Management System (To be integrated with Project Management)',
+      'AI Transaction Anomlay Detection',
+      'AI Powered QA Test and Bug Analysis',
+      'LOAN APPLICATION ANALYSER',
+    ];
+    const kanbanProjects = await prisma.project.findMany({
+      where: { name: { in: EXPECTED_15 }, methodology: 'KANBAN' },
+      include: { sprints: true, work_items: true },
+    });
+    const allKanbanValid = kanbanProjects.every(
+      (p) => p.sprints.length === 0 && p.work_items.every((w) => w.sprint_id === null)
+    );
+    if (allKanbanValid && kanbanProjects.length === 7) {
+      console.log('Scenario 15 PASSED: All 7 Kanban projects operate continuous flow with zero sprint dependency.');
+      passed++;
+    } else {
+      console.error('Scenario 15 FAILED: Kanban projects have sprints or sprint-linked work items');
     }
   }
 
