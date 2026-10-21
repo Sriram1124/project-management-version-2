@@ -315,7 +315,7 @@ export default function FilterBar({
               className="flex items-center gap-1.5 px-2.5 py-1 rounded-md border border-slate-200 text-xs font-medium text-slate-700 bg-white hover:bg-slate-50 transition-colors"
             >
               <span className="truncate max-w-[130px]">
-                {(typeof selectedSprint === 'object' && selectedSprint !== null ? selectedSprint.name : selectedSprint) || 'All Sprints'}
+                {selectedSprint?.name || (typeof selectedSprint === 'string' ? selectedSprint : 'All Sprints')}
               </span>
               <ChevronDown className="w-3 h-3 text-slate-400" />
             </button>

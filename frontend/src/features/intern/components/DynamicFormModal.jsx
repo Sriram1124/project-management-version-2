@@ -87,7 +87,7 @@ export default function DynamicFormModal({
       setAnswers(initial);
     };
 
-    initializeForm();
+    void initializeForm();
   }, [isOpen, form]);
 
   if (!isOpen || !form) return null;

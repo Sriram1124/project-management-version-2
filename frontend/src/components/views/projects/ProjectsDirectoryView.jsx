@@ -143,8 +143,14 @@ export default function ProjectsDirectoryView({ onSelectProject, isIntern = fals
   };
 
   useEffect(() => {
-    fetchProjects();
-    fetchOrgUsers();
+    const loadData = async () => {
+      try {
+        await Promise.all([fetchProjects(), fetchOrgUsers()]);
+      } catch (err) {
+        console.error('Failed to load projects directory data:', err);
+      }
+    };
+    void loadData();
 
     const handleSync = () => {
       projectsService.getProjects(isIntern ? { my: true } : {})

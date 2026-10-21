@@ -99,7 +99,9 @@ export default function AlertsTab({ notifications = [], onToast }) {
   const handleOpenAlert = (notif) => {
     setSelectedAlert(notif);
     if (!notif.is_read) {
-      notificationsService.markAsRead(notif.id);
+      notificationsService.markAsRead(notif.id).catch((err) => {
+        console.error(err);
+      });
     }
   };
 

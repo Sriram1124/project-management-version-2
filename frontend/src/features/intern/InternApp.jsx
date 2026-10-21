@@ -749,14 +749,22 @@ export default function InternApp({ onLogout, onSelectProject, onToast }) {
         isOpen={isNotificationsOpen}
         onClose={() => setIsNotificationsOpen(false)}
         notifications={notifications}
-        onOpenTarget={(notif) => {
+        onOpenTarget={async (notif) => {
           setIsNotificationsOpen(false);
           if (notif.target_type === 'task') {
-            const item = workItemsService.getWorkItemById(notif.target_id);
-            if (item) setSelectedTask(item);
+            try {
+              const item = await workItemsService.getWorkItemById(notif.target_id);
+              if (item) setSelectedTask(item);
+            } catch (err) {
+              console.error('Failed to load notification task target:', err);
+            }
           } else if (notif.target_type === 'form') {
-            const form = formsService.getFormById(notif.target_id);
-            if (form) setSelectedForm(form);
+            try {
+              const form = await formsService.getFormById(notif.target_id);
+              if (form) setSelectedForm(form);
+            } catch (err) {
+              console.error('Failed to load notification form target:', err);
+            }
           } else {
             handleTabChange('alerts');
           }
