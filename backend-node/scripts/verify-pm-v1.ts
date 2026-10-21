@@ -565,4 +565,7 @@ async function main() {
   }
 }
 
-main();
+main().catch((err) => {
+  console.error('Unhandled error in verify-pm-v1:', err);
+  process.exit(1);
+});

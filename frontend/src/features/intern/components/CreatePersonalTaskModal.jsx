@@ -23,7 +23,7 @@ export default function CreatePersonalTaskModal({
     if (!title.trim() || loading) return;
 
     const sp = Number(storyPoints);
-    if (!storyPoints || isNaN(sp) || !Number.isInteger(sp) || sp <= 0) {
+    if (!storyPoints || Number.isNaN(sp) || !Number.isInteger(sp) || sp <= 0) {
       setError('Story points are mandatory and must be a positive integer greater than 0.');
       return;
     }

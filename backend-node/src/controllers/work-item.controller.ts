@@ -95,7 +95,7 @@ export class WorkItemController {
       let validatedLimit: number | undefined = undefined;
       if (limit !== undefined && limit !== null && limit !== '') {
         const parsed = Number(limit);
-        if (isNaN(parsed) || !Number.isInteger(parsed) || parsed <= 0) {
+        if (Number.isNaN(parsed) || !Number.isInteger(parsed) || parsed <= 0) {
           res.status(400).json({ error: 'Invalid limit: must be a positive integer greater than 0' });
           return;
         }

@@ -393,7 +393,7 @@ export default function TaskDetailModal({
           storyPoints === '' ||
           storyPoints === null ||
           storyPoints === undefined ||
-          isNaN(sp) ||
+          Number.isNaN(sp) ||
           !Number.isInteger(sp) ||
           sp <= 0
         ) {
@@ -405,7 +405,7 @@ export default function TaskDetailModal({
           storyPoints === '' ||
           storyPoints === null ||
           storyPoints === undefined ||
-          isNaN(sp) ||
+          Number.isNaN(sp) ||
           !Number.isInteger(sp) ||
           sp < 0
         ) {
@@ -425,7 +425,7 @@ export default function TaskDetailModal({
         priority,
         start_date: startDate ? new Date(startDate).toISOString() : null,
         due_date: dueDate ? new Date(dueDate).toISOString() : null,
-        ...(!isIntern && storyPoints !== '' && !isNaN(sp) && (isStory ? sp > 0 : sp >= 0) ? { story_points: sp } : {}),
+        ...(!isIntern && storyPoints !== '' && !Number.isNaN(sp) && (isStory ? sp > 0 : sp >= 0) ? { story_points: sp } : {}),
       };
 
       const updated = await workItemsService.updateWorkItem(liveTask.id, payload);

@@ -203,7 +203,7 @@ export default function TimesheetView({
       const stored = sessionStorage.getItem('internhub_timesheet_page_size');
       if (stored === 'ALL') return 'ALL';
       const num = parseInt(stored, 10);
-      if (!isNaN(num) && num > 0) return num;
+      if (!Number.isNaN(num) && num > 0) return num;
     } catch {}
     return 15;
   });

@@ -391,11 +391,11 @@ export default function ProjectRoadmapTab({
   const getItemSortTime = useCallback((item, derivedStart = null) => {
     if (item.start_date) {
       const t = new Date(item.start_date).getTime();
-      if (!isNaN(t)) return t;
+      if (!Number.isNaN(t)) return t;
     }
     if (derivedStart) {
       const t = derivedStart.getTime();
-      if (!isNaN(t)) return t;
+      if (!Number.isNaN(t)) return t;
     }
     if (item.sprint_id && sprintOrderMap.has(item.sprint_id)) {
       const s = sprintOrderMap.get(item.sprint_id);
@@ -404,11 +404,11 @@ export default function ProjectRoadmapTab({
     }
     if (item.due_date) {
       const t = new Date(item.due_date).getTime();
-      if (!isNaN(t)) return t;
+      if (!Number.isNaN(t)) return t;
     }
     if (item.created_at) {
       const t = new Date(item.created_at).getTime();
-      if (!isNaN(t)) return t;
+      if (!Number.isNaN(t)) return t;
     }
     return Number.MAX_SAFE_INTEGER;
   }, [sprintOrderMap]);

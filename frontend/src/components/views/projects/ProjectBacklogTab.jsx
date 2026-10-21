@@ -1012,7 +1012,7 @@ export default function ProjectBacklogTab({ projectId, project = null, isKanbanP
 
               if (spToSave !== undefined && spToSave !== null && spToSave !== '') {
                 const numSp = Number(spToSave);
-                if (!isNaN(numSp)) {
+                if (!Number.isNaN(numSp)) {
                   payload.story_points = numSp;
                 }
               }

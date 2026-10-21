@@ -1089,7 +1089,7 @@ export class TimesheetService {
       ? Number(input.duration_minutes)
       : entry.duration_minutes;
 
-    if (isNaN(durationMinutes) || durationMinutes <= 0) {
+    if (Number.isNaN(durationMinutes) || durationMinutes <= 0) {
       throw new Error('Time entry duration must be greater than zero');
     }
 
@@ -1098,7 +1098,7 @@ export class TimesheetService {
     let targetDate = entry.date;
     if (input.date) {
       targetDate = new Date(input.date);
-      if (isNaN(targetDate.getTime())) {
+      if (Number.isNaN(targetDate.getTime())) {
         throw new Error('Invalid date provided');
       }
       const hours = startTime.getHours();
@@ -1346,7 +1346,7 @@ export class TimesheetService {
     }
 
     const today = dateValue ? new Date(dateValue) : new Date();
-    if (isNaN(today.getTime())) {
+    if (Number.isNaN(today.getTime())) {
       throw new Error('Invalid date provided');
     }
 
@@ -1636,7 +1636,7 @@ export class TimesheetService {
     }
 
     const referenceDate = dateValue ? new Date(dateValue) : new Date();
-    if (isNaN(referenceDate.getTime())) {
+    if (Number.isNaN(referenceDate.getTime())) {
       throw new Error('Invalid date provided');
     }
 
@@ -2338,7 +2338,7 @@ export class TimesheetService {
 
     const period = (options.period || 'WEEK').toUpperCase();
     const today = options.date ? new Date(options.date) : new Date();
-    if (isNaN(today.getTime())) {
+    if (Number.isNaN(today.getTime())) {
       throw new Error('Invalid date provided');
     }
 

@@ -33,7 +33,7 @@ export default function MetricCards({
   };
 
   const formatPct = (val) => {
-    if (typeof val !== 'number' || isNaN(val) || val <= 0) return '0%';
+    if (typeof val !== 'number' || Number.isNaN(val) || val <= 0) return '0%';
     const rounded = Math.round(val * 10) / 10;
     return rounded % 1 === 0 ? `${rounded.toFixed(0)}%` : `${rounded.toFixed(1)}%`;
   };

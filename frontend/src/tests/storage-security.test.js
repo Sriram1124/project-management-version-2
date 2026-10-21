@@ -6,8 +6,11 @@ import {
   sanitizeUser,
   getSafeToken,
   setSafeToken,
+  getSafeSessionId,
   getSafeStoredUser,
   setSafeStoredUser,
+  setAuthSessionTokens,
+  syncAuthProfile,
   clearSafeAuthStorage,
 } from '../utils/storageSecurity.js';
 
@@ -163,6 +166,36 @@ describe('Browser Storage Security Suite (SonarQube jssecurity:S8475)', () => {
       mockStorage.set('accessToken', 'evil<script>');
       assert.strictEqual(getSafeToken('accessToken'), null);
       assert.strictEqual(mockStorage.has('accessToken'), false);
+    });
+
+    test('getSafeSessionId validates and returns valid session, purges invalid', () => {
+      mockStorage.set('sessionId', 'valid-session-123_abc');
+      assert.strictEqual(getSafeSessionId(), 'valid-session-123_abc');
+
+      mockStorage.set('sessionId', 'bad session with spaces!');
+      assert.strictEqual(getSafeSessionId(), null);
+    });
+
+    test('setAuthSessionTokens stores valid tokens and session id safely', () => {
+      setAuthSessionTokens({
+        accessToken: 'eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiIxIn0.sig',
+        refreshToken: 'valid-refresh-token-123',
+        sessionId: 'session-valid-999',
+      });
+      assert.strictEqual(mockStorage.get('accessToken'), 'eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiIxIn0.sig');
+      assert.strictEqual(mockStorage.get('refreshToken'), 'valid-refresh-token-123');
+      assert.strictEqual(mockStorage.get('sessionId'), 'session-valid-999');
+    });
+
+    test('syncAuthProfile updates reactive state and persists sanitized user', () => {
+      let stateUser = null;
+      const setUser = (u) => { stateUser = u; };
+      const profile = { id: 'usr-99', name: 'Bob', role: 'MANAGER' };
+
+      const synced = syncAuthProfile(profile, setUser);
+      assert.strictEqual(synced, true);
+      assert.strictEqual(stateUser.name, 'Bob');
+      assert.ok(mockStorage.has('user'));
     });
 
     test('clearSafeAuthStorage wipes all auth keys cleanly', () => {

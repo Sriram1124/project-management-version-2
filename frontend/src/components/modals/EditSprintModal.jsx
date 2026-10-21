@@ -30,7 +30,7 @@ export default function EditSprintModal({
     if (!dVal) return '';
     try {
       const d = new Date(dVal);
-      if (isNaN(d.getTime())) return '';
+      if (Number.isNaN(d.getTime())) return '';
       return d.toISOString().split('T')[0];
     } catch {
       return '';
@@ -60,7 +60,7 @@ export default function EditSprintModal({
     if (!startDate || !endDate || !allSprints?.length) return [];
     const newStart = new Date(startDate).getTime();
     const newEnd = new Date(endDate).getTime();
-    if (isNaN(newStart) || isNaN(newEnd) || newStart > newEnd) return [];
+    if (Number.isNaN(newStart) || Number.isNaN(newEnd) || newStart > newEnd) return [];
 
     return allSprints.filter((s) => {
       if (s.id === sprint?.id) return false;
@@ -69,7 +69,7 @@ export default function EditSprintModal({
       if (!sStartVal || !sEndVal) return false;
       const sStart = new Date(sStartVal).getTime();
       const sEnd = new Date(sEndVal).getTime();
-      if (isNaN(sStart) || isNaN(sEnd)) return false;
+      if (Number.isNaN(sStart) || Number.isNaN(sEnd)) return false;
 
       return newStart <= sEnd && newEnd >= sStart;
     });

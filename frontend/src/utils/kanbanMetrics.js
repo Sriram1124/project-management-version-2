@@ -23,7 +23,7 @@ export function calculateKanbanMetrics(tasks = []) {
     if (!start || !end) return false;
     const s = new Date(start).getTime();
     const e = new Date(end).getTime();
-    return !isNaN(s) && !isNaN(e) && e >= s;
+    return !Number.isNaN(s) && !Number.isNaN(e) && e >= s;
   });
 
   let avgCycleTimeFormatted = null;

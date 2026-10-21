@@ -1,5 +1,5 @@
 import api from './api';
-import { setSafeToken, isValidSessionId, clearSafeAuthStorage } from '../utils/storageSecurity.js';
+import { setAuthSessionTokens, getSafeSessionId, clearSafeAuthStorage } from '../utils/storageSecurity.js';
 
 export const authService = {
   async login(identifier, password, organization_id = null) {
@@ -8,17 +8,7 @@ export const authService = {
       payload.organization_id = organization_id;
     }
     const data = await api.post('/auth/login', payload);
-    if (data.accessToken) {
-      setSafeToken('accessToken', data.accessToken);
-    }
-    if (data.refreshToken) {
-      setSafeToken('refreshToken', data.refreshToken);
-    }
-    if (data.sessionId && isValidSessionId(data.sessionId)) {
-      if (typeof window !== 'undefined' && window.localStorage) {
-        localStorage.setItem('sessionId', data.sessionId);
-      }
-    }
+    setAuthSessionTokens(data);
     return data;
   },
 
@@ -28,7 +18,7 @@ export const authService = {
 
   async logout() {
     try {
-      const sessionId = localStorage.getItem('sessionId');
+      const sessionId = getSafeSessionId();
       await api.post('/auth/logout', { sessionId });
     } catch (e) {
       // Ignore errors on logout

@@ -8,6 +8,11 @@
     "dev:backend": "npm --prefix backend-node run dev",
     "build": "npm --prefix frontend run build",
     "build:frontend": "npm --prefix frontend run build",
-    "build:backend": "npm --prefix backend-node run typecheck"
+    "build:backend": "npm --prefix backend-node run typecheck",
+    "test": "npm --prefix frontend test",
+    "test:frontend": "npm --prefix frontend test",
+    "test:backend": "npm --prefix backend-node test",
+    "test:coverage:frontend": "npm --prefix frontend run test:coverage",
+    "test:coverage:backend": "npm --prefix backend-node run test:coverage"
   }
 }

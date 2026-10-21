@@ -23,7 +23,7 @@ export default function CreateSprintModal({
     if (!startDate || !endDate || !existingSprints?.length) return [];
     const newStart = new Date(startDate).getTime();
     const newEnd = new Date(endDate).getTime();
-    if (isNaN(newStart) || isNaN(newEnd) || newStart > newEnd) return [];
+    if (Number.isNaN(newStart) || Number.isNaN(newEnd) || newStart > newEnd) return [];
 
     return existingSprints.filter((s) => {
       const sStartVal = s.start_date || s.startDate;
@@ -31,7 +31,7 @@ export default function CreateSprintModal({
       if (!sStartVal || !sEndVal) return false;
       const sStart = new Date(sStartVal).getTime();
       const sEnd = new Date(sEndVal).getTime();
-      if (isNaN(sStart) || isNaN(sEnd)) return false;
+      if (Number.isNaN(sStart) || Number.isNaN(sEnd)) return false;
 
       return newStart <= sEnd && newEnd >= sStart;
     });

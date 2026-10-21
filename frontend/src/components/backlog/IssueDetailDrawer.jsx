@@ -650,7 +650,7 @@ export default function IssueDetailDrawer({
     }
     const val = parseInt(raw, 10);
     if (isStory) {
-      if (isNaN(val) || val <= 0) {
+      if (Number.isNaN(val) || val <= 0) {
         alert('Story points are mandatory for stories and must be a positive integer (1 or greater).');
         setEditedStoryPoints(issue?.story_points ?? issue?.storyPoints ?? 1);
         return;
@@ -671,7 +671,7 @@ export default function IssueDetailDrawer({
         }
       }
     } else if (isApplicableType) {
-      if (isNaN(val) || val < 0) {
+      if (Number.isNaN(val) || val < 0) {
         alert('Story points are mandatory for tasks, subtasks, and bugs and must be a non-negative integer (0 or greater).');
         setEditedStoryPoints(issue?.story_points ?? issue?.storyPoints ?? 0);
         return;
@@ -692,7 +692,7 @@ export default function IssueDetailDrawer({
         }
       }
     } else {
-      const finalVal = isNaN(val) ? 0 : Math.max(0, val);
+      const finalVal = Number.isNaN(val) ? 0 : Math.max(0, val);
       if (finalVal !== (issue?.story_points ?? issue?.storyPoints)) {
         setUpdatingField('storyPoints');
         try {
@@ -735,7 +735,7 @@ export default function IssueDetailDrawer({
   if (rawDueDate) {
     try {
       const d = new Date(rawDueDate);
-      if (!isNaN(d.getTime())) {
+      if (!Number.isNaN(d.getTime())) {
         formattedDueDateForInput = d.toISOString().split('T')[0];
       }
     } catch (_) {}
@@ -791,7 +791,7 @@ export default function IssueDetailDrawer({
     if (newSubtaskTitle.trim() && allowedChildTypes.length > 0) {
       const isChildApplicable = ['TASK', 'SUBTASK', 'BUG', 'STORY'].includes(childType);
       const pointsVal = parseInt(childPoints, 10);
-      if (isChildApplicable && (isNaN(pointsVal) || pointsVal <= 0)) {
+      if (isChildApplicable && (Number.isNaN(pointsVal) || pointsVal <= 0)) {
         alert('Story points are mandatory for tasks, stories, subtasks, and bugs and must be a positive integer greater than 0.');
         return;
       }

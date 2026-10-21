@@ -410,4 +410,7 @@ async function main() {
   }
 }
 
-main();
+main().catch((err) => {
+  console.error('Unhandled error in verify-notifications:', err);
+  process.exit(1);
+});

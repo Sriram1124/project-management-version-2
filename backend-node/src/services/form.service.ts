@@ -182,7 +182,7 @@ export class FormService {
   ): Date | null {
     if (!deadlineInput) return null;
     const d = new Date(deadlineInput);
-    if (isNaN(d.getTime())) {
+    if (Number.isNaN(d.getTime())) {
       throw new Error('Invalid deadline date and time format');
     }
 

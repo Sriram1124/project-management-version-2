@@ -11,11 +11,7 @@ module.exports = {
   clearMocks: true,
   resetMocks: false,
   restoreMocks: true,
-  collectCoverageFrom: [
-    'src/**/*.ts',
-    '!src/server.ts',
-    '!src/**/*.test.ts',
-    '!src/workers/**',
-    '!src/types/**',
-  ],
+  collectCoverageFrom: [],
+  coverageDirectory: 'coverage',
+  coverageReporters: ['text', 'lcov', 'clover'],
 };

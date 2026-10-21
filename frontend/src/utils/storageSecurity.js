@@ -174,6 +174,20 @@ export function setSafeToken(key, value) {
 }
 
 /**
+ * Safe local storage reader for the session identifier.
+ */
+export function getSafeSessionId() {
+  const storage = getStorage();
+  if (!storage) return null;
+  try {
+    const raw = storage.getItem('sessionId');
+    return isValidSessionId(raw) ? raw : null;
+  } catch {
+    return null;
+  }
+}
+
+/**
  * Safe local storage reader for the cached user.
  * Validates structure and discards invalid or manipulated data.
  */
@@ -232,4 +246,34 @@ export function clearSafeAuthStorage() {
     storage.removeItem('user_last_verified');
   } catch {}
 }
+
+/**
+ * Safely persists session credentials (accessToken, optional refreshToken, optional sessionId).
+ */
+export function setAuthSessionTokens({ accessToken, refreshToken, sessionId } = {}) {
+  if (accessToken) {
+    setSafeToken('accessToken', accessToken);
+  }
+  if (refreshToken) {
+    setSafeToken('refreshToken', refreshToken);
+  }
+  if (sessionId && isValidSessionId(sessionId)) {
+    const storage = getStorage();
+    if (storage) {
+      storage.setItem('sessionId', sessionId);
+    }
+  }
+}
+
+/**
+ * Safely updates reactive user state and synchronizes sanitized profile to storage.
+ */
+export function syncAuthProfile(userObj, setUser) {
+  if (!userObj) return false;
+  if (typeof setUser === 'function') {
+    setUser(userObj);
+  }
+  return setSafeStoredUser(userObj);
+}
+
 

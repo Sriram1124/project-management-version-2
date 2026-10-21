@@ -240,7 +240,7 @@ export default function AddTaskModal({
     setType(newType);
     setError('');
     if (newType === 'STORY') {
-      setStoryPoints((prev) => (prev === '' || prev === 3 || isNaN(Number(prev)) || Number(prev) <= 0 ? 1 : prev));
+      setStoryPoints((prev) => (prev === '' || prev === 3 || Number.isNaN(Number(prev)) || Number(prev) <= 0 ? 1 : prev));
     }
 
     if (newType === 'EPIC') {
@@ -331,7 +331,7 @@ export default function AddTaskModal({
         storyPoints === '' ||
         storyPoints === null ||
         storyPoints === undefined ||
-        isNaN(sp) ||
+        Number.isNaN(sp) ||
         !Number.isInteger(sp) ||
         sp <= 0
       ) {
@@ -343,7 +343,7 @@ export default function AddTaskModal({
         storyPoints === '' ||
         storyPoints === null ||
         storyPoints === undefined ||
-        isNaN(sp) ||
+        Number.isNaN(sp) ||
         !Number.isInteger(sp) ||
         sp < 0
       ) {

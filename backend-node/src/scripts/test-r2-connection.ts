@@ -75,4 +75,7 @@ async function testR2Connection() {
   }
 }
 
-testR2Connection();
+testR2Connection().catch((err) => {
+  console.error('Unhandled error in testR2Connection:', err);
+  process.exit(1);
+});

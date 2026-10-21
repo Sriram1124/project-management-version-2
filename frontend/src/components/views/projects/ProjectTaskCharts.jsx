@@ -546,12 +546,12 @@ export default function ProjectTaskCharts({
     const blocked = items.filter(w => w.status === 'BLOCKED').length;
     const todo = items.filter(w => w.status === 'TODO').length;
     
-    const scheduledItems = items.filter(w => Boolean(w.due_date && !isNaN(new Date(w.due_date).getTime())));
+    const scheduledItems = items.filter(w => Boolean(w.due_date && !Number.isNaN(new Date(w.due_date).getTime())));
     const pastDue = items.filter(w => {
       if (w.status === 'COMPLETED') return false;
       if (!w.due_date) return false;
       const d = new Date(w.due_date);
-      if (isNaN(d.getTime())) return false;
+      if (Number.isNaN(d.getTime())) return false;
       if (d.getUTCHours() === 0 && d.getUTCMinutes() === 0 && d.getUTCSeconds() === 0) d.setUTCHours(23, 59, 59, 999);
       return new Date() > d;
     }).length;
@@ -560,9 +560,9 @@ export default function ProjectTaskCharts({
       if (w.status !== 'COMPLETED') return false;
       if (!w.due_date) return false;
       const d = new Date(w.due_date);
-      if (isNaN(d.getTime())) return false;
+      if (Number.isNaN(d.getTime())) return false;
       const compDate = w.completed_at ? new Date(w.completed_at) : (w.updated_at ? new Date(w.updated_at) : null);
-      return compDate && !isNaN(compDate.getTime());
+      return compDate && !Number.isNaN(compDate.getTime());
     });
     const completedWithDueDateCount = eligibleCompletedItems.length;
 

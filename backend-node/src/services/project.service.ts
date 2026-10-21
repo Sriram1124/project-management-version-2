@@ -500,14 +500,14 @@ export class ProjectService {
 
     if (data.start_date) {
       startDate = new Date(data.start_date);
-      if (isNaN(startDate.getTime())) {
+      if (Number.isNaN(startDate.getTime())) {
         throw new Error('Invalid start_date format');
       }
     }
 
     if (data.end_date) {
       endDate = new Date(data.end_date);
-      if (isNaN(endDate.getTime())) {
+      if (Number.isNaN(endDate.getTime())) {
         throw new Error('Invalid end_date format');
       }
     }
@@ -683,7 +683,7 @@ export class ProjectService {
         updateData.start_date = null;
       } else {
         const parsed = new Date(data.start_date);
-        if (isNaN(parsed.getTime())) {
+        if (Number.isNaN(parsed.getTime())) {
           throw new Error('Invalid start_date format');
         }
         newStart = parsed;
@@ -697,7 +697,7 @@ export class ProjectService {
         updateData.end_date = null;
       } else {
         const parsed = new Date(data.end_date);
-        if (isNaN(parsed.getTime())) {
+        if (Number.isNaN(parsed.getTime())) {
           throw new Error('Invalid end_date format');
         }
         newEnd = parsed;

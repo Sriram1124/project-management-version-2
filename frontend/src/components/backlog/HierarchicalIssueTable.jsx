@@ -509,7 +509,7 @@ function HierarchicalRow({
     e.preventDefault();
     if (isStory) {
       const val = parseInt(pointsValue, 10);
-      if (isNaN(val) || val <= 0) {
+      if (Number.isNaN(val) || val <= 0) {
         alert('Story points are mandatory for stories and must be a positive integer (1 or greater).');
         setPointsValue(item.story_points ?? 1);
         setEditingPoints(false);
@@ -518,7 +518,7 @@ function HierarchicalRow({
       onUpdateStoryPoints?.(item.id, val);
     } else if (isTask || isLeaf) {
       const val = parseInt(pointsValue, 10);
-      if (isNaN(val) || val < 0) {
+      if (Number.isNaN(val) || val < 0) {
         alert('Story points are mandatory for tasks, subtasks, and bugs and must be a non-negative integer (0 or greater).');
         setPointsValue(item.story_points ?? 0);
         setEditingPoints(false);

@@ -179,7 +179,7 @@ export const workItemsService = {
       day = Number(parts[2]);
     } else {
       const d = new Date(dueDateVal);
-      if (isNaN(d.getTime())) return null;
+      if (Number.isNaN(d.getTime())) return null;
       const formatter = new Intl.DateTimeFormat('en-US', {
         timeZone,
         year: 'numeric',

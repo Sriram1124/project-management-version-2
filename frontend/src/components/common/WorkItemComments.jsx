@@ -18,7 +18,7 @@ function formatTimestamp(isoString) {
   if (!isoString) return '';
   try {
     const date = new Date(isoString);
-    if (isNaN(date.getTime())) return '';
+    if (Number.isNaN(date.getTime())) return '';
 
     const now = new Date();
     const diffMs = now.getTime() - date.getTime();

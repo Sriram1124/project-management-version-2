@@ -1,11 +1,11 @@
 // Authenticated User Service
+import { getSafeStoredUser } from '../../../utils/storageSecurity.js';
 
 export const userService = {
   getCurrentUser: () => {
     try {
-      const stored = localStorage.getItem('user');
-      if (stored) {
-        const u = JSON.parse(stored);
+      const u = getSafeStoredUser();
+      if (u) {
         const name = u.name || u.email?.split('@')[0] || 'User';
         return {
           id: u.id || 'USER-01',

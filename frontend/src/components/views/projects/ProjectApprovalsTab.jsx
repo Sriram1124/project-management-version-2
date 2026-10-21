@@ -198,7 +198,7 @@ export default function ProjectApprovalsTab({
     if (!orig || !req) return null;
     const origMs = new Date(orig).getTime();
     const reqMs = new Date(req).getTime();
-    if (isNaN(origMs) || isNaN(reqMs)) return null;
+    if (Number.isNaN(origMs) || Number.isNaN(reqMs)) return null;
     const diffDays = Math.round((reqMs - origMs) / (1000 * 60 * 60 * 24));
     return diffDays;
   };

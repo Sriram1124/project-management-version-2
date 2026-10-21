@@ -6,7 +6,7 @@ import { cohortsService } from '../../services/cohorts.service';
 function parseDeadlineToParts(deadline) {
   if (!deadline) return { date: '', hours: '11', minutes: '59', ampm: 'PM' };
   const d = new Date(deadline);
-  if (isNaN(d.getTime())) return { date: '', hours: '11', minutes: '59', ampm: 'PM' };
+  if (Number.isNaN(d.getTime())) return { date: '', hours: '11', minutes: '59', ampm: 'PM' };
   const dateStr = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Kolkata' }).format(d);
   const parts = new Intl.DateTimeFormat('en-US', {
     timeZone: 'Asia/Kolkata',
@@ -29,8 +29,8 @@ function combineDateAndTime(dateStr, hoursStr, minutesStr, ampmStr) {
   if (!dateStr) return null;
   let h = parseInt(hoursStr, 10);
   const m = parseInt(minutesStr, 10);
-  if (isNaN(h) || h < 1 || h > 12) return null;
-  if (isNaN(m) || m < 0 || m > 59) return null;
+  if (Number.isNaN(h) || h < 1 || h > 12) return null;
+  if (Number.isNaN(m) || m < 0 || m > 59) return null;
   if (ampmStr === 'AM') {
     if (h === 12) h = 0;
   } else if (ampmStr === 'PM') {
@@ -160,10 +160,10 @@ export default function CreateFormModal({ form, cohorts: initialCohorts, onClose
       }
       const h = parseInt(timeHours, 10);
       const m = parseInt(timeMinutes, 10);
-      if (isNaN(h) || h < 1 || h > 12) {
+      if (Number.isNaN(h) || h < 1 || h > 12) {
         return setError('Please enter a valid deadline hour (1-12)');
       }
-      if (isNaN(m) || m < 0 || m > 59) {
+      if (Number.isNaN(m) || m < 0 || m > 59) {
         return setError('Please enter a valid deadline minute (00-59)');
       }
       deadlineIso = combineDateAndTime(deadlineDate, timeHours, timeMinutes, timeAmPm);

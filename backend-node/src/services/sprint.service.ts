@@ -76,10 +76,10 @@ export class SprintService {
     const startDate = startDateVal ? new Date(startDateVal) : null;
     const endDate = endDateVal ? new Date(endDateVal) : null;
 
-    if (startDate && isNaN(startDate.getTime())) {
+    if (startDate && Number.isNaN(startDate.getTime())) {
       throw new Error('Invalid start date format');
     }
-    if (endDate && isNaN(endDate.getTime())) {
+    if (endDate && Number.isNaN(endDate.getTime())) {
       throw new Error('Invalid end date format');
     }
 
@@ -746,7 +746,7 @@ export class SprintService {
         const updateData: any = { status: SprintStatus.ACTIVE };
         if (options.new_end_date) {
           const parsedEnd = new Date(options.new_end_date);
-          if (!isNaN(parsedEnd.getTime())) {
+          if (!Number.isNaN(parsedEnd.getTime())) {
             updateData.end_date = parsedEnd;
           }
         }

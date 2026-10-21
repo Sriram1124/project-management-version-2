@@ -136,7 +136,7 @@ export default function CreateIssueModal({
     setIssueType(newType);
     setError('');
     if (newType === 'Story') {
-      setStoryPoints((prev) => (prev === '' || prev === 3 || isNaN(Number(prev)) || Number(prev) <= 0 ? 1 : prev));
+      setStoryPoints((prev) => (prev === '' || prev === 3 || Number.isNaN(Number(prev)) || Number(prev) <= 0 ? 1 : prev));
     }
 
     if (newType === 'Epic') {
@@ -298,7 +298,7 @@ export default function CreateIssueModal({
             storyPoints === '' ||
             storyPoints === null ||
             storyPoints === undefined ||
-            isNaN(sp) ||
+            Number.isNaN(sp) ||
             !Number.isInteger(sp) ||
             sp <= 0
           ) {
@@ -311,7 +311,7 @@ export default function CreateIssueModal({
             storyPoints === '' ||
             storyPoints === null ||
             storyPoints === undefined ||
-            isNaN(sp) ||
+            Number.isNaN(sp) ||
             !Number.isInteger(sp) ||
             sp < 0
           ) {

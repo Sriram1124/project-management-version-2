@@ -83,10 +83,10 @@ async function runTests() {
     const criticalPct = roundPct(critical, assessed);
     const attentionRate = roundPct(attentionRequired, assessed);
 
-    test('Zero assessed projects: healthyPct is 0 (not NaN)', healthyPct === 0 && !isNaN(healthyPct));
-    test('Zero assessed projects: atRiskPct is 0 (not NaN)', atRiskPct === 0 && !isNaN(atRiskPct));
-    test('Zero assessed projects: criticalPct is 0 (not NaN)', criticalPct === 0 && !isNaN(criticalPct));
-    test('Zero assessed projects: attentionRate is 0 (not NaN)', attentionRate === 0 && !isNaN(attentionRate));
+    test('Zero assessed projects: healthyPct is 0 (not NaN)', healthyPct === 0 && !Number.isNaN(healthyPct));
+    test('Zero assessed projects: atRiskPct is 0 (not NaN)', atRiskPct === 0 && !Number.isNaN(atRiskPct));
+    test('Zero assessed projects: criticalPct is 0 (not NaN)', criticalPct === 0 && !Number.isNaN(criticalPct));
+    test('Zero assessed projects: attentionRate is 0 (not NaN)', attentionRate === 0 && !Number.isNaN(attentionRate));
     test('Zero assessed projects: notAssessed disclosed separately', notAssessed === 3);
   }
 

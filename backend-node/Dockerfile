@@ -26,6 +26,10 @@ RUN ./node_modules/.bin/prisma generate
 COPY tsconfig.json ./
 COPY src ./src/
 
+# Enforce non-root container execution (docker:S6507 / CIS Docker Benchmark)
+RUN chown -R node:node /app
+USER node
+
 EXPOSE 3001
 
 # Execute using local pinned tsx binary from node_modules

@@ -300,4 +300,7 @@ async function runMigration() {
   }
 }
 
-runMigration();
+runMigration().catch((err) => {
+  console.error('Unhandled error in migrate-project-files:', err);
+  process.exit(1);
+});

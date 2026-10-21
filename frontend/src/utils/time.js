@@ -24,7 +24,7 @@ export const formatHoursMinutes = (totalMinutes) => {
 export const getSessionCutoffMs = (startedAt) => {
   if (!startedAt) return null;
   const started = new Date(startedAt);
-  if (isNaN(started.getTime())) return null;
+  if (Number.isNaN(started.getTime())) return null;
   const formatter = new Intl.DateTimeFormat('en-US', {
     timeZone: 'Asia/Kolkata',
     year: 'numeric',

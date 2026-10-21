@@ -19,7 +19,7 @@ export const BLOCKED_RISK_THRESHOLDS = {
 function getEndOfDueDate(dueDateVal: string | Date | null | undefined, timeZone = 'Asia/Kolkata'): Date | null {
   if (!dueDateVal) return null;
   const d = new Date(dueDateVal);
-  if (isNaN(d.getTime())) return null;
+  if (Number.isNaN(d.getTime())) return null;
 
   let dateStr = '';
   if (typeof dueDateVal === 'string') {

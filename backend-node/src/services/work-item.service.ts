@@ -89,7 +89,7 @@ export class WorkItemService {
       day = Number(parts[2]);
     } else {
       const d = new Date(dueDateVal);
-      if (isNaN(d.getTime())) return null;
+      if (Number.isNaN(d.getTime())) return null;
       const formatter = new Intl.DateTimeFormat('en-US', {
         timeZone,
         year: 'numeric',
@@ -618,7 +618,7 @@ export class WorkItemService {
         (data as any).story_points = 1;
       }
       const sp = Number((data as any).story_points);
-      if (isNaN(sp) || !Number.isInteger(sp) || sp <= 0) {
+      if (Number.isNaN(sp) || !Number.isInteger(sp) || sp <= 0) {
         throw new Error('Story points are mandatory for stories and must be a positive integer (1 or greater).');
       }
     } else {
@@ -635,7 +635,7 @@ export class WorkItemService {
           rawSp === undefined ||
           rawSp === null ||
           (typeof rawSp === 'string' && rawSp.trim() === '') ||
-          isNaN(sp) ||
+          Number.isNaN(sp) ||
           !Number.isInteger(sp) ||
           sp < 0
         ) {
@@ -783,7 +783,7 @@ export class WorkItemService {
     if (data.type === WorkItemType.STORY) {
       const rawSp: any = (data as any).story_points;
       const sp = rawSp !== undefined && rawSp !== null && rawSp !== '' ? Number(rawSp) : 1;
-      if (isNaN(sp) || !Number.isInteger(sp) || sp <= 0) {
+      if (Number.isNaN(sp) || !Number.isInteger(sp) || sp <= 0) {
         throw new Error('Story points are mandatory for stories and must be a positive integer (1 or greater).');
       }
       storyPointsVal = sp;
@@ -798,7 +798,7 @@ export class WorkItemService {
         rawSp === undefined ||
         rawSp === null ||
         (typeof rawSp === 'string' && rawSp.trim() === '') ||
-        isNaN(sp) ||
+        Number.isNaN(sp) ||
         !Number.isInteger(sp) ||
         sp < 0
       ) {
@@ -810,7 +810,7 @@ export class WorkItemService {
     } else {
       const rawSp: any = (data as any).story_points;
       const sp = rawSp !== undefined && rawSp !== null && rawSp !== '' ? Number(rawSp) : 0;
-      storyPointsVal = !isNaN(sp) && Number.isInteger(sp) && sp >= 0 ? sp : 0;
+      storyPointsVal = !Number.isNaN(sp) && Number.isInteger(sp) && sp >= 0 ? sp : 0;
     }
 
     const workItem = await prisma.workItem.create({
@@ -1329,7 +1329,7 @@ export class WorkItemService {
           rawSp === null ||
           rawSp === undefined ||
           (typeof rawSp === 'string' && rawSp.trim() === '') ||
-          isNaN(sp) ||
+          Number.isNaN(sp) ||
           !Number.isInteger(sp) ||
           sp <= 0
         ) {
@@ -1351,7 +1351,7 @@ export class WorkItemService {
             rawSp === null ||
             rawSp === undefined ||
             (typeof rawSp === 'string' && rawSp.trim() === '') ||
-            isNaN(sp) ||
+            Number.isNaN(sp) ||
             !Number.isInteger(sp) ||
             sp < 0
           ) {
@@ -1363,7 +1363,7 @@ export class WorkItemService {
         } else {
           const rawSp: any = (input as any).story_points;
           const sp = rawSp !== null && rawSp !== undefined && rawSp !== '' ? Number(rawSp) : null;
-          if (sp !== null && (isNaN(sp) || !Number.isInteger(sp) || sp < 0)) {
+          if (sp !== null && (Number.isNaN(sp) || !Number.isInteger(sp) || sp < 0)) {
             throw new Error('Story points must be a non-negative integer.');
           }
           dataToUpdate.story_points = sp ?? 0;
@@ -2232,14 +2232,14 @@ export class WorkItemService {
     const scheduled_items_count = items.filter((w) => {
       if (!w.due_date) return false;
       const d = new Date(w.due_date);
-      return !isNaN(d.getTime());
+      return !Number.isNaN(d.getTime());
     }).length;
 
     const overdue_items = items.filter((w) => {
       if (w.status === WorkItemStatus.COMPLETED) return false;
       if (!w.due_date) return false;
       const dueDate = new Date(w.due_date);
-      if (isNaN(dueDate.getTime())) return false;
+      if (Number.isNaN(dueDate.getTime())) return false;
       return now > getEffectiveDeadline(dueDate);
     });
     const past_due = overdue_items.length;
@@ -2258,9 +2258,9 @@ export class WorkItemService {
       if (w.status !== WorkItemStatus.COMPLETED) return false;
       if (!w.due_date) return false;
       const dueDate = new Date(w.due_date);
-      if (isNaN(dueDate.getTime())) return false;
+      if (Number.isNaN(dueDate.getTime())) return false;
       const compDate = w.completed_at ? new Date(w.completed_at) : (w.updated_at ? new Date(w.updated_at) : null);
-      if (!compDate || isNaN(compDate.getTime())) return false;
+      if (!compDate || Number.isNaN(compDate.getTime())) return false;
       return true;
     });
 
@@ -2536,7 +2536,7 @@ export class WorkItemService {
         ? (approvedExts[0].original_due_date || w.due_date)
         : (exts.length > 0 && exts[0].original_due_date ? exts[0].original_due_date : w.due_date);
 
-      const has_valid_due_date = Boolean(w.due_date && !isNaN(new Date(w.due_date).getTime()));
+      const has_valid_due_date = Boolean(w.due_date && !Number.isNaN(new Date(w.due_date).getTime()));
       const effective_deadline = has_valid_due_date ? getEffectiveDeadline(new Date(w.due_date!)) : null;
       const is_past_due = Boolean(
         w.status !== WorkItemStatus.COMPLETED &&
@@ -2548,12 +2548,12 @@ export class WorkItemService {
         w.status === WorkItemStatus.COMPLETED &&
           effective_deadline &&
           compDate &&
-          !isNaN(compDate.getTime())
+          !Number.isNaN(compDate.getTime())
       );
       const was_completed_on_time = is_eligible_completed ? compDate! <= effective_deadline! : null;
 
       // Original deadline adherence check
-      const has_valid_original_due = Boolean(original_due_date && !isNaN(new Date(original_due_date).getTime()));
+      const has_valid_original_due = Boolean(original_due_date && !Number.isNaN(new Date(original_due_date).getTime()));
       const original_effective_deadline = has_valid_original_due ? getEffectiveDeadline(new Date(original_due_date)) : null;
       const was_completed_by_original_deadline = (w.status === WorkItemStatus.COMPLETED && compDate && original_effective_deadline)
         ? compDate <= original_effective_deadline
@@ -2860,7 +2860,7 @@ export class WorkItemService {
       if (!start || !end) return false;
       const s = new Date(start).getTime();
       const e = new Date(end).getTime();
-      return !isNaN(s) && !isNaN(e) && e >= s;
+      return !Number.isNaN(s) && !Number.isNaN(e) && e >= s;
     });
 
     let avg_cycle_time_hours: number | null = null;
@@ -3171,7 +3171,7 @@ export class WorkItemService {
       throw err;
     }
     const requestedDate = new Date(data.requested_due_date);
-    if (isNaN(requestedDate.getTime())) {
+    if (Number.isNaN(requestedDate.getTime())) {
       const err: any = new Error('Invalid requested due date');
       err.statusCode = 400;
       throw err;

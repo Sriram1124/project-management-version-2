@@ -150,7 +150,7 @@ export default function DynamicFormModal({
         const ans = { question_id: q.id };
 
         if (q.type === 'NUMBER') {
-          ans.value_number = (val !== '' && val !== null && val !== undefined && !isNaN(Number(val)))
+          ans.value_number = (val !== '' && val !== null && val !== undefined && !Number.isNaN(Number(val)))
             ? Number(val)
             : null;
         } else if (q.type === 'MULTI_SELECT' || q.type === 'CHECKBOX') {

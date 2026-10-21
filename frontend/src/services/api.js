@@ -1,7 +1,7 @@
 import {
   getSafeToken,
-  setSafeToken,
-  isValidSessionId,
+  getSafeSessionId,
+  setAuthSessionTokens,
   clearSafeAuthStorage,
 } from '../utils/storageSecurity.js';
 
@@ -99,10 +99,7 @@ export function refreshAccessToken() {
   refreshPromise = (async () => {
     try {
       const refreshToken = getSafeToken('refreshToken');
-      const rawSessionId = typeof window !== 'undefined' && window.localStorage
-        ? localStorage.getItem('sessionId')
-        : null;
-      const sessionId = isValidSessionId(rawSessionId) ? rawSessionId : null;
+      const sessionId = getSafeSessionId();
 
       if (!refreshToken) {
         throw new Error('No refresh token available');
@@ -124,15 +121,7 @@ export function refreshAccessToken() {
         throw new Error('Refresh response missing access token');
       }
 
-      setSafeToken('accessToken', data.accessToken);
-      if (data.refreshToken) {
-        setSafeToken('refreshToken', data.refreshToken);
-      }
-      if (data.sessionId && isValidSessionId(data.sessionId)) {
-        if (typeof window !== 'undefined' && window.localStorage) {
-          localStorage.setItem('sessionId', data.sessionId);
-        }
-      }
+      setAuthSessionTokens(data);
 
       if (typeof window !== 'undefined' && typeof window.dispatchEvent === 'function') {
         try {

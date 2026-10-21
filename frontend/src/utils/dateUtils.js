@@ -13,7 +13,7 @@
 export const toLocalDateString = (d) => {
   if (!d) return '';
   const date = d instanceof Date ? d : new Date(d);
-  if (isNaN(date.getTime())) return '';
+  if (Number.isNaN(date.getTime())) return '';
   const year = date.getFullYear();
   const month = String(date.getMonth() + 1).padStart(2, '0');
   const day = String(date.getDate()).padStart(2, '0');
@@ -36,7 +36,7 @@ export const parseLocalDate = (dateStr) => {
     return new Date(Number(y), Number(m) - 1, Number(d));
   }
   const fallback = new Date(dateStr);
-  return isNaN(fallback.getTime()) ? new Date() : new Date(fallback.getFullYear(), fallback.getMonth(), fallback.getDate());
+  return Number.isNaN(fallback.getTime()) ? new Date() : new Date(fallback.getFullYear(), fallback.getMonth(), fallback.getDate());
 };
 
 const DAY_NAMES = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];

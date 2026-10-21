@@ -3,7 +3,7 @@ import api from './api';
 export function formatFormDeadline(deadline, timeZone = 'Asia/Kolkata') {
   if (!deadline) return 'No deadline';
   const d = new Date(deadline);
-  if (isNaN(d.getTime())) return 'No deadline';
+  if (Number.isNaN(d.getTime())) return 'No deadline';
 
   const formatted = new Intl.DateTimeFormat('en-GB', {
     day: 'numeric',

@@ -177,7 +177,7 @@ export default function ManagerMyTasksView({ onToast }) {
       return <span className="text-slate-400 italic text-xs">No due date</span>;
     }
     const dateObj = new Date(dueDate);
-    if (isNaN(dateObj.getTime())) {
+    if (Number.isNaN(dateObj.getTime())) {
       return <span className="text-slate-400 italic text-xs">No due date</span>;
     }
     const formatted = dateObj.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });

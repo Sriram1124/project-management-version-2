@@ -25,7 +25,7 @@ import {
 } from 'lucide-react';
 import { useAuth } from '../../../context/AuthContext';
 import { authService } from '../../../services/auth.service';
-import { setSafeStoredUser } from '../../../utils/storageSecurity.js';
+import { syncAuthProfile } from '../../../utils/storageSecurity.js';
 import { projectsService } from '../../../services/projects.service';
 import ProjectMethodologyBadge from '../../../components/views/projects/ProjectMethodologyBadge';
 
@@ -85,10 +85,7 @@ export default function InternProfileTab({ onSelectProject, onToast }) {
       const userObj = data?.user || data;
       if (userObj) {
         setProfile(userObj);
-        if (typeof setUser === 'function') {
-          setUser(userObj);
-        }
-        setSafeStoredUser(userObj);
+        syncAuthProfile(userObj, setUser);
       }
     } catch (err) {
       console.error('Failed to load intern profile:', err);
