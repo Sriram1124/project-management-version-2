@@ -1,4 +1,5 @@
 import { PrismaClient } from '@prisma/client';
+import { safeEndpoint, getTestPassword } from './safe-endpoint';
 
 const prisma = new PrismaClient();
 const API_BASE = 'http://127.0.0.1:3001/api';
@@ -62,7 +63,7 @@ async function main() {
 
   // 1. Public Organization Discovery API
   await runTest('1. GET /api/auth/organizations (Public discovery)', async () => {
-    const res = await fetch(`${API_BASE}/auth/organizations`);
+    const res = await fetch(safeEndpoint(API_BASE, 'auth', 'organizations'));
     assert(res.status === 200, `Expected 200 OK, got ${res.status}`);
     const data = await res.json();
     assert(Array.isArray(data), 'Response must be an array');
@@ -87,12 +88,12 @@ async function main() {
 
   // 2. ROOT / SUPER ADMIN Login
   await runTest('2. Root Login (Super Admin with organization_id = NULL)', async () => {
-    const res = await fetch(`${API_BASE}/auth/login`, {
+    const res = await fetch(safeEndpoint(API_BASE, 'auth', 'login'), {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         email: 'superadmin@dailoqa.com',
-        password: 'password123'
+        password: getTestPassword()
       })
     });
 
@@ -106,12 +107,12 @@ async function main() {
 
   // 3. Super Admin cannot login with a tenant organization_id
   await runTest('3. Super Admin cannot login under a tenant organization context', async () => {
-    const res = await fetch(`${API_BASE}/auth/login`, {
+    const res = await fetch(safeEndpoint(API_BASE, 'auth', 'login'), {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         email: 'superadmin@dailoqa.com',
-        password: 'password123',
+        password: getTestPassword(),
         organization_id: dailoqaOrgId
       })
     });
@@ -121,12 +122,12 @@ async function main() {
 
   // 4. Regular Organization User MUST provide organization_id
   await runTest('4. Regular organization user rejected when organization_id is missing', async () => {
-    const res = await fetch(`${API_BASE}/auth/login`, {
+    const res = await fetch(safeEndpoint(API_BASE, 'auth', 'login'), {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         email: 'manager@dailoqa.com',
-        password: 'password123'
+        password: getTestPassword()
         // organization_id intentionally omitted
       })
     });
@@ -136,12 +137,12 @@ async function main() {
 
   // 5. Manager Login with Organization Context (Auto role determination)
   await runTest('5. Manager Login under correct organization (Auto role MANAGER)', async () => {
-    const res = await fetch(`${API_BASE}/auth/login`, {
+    const res = await fetch(safeEndpoint(API_BASE, 'auth', 'login'), {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         email: 'manager@dailoqa.com',
-        password: 'password123',
+        password: getTestPassword(),
         organization_id: dailoqaOrgId
       })
     });
@@ -171,12 +172,12 @@ async function main() {
 
   // 6. Intern Login with Organization Context (Auto role determination)
   await runTest('6. Intern Login under correct organization (Auto role INTERN)', async () => {
-    const res = await fetch(`${API_BASE}/auth/login`, {
+    const res = await fetch(safeEndpoint(API_BASE, 'auth', 'login'), {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         email: 'intern@dailoqa.com',
-        password: 'password123',
+        password: getTestPassword(),
         organization_id: dailoqaOrgId
       })
     });
@@ -190,12 +191,12 @@ async function main() {
 
   // 7. Cross-Organization Authentication Rejection
   await runTest('7. Cross-organization login rejected (User from Org A trying Org B)', async () => {
-    const res = await fetch(`${API_BASE}/auth/login`, {
+    const res = await fetch(safeEndpoint(API_BASE, 'auth', 'login'), {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         email: 'manager@dailoqa.com', // Belongs to Dailoqa
-        password: 'password123',
+        password: getTestPassword(),
         organization_id: otherOrgId  // Trying to log into Tenant B
       })
     });
@@ -207,12 +208,12 @@ async function main() {
 
   // 8. Login using User ID (user_code) + Password + organization_id
   await runTest('8. Login with user_code (User ID) instead of email', async () => {
-    const res = await fetch(`${API_BASE}/auth/login`, {
+    const res = await fetch(safeEndpoint(API_BASE, 'auth', 'login'), {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         identifier: managerUserCode,
-        password: 'password123',
+        password: getTestPassword(),
         organization_id: dailoqaOrgId
       })
     });
@@ -225,7 +226,7 @@ async function main() {
 
   // 9. Auth Me endpoint still works
   await runTest('9. GET /api/auth/me profile verification', async () => {
-    const res = await fetch(`${API_BASE}/auth/me`, {
+    const res = await fetch(safeEndpoint(API_BASE, 'auth', 'me'), {
       headers: { Authorization: `Bearer ${managerToken}` }
     });
 
@@ -239,12 +240,12 @@ async function main() {
   // 10. Refresh token endpoint still works
   await runTest('10. POST /api/auth/refresh session continuation', async () => {
     // Extract cookies from manager login
-    const loginRes = await fetch(`${API_BASE}/auth/login`, {
+    const loginRes = await fetch(safeEndpoint(API_BASE, 'auth', 'login'), {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         email: 'manager@dailoqa.com',
-        password: 'password123',
+        password: getTestPassword(),
         organization_id: dailoqaOrgId
       })
     });
@@ -255,7 +256,7 @@ async function main() {
       : [loginRes.headers.get('set-cookie')];
     const cookieHeader = rawCookies.map((c: string) => c.split(';')[0]).join('; ');
 
-    const refreshRes = await fetch(`${API_BASE}/auth/refresh`, {
+    const refreshRes = await fetch(safeEndpoint(API_BASE, 'auth', 'refresh'), {
       method: 'POST',
       headers: { Cookie: cookieHeader }
     });
@@ -267,19 +268,19 @@ async function main() {
 
   // 11. Logout still works
   await runTest('11. POST /api/auth/logout session revocation', async () => {
-    const loginRes = await fetch(`${API_BASE}/auth/login`, {
+    const loginRes = await fetch(safeEndpoint(API_BASE, 'auth', 'login'), {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         email: 'manager@dailoqa.com',
-        password: 'password123',
+        password: getTestPassword(),
         organization_id: dailoqaOrgId
       })
     });
     const cookieHeader = loginRes.headers.get('set-cookie')!;
     const loginData = await loginRes.json();
 
-    const logoutRes = await fetch(`${API_BASE}/auth/logout`, {
+    const logoutRes = await fetch(safeEndpoint(API_BASE, 'auth', 'logout'), {
       method: 'POST',
       headers: {
         Authorization: `Bearer ${loginData.accessToken}`,
@@ -293,13 +294,13 @@ async function main() {
   // 12. Super Admin vs Manager RBAC isolation
   await runTest('12. Existing Protected Routes RBAC Integrity', async () => {
     // Super Admin can list all organizations
-    const saRes = await fetch(`${API_BASE}/organizations`, {
+    const saRes = await fetch(safeEndpoint(API_BASE, 'organizations'), {
       headers: { Authorization: `Bearer ${superAdminToken}` }
     });
     assert(saRes.status === 200, `Super Admin /organizations expected 200, got ${saRes.status}`);
 
     // Manager forbidden from listing all tenant organizations
-    const mgrRes = await fetch(`${API_BASE}/organizations`, {
+    const mgrRes = await fetch(safeEndpoint(API_BASE, 'organizations'), {
       headers: { Authorization: `Bearer ${managerToken}` }
     });
     assert(mgrRes.status === 403, `Manager /organizations expected 403, got ${mgrRes.status}`);

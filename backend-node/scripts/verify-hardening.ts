@@ -1,4 +1,4 @@
-import { safeEndpoint } from './safe-endpoint';
+import { safeEndpoint, getTestPassword } from './safe-endpoint';
 import { PrismaClient } from '@prisma/client';
 import * as argon2 from 'argon2';
 
@@ -50,7 +50,7 @@ async function main() {
       data: {
         email: 'manager@dailoqa.com',
         name: 'Dailoqa Manager',
-        password_hash: await argon2.hash('password123'),
+        password_hash: await argon2.hash(getTestPassword()),
         organization_id: org.id,
         user_code: 'MGR-1001',
         is_active: true,
@@ -67,7 +67,7 @@ async function main() {
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
       email: 'manager@dailoqa.com',
-      password: 'password123',
+      password: getTestPassword(),
       organization_id: org.id,
     }),
   });
@@ -157,7 +157,7 @@ async function main() {
     data: {
       email: `other.org.${Date.now()}@othercorp.com`,
       name: 'Other Org User',
-      password_hash: await argon2.hash('password123'),
+      password_hash: await argon2.hash(getTestPassword()),
       organization_id: otherOrg.id,
       user_code: `OTH-${Date.now().toString().slice(-4)}`,
     },

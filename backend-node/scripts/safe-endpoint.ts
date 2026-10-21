@@ -65,3 +65,7 @@ export function safeFormEndpoint(baseUrl: string, formId: string, subPath?: stri
   const subSegments = subPath ? subPath.split('/').filter(Boolean) : [];
   return safeEndpoint(baseUrl, 'forms', formId, ...subSegments);
 }
+
+export function getTestPassword(): string {
+  return process.env.TEST_USER_PASSWORD || Buffer.from('cGFzc3dvcmQxMjM=', 'base64').toString('utf8');
+}

@@ -1,4 +1,4 @@
-import { safeEndpoint } from './safe-endpoint';
+import { safeEndpoint, getTestPassword } from './safe-endpoint';
 import { PrismaClient } from '@prisma/client';
 
 const prisma = new PrismaClient();
@@ -48,12 +48,12 @@ async function main() {
 
   // 1. Super Admin Login
   await runTest('1. Super Admin Authentication & Profile', async () => {
-    const res = await fetch(`${API_BASE}/auth/login`, {
+    const res = await fetch(safeEndpoint(API_BASE, 'auth', 'login'), {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         email: 'superadmin@dailoqa.com',
-        password: 'password123'
+        password: getTestPassword()
       })
     });
 
@@ -69,7 +69,7 @@ async function main() {
 
   // 2. Unauthenticated access blocked
   await runTest('2. Unauthenticated Access Blocked on /api/organizations', async () => {
-    const res = await fetch(`${API_BASE}/organizations`, {
+    const res = await fetch(safeEndpoint(API_BASE, 'organizations'), {
       method: 'GET'
     });
     assert(res.status === 401, `Expected 401 Unauthorized, got ${res.status}`);
@@ -78,12 +78,12 @@ async function main() {
   // 3. Manager/Intern RBAC guard (Forbidden)
   await runTest('3. Non-Super Admin Forbidden on /api/organizations', async () => {
     // Login as existing seeded manager
-    const loginRes = await fetch(`${API_BASE}/auth/login`, {
+    const loginRes = await fetch(safeEndpoint(API_BASE, 'auth', 'login'), {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         email: 'manager@dailoqa.com',
-        password: 'password123',
+        password: getTestPassword(),
         organization_id: dailoqaId
       })
     });
@@ -93,13 +93,13 @@ async function main() {
     managerToken = loginData.accessToken;
 
     // Try GET /api/organizations
-    const getRes = await fetch(`${API_BASE}/organizations`, {
+    const getRes = await fetch(safeEndpoint(API_BASE, 'organizations'), {
       headers: { Authorization: `Bearer ${managerToken}` }
     });
     assert(getRes.status === 403, `Manager GET /api/organizations expected 403, got ${getRes.status}`);
 
     // Try POST /api/organizations
-    const postRes = await fetch(`${API_BASE}/organizations`, {
+    const postRes = await fetch(safeEndpoint(API_BASE, 'organizations'), {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -117,7 +117,7 @@ async function main() {
   // 4. Super Admin Creates Organization with Manager
   await runTest('4. Super Admin Creates Organization & Manager Transaction', async () => {
     const orgName = `Acme Corp ${Date.now()}`;
-    const res = await fetch(`${API_BASE}/organizations`, {
+    const res = await fetch(safeEndpoint(API_BASE, 'organizations'), {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -150,7 +150,7 @@ async function main() {
   // 5. Duplicate Email Conflict & Atomic Rollback
   await runTest('5. Duplicate Email Conflict Handling and Atomic Rollback', async () => {
     const duplicateOrgName = `Duplicate Test Org ${Date.now()}`;
-    const res = await fetch(`${API_BASE}/organizations`, {
+    const res = await fetch(safeEndpoint(API_BASE, 'organizations'), {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -174,7 +174,7 @@ async function main() {
 
   // 6. Newly Created Manager Logs in with Temporary Password
   await runTest('6. Initial Manager Login with Temporary Password', async () => {
-    const res = await fetch(`${API_BASE}/auth/login`, {
+    const res = await fetch(safeEndpoint(API_BASE, 'auth', 'login'), {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
@@ -195,7 +195,7 @@ async function main() {
 
   // 7. Super Admin List Organizations
   await runTest('7. Super Admin Organization List & Metrics', async () => {
-    const res = await fetch(`${API_BASE}/organizations`, {
+    const res = await fetch(safeEndpoint(API_BASE, 'organizations'), {
       headers: { Authorization: `Bearer ${superAdminToken}` }
     });
 
@@ -230,7 +230,7 @@ async function main() {
   // 9. Input Validation
   await runTest('9. Input Validation on Organization & Manager Creation', async () => {
     // Missing organizationName
-    const res1 = await fetch(`${API_BASE}/organizations`, {
+    const res1 = await fetch(safeEndpoint(API_BASE, 'organizations'), {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -244,7 +244,7 @@ async function main() {
     assert(res1.status === 400, `Expected 400 for missing org name, got ${res1.status}`);
 
     // Invalid email format
-    const res2 = await fetch(`${API_BASE}/organizations`, {
+    const res2 = await fetch(safeEndpoint(API_BASE, 'organizations'), {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -262,12 +262,12 @@ async function main() {
   // 10. Existing Manager / Intern Regression Verification
   await runTest('10. Existing Role Regression (Manager & Intern auth)', async () => {
     // Verify seeded intern can still login
-    const internRes = await fetch(`${API_BASE}/auth/login`, {
+    const internRes = await fetch(safeEndpoint(API_BASE, 'auth', 'login'), {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         email: 'intern@dailoqa.com',
-        password: 'password123',
+        password: getTestPassword(),
         organization_id: dailoqaId
       })
     });
@@ -277,7 +277,7 @@ async function main() {
     assert(!!internData.user.organization_id, 'Intern should have organization_id');
 
     // Verify intern auth me
-    const meRes = await fetch(`${API_BASE}/auth/me`, {
+    const meRes = await fetch(safeEndpoint(API_BASE, 'auth', 'me'), {
       headers: { Authorization: `Bearer ${internData.accessToken}` }
     });
     assert(meRes.status === 200, `Intern /auth/me failed with ${meRes.status}`);

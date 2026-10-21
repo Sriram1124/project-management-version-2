@@ -17,8 +17,21 @@ import { getRedisConfig, testRedisConnection } from './lib/redis';
 
 const app = express();
 
+app.disable('x-powered-by');
+
+const allowedOrigins: string[] = [
+  process.env.FRONTEND_URL,
+  process.env.CORS_ORIGIN,
+  'http://localhost:5173',
+  'http://127.0.0.1:5173',
+  'http://localhost:3000',
+  'http://127.0.0.1:3000',
+  'http://localhost:3001',
+  'http://127.0.0.1:3001',
+].filter((origin): origin is string => Boolean(origin));
+
 app.use(cors({
-  origin: true,
+  origin: allowedOrigins,
   credentials: true,
 }));
 
