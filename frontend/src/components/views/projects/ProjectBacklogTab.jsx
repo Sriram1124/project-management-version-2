@@ -990,64 +990,97 @@ export default function ProjectBacklogTab({ projectId, project = null, isKanbanP
           isKanban={isKanban}
           isOpen={Boolean(selectedIssue)}
           onClose={() => setSelectedIssue(null)}
-          onUpdateIssue={async (updated) => {
+          onUpdateIssue={async (updated, delta) => {
+            const prevWorkItems = [...workItems];
+            const prevSelected = selectedIssue;
             try {
-              const sprintIdToSave = updated.sprint_id !== undefined 
-                ? (updated.sprint_id === 'backlog' ? null : updated.sprint_id) 
-                : (updated.sprintId === 'backlog' ? null : updated.sprintId);
-
-              const parentIdToSave = updated.parent_id !== undefined 
-                ? (updated.parent_id === '' ? null : updated.parent_id) 
-                : (updated.epicId === '' ? null : updated.epicId);
-
-              const spToSave = updated.story_points !== undefined ? updated.story_points : updated.storyPoints;
-
-              const payload = {
-                title: updated.title,
-                description: updated.description,
-                status: updated.status,
-                priority: updated.priority,
-                due_date: updated.due_date,
-              };
-
-              if (spToSave !== undefined && spToSave !== null && spToSave !== '') {
-                const numSp = Number(spToSave);
-                if (!Number.isNaN(numSp)) {
-                  payload.story_points = numSp;
+              let payload = {};
+              if (delta && typeof delta === "object" && Object.keys(delta).length > 0) {
+                if (delta.status !== undefined) payload.status = delta.status;
+                if (delta.title !== undefined) payload.title = delta.title;
+                if (delta.description !== undefined) payload.description = delta.description;
+                if (delta.priority !== undefined) payload.priority = delta.priority;
+                if (delta.due_date !== undefined) payload.due_date = delta.due_date;
+                if (delta.dueDate !== undefined && delta.due_date === undefined) payload.due_date = delta.dueDate;
+                if (delta.story_points !== undefined || delta.storyPoints !== undefined) {
+                  const sp = delta.story_points !== undefined ? delta.story_points : delta.storyPoints;
+                  payload.story_points = sp !== null && sp !== "" && !Number.isNaN(Number(sp)) ? Number(sp) : null;
+                }
+                if (delta.sprint_id !== undefined || delta.sprintId !== undefined) {
+                  const sid = delta.sprint_id !== undefined ? delta.sprint_id : delta.sprintId;
+                  payload.sprint_id = sid === "backlog" ? null : sid;
+                }
+                if (delta.parent_id !== undefined || delta.epicId !== undefined) {
+                  const pid = delta.parent_id !== undefined ? delta.parent_id : delta.epicId;
+                  payload.parent_id = pid === "" ? null : pid;
+                }
+                if (delta.assignee_ids !== undefined) {
+                  payload.assignee_ids = delta.assignee_ids;
+                } else if (delta.assigneeId !== undefined) {
+                  payload.assignee_ids = delta.assigneeId ? [delta.assigneeId] : [];
+                }
+              } else {
+                const orig = selectedIssue || {};
+                if (updated.status !== undefined && updated.status !== orig.status) {
+                  payload.status = updated.status;
+                }
+                if (updated.title !== undefined && updated.title !== orig.title) {
+                  payload.title = updated.title;
+                }
+                if (updated.description !== undefined && updated.description !== orig.description) {
+                  payload.description = updated.description;
+                }
+                if (updated.priority !== undefined && updated.priority !== orig.priority) {
+                  payload.priority = updated.priority;
+                }
+                if (updated.due_date !== undefined && updated.due_date !== orig.due_date) {
+                  payload.due_date = updated.due_date;
+                }
+                const updatedSp = updated.story_points !== undefined ? updated.story_points : updated.storyPoints;
+                const origSp = orig.story_points !== undefined ? orig.story_points : orig.storyPoints;
+                if (updatedSp !== undefined && updatedSp !== origSp) {
+                  payload.story_points = updatedSp !== null && updatedSp !== "" && !Number.isNaN(Number(updatedSp)) ? Number(updatedSp) : null;
+                }
+                const updatedSprint = updated.sprint_id !== undefined ? updated.sprint_id : updated.sprintId;
+                const origSprint = orig.sprint_id !== undefined ? orig.sprint_id : orig.sprintId;
+                if (updatedSprint !== undefined && updatedSprint !== origSprint) {
+                  payload.sprint_id = updatedSprint === "backlog" ? null : updatedSprint;
+                }
+                const updatedParent = updated.parent_id !== undefined ? updated.parent_id : updated.epicId;
+                const origParent = orig.parent_id !== undefined ? orig.parent_id : orig.epicId;
+                if (updatedParent !== undefined && updatedParent !== origParent) {
+                  payload.parent_id = updatedParent === "" ? null : updatedParent;
+                }
+                if (updated.assignee_ids !== undefined) {
+                  payload.assignee_ids = updated.assignee_ids;
+                } else if (updated.assigneeId !== undefined) {
+                  payload.assignee_ids = updated.assigneeId ? [updated.assigneeId] : [];
                 }
               }
 
-              if (sprintIdToSave !== undefined) {
-                payload.sprint_id = sprintIdToSave;
-              }
-              if (parentIdToSave !== undefined) {
-                payload.parent_id = parentIdToSave;
-              }
-              if (updated.assignee_ids !== undefined) {
-                payload.assignee_ids = updated.assignee_ids;
-              } else if (updated.assigneeId !== undefined) {
-                payload.assignee_ids = updated.assigneeId ? [updated.assigneeId] : [];
+              // If no work-item fields changed (e.g. extension request metadata or external update)
+              if (Object.keys(payload).length === 0) {
+                setWorkItems((prev) => prev.map((item) => (item.id === updated.id ? { ...item, ...updated } : item)));
+                setSelectedIssue((prev) => (prev?.id === updated.id ? { ...prev, ...updated } : prev));
+                return updated;
               }
 
+              // Optimistic UI update
+              const optimisticItem = { ...selectedIssue, ...updated };
+              setWorkItems((prev) => prev.map((item) => (item.id === updated.id ? { ...item, ...optimisticItem } : item)));
+              setSelectedIssue(optimisticItem);
+
               const saved = await workItemsService.updateWorkItem(updated.id, payload);
-              if (saved) {
-                setWorkItems((prev) => prev.map((item) => (item.id === updated.id ? saved : item)));
-                setSelectedIssue(saved);
-              } else {
-                const merged = { 
-                  ...updated, 
-                  sprint_id: sprintIdToSave,
-                  sprintId: sprintIdToSave,
-                  parent_id: parentIdToSave,
-                };
-                setWorkItems((prev) => prev.map((item) => (item.id === updated.id ? { ...item, ...merged } : item)));
-                setSelectedIssue(merged);
-              }
-              onToast?.('Issue updated');
-              return saved;
+              const finalItem = saved || optimisticItem;
+              setWorkItems((prev) => prev.map((item) => (item.id === updated.id ? finalItem : item)));
+              setSelectedIssue(finalItem);
+              onToast?.("Issue updated");
+              return finalItem;
             } catch (err) {
-              console.error('Failed to update issue:', err);
-              onToast?.(err.message || 'Failed to update issue');
+              setWorkItems(prevWorkItems);
+              setSelectedIssue(prevSelected);
+              console.error("Failed to update issue:", err);
+              onToast?.(err?.response?.data?.message || err?.message || "Failed to update issue");
               throw err;
             }
           }}

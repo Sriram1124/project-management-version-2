@@ -1593,6 +1593,10 @@ export class WorkItemService {
     const orgId = this.getUserOrgId(user);
     const isMgr = this.isManagerOrAdmin(user);
 
+    if (this.isIntern(user)) {
+      throw new Error('Forbidden: interns do not have permission to delete work items');
+    }
+
     const item = await prisma.workItem.findFirst({
       where: { id, organization_id: orgId },
       include: {
