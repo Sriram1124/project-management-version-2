@@ -8,6 +8,8 @@ import { TimesheetService } from './services/timesheet.service';
 import { connectMongoDB, disconnectMongoDB } from './lib/mongodb';
 import { ensureLocalS3Service, stopLocalS3Service } from './lib/local-s3';
 
+import { validateStartupConfig } from './middleware/auth.middleware';
+
 const PORT = Number(process.env.PORT) || 3001;
 const HOST = '0.0.0.0';
 
@@ -15,6 +17,7 @@ let autoClockTimer: NodeJS.Timeout | null = null;
 
 async function start() {
   try {
+    validateStartupConfig();
     await prisma.$connect();
     console.log('Connected to database.');
 

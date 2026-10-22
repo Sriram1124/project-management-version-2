@@ -1190,17 +1190,16 @@ export class ProjectService {
     const cleanProjectId = projectId.trim();
     const cleanUserId = targetUserId.trim();
 
-    let orgId = user?.organization_id;
-    if (!orgId && this.isManagerOrAdmin(user)) {
-      const firstOrg = await prisma.organization.findFirst({ where: { is_active: true } });
-      orgId = firstOrg?.id;
+    const orgId = user?.organization_id;
+    if (!orgId) {
+      throw new Error('User not found');
     }
 
     // 1. Validate that the project exists within the organization boundary
     const project = await prisma.project.findFirst({
       where: {
         id: cleanProjectId,
-        ...(orgId ? { organization_id: orgId } : {}),
+        organization_id: orgId,
       },
       select: {
         id: true,
@@ -1216,7 +1215,7 @@ export class ProjectService {
     const targetUser = await prisma.user.findFirst({
       where: {
         id: cleanUserId,
-        ...(orgId ? { organization_id: orgId } : {}),
+        organization_id: orgId,
       },
       select: {
         id: true,
@@ -1224,7 +1223,7 @@ export class ProjectService {
         is_active: true,
       },
     });
-    if (!targetUser) {
+    if (!targetUser || !targetUser.is_active) {
       throw new Error('User not found');
     }
 
@@ -1264,17 +1263,16 @@ export class ProjectService {
 
     const cleanUserId = targetUserId.trim();
 
-    let orgId = user?.organization_id;
-    if (!orgId && this.isManagerOrAdmin(user)) {
-      const firstOrg = await prisma.organization.findFirst({ where: { is_active: true } });
-      orgId = firstOrg?.id;
+    const orgId = user?.organization_id;
+    if (!orgId) {
+      throw new Error('User not found');
     }
 
-    // 1. Verify user exists in the organization
+    // 1. Verify user exists in the organization and is active
     const targetUser = await prisma.user.findFirst({
       where: {
         id: cleanUserId,
-        ...(orgId ? { organization_id: orgId } : {}),
+        organization_id: orgId,
       },
       select: {
         id: true,
@@ -1282,7 +1280,7 @@ export class ProjectService {
         is_active: true,
       },
     });
-    if (!targetUser) {
+    if (!targetUser || !targetUser.is_active) {
       throw new Error('User not found');
     }
 
@@ -1290,7 +1288,7 @@ export class ProjectService {
     const memberships = await prisma.projectMember.findMany({
       where: {
         user_id: cleanUserId,
-        ...(orgId ? { project: { organization_id: orgId } } : {}),
+        project: { organization_id: orgId },
       },
       select: {
         project_id: true,

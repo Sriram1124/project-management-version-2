@@ -92,12 +92,12 @@ Answer by Sriram:
 - When SSO / session federation is active, the authenticated user subject claim corresponds directly to this UUID.
 - This identity provisioning model is submitted for Krish's formal sign-off.
 
-#### Question 2 (Persistent & Auditable Overrides)
-How are identity overrides maintained? Can we ensure they are persistent and auditable rather than in-memory?
-
+#### Question 2 (Identity Mapping & Inactive User Semantics)
+How are identity mappings and inactive users handled?
+ 
 Answer by Sriram:
-- Persistent Storage: Overrides are persisted in the database via the `public.user_identity_mappings` table (`[source_user_id, canonical_user_id, organization_id, created_at, updated_at]`).
-- Auditability: Every mapping update is written to `public.audit_logs` tracking the performing admin, previous mapping, new mapping, and timestamp. In-memory mappings are used only as a short-lived cache.
+- Canonical 1:1 Parity: Django user UUIDs map 1:1 directly to PM `users.id` (RFC 4122 v4 UUID string stored as TEXT). There is no speculative in-memory translation or secondary mapping table.
+- Inactive User Handling: If a PM user account exists but has `is_active: false`, `/internal/mirai/v1/users/:mirai_user_id/project-memberships` and `/internal/mirai/v1/users/:mirai_user_id/projects/:project_id/membership` immediately return `mapping_status: "unmapped"` and empty memberships (`project_ids: []` / `is_member: false`), ensuring deprovisioned users lose all effective visibility.
 
 #### Question 3 (Membership Statuses & Archived Projects)
 What counts as a verified member or assigned participant in PM? What about invitations, ended memberships, and archived projects?
@@ -119,26 +119,28 @@ Answer by Sriram:
 
 ### Part B: Service-to-Service Authentication Hardening (Krish Round 3 Requirements)
 
-#### Question 5 (Mandatory Short-Lived Audience-Restricted Service JWT)
+#### Question 5 (Separate Service Key & Mandatory Claims)
 How is the service token authenticated and hardened?
 
 Answer by Sriram:
-- In production, a signed Service JWT is mandatory. Static tokens are rejected with HTTP 401 in production and permitted only in local development/test environments (`NODE_ENV !== 'production'`).
-- Required JWT Claims:
-  - `iss`: Must equal `"mirai-django"`. Tokens with mismatched issuers are rejected with HTTP 401.
-  - `aud`: Must equal `"pm-membership-api"`. Tokens with mismatched audiences are rejected with HTTP 401.
-  - `exp`: Short-lived expiry (<= 5 minutes / 300 seconds). Expired tokens are rejected with HTTP 401.
-  - `scope`: Must include `"membership:read"`. Tokens lacking this scope are rejected with HTTP 403.
+- Dedicated Service Key: Service JWTs are verified strictly with `PM_SERVICE_JWT_SECRET`, separate from `JWT_ACCESS_SECRET` (which signs PM user sessions). User tokens signed with `JWT_ACCESS_SECRET` are immediately rejected with HTTP 401 signature errors.
+- Startup Validation: The server fails at boot (`validateStartupConfig()`) if `PM_SERVICE_JWT_SECRET` or `JWT_ACCESS_SECRET` is missing in production. No hardcoded default secrets (like `'access_secret'`) exist in production.
+- Required JWT Claims (All Mandatory):
+  - `iss`: Must equal `"mirai-django"`. Tokens with missing or mismatched issuers are rejected with HTTP 401.
+  - `aud`: Must equal `"pm-membership-api"`. Tokens with missing or mismatched audiences are rejected with HTTP 401.
+  - `exp`: Expiration claim is mandatory. Token lifetime (`exp - iat`) cannot exceed 5 minutes (300 seconds). Lifetimes over 5 min or expired tokens are rejected with HTTP 401.
+  - `scope`: Must include `"membership:read"`. The alternative `PROJECT_READ` has been dropped. Tokens lacking `membership:read` are rejected with HTTP 403.
   - `org`: Organization UUID must be present in token claims.
+- Static Token Rejection: Static service tokens are rejected with HTTP 401 in production (`NODE_ENV === 'production'`).
 
 #### Question 6 (Tenant Extraction & Dropping Hardcoded Defaults)
 How is multi-tenancy handled and how is the organization ID extracted?
 
 Answer by Sriram:
 - The organization ID is extracted strictly from the token claim (`payload.org` or `payload.organizationId`).
-- `X-Organization-Id` header fallback is prohibited in production.
-- Hardcoded default organizations have been completely removed.
-- If a service token lacks an active organization or references an inactive organization, the request fails closed with HTTP 403 (`Organization not found or inactive`).
+- The `X-Organization-Id` header is completely ignored for service tokens.
+- Hardcoded default organizations and "first active org" fallbacks in `getUserProjectMemberships` and `checkProjectMembership` have been completely removed.
+- If a service token lacks an active organization or references an inactive organization in PostgreSQL, the request fails closed with HTTP 403 (`Organization not found or inactive`).
 
 ---
 
@@ -370,9 +372,13 @@ class PMProjectMembershipResolver:
 
 | Verification Area | Scope | Result | Status |
 |---|---|---|---|
-| PostgreSQL Schema | `public.project_members`, `projects.id` UUID TEXT | Fully Verified | READY |
-| Node.js Service Routes | `GET /internal/mirai/v1/...` in `backend-node` on port 4000 | Implemented & Verified | READY |
-| M2M JWT Authentication | Mandatory `iss: mirai-django`, `aud: pm-membership-api`, `org` claim | Implemented & Verified | READY |
-| Fail-Closed Boundary | 401, 403, 404, 500, unmapped fallback to empty set | Tested & Verified | READY |
+| PostgreSQL Schema | `public.project_members`, `projects.id` UUID TEXT | Fully Verified (Authoritative queries without relation fallbacks) | READY |
+| Node.js Service Routes | `GET /internal/mirai/v1/...` in `backend-node` on port 4000 | Implemented & Verified with `authenticateMiraiService` | READY |
+| M2M JWT Authentication | Dedicated `PM_SERVICE_JWT_SECRET`, `iss: mirai-django`, `aud: pm-membership-api`, `scope: membership:read`, `org`, `exp <= 5m` | Implemented & 100% Tested | READY |
+| Negative Security Checks | Missing/wrong iss, aud, scope, exp, user tokens as service tokens, lifetime > 5m, static token in prod | Tested & Verified (All reject with 401/403) | READY |
+| Inactive User Handling | `is_active: false` PM user returns `mapping_status: "unmapped"` and empty memberships | Tested & Verified | READY |
+| Fail-Closed Revocation | Removing user from `project_members` immediately returns `is_member: false` | Tested & Verified | READY |
 | TypeScript Compiler | `npx tsc --noEmit` in `backend-node` | 0 errors (Exit code 0) | PASS |
+| Membership & Route Tests | `backend-node/tests/unit/project-membership.service.test.ts` | 44 / 44 tests passed | PASS |
 | Integration Adapter Tests | `backend-node/tests/unit/mirai-project-management.adapter.test.ts` | 32 / 32 tests passed | PASS |
+| Live DB Manual Verification | `npx tsx scripts/manual-test-mirai.ts` against real database records | 5 / 5 checks passed with timing breakdown | PASS |

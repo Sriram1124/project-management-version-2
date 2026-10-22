@@ -1,11 +1,11 @@
 import { Router } from 'express';
-import { authenticate, requirePermission } from '../middleware/auth.middleware';
+import { authenticateMiraiService, requirePermission } from '../middleware/auth.middleware';
 import { ProjectService } from '../services/project.service';
 
 const router = Router();
 
 // Dedicated M2M service-to-service authentication
-router.use(authenticate);
+router.use(authenticateMiraiService);
 
 /**
  * GET {PM_BASE}/internal/mirai/v1/users/:mirai_user_id/project-memberships

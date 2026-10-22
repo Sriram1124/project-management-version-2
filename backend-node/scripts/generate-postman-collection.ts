@@ -69,6 +69,7 @@ interface PostmanCollection {
   };
   variable: { key: string; value: string; type: string; description?: string }[];
   item: (PostmanItem | PostmanFolder)[];
+  event?: PostmanEvent[];
 }
 
 // Helper to construct URL

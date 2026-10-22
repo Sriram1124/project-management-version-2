@@ -4,7 +4,7 @@ import { Request, Response, NextFunction } from 'express';
 import jwt from 'jsonwebtoken';
 import { ProjectService } from '../../src/services/project.service';
 import { ProjectController } from '../../src/controllers/project.controller';
-import { authenticate, requirePermission } from '../../src/middleware/auth.middleware';
+import { authenticate, authenticateMiraiService, getServiceJwtSecret, requirePermission } from '../../src/middleware/auth.middleware';
 import { mockPrisma, resetPrismaMock } from '../mocks/prisma.mock';
 
 const ACCESS_SECRET = process.env.JWT_ACCESS_SECRET || 'access_secret';
@@ -218,6 +218,15 @@ describe('MIRAI Project Membership Verification & Integration Tests', () => {
       ).rejects.toThrow('User not found');
     });
 
+    it('negative test: should throw "User not found" for an inactive user (is_active: false)', async () => {
+      mockPrisma.project.findFirst.mockResolvedValueOnce(mockProject);
+      mockPrisma.user.findFirst.mockResolvedValueOnce({ ...mockUserMember, is_active: false });
+
+      await expect(
+        ProjectService.checkProjectMembership(mockProject.id, mockUserMember.id, mockManagerCaller)
+      ).rejects.toThrow('User not found');
+    });
+
     it('should throw "User not found" when checking user from another organization (cross-tenant isolation)', async () => {
       mockPrisma.project.findFirst.mockResolvedValueOnce(mockProject);
       mockPrisma.user.findFirst.mockResolvedValueOnce(null);
@@ -279,6 +288,14 @@ describe('MIRAI Project Membership Verification & Integration Tests', () => {
 
       await expect(
         ProjectService.getUserProjectMemberships('unknown-user', mockManagerCaller)
+      ).rejects.toThrow('User not found');
+    });
+
+    it('negative test: should throw "User not found" for an inactive user (is_active: false)', async () => {
+      mockPrisma.user.findFirst.mockResolvedValueOnce({ ...mockUserMember, is_active: false });
+
+      await expect(
+        ProjectService.getUserProjectMemberships(mockUserMember.id, mockManagerCaller)
       ).rejects.toThrow('User not found');
     });
 
@@ -404,43 +421,23 @@ describe('MIRAI Project Membership Verification & Integration Tests', () => {
       process.env.PROJECT_MANAGEMENT_SERVICE_TOKEN = originalServiceToken;
     });
 
-    it('should authenticate via static PROJECT_MANAGEMENT_SERVICE_TOKEN and create SERVICE user', async () => {
-      process.env.PROJECT_MANAGEMENT_SERVICE_TOKEN = 'secret-service-token-xyz';
-      mockPrisma.organization.findFirst.mockResolvedValueOnce({ id: orgId });
+    it('should authenticate via valid M2M Service JWT signed with PM_SERVICE_JWT_SECRET', async () => {
+      const serviceSecret = 'dedicated-service-jwt-secret';
+      process.env.PM_SERVICE_JWT_SECRET = serviceSecret;
 
-      const { req, res, next } = createMockReqRes({
-        headers: {
-          authorization: 'Bearer secret-service-token-xyz',
-          'x-organization-id': orgId,
-        },
-      });
-
-      await authenticate(req, res, next);
-
-      expect(next).toHaveBeenCalled();
-      expect((req as any).user.role).toBe('SERVICE');
-      expect((req as any).user.isService).toBe(true);
-      expect((req as any).fullUser.role).toBe('SERVICE');
-
-      // Verify requirePermission('PROJECT_READ') grants access to service principal
-      const permNext = jest.fn();
-      await requirePermission('PROJECT_READ')(req, res, permNext);
-      expect(permNext).toHaveBeenCalled();
-    });
-
-    it('should authenticate via Service JWT (role: SERVICE) and grant PROJECT_READ permission', async () => {
       const serviceJwt = jwt.sign(
         {
+          iss: 'mirai-django',
+          aud: 'pm-membership-api',
+          scope: 'membership:read',
           role: 'SERVICE',
-          type: 'service',
-          service: 'mirai-django-core',
-          organizationId: orgId,
+          org: orgId,
         },
-        ACCESS_SECRET,
-        { expiresIn: '1h' }
+        serviceSecret,
+        { expiresIn: '5m' }
       );
 
-      mockPrisma.organization.findFirst.mockResolvedValueOnce({ id: orgId });
+      mockPrisma.organization.findFirst.mockResolvedValueOnce({ id: orgId, is_active: true });
 
       const { req, res, next } = createMockReqRes({
         headers: {
@@ -448,32 +445,216 @@ describe('MIRAI Project Membership Verification & Integration Tests', () => {
         },
       });
 
-      await authenticate(req, res, next);
+      await authenticateMiraiService(req, res, next);
 
       expect(next).toHaveBeenCalled();
       expect((req as any).user.role).toBe('SERVICE');
+      expect((req as any).user.organization_id).toBe(orgId);
       expect((req as any).user.isService).toBe(true);
 
-      // Verify permission evaluation
       const permNext = jest.fn();
       await requirePermission('PROJECT_READ')(req, res, permNext);
       expect(permNext).toHaveBeenCalled();
     });
 
-    it('should reject invalid service token with 401 Unauthorized', async () => {
-      process.env.PROJECT_MANAGEMENT_SERVICE_TOKEN = 'real-secret-token';
+    it('negative test: should reject a user token presented as a service token (signed with JWT_ACCESS_SECRET)', async () => {
+      const serviceSecret = 'dedicated-service-jwt-secret';
+      process.env.PM_SERVICE_JWT_SECRET = serviceSecret;
+
+      // User token signed with ACCESS_SECRET, not PM_SERVICE_JWT_SECRET
+      const userToken = jwt.sign(
+        {
+          userId: 'user-alice-123',
+          email: 'alice@company.com',
+          role: 'DEVELOPER',
+          organizationId: orgId,
+        },
+        ACCESS_SECRET,
+        { expiresIn: '5m' }
+      );
 
       const { req, res, next } = createMockReqRes({
         headers: {
-          authorization: 'Bearer fake-invalid-token',
+          authorization: `Bearer ${userToken}`,
         },
       });
 
-      await authenticate(req, res, next);
+      await authenticateMiraiService(req, res, next);
 
       expect(next).not.toHaveBeenCalled();
       expect(res.status).toHaveBeenCalledWith(401);
-      expect(res.json).toHaveBeenCalledWith({ error: 'Invalid access token' });
+      expect(res.json).toHaveBeenCalledWith(
+        expect.objectContaining({ error: expect.stringContaining('Invalid service token') })
+      );
+    });
+
+    it('negative test: should reject service token with missing or wrong issuer (iss)', async () => {
+      const serviceSecret = 'dedicated-service-jwt-secret';
+      process.env.PM_SERVICE_JWT_SECRET = serviceSecret;
+
+      // Token with wrong issuer
+      const wrongIssToken = jwt.sign(
+        {
+          iss: 'wrong-issuer',
+          aud: 'pm-membership-api',
+          scope: 'membership:read',
+          org: orgId,
+        },
+        serviceSecret,
+        { expiresIn: '5m' }
+      );
+
+      const { req, res, next } = createMockReqRes({
+        headers: { authorization: `Bearer ${wrongIssToken}` },
+      });
+
+      await authenticateMiraiService(req, res, next);
+
+      expect(next).not.toHaveBeenCalled();
+      expect(res.status).toHaveBeenCalledWith(401);
+      expect(res.json).toHaveBeenCalledWith(
+        expect.objectContaining({ error: expect.stringContaining('jwt issuer invalid') })
+      );
+    });
+
+    it('negative test: should reject service token with missing or wrong audience (aud)', async () => {
+      const serviceSecret = 'dedicated-service-jwt-secret';
+      process.env.PM_SERVICE_JWT_SECRET = serviceSecret;
+
+      // Token with wrong audience
+      const wrongAudToken = jwt.sign(
+        {
+          iss: 'mirai-django',
+          aud: 'wrong-audience',
+          scope: 'membership:read',
+          org: orgId,
+        },
+        serviceSecret,
+        { expiresIn: '5m' }
+      );
+
+      const { req, res, next } = createMockReqRes({
+        headers: { authorization: `Bearer ${wrongAudToken}` },
+      });
+
+      await authenticateMiraiService(req, res, next);
+
+      expect(next).not.toHaveBeenCalled();
+      expect(res.status).toHaveBeenCalledWith(401);
+      expect(res.json).toHaveBeenCalledWith(
+        expect.objectContaining({ error: expect.stringContaining('jwt audience invalid') })
+      );
+    });
+
+    it('negative test: should reject service token without membership:read scope (dropping PROJECT_READ alternative)', async () => {
+      const serviceSecret = 'dedicated-service-jwt-secret';
+      process.env.PM_SERVICE_JWT_SECRET = serviceSecret;
+
+      // Token with only PROJECT_READ, lacking membership:read
+      const insufficientScopeToken = jwt.sign(
+        {
+          iss: 'mirai-django',
+          aud: 'pm-membership-api',
+          scope: 'PROJECT_READ',
+          org: orgId,
+        },
+        serviceSecret,
+        { expiresIn: '5m' }
+      );
+
+      const { req, res, next } = createMockReqRes({
+        headers: { authorization: `Bearer ${insufficientScopeToken}` },
+      });
+
+      await authenticateMiraiService(req, res, next);
+
+      expect(next).not.toHaveBeenCalled();
+      expect(res.status).toHaveBeenCalledWith(403);
+      expect(res.json).toHaveBeenCalledWith({
+        error: 'Insufficient token scope: requires membership:read',
+      });
+    });
+
+    it('negative test: should reject service token with lifetime exceeding 5 minutes (300 seconds)', async () => {
+      const serviceSecret = 'dedicated-service-jwt-secret';
+      process.env.PM_SERVICE_JWT_SECRET = serviceSecret;
+
+      // Token with 1 hour lifetime (exceeds 5m)
+      const longLivedToken = jwt.sign(
+        {
+          iss: 'mirai-django',
+          aud: 'pm-membership-api',
+          scope: 'membership:read',
+          org: orgId,
+        },
+        serviceSecret,
+        { expiresIn: '1h' }
+      );
+
+      const { req, res, next } = createMockReqRes({
+        headers: { authorization: `Bearer ${longLivedToken}` },
+      });
+
+      await authenticateMiraiService(req, res, next);
+
+      expect(next).not.toHaveBeenCalled();
+      expect(res.status).toHaveBeenCalledWith(401);
+      expect(res.json).toHaveBeenCalledWith({
+        error: 'Token lifetime exceeds maximum allowed 5 minutes (300s)',
+      });
+    });
+
+    it('negative test: should reject static service token when in production (NODE_ENV === "production")', async () => {
+      const prevEnv = process.env.NODE_ENV;
+      try {
+        process.env.NODE_ENV = 'production';
+        process.env.PROJECT_MANAGEMENT_SERVICE_TOKEN = 'static-secret-token';
+
+        const { req, res, next } = createMockReqRes({
+          headers: { authorization: 'Bearer static-secret-token' },
+        });
+
+        await authenticateMiraiService(req, res, next);
+
+        expect(next).not.toHaveBeenCalled();
+        expect(res.status).toHaveBeenCalledWith(401);
+        expect(res.json).toHaveBeenCalledWith({
+          error: 'Static service tokens are disabled in production',
+        });
+      } finally {
+        process.env.NODE_ENV = prevEnv;
+      }
+    });
+
+    it('negative test: should ignore X-Organization-Id header and reject if token lacks valid org claim', async () => {
+      const serviceSecret = 'dedicated-service-jwt-secret';
+      process.env.PM_SERVICE_JWT_SECRET = serviceSecret;
+
+      // Token without org claim, relying on header
+      const noOrgToken = jwt.sign(
+        {
+          iss: 'mirai-django',
+          aud: 'pm-membership-api',
+          scope: 'membership:read',
+        },
+        serviceSecret,
+        { expiresIn: '5m' }
+      );
+
+      const { req, res, next } = createMockReqRes({
+        headers: {
+          authorization: `Bearer ${noOrgToken}`,
+          'x-organization-id': orgId, // Header must be ignored
+        },
+      });
+
+      await authenticateMiraiService(req, res, next);
+
+      expect(next).not.toHaveBeenCalled();
+      expect(res.status).toHaveBeenCalledWith(403);
+      expect(res.json).toHaveBeenCalledWith({
+        error: 'Missing organization claim in service token',
+      });
     });
 
     it('should reject requests with missing authorization header with 401', async () => {
@@ -481,73 +662,41 @@ describe('MIRAI Project Membership Verification & Integration Tests', () => {
         headers: {},
       });
 
-      await authenticate(req, res, next);
+      await authenticateMiraiService(req, res, next);
 
       expect(next).not.toHaveBeenCalled();
       expect(res.status).toHaveBeenCalledWith(401);
       expect(res.json).toHaveBeenCalledWith({ error: 'Missing or invalid authorization header' });
     });
 
-    it('should reject service token if supplied organization does not exist or is inactive', async () => {
-      process.env.PROJECT_MANAGEMENT_SERVICE_TOKEN = 'secret-token-123';
+    it('should reject service token if organization does not exist or is inactive', async () => {
+      const serviceSecret = 'dedicated-service-jwt-secret';
+      process.env.PM_SERVICE_JWT_SECRET = serviceSecret;
+
+      const validJwt = jwt.sign(
+        {
+          iss: 'mirai-django',
+          aud: 'pm-membership-api',
+          scope: 'membership:read',
+          org: 'non-existent-org',
+        },
+        serviceSecret,
+        { expiresIn: '5m' }
+      );
+
       mockPrisma.organization.findFirst.mockResolvedValueOnce(null);
 
       const { req, res, next } = createMockReqRes({
         headers: {
-          authorization: 'Bearer secret-token-123',
-          'x-organization-id': 'org-non-existent',
+          authorization: `Bearer ${validJwt}`,
         },
       });
 
-      await authenticate(req, res, next);
+      await authenticateMiraiService(req, res, next);
 
       expect(next).not.toHaveBeenCalled();
       expect(res.status).toHaveBeenCalledWith(403);
       expect(res.json).toHaveBeenCalledWith({ error: 'Organization not found or inactive' });
-    });
-
-    it('should reject service token if no active organization exists in the system', async () => {
-      process.env.PROJECT_MANAGEMENT_SERVICE_TOKEN = 'secret-token-123';
-      mockPrisma.organization.findFirst.mockResolvedValueOnce(null);
-
-      const { req, res, next } = createMockReqRes({
-        headers: {
-          authorization: 'Bearer secret-token-123',
-        },
-      });
-
-      await authenticate(req, res, next);
-
-      expect(next).not.toHaveBeenCalled();
-      expect(res.status).toHaveBeenCalledWith(403);
-      expect(res.json).toHaveBeenCalledWith({ error: 'No active organization found for service context' });
-    });
-
-    it('should forbid service principal from performing actions without required permission', async () => {
-      process.env.PROJECT_MANAGEMENT_SERVICE_TOKEN = 'secret-token-123';
-      mockPrisma.organization.findFirst.mockResolvedValueOnce({ id: orgId });
-
-      const { req, res, next } = createMockReqRes({
-        headers: {
-          authorization: 'Bearer secret-token-123',
-          'x-organization-id': orgId,
-        },
-      });
-
-      await authenticate(req, res, next);
-      expect(next).toHaveBeenCalled();
-
-      // Require a permission NOT granted to SERVICE (e.g. PROJECT_DELETE)
-      const permRes: any = {
-        status: jest.fn().mockReturnThis(),
-        json: jest.fn().mockReturnThis(),
-      };
-      const permNext = jest.fn();
-
-      await requirePermission('PROJECT_DELETE')(req, permRes, permNext);
-
-      expect(permNext).not.toHaveBeenCalled();
-      expect(permRes.status).toHaveBeenCalledWith(403);
     });
   });
 
@@ -644,13 +793,29 @@ describe('MIRAI Project Membership Verification & Integration Tests', () => {
 
   // ── 6. Dedicated /internal/mirai/v1 Route Contract Tests ──────────────────
   describe('Internal MIRAI Contract Routes (/internal/mirai/v1)', () => {
-    const serviceSecret = 'm2m-test-token-789';
+    const serviceJwtSecret = 'test-mirai-service-jwt-secret';
+
+    const generateValidM2MToken = (overrides: any = {}) => {
+      return jwt.sign(
+        {
+          iss: 'mirai-django',
+          aud: 'pm-membership-api',
+          scope: 'membership:read',
+          role: 'SERVICE',
+          org: orgId,
+          ...overrides,
+        },
+        serviceJwtSecret,
+        { expiresIn: '5m' }
+      );
+    };
+
     beforeEach(() => {
-      process.env.PROJECT_MANAGEMENT_SERVICE_TOKEN = serviceSecret;
+      process.env.PM_SERVICE_JWT_SECRET = serviceJwtSecret;
     });
 
-    it('GET /internal/mirai/v1/users/:userId/project-memberships should return mapped membership list', async () => {
-      mockPrisma.organization.findFirst.mockResolvedValueOnce({ id: orgId });
+    it('GET /internal/mirai/v1/users/:userId/project-memberships should return mapped membership list with valid M2M token', async () => {
+      mockPrisma.organization.findFirst.mockResolvedValueOnce({ id: orgId, is_active: true });
       mockPrisma.user.findFirst.mockResolvedValueOnce(mockUserMember);
       mockPrisma.projectMember.findMany.mockResolvedValueOnce([
         { project_id: 'proj-uuid-1' },
@@ -659,8 +824,7 @@ describe('MIRAI Project Membership Verification & Integration Tests', () => {
 
       const res = await request(app)
         .get(`/internal/mirai/v1/users/${mockUserMember.id}/project-memberships`)
-        .set('Authorization', `Bearer ${serviceSecret}`)
-        .set('x-organization-id', orgId);
+        .set('Authorization', `Bearer ${generateValidM2MToken()}`);
 
       expect(res.status).toBe(200);
       expect(res.body.mirai_user_id).toBe(mockUserMember.id);
@@ -669,14 +833,13 @@ describe('MIRAI Project Membership Verification & Integration Tests', () => {
       expect(res.body.as_of).toBeDefined();
     });
 
-    it('GET /internal/mirai/v1/users/:userId/project-memberships should return unmapped for non-existent user', async () => {
-      mockPrisma.organization.findFirst.mockResolvedValueOnce({ id: orgId });
+    it('GET /internal/mirai/v1/users/:userId/project-memberships negative test: should return unmapped for non-existent user', async () => {
+      mockPrisma.organization.findFirst.mockResolvedValueOnce({ id: orgId, is_active: true });
       mockPrisma.user.findFirst.mockResolvedValueOnce(null);
 
       const res = await request(app)
         .get('/internal/mirai/v1/users/unknown-uuid/project-memberships')
-        .set('Authorization', `Bearer ${serviceSecret}`)
-        .set('x-organization-id', orgId);
+        .set('Authorization', `Bearer ${generateValidM2MToken()}`);
 
       expect(res.status).toBe(200);
       expect(res.body.mirai_user_id).toBe('unknown-uuid');
@@ -685,8 +848,23 @@ describe('MIRAI Project Membership Verification & Integration Tests', () => {
       expect(res.body.as_of).toBeDefined();
     });
 
-    it('GET /internal/mirai/v1/users/:userId/projects/:projectId/membership should check single project membership', async () => {
-      mockPrisma.organization.findFirst.mockResolvedValueOnce({ id: orgId });
+    it('GET /internal/mirai/v1/users/:userId/project-memberships negative test: should return unmapped for inactive user (is_active: false)', async () => {
+      mockPrisma.organization.findFirst.mockResolvedValueOnce({ id: orgId, is_active: true });
+      mockPrisma.user.findFirst.mockResolvedValueOnce({ ...mockUserMember, is_active: false });
+
+      const res = await request(app)
+        .get(`/internal/mirai/v1/users/${mockUserMember.id}/project-memberships`)
+        .set('Authorization', `Bearer ${generateValidM2MToken()}`);
+
+      expect(res.status).toBe(200);
+      expect(res.body.mirai_user_id).toBe(mockUserMember.id);
+      expect(res.body.mapping_status).toBe('unmapped');
+      expect(res.body.project_ids).toEqual([]);
+      expect(res.body.as_of).toBeDefined();
+    });
+
+    it('GET /internal/mirai/v1/users/:userId/projects/:projectId/membership should check single project membership with valid token', async () => {
+      mockPrisma.organization.findFirst.mockResolvedValueOnce({ id: orgId, is_active: true });
       mockPrisma.project.findFirst.mockResolvedValueOnce(mockProject);
       mockPrisma.user.findFirst.mockResolvedValueOnce(mockUserMember);
       mockPrisma.projectMember.findFirst.mockResolvedValueOnce({
@@ -698,8 +876,7 @@ describe('MIRAI Project Membership Verification & Integration Tests', () => {
 
       const res = await request(app)
         .get(`/internal/mirai/v1/users/${mockUserMember.id}/projects/${mockProject.id}/membership`)
-        .set('Authorization', `Bearer ${serviceSecret}`)
-        .set('x-organization-id', orgId);
+        .set('Authorization', `Bearer ${generateValidM2MToken()}`);
 
       expect(res.status).toBe(200);
       expect(res.body.mirai_user_id).toBe(mockUserMember.id);
@@ -711,15 +888,14 @@ describe('MIRAI Project Membership Verification & Integration Tests', () => {
     });
 
     it('GET /internal/mirai/v1/users/:userId/projects/:projectId/membership should return is_member: false for non-member', async () => {
-      mockPrisma.organization.findFirst.mockResolvedValueOnce({ id: orgId });
+      mockPrisma.organization.findFirst.mockResolvedValueOnce({ id: orgId, is_active: true });
       mockPrisma.project.findFirst.mockResolvedValueOnce(mockProject);
       mockPrisma.user.findFirst.mockResolvedValueOnce(mockUserNonMember);
       mockPrisma.projectMember.findFirst.mockResolvedValueOnce(null);
 
       const res = await request(app)
         .get(`/internal/mirai/v1/users/${mockUserNonMember.id}/projects/${mockProject.id}/membership`)
-        .set('Authorization', `Bearer ${serviceSecret}`)
-        .set('x-organization-id', orgId);
+        .set('Authorization', `Bearer ${generateValidM2MToken()}`);
 
       expect(res.status).toBe(200);
       expect(res.body.mapping_status).toBe('mapped');
@@ -727,14 +903,28 @@ describe('MIRAI Project Membership Verification & Integration Tests', () => {
       expect(res.body.role_in_project).toBeNull();
     });
 
+    it('GET /internal/mirai/v1/users/:userId/projects/:projectId/membership negative test: should return unmapped for inactive user (is_active: false)', async () => {
+      mockPrisma.organization.findFirst.mockResolvedValueOnce({ id: orgId, is_active: true });
+      mockPrisma.project.findFirst.mockResolvedValueOnce(mockProject);
+      mockPrisma.user.findFirst.mockResolvedValueOnce({ ...mockUserMember, is_active: false });
+
+      const res = await request(app)
+        .get(`/internal/mirai/v1/users/${mockUserMember.id}/projects/${mockProject.id}/membership`)
+        .set('Authorization', `Bearer ${generateValidM2MToken()}`);
+
+      expect(res.status).toBe(200);
+      expect(res.body.mapping_status).toBe('unmapped');
+      expect(res.body.is_member).toBe(false);
+      expect(res.body.role_in_project).toBeNull();
+    });
+
     it('GET /internal/mirai/v1/users/:userId/projects/:projectId/membership should return unmapped for unknown user/project', async () => {
-      mockPrisma.organization.findFirst.mockResolvedValueOnce({ id: orgId });
+      mockPrisma.organization.findFirst.mockResolvedValueOnce({ id: orgId, is_active: true });
       mockPrisma.project.findFirst.mockResolvedValueOnce(null);
 
       const res = await request(app)
         .get('/internal/mirai/v1/users/user-1/projects/unknown-proj/membership')
-        .set('Authorization', `Bearer ${serviceSecret}`)
-        .set('x-organization-id', orgId);
+        .set('Authorization', `Bearer ${generateValidM2MToken()}`);
 
       expect(res.status).toBe(200);
       expect(res.body.mapping_status).toBe('unmapped');
@@ -742,16 +932,14 @@ describe('MIRAI Project Membership Verification & Integration Tests', () => {
     });
 
     it('negative test: GET /internal/mirai/v1/users/:userId/projects/:projectId/membership demonstrates removed project member loses access immediately', async () => {
-      // Demonstrates that removing/deleting a project member results in immediate revocation (is_member: false)
-      mockPrisma.organization.findFirst.mockResolvedValueOnce({ id: orgId });
+      mockPrisma.organization.findFirst.mockResolvedValueOnce({ id: orgId, is_active: true });
       mockPrisma.project.findFirst.mockResolvedValueOnce(mockProject);
       mockPrisma.user.findFirst.mockResolvedValueOnce(mockUserMember);
       mockPrisma.projectMember.findFirst.mockResolvedValueOnce(null); // Deleted from project_members
 
       const res = await request(app)
         .get(`/internal/mirai/v1/users/${mockUserMember.id}/projects/${mockProject.id}/membership`)
-        .set('Authorization', `Bearer ${serviceSecret}`)
-        .set('x-organization-id', orgId);
+        .set('Authorization', `Bearer ${generateValidM2MToken()}`);
 
       expect(res.status).toBe(200);
       expect(res.body.mapping_status).toBe('mapped');
