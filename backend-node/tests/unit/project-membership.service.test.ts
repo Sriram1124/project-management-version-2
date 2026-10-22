@@ -184,6 +184,23 @@ describe('MIRAI Project Membership Verification & Integration Tests', () => {
       expect(result.project_role).toBeNull();
     });
 
+    it('negative test: should demonstrate that a removed project member loses access immediately (is_member: false)', async () => {
+      // When a user is removed from a project, their project_members row is deleted.
+      // Even if the user exists and the project exists, membership check must immediately return false.
+      mockPrisma.project.findFirst.mockResolvedValueOnce(mockProject);
+      mockPrisma.user.findFirst.mockResolvedValueOnce(mockUserMember);
+      mockPrisma.projectMember.findFirst.mockResolvedValueOnce(null); // Record deleted/revoked
+
+      const result = await ProjectService.checkProjectMembership(
+        mockProject.id,
+        mockUserMember.id,
+        mockManagerCaller
+      );
+
+      expect(result.is_member).toBe(false);
+      expect(result.project_role).toBeNull();
+    });
+
     it('should throw "Project not found" if project does not exist', async () => {
       mockPrisma.project.findFirst.mockResolvedValueOnce(null);
 
@@ -722,6 +739,24 @@ describe('MIRAI Project Membership Verification & Integration Tests', () => {
       expect(res.status).toBe(200);
       expect(res.body.mapping_status).toBe('unmapped');
       expect(res.body.is_member).toBe(false);
+    });
+
+    it('negative test: GET /internal/mirai/v1/users/:userId/projects/:projectId/membership demonstrates removed project member loses access immediately', async () => {
+      // Demonstrates that removing/deleting a project member results in immediate revocation (is_member: false)
+      mockPrisma.organization.findFirst.mockResolvedValueOnce({ id: orgId });
+      mockPrisma.project.findFirst.mockResolvedValueOnce(mockProject);
+      mockPrisma.user.findFirst.mockResolvedValueOnce(mockUserMember);
+      mockPrisma.projectMember.findFirst.mockResolvedValueOnce(null); // Deleted from project_members
+
+      const res = await request(app)
+        .get(`/internal/mirai/v1/users/${mockUserMember.id}/projects/${mockProject.id}/membership`)
+        .set('Authorization', `Bearer ${serviceSecret}`)
+        .set('x-organization-id', orgId);
+
+      expect(res.status).toBe(200);
+      expect(res.body.mapping_status).toBe('mapped');
+      expect(res.body.is_member).toBe(false);
+      expect(res.body.role_in_project).toBeNull();
     });
   });
 });
