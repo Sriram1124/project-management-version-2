@@ -48,7 +48,7 @@ export default function CreateIssueModal({
     isTechLead;
   const canCompleteStatus = isManagerOrAdmin;
   const [submitting, setSubmitting] = useState(false);
-  const [storyPoints, setStoryPoints] = useState((initialIssueType || 'Story') === 'Story' ? 1 : 3);
+  const [storyPoints, setStoryPoints] = useState(1);
   const [startDate, setStartDate] = useState('');
   const [dueDate, setDueDate] = useState('');
   const [error, setError] = useState('');
@@ -208,7 +208,7 @@ export default function CreateIssueModal({
         // When creating an issue from the main Create Issue button, default to no parent Epic
         setParentId('');
       }
-      setStoryPoints(chosen === 'Story' ? 1 : 3);
+      setStoryPoints(1);
     }
   }, [
     isOpen,
@@ -313,9 +313,9 @@ export default function CreateIssueModal({
             storyPoints === undefined ||
             Number.isNaN(sp) ||
             !Number.isInteger(sp) ||
-            sp < 0
+            sp < 1
           ) {
-            setError('Story points are mandatory for tasks, subtasks, and bugs and must be a non-negative integer (0 or greater).');
+            setError('Story points are mandatory and must be a positive integer (1 or greater).');
             setSubmitting(false);
             return;
           }
@@ -633,7 +633,7 @@ export default function CreateIssueModal({
               <input
                 id="story-points"
                 type="number"
-                min={issueType === 'Story' ? 1 : 0}
+                min={1}
                 max={100}
                 required
                 value={storyPoints}

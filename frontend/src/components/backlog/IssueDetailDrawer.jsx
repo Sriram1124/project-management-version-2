@@ -652,7 +652,7 @@ export default function IssueDetailDrawer({
     if (updatingField) return;
     const raw = editedStoryPoints;
     if (raw === '' || raw === null || raw === undefined) {
-      setEditedStoryPoints(issue?.story_points ?? issue?.storyPoints ?? (isStory ? 1 : 0));
+      setEditedStoryPoints(issue?.story_points ?? issue?.storyPoints ?? 1);
       return;
     }
     const val = Number.parseInt(raw, 10);
@@ -678,9 +678,9 @@ export default function IssueDetailDrawer({
         }
       }
     } else if (isApplicableType) {
-      if (Number.isNaN(val) || val < 0) {
-        alert('Story points are mandatory for tasks, subtasks, and bugs and must be a non-negative integer (0 or greater).');
-        setEditedStoryPoints(issue?.story_points ?? issue?.storyPoints ?? 0);
+      if (Number.isNaN(val) || val < 1) {
+        alert('Story points are mandatory and must be a positive integer (1 or greater).');
+        setEditedStoryPoints(issue?.story_points ?? issue?.storyPoints ?? 1);
         return;
       }
       if (val !== (issue?.story_points ?? issue?.storyPoints)) {
@@ -1159,7 +1159,7 @@ export default function IssueDetailDrawer({
               <div className="flex items-center gap-1.5">
                 <input
                   type="number"
-                  min={isStory ? 1 : 0}
+                  min={1}
                   max={999}
                   disabled={updatingField === 'storyPoints'}
                   value={editedStoryPoints}

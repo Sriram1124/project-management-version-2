@@ -68,6 +68,7 @@ interface PostmanCollection {
     version: string;
   };
   variable: { key: string; value: string; type: string; description?: string }[];
+  event?: PostmanEvent[];
   item: (PostmanItem | PostmanFolder)[];
 }
 

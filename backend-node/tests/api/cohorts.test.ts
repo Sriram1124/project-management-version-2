@@ -1,9 +1,13 @@
+import { cacheService } from '../../src/services/cache.service';
 import request from 'supertest';
 import app from '../../src/app';
 import { mockPrisma } from '../mocks/prisma.mock';
 import { setupAuthUser } from '../helpers/auth.helper';
 
 describe('Cohorts API (/api/cohorts)', () => {
+  beforeEach(async () => {
+    await cacheService.invalidatePattern('org:');
+  });
   it('should require authentication', async () => {
     const res = await request(app).get('/api/cohorts');
     expect(res.status).toBe(401);

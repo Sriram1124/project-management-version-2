@@ -48,7 +48,13 @@ export default function SprintSection({
 
   // Calculate totals from real database fields using leaf deliverables (avoids double counting)
   const parentIds = new Set(issues.map((i) => i.parent_id).filter(Boolean));
-  const eligibleLeaves = issues.filter((i) => i.type !== 'EPIC' && !parentIds.has(i.id));
+  const eligibleLeaves = issues.filter((i) => {
+    if (i.type === 'EPIC') return false;
+    if (!parentIds.has(i.id)) return true;
+    const children = issues.filter((c) => c.parent_id === i.id);
+    const childPoints = children.reduce((sum, c) => sum + (Number(c.story_points) || 0), 0);
+    return childPoints === 0 && Number(i.story_points || 0) > 0;
+  });
   const totalSP = eligibleLeaves.reduce((acc, curr) => acc + (Number(curr.story_points) || 0), 0);
   const completedCount = eligibleLeaves.filter(
     (i) => String(i.status).toUpperCase() === 'COMPLETED' || String(i.status).toUpperCase() === 'DONE'

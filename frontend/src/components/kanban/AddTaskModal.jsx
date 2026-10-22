@@ -47,7 +47,7 @@ export default function AddTaskModal({
   const [type, setType] = useState(initialType);
   const [status, setStatus] = useState(initialStatus || 'TODO');
   const [priority, setPriority] = useState('MEDIUM');
-  const [storyPoints, setStoryPoints] = useState(3);
+  const [storyPoints, setStoryPoints] = useState(1);
   const [selectedProjectId, setSelectedProjectId] = useState(projectId || '');
   const [parentId, setParentId] = useState(initialParentId || '');
   const [sprintId, setSprintId] = useState(initialSprintId || '');
@@ -118,7 +118,7 @@ export default function AddTaskModal({
             : effectiveAllowedTypes[0] || 'TASK';
         setType(chosenType);
       }
-      setStoryPoints(chosenType === 'STORY' ? 1 : 3);
+      setStoryPoints(1);
 
       if (sprints && sprints.length > 0) {
         setAvailableSprints(sprints);
@@ -345,9 +345,9 @@ export default function AddTaskModal({
         storyPoints === undefined ||
         Number.isNaN(sp) ||
         !Number.isInteger(sp) ||
-        sp < 0
+        sp < 1
       ) {
-        setError('Story points are mandatory for tasks, subtasks, and bugs and must be a non-negative integer (0 or greater).');
+        setError('Story points are mandatory and must be a positive integer (1 or greater).');
         return;
       }
     }
@@ -507,7 +507,7 @@ export default function AddTaskModal({
                 <input
                   id="add-task-sp"
                   type="number"
-                  min={type === 'STORY' ? '1' : '0'}
+                  min="1"
                   max="99"
                   step="1"
                   required

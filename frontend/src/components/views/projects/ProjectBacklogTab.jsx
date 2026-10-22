@@ -168,9 +168,15 @@ export default function ProjectBacklogTab({ projectId, project = null, isKanbanP
   }, [workItems]);
 
   // Total Story Points across all project items (leaf deliverables to avoid double counting)
-  const totalSP = useMemo(() => {
+    const totalSP = useMemo(() => {
     const parentIds = new Set(workItems.map((w) => w.parent_id).filter(Boolean));
-    const eligibleLeaves = workItems.filter((w) => w.type !== 'EPIC' && !parentIds.has(w.id));
+    const eligibleLeaves = workItems.filter((w) => {
+      if (w.type === 'EPIC') return false;
+      if (!parentIds.has(w.id)) return true;
+      const children = workItems.filter((c) => c.parent_id === w.id);
+      const childPoints = children.reduce((sum, c) => sum + (Number(c.story_points) || 0), 0);
+      return childPoints === 0 && Number(w.story_points || 0) > 0;
+    });
     return eligibleLeaves.reduce((acc, curr) => acc + (Number(curr.story_points) || 0), 0);
   }, [workItems]);
 

@@ -175,6 +175,39 @@ const assignments = await adapter.listProjectAssignments(projectId, { user_id: u
 
 ---
 
+### `isProjectMember(miraiUserId: string, projectId: string): Promise<boolean>`
+Determines whether a MIRAI user has active membership in a specific project using `public.project_members` as the sole authoritative source. Does not infer membership from project ownership or task assignments. Fails closed on unknown user, invalid project, or network/auth error.
+
+- **Parameters**:
+  - `miraiUserId: string` — Canonical MIRAI user UUID
+  - `projectId: string` — Canonical Project UUID
+- **Returns**: `Promise<boolean>`
+- **Upstream Route**: `GET /api/projects/:projectId/members/:userId/check`
+
+```typescript
+const isMember = await adapter.isProjectMember('123e4567-e89b-12d3-a456-426614174000', projectId);
+if (!isMember) {
+  throw new ForbiddenError('Intern is not a designated member of this project');
+}
+```
+
+---
+
+### `getProjectIdsForUser(miraiUserId: string): Promise<string[]>`
+Returns all project IDs for which the specified MIRAI user has authoritative membership in `public.project_members`. Used by Django RBAC to filter project list views in a single efficient query (no N+1 requests or full-roster fetching).
+
+- **Parameters**:
+  - `miraiUserId: string` — Canonical MIRAI user UUID
+- **Returns**: `Promise<string[]>`
+- **Upstream Route**: `GET /api/users/:userId/project-memberships` (also available via `GET /api/projects/user/:userId/memberships`)
+
+```typescript
+const visibleProjectIds = await adapter.getProjectIdsForUser(miraiUserId);
+// In Django: Project.objects.filter(id__in=visibleProjectIds)
+```
+
+---
+
 ## 5. Normalized Data Contracts
 
 ```typescript

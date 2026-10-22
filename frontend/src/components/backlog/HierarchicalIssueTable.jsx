@@ -436,9 +436,13 @@ const HierarchicalRow = React.memo(function HierarchicalRow({
 
   // Eligible leaf descendants (excluding epics and items that have children among descendants)
   const descendantParentIds = new Set(allDescendants.map((d) => d.parent_id).filter(Boolean));
-  const eligibleLeafDescendants = allDescendants.filter(
-    (d) => d.type !== 'EPIC' && !descendantParentIds.has(d.id)
-  );
+  const eligibleLeafDescendants = allDescendants.filter((d) => {
+    if (d.type === 'EPIC') return false;
+    if (!descendantParentIds.has(d.id)) return true;
+    const children = allDescendants.filter((c) => c.parent_id === d.id);
+    const childPoints = children.reduce((sum, c) => sum + (Number(c.story_points) || 0), 0);
+    return childPoints === 0 && Number(d.story_points || 0) > 0;
+  });
 
   const descendantTotalSp = eligibleLeafDescendants.reduce((acc, d) => acc + (Number(d.story_points) || 0), 0);
   const descendantCompletedSp = eligibleLeafDescendants
@@ -518,15 +522,15 @@ const HierarchicalRow = React.memo(function HierarchicalRow({
       onUpdateStoryPoints?.(item.id, val);
     } else if (isTask || isLeaf) {
       const val = Number.parseInt(pointsValue, 10);
-      if (Number.isNaN(val) || val < 0) {
-        alert('Story points are mandatory for tasks, subtasks, and bugs and must be a non-negative integer (0 or greater).');
-        setPointsValue(item.story_points ?? 0);
+      if (Number.isNaN(val) || val < 1) {
+        alert('Story points are mandatory and must be a positive integer (1 or greater).');
+        setPointsValue(item.story_points ?? 1);
         setEditingPoints(false);
         return;
       }
       onUpdateStoryPoints?.(item.id, val);
     } else {
-      const val = pointsValue === '' ? null : Math.max(0, Number.parseInt(pointsValue, 10) || 0);
+      const val = pointsValue === '' ? null : Math.max(1, Number.parseInt(pointsValue, 10) || 1);
       onUpdateStoryPoints?.(item.id, val);
     }
     setEditingPoints(false);
@@ -903,7 +907,7 @@ const HierarchicalRow = React.memo(function HierarchicalRow({
               <input
                 onClick={(e) => e.stopPropagation()}
                 type="number"
-                min={isStory ? '1' : '0'}
+                min="1"
                 max="999"
                 aria-label="Story Points"
                 value={pointsValue}

@@ -16,7 +16,6 @@ import {
   UserCheck, 
   Search, 
   X,
-  User,
   Filter,
   Calendar,
   ArrowRight,
@@ -198,21 +197,12 @@ export default function ProjectTaskCharts({
   const hasFullTeamAccess = !isSystemIntern && (isManager || isTechLead);
   const isInternUser = isSystemIntern || !hasFullTeamAccess;
 
-  // Tab View Mode:
-  // Intern: 'TASKS' (Tab A: Tasks & Graphs) | 'PERFORMANCE' (Tab B: Individual Performance)
-  // Manager / Tech Lead: 'TASKS' | 'PERFORMANCE' (Team Performance) | 'BOTH'
-  const [viewMode, setViewMode] = useState('TASKS');
-
   // Manager / Tech Lead Scope Dropdown
   const [selectedPerformanceFilter, setSelectedPerformanceFilter] = useState('ALL'); // 'ALL' | 'TECH_LEADS' | userId
   const [isDropdownOpen, setIsDropdownOpen] = useState(false);
   const [memberSearchQuery, setMemberSearchQuery] = useState('');
   const dropdownRef = useRef(null);
   const abortControllerRef = useRef(null);
-
-  // Intern Personal Table Search & Filter (Tab B)
-  const [personalSearchQuery, setPersonalSearchQuery] = useState('');
-  const [personalStatusFilter, setPersonalStatusFilter] = useState('ALL');
 
   useEffect(() => {
     if (projectId && selectedProjectId !== projectId) {
@@ -657,24 +647,6 @@ export default function ProjectTaskCharts({
     }).filter(seg => seg.count > 0);
   }, [analytics, circumference]);
 
-  // Filtered Personal Tasks for Tab B (Individual Performance Table)
-  const personalTasks = useMemo(() => {
-    const list = analytics.taskBreakdown || [];
-    return list.filter((t) => {
-      if (personalStatusFilter !== 'ALL' && t.status !== personalStatusFilter) {
-        return false;
-      }
-      if (personalSearchQuery.trim()) {
-        const q = personalSearchQuery.toLowerCase();
-        const matchTitle = t.title?.toLowerCase().includes(q);
-        const matchType = t.type?.toLowerCase().includes(q);
-        const matchProj = t.project_name?.toLowerCase().includes(q);
-        return matchTitle || matchType || matchProj;
-      }
-      return true;
-    });
-  }, [analytics.taskBreakdown, personalStatusFilter, personalSearchQuery]);
-
   if (loading && !analyticsData) {
     return <AnalyticsSkeleton />;
   }
@@ -709,12 +681,12 @@ export default function ProjectTaskCharts({
             <div>
               <h2 className="text-base font-bold text-slate-900 tracking-tight">
                 {isInternUser
-                  ? 'Task Analytics & Performance'
+                  ? 'Task Analytics & Graphs'
                   : 'Task Analytics & Work Distribution'}
               </h2>
               <p className="text-xs text-slate-500 mt-0.5">
                 {isInternUser
-                  ? 'Real-time task status, workload, and individual performance metrics'
+                  ? 'Real-time task status, workload distribution, and deliverable progress'
                   : 'Real-time status breakdowns, priority distribution, and velocity metrics from Supabase database'}
               </p>
             </div>
@@ -722,36 +694,6 @@ export default function ProjectTaskCharts({
 
           {/* Header Actions / Controls */}
           <div className="flex flex-wrap items-center gap-2.5">
-            {/* Intern Two-Tab Switcher: Tab A (Tasks & Graphs) vs Tab B (Individual Performance) */}
-            {isInternUser && (
-              <div className="inline-flex items-center p-1 rounded-xl bg-slate-100 border border-slate-200/70 text-xs font-semibold">
-                <button
-                  type="button"
-                  onClick={() => setViewMode('TASKS')}
-                  className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg transition-all cursor-pointer ${
-                    viewMode === 'TASKS'
-                      ? 'bg-white text-purple-700 font-bold shadow-xs'
-                      : 'text-slate-600 hover:text-slate-900'
-                  }`}
-                >
-                  <BarChart3 className="w-3.5 h-3.5" />
-                  <span>Tasks & Graphs</span>
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setViewMode('PERFORMANCE')}
-                  className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg transition-all cursor-pointer ${
-                    viewMode === 'PERFORMANCE'
-                      ? 'bg-white text-purple-700 font-bold shadow-xs'
-                      : 'text-slate-600 hover:text-slate-900'
-                  }`}
-                >
-                  <User className="w-3.5 h-3.5" />
-                  <span>Individual Performance</span>
-                </button>
-              </div>
-            )}
-
             {/* Refresh Button */}
             <button
               type="button"
@@ -876,8 +818,7 @@ export default function ProjectTaskCharts({
         {/* Divider below Filter Row */}
         <div className="border-t border-slate-100" />
 
-        {/* 3. TAB A: TASKS & GRAPHS VIEW */}
-        {(viewMode === 'TASKS' || (!isInternUser && viewMode === 'BOTH')) && (
+        {/* 3. TASKS & GRAPHS VIEW */}
           <div>
             {/* KPI Row: 6 individual statistics metric blocks */}
             <div className="p-4 sm:p-5">
@@ -925,8 +866,10 @@ export default function ProjectTaskCharts({
                   </div>
                   <div className="text-xs text-slate-600 font-medium mt-1 truncate">
                     {analytics.completedWithDueDateCount > 0
-                      ? `${analytics.completedOnTime} of ${analytics.completedWithDueDateCount} on time`
-                      : 'No items with deadlines'}
+                      ? `${analytics.completedOnTime} of ${analytics.completedWithDueDateCount} delivered on time`
+                      : (analytics.scheduledItemsCount > 0
+                          ? `${analytics.scheduledItemsCount} with deadlines (pending completion)`
+                          : 'No items with deadlines')}
                   </div>
                 </div>
 
@@ -1223,321 +1166,11 @@ export default function ProjectTaskCharts({
             </div>
             )}
           </div>
-        )}
 
-        {/* 4. TAB B: INDIVIDUAL PERFORMANCE VIEW (For Intern) OR TEAM PERFORMANCE VIEW (For Manager) */}
-        {(viewMode === 'PERFORMANCE' || (!isInternUser && viewMode === 'BOTH')) && (
+        {/* 4. TEAM PERFORMANCE VIEW (For Manager / Tech Lead) */}
+        {!isInternUser && (
           <div className="border-t border-slate-100 p-4 sm:p-5 space-y-4">
-          {/* INTERN INDIVIDUAL PERFORMANCE DASHBOARD */}
-          {isInternUser ? (
-            <div className="space-y-4">
-              {/* Performance Metrics Strip */}
-              <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-                {/* 1. Assigned Work Items & Points */}
-                <div className="bg-white p-3.5 rounded-xl border border-slate-200/80 shadow-2xs">
-                  <div className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Your Assigned Work</div>
-                  <div className="text-xl font-bold text-slate-900 mt-1">{analytics.total}</div>
-                  <div className="text-[10px] text-purple-700 font-semibold mt-0.5">
-                    {analytics.storyPointsTotal} story points assigned
-                  </div>
-                </div>
-
-                {/* 2. Completion Progress */}
-                <div className="bg-white p-3.5 rounded-xl border border-slate-200/80 shadow-2xs">
-                  <div className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Completion Progress</div>
-                  <div className="text-xl font-bold text-purple-700 mt-1">{analytics.completionRate}%</div>
-                  <div className="text-[10px] text-slate-400 mt-0.5">
-                    {analytics.completed} delivered ({analytics.inProgress} in progress)
-                  </div>
-                </div>
-
-                {/* 3. Actual Work Time Logged */}
-                <div className="bg-white p-3.5 rounded-xl border border-slate-200/80 shadow-2xs">
-                  <div className="text-[10px] font-bold text-slate-400 uppercase tracking-wider flex items-center gap-1">
-                    <Clock className="w-3 h-3 text-emerald-600" />
-                    <span>Time Logged</span>
-                  </div>
-                  <div className="text-xl font-bold text-emerald-600 mt-1">
-                    {analytics.totalLoggedHours > 0 ? `${analytics.totalLoggedHours}h` : `${analytics.totalLoggedMinutes}m`}
-                  </div>
-                  <div className="text-[10px] text-slate-400 mt-0.5">
-                    {analytics.completed > 0 && analytics.totalLoggedHours > 0 
-                      ? `~${(analytics.totalLoggedHours / analytics.completed).toFixed(1)}h avg per task` 
-                      : 'Recorded work entries'}
-                  </div>
-                </div>
-
-                {/* 4. Delivery Accuracy */}
-                <div className="bg-white p-3.5 rounded-xl border border-slate-200/80 shadow-2xs">
-                  <div className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Delivery Accuracy</div>
-                  <div className="text-xl font-bold text-blue-600 mt-1">{analytics.onTimeRate}%</div>
-                  <div className="text-[10px] text-slate-400 mt-0.5">
-                    {analytics.pastDue > 0 ? `${analytics.pastDue} overdue deadlines` : '100% on schedule'}
-                  </div>
-                </div>
-              </div>
-
-              {/* Status Breakdown & Workload Consistency Grid */}
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                {/* Left Card: Workflow Pipeline State */}
-                <div className="bg-white p-4 rounded-xl border border-slate-200/80 shadow-2xs space-y-3">
-                  <div className="flex items-center justify-between pb-2 border-b border-slate-100">
-                    <span className="text-xs font-bold text-slate-800 uppercase tracking-wider">
-                      Workflow Pipeline State
-                    </span>
-                    <span className="text-[10px] text-slate-400 font-medium">Real-time Tasks</span>
-                  </div>
-
-                  <div className="space-y-2.5">
-                    {[
-                      { label: 'Completed', count: analytics.completed, color: 'bg-emerald-500', text: 'text-emerald-700' },
-                      { label: 'In Progress', count: analytics.inProgress, color: 'bg-purple-600', text: 'text-purple-700' },
-                      { label: 'In Review', count: analytics.inReview, color: 'bg-blue-500', text: 'text-blue-700' },
-                      { label: 'To Do', count: analytics.todo, color: 'bg-slate-400', text: 'text-slate-600' },
-                      { label: 'Blocked', count: analytics.blocked, color: 'bg-rose-500', text: 'text-rose-700' },
-                    ].map((item) => {
-                      const pct = analytics.total > 0 ? Math.round((item.count / analytics.total) * 100) : 0;
-                      return (
-                        <div key={item.label} className="space-y-1">
-                          <div className="flex items-center justify-between text-xs">
-                            <span className="font-semibold text-slate-700">{item.label}</span>
-                            <span className="font-bold text-slate-900">{item.count} <span className="text-slate-400 font-normal">({pct}%)</span></span>
-                          </div>
-                          <div className="w-full h-1.5 rounded-full bg-slate-100 overflow-hidden">
-                            <div className={`h-full rounded-full transition-all duration-300 ${item.color}`} style={{ width: `${pct}%` }} />
-                          </div>
-                        </div>
-                      );
-                    })}
-                  </div>
-                </div>
-
-                {/* Right Card: Effort & Delivery Consistency */}
-                <div className="bg-white p-4 rounded-xl border border-slate-200/80 shadow-2xs space-y-3 flex flex-col justify-between">
-                  <div>
-                    <div className="flex items-center justify-between pb-2 border-b border-slate-100">
-                      <span className="text-xs font-bold text-slate-800 uppercase tracking-wider">
-                        Effort & Consistency
-                      </span>
-                      <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full border ${
-                        analytics.total === 0 
-                          ? 'bg-slate-100 text-slate-600 border-slate-200' 
-                          : analytics.onTimeRate >= 80 
-                          ? 'bg-emerald-50 text-emerald-700 border-emerald-200' 
-                          : 'bg-amber-50 text-amber-700 border-amber-200'
-                      }`}>
-                        {analytics.total === 0 ? 'No Work' : analytics.onTimeRate >= 80 ? 'On Track' : 'Needs Follow-Up'}
-                      </span>
-                    </div>
-
-                    <div className="mt-3 space-y-3 text-xs">
-                      <div className="flex items-center justify-between p-2.5 rounded-lg bg-slate-50 border border-slate-100">
-                        <span className="text-slate-600">Story Points Delivered</span>
-                        <span className="font-bold text-purple-700">
-                          {analytics.storyPointsCompleted} / {analytics.storyPointsTotal} pts
-                        </span>
-                      </div>
-
-                      <div className="flex items-center justify-between p-2.5 rounded-lg bg-slate-50 border border-slate-100">
-                        <span className="text-slate-600">Recorded Work Time</span>
-                        <span className="font-bold text-emerald-700">
-                          {analytics.totalLoggedHours} hours ({analytics.totalLoggedMinutes}m)
-                        </span>
-                      </div>
-
-                      <div className="flex items-center justify-between p-2.5 rounded-lg bg-slate-50 border border-slate-100">
-                        <span className="text-slate-600">Overdue Deliverables</span>
-                        <span className={`font-bold ${analytics.pastDue > 0 ? 'text-rose-600' : 'text-slate-700'}`}>
-                          {analytics.pastDue} {analytics.pastDue === 1 ? 'task' : 'tasks'}
-                        </span>
-                      </div>
-                    </div>
-                  </div>
-
-                  <p className="text-[11px] text-slate-400 italic pt-2 border-t border-slate-100">
-                    Metrics reflect your individual contributions and recorded time entries.
-                  </p>
-                </div>
-              </div>
-
-              {/* Personal Task Delivery Record Table */}
-              <div className="bg-white rounded-2xl border border-slate-200/80 shadow-card overflow-hidden">
-                <div className="p-4 border-b border-slate-100 flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-slate-50/50">
-                  <div className="flex items-center gap-2">
-                    <Award className="w-4 h-4 text-purple-600" />
-                    <h3 className="text-xs font-bold text-slate-800 uppercase tracking-wider">
-                      Personal Task Delivery Record
-                    </h3>
-                    <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-purple-100 text-purple-700">
-                      {personalTasks.length} {personalTasks.length === 1 ? 'Deliverable' : 'Deliverables'}
-                    </span>
-                  </div>
-
-                  {/* Search and Status Filter for Personal Tasks */}
-                  <div className="flex flex-wrap items-center gap-2">
-                    <div className="relative">
-                      <Search className="w-3 h-3 text-slate-400 absolute left-2.5 top-1/2 -translate-y-1/2" />
-                      <input
-                        type="text"
-                        value={personalSearchQuery}
-                        onChange={(e) => setPersonalSearchQuery(e.target.value)}
-                        placeholder="Search your tasks..."
-                        className="pl-7 pr-2.5 py-1 text-xs bg-white border border-slate-200 rounded-lg focus:outline-purple-500 w-44"
-                      />
-                    </div>
-
-                    <select
-                      value={personalStatusFilter}
-                      onChange={(e) => setPersonalStatusFilter(e.target.value)}
-                      className="bg-white border border-slate-200 rounded-lg px-2.5 py-1 text-xs font-medium text-slate-700 focus:outline-purple-500 cursor-pointer"
-                    >
-                      <option value="ALL">All Statuses</option>
-                      <option value="COMPLETED">Completed</option>
-                      <option value="IN_PROGRESS">In Progress</option>
-                      <option value="IN_REVIEW">In Review</option>
-                      <option value="TODO">To Do</option>
-                      <option value="BLOCKED">Blocked</option>
-                    </select>
-                  </div>
-                </div>
-
-                {personalTasks.length === 0 ? (
-                  <div className="p-8 text-center text-slate-400">
-                    <CheckCircle2 className="w-8 h-8 text-slate-300 mx-auto mb-2" />
-                    <p className="text-xs font-semibold text-slate-700">No assigned tasks match criteria</p>
-                    <p className="text-[11px] text-slate-400 mt-0.5">
-                      Adjust your search or filter above to inspect your deliverables.
-                    </p>
-                  </div>
-                ) : (
-                  <div className="overflow-x-auto">
-                    <table className="w-full text-left text-xs">
-                      <thead className="bg-slate-50/80 text-[10px] font-bold text-slate-400 uppercase tracking-wider border-b border-slate-100">
-                        <tr>
-                          <th className="py-3 px-4">Work Item</th>
-                          <th className="py-3 px-3">Type</th>
-                          <th className="py-3 px-3">Priority</th>
-                          <th className="py-3 px-3">Status</th>
-                          <th className="py-3 px-3">Due Date</th>
-                          <th className="py-3 px-3 text-center">Points</th>
-                          <th className="py-3 px-3 text-center">Time Logged</th>
-                          <th className="py-3 px-4 text-right">Delivery</th>
-                        </tr>
-                      </thead>
-                      <tbody className="divide-y divide-slate-100 text-slate-700 font-medium">
-                        {personalTasks.map((task) => {
-                          const typeStyle = TYPE_CONFIG[task.type] || TYPE_CONFIG.TASK;
-                          const priorityStyle = PRIORITY_CONFIG[task.priority] || PRIORITY_CONFIG.MEDIUM;
-                          const statusStyle = STATUS_CONFIG[task.status] || STATUS_CONFIG.TODO;
-
-                          return (
-                            <tr key={task.id} className="hover:bg-slate-50/60 transition-colors">
-                              {/* Title & Project */}
-                              <td className="py-3 px-4 max-w-xs">
-                                <div className="font-bold text-slate-900 truncate" title={task.title}>
-                                  {task.title}
-                                </div>
-                                {task.project_name && (
-                                  <div className="text-[10px] text-slate-400 truncate mt-0.5">
-                                    {task.project_name}
-                                  </div>
-                                )}
-                              </td>
-
-                              {/* Type Badge */}
-                              <td className="py-3 px-3">
-                                <span className={`px-2 py-0.5 rounded text-[10px] font-bold border inline-block ${typeStyle.badgeClass}`}>
-                                  {typeStyle.label}
-                                </span>
-                              </td>
-
-                              {/* Priority Badge */}
-                              <td className="py-3 px-3">
-                                <span className={`px-2 py-0.5 rounded text-[10px] font-bold border inline-block ${priorityStyle.badgeClass}`}>
-                                  {priorityStyle.label}
-                                </span>
-                              </td>
-
-                              {/* Status Badge */}
-                              <td className="py-3 px-3">
-                                <span className={`px-2 py-0.5 rounded-md text-[10px] font-bold border inline-block ${statusStyle.bg} ${statusStyle.text} ${statusStyle.border}`}>
-                                  {statusStyle.label}
-                                </span>
-                              </td>
-
-                              {/* Due Date & On-Time Status */}
-                              <td className="py-3 px-3 whitespace-nowrap">
-                                {task.due_date ? (
-                                  <div className="space-y-0.5">
-                                    <div className="text-xs text-slate-800">
-                                      {new Date(task.due_date).toLocaleDateString()}
-                                    </div>
-                                    {task.is_past_due ? (
-                                      <span className="px-1.5 py-0.2 rounded text-[9px] font-bold bg-rose-50 text-rose-700 border border-rose-200">
-                                        Overdue
-                                      </span>
-                                    ) : task.status === 'COMPLETED' ? (
-                                      <span className="px-1.5 py-0.2 rounded text-[9px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-200">
-                                        On-Time
-                                      </span>
-                                    ) : (
-                                      <span className="text-[10px] text-slate-400">Scheduled</span>
-                                    )}
-                                  </div>
-                                ) : (
-                                  <span className="text-slate-300 text-xs">—</span>
-                                )}
-                              </td>
-
-                              {/* Story Points */}
-                              <td className="py-3 px-3 text-center font-bold text-slate-900">
-                                {task.story_points || '—'}
-                              </td>
-
-                              {/* Time Logged */}
-                              <td className="py-3 px-3 text-center">
-                                {task.logged_hours > 0 ? (
-                                  <span className="font-bold text-emerald-700">
-                                    {task.logged_hours}h
-                                  </span>
-                                ) : task.logged_minutes > 0 ? (
-                                  <span className="font-semibold text-emerald-700">
-                                    {task.logged_minutes}m
-                                  </span>
-                                ) : (
-                                  <span className="text-slate-300">0h</span>
-                                )}
-                              </td>
-
-                              {/* Delivery Progress Bar */}
-                              <td className="py-3 px-4 text-right">
-                                {task.status === 'COMPLETED' ? (
-                                  <span className="text-emerald-600 font-bold text-xs inline-flex items-center gap-1">
-                                    <CheckCircle2 className="w-3.5 h-3.5" />
-                                    <span>Done</span>
-                                  </span>
-                                ) : (
-                                  <div className="flex items-center justify-end gap-1.5">
-                                    <span className="text-[10px] text-slate-400 font-medium">In Flow</span>
-                                    <div className="w-12 h-1.5 bg-slate-100 rounded-full overflow-hidden">
-                                      <div 
-                                        className={`h-full ${task.status === 'IN_PROGRESS' ? 'bg-purple-600 w-1/2' : task.status === 'IN_REVIEW' ? 'bg-blue-600 w-3/4' : 'bg-slate-300 w-1/6'}`} 
-                                      />
-                                    </div>
-                                  </div>
-                                )}
-                              </td>
-                            </tr>
-                          );
-                        })}
-                      </tbody>
-                    </table>
-                  </div>
-                )}
-              </div>
-            </div>
-          ) : (
-            /* MANAGER TEAM PERFORMANCE TABLE (Unchanged for Manager view) */
+            {/* MANAGER TEAM PERFORMANCE TABLE */}
             <div className="space-y-3">
               {/* Performance Summary Metrics Strip */}
               <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
@@ -1716,9 +1349,8 @@ export default function ProjectTaskCharts({
                 )}
               </div>
             </div>
-          )}
-        </div>
-      )}
+          </div>
+        )}
       </div>
     </div>
   );

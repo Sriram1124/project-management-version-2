@@ -170,8 +170,20 @@ export default function ProjectSprintWorkspaceTab({
   }, [sprintWorkItems]);
 
   // Deliverable tasks/stories in the currently viewed sprint
+    // Deliverable tasks/stories in the currently viewed sprint
   const sprintTasks = useMemo(() => {
     return sprintWorkItems.filter((w) => !parentIdsInSprint.has(w.id));
+  }, [sprintWorkItems, parentIdsInSprint]);
+
+  // Eligible deliverables carrying story points (avoids double counting while preserving tasks with subtasks)
+  const eligibleSprintDeliverables = useMemo(() => {
+    return sprintWorkItems.filter((w) => {
+      if (w.type === 'EPIC') return false;
+      if (!parentIdsInSprint.has(w.id)) return true;
+      const children = sprintWorkItems.filter((c) => c.parent_id === w.id);
+      const childPoints = children.reduce((sum, c) => sum + (Number(c.story_points) || 0), 0);
+      return childPoints === 0 && Number(w.story_points || 0) > 0;
+    });
   }, [sprintWorkItems, parentIdsInSprint]);
 
   // Filter sprint tasks by quick filter
@@ -221,15 +233,16 @@ export default function ProjectSprintWorkspaceTab({
   const hoursLoggedFormatted = `${Math.floor(totalLoggedMinutes / 60)}h ${totalLoggedMinutes % 60}m`;
 
   // Story Points rollup
+    // Story Points rollup
   const totalStoryPoints = useMemo(() => {
-    return sprintTasks.reduce((acc, t) => acc + (t.story_points || 0), 0);
-  }, [sprintTasks]);
+    return eligibleSprintDeliverables.reduce((acc, t) => acc + (Number(t.story_points) || 0), 0);
+  }, [eligibleSprintDeliverables]);
 
   const completedStoryPoints = useMemo(() => {
-    return sprintTasks
+    return eligibleSprintDeliverables
       .filter((t) => t.status === 'COMPLETED')
-      .reduce((acc, t) => acc + (t.story_points || 0), 0);
-  }, [sprintTasks]);
+      .reduce((acc, t) => acc + (Number(t.story_points) || 0), 0);
+  }, [eligibleSprintDeliverables]);
 
   // Unique contributors
   const contributors = useMemo(() => {
@@ -751,7 +764,13 @@ export default function ProjectSprintWorkspaceTab({
                       (w.sprint_id === s.id || (w.parent_id && sStoryIds.has(w.parent_id)))
                   );
                   const sParentIds = new Set(sprintWorkItems.map((w) => w.parent_id).filter(Boolean));
-                  const sLeaves = sprintWorkItems.filter((w) => !sParentIds.has(w.id));
+                  const sLeaves = sprintWorkItems.filter((w) => {
+                    if (w.type === 'EPIC') return false;
+                    if (!sParentIds.has(w.id)) return true;
+                    const children = sprintWorkItems.filter((c) => c.parent_id === w.id);
+                    const childPoints = children.reduce((sum, c) => sum + (Number(c.story_points) || 0), 0);
+                    return childPoints === 0 && Number(w.story_points || 0) > 0;
+                  });
                   const sTotalItems = s.total_items ?? sLeaves.length;
                   const sCompletedItems = s.completed_items ?? sLeaves.filter((w) => w.status === 'COMPLETED').length;
                   const sTotalPoints = s.total_points ?? sLeaves.reduce((acc, w) => acc + (Number(w.story_points) || 0), 0);
