@@ -94,7 +94,17 @@ describe('Projects API (/api/projects)', () => {
     });
 
     it('POST /api/projects should create a new project', async () => {
-      const { authHeader } = setupAuthUser({ role: 'MANAGER', organization_id: 'org-test-1', permissions: ['PROJECT_CREATE'] });
+      const { user, authHeader } = setupAuthUser({ role: 'MANAGER', organization_id: 'org-test-1', permissions: ['PROJECT_CREATE'] });
+      mockPrisma.user.findMany.mockResolvedValueOnce([
+        {
+          id: user.id,
+          name: user.name,
+          email: user.email,
+          organization_id: 'org-test-1',
+          is_active: true,
+          roles: [{ role: { name: 'MANAGER' } }],
+        },
+      ]);
       mockPrisma.project.create.mockResolvedValueOnce(mockProject);
       mockPrisma.projectMember.create.mockResolvedValueOnce({ id: 'pm-owner' });
 
@@ -103,6 +113,7 @@ describe('Projects API (/api/projects)', () => {
         .set('Authorization', authHeader)
         .send({
           name: 'InternHub Dashboard',
+          description: 'A test project description',
           methodology: 'SCRUM',
         });
 

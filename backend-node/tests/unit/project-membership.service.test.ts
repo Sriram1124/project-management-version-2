@@ -4,7 +4,7 @@ import { Request, Response, NextFunction } from 'express';
 import jwt from 'jsonwebtoken';
 import { ProjectService } from '../../src/services/project.service';
 import { ProjectController } from '../../src/controllers/project.controller';
-import { authenticate, authenticateMiraiService, getServiceJwtSecret, requirePermission } from '../../src/middleware/auth.middleware';
+import { authenticate, authenticateMiraiService, getServiceJwtSecret, validateStartupConfig, requirePermission } from '../../src/middleware/auth.middleware';
 import { mockPrisma, resetPrismaMock } from '../mocks/prisma.mock';
 
 const ACCESS_SECRET = process.env.JWT_ACCESS_SECRET || 'access_secret';
@@ -697,6 +697,191 @@ describe('MIRAI Project Membership Verification & Integration Tests', () => {
       expect(next).not.toHaveBeenCalled();
       expect(res.status).toHaveBeenCalledWith(403);
       expect(res.json).toHaveBeenCalledWith({ error: 'Organization not found or inactive' });
+    });
+
+    it('negative test: should reject service token with missing exp claim', async () => {
+      const serviceSecret = 'dedicated-service-jwt-secret';
+      process.env.PM_SERVICE_JWT_SECRET = serviceSecret;
+
+      const noExpToken = jwt.sign(
+        {
+          iss: 'mirai-django',
+          aud: 'pm-membership-api',
+          scope: 'membership:read',
+          org: orgId,
+          iat: Math.floor(Date.now() / 1000),
+        },
+        serviceSecret
+      );
+
+      const { req, res, next } = createMockReqRes({
+        headers: { authorization: `Bearer ${noExpToken}` },
+      });
+
+      await authenticateMiraiService(req, res, next);
+
+      expect(next).not.toHaveBeenCalled();
+      expect(res.status).toHaveBeenCalledWith(401);
+      expect(res.json).toHaveBeenCalledWith({ error: 'Missing token expiration claim (exp)' });
+    });
+
+    it('negative test: should reject service token with missing iat claim', async () => {
+      const serviceSecret = 'dedicated-service-jwt-secret';
+      process.env.PM_SERVICE_JWT_SECRET = serviceSecret;
+
+      const noIatToken = jwt.sign(
+        {
+          iss: 'mirai-django',
+          aud: 'pm-membership-api',
+          scope: 'membership:read',
+          org: orgId,
+          exp: Math.floor(Date.now() / 1000) + 120,
+        },
+        serviceSecret,
+        { noTimestamp: true }
+      );
+
+      const { req, res, next } = createMockReqRes({
+        headers: { authorization: `Bearer ${noIatToken}` },
+      });
+
+      await authenticateMiraiService(req, res, next);
+
+      expect(next).not.toHaveBeenCalled();
+      expect(res.status).toHaveBeenCalledWith(401);
+      expect(res.json).toHaveBeenCalledWith(
+        expect.objectContaining({ error: expect.stringMatching(/Missing token issued-at claim|iat required when maxAge is specified/) })
+      );
+    });
+
+    it('negative test: should reject service token issued in the future (future iat)', async () => {
+      const serviceSecret = 'dedicated-service-jwt-secret';
+      process.env.PM_SERVICE_JWT_SECRET = serviceSecret;
+
+      const futureIat = Math.floor(Date.now() / 1000) + 600;
+      const futureToken = jwt.sign(
+        {
+          iss: 'mirai-django',
+          aud: 'pm-membership-api',
+          scope: 'membership:read',
+          org: orgId,
+          iat: futureIat,
+          exp: futureIat + 120,
+        },
+        serviceSecret
+      );
+
+      const { req, res, next } = createMockReqRes({
+        headers: { authorization: `Bearer ${futureToken}` },
+      });
+
+      await authenticateMiraiService(req, res, next);
+
+      expect(next).not.toHaveBeenCalled();
+      expect(res.status).toHaveBeenCalledWith(401);
+      expect(res.json).toHaveBeenCalledWith({ error: 'Token issued in the future (iat)' });
+    });
+
+    it('negative test: should reject service token signed with unapproved algorithm (e.g. HS512)', async () => {
+      const serviceSecret = 'dedicated-service-jwt-secret';
+      process.env.PM_SERVICE_JWT_SECRET = serviceSecret;
+
+      const hs512Token = jwt.sign(
+        {
+          iss: 'mirai-django',
+          aud: 'pm-membership-api',
+          scope: 'membership:read',
+          org: orgId,
+        },
+        serviceSecret,
+        { algorithm: 'HS512', expiresIn: '5m' }
+      );
+
+      const { req, res, next } = createMockReqRes({
+        headers: { authorization: `Bearer ${hs512Token}` },
+      });
+
+      await authenticateMiraiService(req, res, next);
+
+      expect(next).not.toHaveBeenCalled();
+      expect(res.status).toHaveBeenCalledWith(401);
+      expect(res.json).toHaveBeenCalledWith(
+        expect.objectContaining({ error: expect.stringContaining('invalid algorithm') })
+      );
+    });
+
+    it('negative test: should fail if PM_SERVICE_JWT_SECRET is missing from environment', async () => {
+      const prevSecret = process.env.PM_SERVICE_JWT_SECRET;
+      delete process.env.PM_SERVICE_JWT_SECRET;
+
+      try {
+        const dummyToken = jwt.sign({ iss: 'mirai-django' }, 'some-key');
+        const { req, res, next } = createMockReqRes({
+          headers: { authorization: `Bearer ${dummyToken}` },
+        });
+
+        await authenticateMiraiService(req, res, next);
+
+        expect(next).not.toHaveBeenCalled();
+        expect(res.status).toHaveBeenCalledWith(500);
+        expect(res.json).toHaveBeenCalledWith({
+          error: 'FATAL: PM_SERVICE_JWT_SECRET must be configured.',
+        });
+      } finally {
+        process.env.PM_SERVICE_JWT_SECRET = prevSecret;
+      }
+    });
+
+    it('negative test: validateStartupConfig should throw if PM_SERVICE_JWT_SECRET or JWT_ACCESS_SECRET missing in production', () => {
+      const prevEnv = process.env.NODE_ENV;
+      const prevAccess = process.env.JWT_ACCESS_SECRET;
+      const prevService = process.env.PM_SERVICE_JWT_SECRET;
+
+      try {
+        process.env.NODE_ENV = 'production';
+        process.env.JWT_ACCESS_SECRET = 'secret1';
+        delete process.env.PM_SERVICE_JWT_SECRET;
+
+        expect(() => validateStartupConfig()).toThrow('FATAL: PM_SERVICE_JWT_SECRET must be configured in production.');
+
+        delete process.env.JWT_ACCESS_SECRET;
+        process.env.PM_SERVICE_JWT_SECRET = 'secret2';
+
+        expect(() => validateStartupConfig()).toThrow('FATAL: JWT_ACCESS_SECRET must be configured in production.');
+      } finally {
+        process.env.NODE_ENV = prevEnv;
+        process.env.JWT_ACCESS_SECRET = prevAccess;
+        process.env.PM_SERVICE_JWT_SECRET = prevService;
+      }
+    });
+
+    it('negative test: standard user authenticate middleware should reject service tokens presented to user endpoints', async () => {
+      const serviceSecret = 'dedicated-service-jwt-secret';
+      process.env.PM_SERVICE_JWT_SECRET = serviceSecret;
+
+      const serviceToken = jwt.sign(
+        {
+          iss: 'mirai-django',
+          aud: 'pm-membership-api',
+          scope: 'membership:read',
+          role: 'SERVICE',
+          org: orgId,
+        },
+        ACCESS_SECRET,
+        { expiresIn: '5m' }
+      );
+
+      const { req, res, next } = createMockReqRes({
+        headers: { authorization: `Bearer ${serviceToken}` },
+      });
+
+      await authenticate(req, res, next);
+
+      expect(next).not.toHaveBeenCalled();
+      expect(res.status).toHaveBeenCalledWith(401);
+      expect(res.json).toHaveBeenCalledWith({
+        error: 'Service tokens cannot be used to authenticate user sessions',
+      });
     });
   });
 

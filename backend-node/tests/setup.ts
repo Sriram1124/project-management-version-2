@@ -1,6 +1,7 @@
 process.env.NODE_ENV = 'test';
 process.env.JWT_ACCESS_SECRET = 'test-jwt-access-secret';
 process.env.JWT_REFRESH_SECRET = 'test-jwt-refresh-secret';
+process.env.PM_SERVICE_JWT_SECRET = 'test-pm-service-jwt-secret';
 process.env.ENABLE_MONGODB_PROJECT_FILES = 'false';
 process.env.DUAL_WRITE_PROJECT_FILES = 'false';
 

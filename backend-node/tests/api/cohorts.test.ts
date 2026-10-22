@@ -4,6 +4,10 @@ import { mockPrisma } from '../mocks/prisma.mock';
 import { setupAuthUser } from '../helpers/auth.helper';
 
 describe('Cohorts API (/api/cohorts)', () => {
+  beforeEach(async () => {
+    const { cacheService } = require('../../src/services/cache.service');
+    await cacheService.invalidatePattern('');
+  });
   it('should require authentication', async () => {
     const res = await request(app).get('/api/cohorts');
     expect(res.status).toBe(401);

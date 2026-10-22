@@ -3,12 +3,12 @@ import jwt from 'jsonwebtoken';
 import { prisma } from '../lib/prisma';
 
 export const getServiceJwtSecret = (): string => {
-  const secret = process.env.PM_SERVICE_JWT_SECRET || process.env.MIRAI_SERVICE_SECRET;
+  const secret = process.env.PM_SERVICE_JWT_SECRET;
   if (!secret) {
     if (process.env.NODE_ENV === 'production') {
       throw new Error('FATAL: PM_SERVICE_JWT_SECRET is required in production.');
     }
-    return 'dev-pm-service-jwt-secret';
+    throw new Error('FATAL: PM_SERVICE_JWT_SECRET must be configured.');
   }
   return secret;
 };
@@ -19,19 +19,17 @@ export const getAccessSecret = (): string => {
     if (process.env.NODE_ENV === 'production') {
       throw new Error('FATAL: JWT_ACCESS_SECRET is required in production.');
     }
-    return 'access_secret';
+    throw new Error('FATAL: JWT_ACCESS_SECRET must be configured.');
   }
   return secret;
 };
-
-const ACCESS_SECRET = getAccessSecret();
 
 export function validateStartupConfig(): void {
   if (process.env.NODE_ENV === 'production') {
     if (!process.env.JWT_ACCESS_SECRET) {
       throw new Error('FATAL: JWT_ACCESS_SECRET must be configured in production.');
     }
-    if (!process.env.PM_SERVICE_JWT_SECRET && !process.env.MIRAI_SERVICE_SECRET) {
+    if (!process.env.PM_SERVICE_JWT_SECRET) {
       throw new Error('FATAL: PM_SERVICE_JWT_SECRET must be configured in production.');
     }
   }
@@ -138,97 +136,34 @@ export const authenticate = async (req: Request, res: Response, next: NextFuncti
       return next();
     }
 
+    let accessSecret: string;
+    try {
+      accessSecret = getAccessSecret();
+    } catch (err: any) {
+      (req as any)._authDuration = performance.now() - authStart;
+      res.status(500).json({ error: err.message });
+      return;
+    }
+
     let payload: any;
     try {
-      payload = jwt.verify(token, ACCESS_SECRET) as any;
+      payload = jwt.verify(token, accessSecret) as any;
     } catch (jwtError) {
       (req as any)._authDuration = performance.now() - authStart;
       res.status(401).json({ error: 'Invalid access token' });
       return;
     }
 
-    // ── Machine-to-Machine (M2M) Service JWT Verification ────────────────────────
-    if (payload?.role === 'SERVICE' || payload?.type === 'service' || payload?.isService === true || payload?.iss === 'mirai-django' || payload?.aud === 'pm-membership-api') {
-      if (payload.iss && payload.iss !== 'mirai-django') {
-        (req as any)._authDuration = performance.now() - authStart;
-        res.status(401).json({ error: 'Invalid token issuer: expected mirai-django' });
-        return;
-      }
-      if (payload.aud && payload.aud !== 'pm-membership-api') {
-        (req as any)._authDuration = performance.now() - authStart;
-        res.status(401).json({ error: 'Invalid token audience: expected pm-membership-api' });
-        return;
-      }
-      if (payload.scope && typeof payload.scope === 'string') {
-        const scopes = payload.scope.split(' ');
-        if (!scopes.includes('membership:read') && !scopes.includes('PROJECT_READ')) {
-          (req as any)._authDuration = performance.now() - authStart;
-          res.status(403).json({ error: 'Insufficient token scope: requires membership:read' });
-          return;
-        }
-      }
-
-      let orgId = payload.org || payload.organizationId || payload.organization_id || null;
-      if (!orgId && process.env.NODE_ENV !== 'production') {
-        orgId = (req.headers['x-organization-id'] as string) || null;
-        if (!orgId) {
-          const firstOrg = await prisma.organization.findFirst({ where: { is_active: true }, select: { id: true } });
-          orgId = firstOrg?.id || null;
-        }
-      }
-
-      if (!orgId) {
-        (req as any)._authDuration = performance.now() - authStart;
-        res.status(403).json({ error: 'Missing organization claim in service token' });
-        return;
-      }
-      if (orgId) {
-        const validOrg = await prisma.organization.findFirst({
-          where: { id: orgId, is_active: true },
-          select: { id: true },
-        });
-        if (!validOrg) {
-          (req as any)._authDuration = performance.now() - authStart;
-          res.status(403).json({ error: 'Organization not found or inactive' });
-          return;
-        }
-      } else {
-        const firstOrg = await prisma.organization.findFirst({ where: { is_active: true }, select: { id: true } });
-        orgId = firstOrg?.id || null;
-      }
-
-      if (!orgId) {
-        (req as any)._authDuration = performance.now() - authStart;
-        res.status(403).json({ error: 'No active organization found for service context' });
-        return;
-      }
-      const serviceUser = {
-        id: payload.userId || 'service:mirai',
-        name: payload.name || 'MIRAI Service Account',
-        email: payload.email || 'service@mirai.internal',
-        role: 'SERVICE',
-        is_active: true,
-        organization_id: orgId,
-        roles: [
-          {
-            role: {
-              name: 'SERVICE',
-              permissions: [
-                { permission: { name: 'PROJECT_READ' } },
-                { permission: { name: 'USER_READ' } },
-              ],
-            },
-          },
-        ],
-        user_permissions: [
-          { permission: { id: 'p_project_read', name: 'PROJECT_READ' } },
-          { permission: { id: 'p_user_read', name: 'USER_READ' } },
-        ],
-      };
-      (req as any).user = { userId: serviceUser.id, role: 'SERVICE', organization_id: orgId, isService: true };
-      (req as any).fullUser = serviceUser;
+    // Service tokens signed with PM_SERVICE_JWT_SECRET or presenting service claims cannot be used for user sessions
+    if (
+      payload?.iss === 'mirai-django' ||
+      payload?.aud === 'pm-membership-api' ||
+      payload?.role === 'SERVICE' ||
+      payload?.isService === true
+    ) {
       (req as any)._authDuration = performance.now() - authStart;
-      return next();
+      res.status(401).json({ error: 'Service tokens cannot be used to authenticate user sessions' });
+      return;
     }
 
     const now = Date.now();
@@ -421,34 +356,16 @@ export const authenticateMiraiService = async (req: Request, res: Response, next
 
     const token = authHeader.split(' ')[1];
 
-    // 1. Static Service Token Check
+    // 1. Static Service Token Check - Rejected in production (401) and disallowed for MIRAI service endpoints
     const staticToken = process.env.PROJECT_MANAGEMENT_SERVICE_TOKEN || process.env.INTERNAL_SERVICE_TOKEN;
     if (staticToken && token === staticToken) {
+      (req as any)._authDuration = performance.now() - authStart;
       if (process.env.NODE_ENV === 'production') {
-        (req as any)._authDuration = performance.now() - authStart;
         res.status(401).json({ error: 'Static service tokens are disabled in production' });
         return;
       }
-      const firstOrg = await prisma.organization.findFirst({ where: { is_active: true }, select: { id: true } });
-      if (!firstOrg) {
-        (req as any)._authDuration = performance.now() - authStart;
-        res.status(403).json({ error: 'No active organization found for service context' });
-        return;
-      }
-      const serviceUser = {
-        id: 'service:mirai',
-        name: 'MIRAI Service Client',
-        email: 'service@mirai.internal',
-        role: 'SERVICE',
-        is_active: true,
-        organization_id: firstOrg.id,
-        roles: [{ role: { name: 'SERVICE', permissions: [{ permission: { name: 'PROJECT_READ' } }] } }],
-        user_permissions: [{ permission: { id: 'p_project_read', name: 'PROJECT_READ' } }],
-      };
-      (req as any).user = { userId: serviceUser.id, role: 'SERVICE', organization_id: firstOrg.id, isService: true };
-      (req as any).fullUser = serviceUser;
-      (req as any)._authDuration = performance.now() - authStart;
-      return next();
+      res.status(401).json({ error: 'Static service tokens are disabled for MIRAI endpoints' });
+      return;
     }
 
     // 2. Machine-to-Machine JWT Verification with dedicated PM_SERVICE_JWT_SECRET
@@ -467,6 +384,7 @@ export const authenticateMiraiService = async (req: Request, res: Response, next
         issuer: 'mirai-django',
         audience: 'pm-membership-api',
         algorithms: ['HS256'],
+        maxAge: '5m',
       });
     } catch (jwtError: any) {
       (req as any)._authDuration = performance.now() - authStart;
@@ -474,14 +392,33 @@ export const authenticateMiraiService = async (req: Request, res: Response, next
       return;
     }
 
-    // 3. Strict Expiration & Lifetime Check (exp mandatory, lifetime <= 5m / 300s)
-    if (!payload.exp) {
+    // 3. Strict Expiration & Lifetime Check (iat and exp mandatory, lifetime <= 5m / 300s)
+    if (typeof payload.exp !== 'number') {
       (req as any)._authDuration = performance.now() - authStart;
       res.status(401).json({ error: 'Missing token expiration claim (exp)' });
       return;
     }
 
-    if (payload.iat && (payload.exp - payload.iat > 300)) {
+    if (typeof payload.iat !== 'number') {
+      (req as any)._authDuration = performance.now() - authStart;
+      res.status(401).json({ error: 'Missing token issued-at claim (iat)' });
+      return;
+    }
+
+    const nowSec = Math.floor(Date.now() / 1000);
+    if (payload.iat > nowSec + 5) {
+      (req as any)._authDuration = performance.now() - authStart;
+      res.status(401).json({ error: 'Token issued in the future (iat)' });
+      return;
+    }
+
+    if (payload.exp <= payload.iat) {
+      (req as any)._authDuration = performance.now() - authStart;
+      res.status(401).json({ error: 'Token expiration must be after issued at time' });
+      return;
+    }
+
+    if (payload.exp - payload.iat > 300) {
       (req as any)._authDuration = performance.now() - authStart;
       res.status(401).json({ error: 'Token lifetime exceeds maximum allowed 5 minutes (300s)' });
       return;

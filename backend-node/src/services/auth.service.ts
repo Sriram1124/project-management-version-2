@@ -2,7 +2,13 @@ import * as argon2 from 'argon2';
 import jwt from 'jsonwebtoken';
 import { prisma } from '../lib/prisma';
 
-const ACCESS_SECRET = process.env.JWT_ACCESS_SECRET || 'access_secret';
+const getAccessSecret = (): string => {
+  const secret = process.env.JWT_ACCESS_SECRET;
+  if (!secret) {
+    throw new Error('FATAL: JWT_ACCESS_SECRET must be configured.');
+  }
+  return secret;
+};
 const REFRESH_SECRET = process.env.JWT_REFRESH_SECRET || 'refresh_secret';
 const ACCESS_EXPIRY = process.env.ACCESS_TOKEN_EXPIRY || '7d';
 
@@ -92,7 +98,7 @@ export class AuthService {
 
     const accessToken = jwt.sign(
       { userId: user.id, role: primaryRole?.name },
-      ACCESS_SECRET,
+      getAccessSecret(),
       { expiresIn: ACCESS_EXPIRY as any }
     );
 
@@ -190,7 +196,7 @@ export class AuthService {
 
       const newAccessToken = jwt.sign(
         { userId: user.id, role: primaryRole?.name },
-        ACCESS_SECRET,
+        getAccessSecret(),
         { expiresIn: ACCESS_EXPIRY as any }
       );
 

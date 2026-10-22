@@ -163,10 +163,11 @@ Answer by Sriram:
 How is the client resolver hardened against configuration errors and malformed payloads?
 
 Answer:
-- No Default Secrets: No fallback secrets (such as `"your-shared-service-token"`) or default `localhost` URLs are permitted. The Django resolver client must validate that `PM_SERVICE_URL`, `PM_SERVICE_JWT_SECRET`, and `PM_SERVICE_ORGANIZATION_ID` are configured at application startup, raising `ImproperlyConfigured` if missing.
+- No Default Secrets: No fallback secrets (such as `"your-shared-service-token"`) or default `localhost` URLs are permitted. The Django resolver client validates configuration at boot via Django system check (`checks.register`) or `AppConfig.ready()`, failing fast at startup if `PM_SERVICE_URL`, `PM_SERVICE_JWT_SECRET`, or `PM_SERVICE_ORGANIZATION_ID` is missing, preventing runtime HTTP 500s.
+- Dependency Agreement: `PyJWT` and `requests` (or `httpx`) are agreed backend dependencies for Django.
 - Identity Verification: The client explicitly asserts that `response.mirai_user_id == requested_user_id`, dropping mismatched payloads.
 - Payload Type Validation: The client asserts that `project_ids` is an explicit list of valid UUIDs. Non-list payloads or malformed strings are dropped.
-- Strict Timeout Cap: Total request duration is capped at 2.0 seconds with no cascading retries.
+- Strict Total Timeout Cap: Total request duration is strictly capped at 2.0 seconds (`timeout=2.0` across entire request lifecycle) with no cascading retries.
 
 ---
 
@@ -269,6 +270,8 @@ For Chaitanya's implementation in the dedicated MIRAI adapter module (`mirai_ada
 """
 Reference implementation for Chaitanya's PM Membership Resolver.
 Complies with Krish Round 3 Audience-Restricted Short-Lived JWT requirements.
+Backend dependencies required: PyJWT, requests (or httpx).
+Startup validation is hooked via Django system checks (or AppConfig.ready()).
 """
 
 import time
@@ -277,9 +280,28 @@ from uuid import UUID
 import jwt
 import requests
 from django.conf import settings
-from django.core.exceptions import ImproperlyConfigured
+from django.core.checks import Error, register
 
 logger = logging.getLogger("mirai.adapters.pm")
+
+@register()
+def check_pm_service_configuration(app_configs, **kwargs):
+    """
+    Django system check ensuring fail-fast startup validation before handling user traffic.
+    Avoids runtime HTTP 500 errors on unconfigured deployments.
+    """
+    errors = []
+    required_settings = ["PM_SERVICE_URL", "PM_SERVICE_JWT_SECRET", "PM_SERVICE_ORGANIZATION_ID"]
+    for s in required_settings:
+        if not getattr(settings, s, None):
+            errors.append(
+                Error(
+                    f"Required setting {s} is not configured.",
+                    hint=f"Define {s} in settings.py or environment variables.",
+                    id=f"mirai_adapters.E001_{s}",
+                )
+            )
+    return errors
 
 class PMProjectMembershipResolver:
     """
@@ -287,18 +309,11 @@ class PMProjectMembershipResolver:
     """
 
     def __init__(self):
-        self.base_url = getattr(settings, "PM_SERVICE_URL", None)
-        self.secret = getattr(settings, "PM_SERVICE_JWT_SECRET", None)
-        self.org_id = getattr(settings, "PM_SERVICE_ORGANIZATION_ID", None)
-        self.timeout = getattr(settings, "PM_SERVICE_TIMEOUT_SECONDS", 2.0)
-
-        # Enforce startup validation with no default secrets
-        if not self.base_url or not self.secret or not self.org_id:
-            raise ImproperlyConfigured(
-                "PM Service integration requires PM_SERVICE_URL, PM_SERVICE_JWT_SECRET, "
-                "and PM_SERVICE_ORGANIZATION_ID to be explicitly configured."
-            )
-        self.base_url = self.base_url.rstrip("/")
+        self.base_url = getattr(settings, "PM_SERVICE_URL", "").rstrip("/")
+        self.secret = getattr(settings, "PM_SERVICE_JWT_SECRET", "")
+        self.org_id = getattr(settings, "PM_SERVICE_ORGANIZATION_ID", "")
+        # Total request timeout cap (connect + read combined)
+        self.timeout = float(getattr(settings, "PM_SERVICE_TIMEOUT_SECONDS", 2.0))
 
     def _generate_service_jwt(self) -> str:
         now = int(time.time())
@@ -375,10 +390,11 @@ class PMProjectMembershipResolver:
 | PostgreSQL Schema | `public.project_members`, `projects.id` UUID TEXT | Fully Verified (Authoritative queries without relation fallbacks) | READY |
 | Node.js Service Routes | `GET /internal/mirai/v1/...` in `backend-node` on port 4000 | Implemented & Verified with `authenticateMiraiService` | READY |
 | M2M JWT Authentication | Dedicated `PM_SERVICE_JWT_SECRET`, `iss: mirai-django`, `aud: pm-membership-api`, `scope: membership:read`, `org`, `exp <= 5m` | Implemented & 100% Tested | READY |
-| Negative Security Checks | Missing/wrong iss, aud, scope, exp, user tokens as service tokens, lifetime > 5m, static token in prod | Tested & Verified (All reject with 401/403) | READY |
+| Negative Security Checks | Missing/wrong iss, aud, scope, exp, iat, user tokens as service tokens, lifetime > 5m, static token in prod, future iat, unapproved algorithms | Tested & Verified (All reject with 401/403) | READY |
 | Inactive User Handling | `is_active: false` PM user returns `mapping_status: "unmapped"` and empty memberships | Tested & Verified | READY |
 | Fail-Closed Revocation | Removing user from `project_members` immediately returns `is_member: false` | Tested & Verified | READY |
 | TypeScript Compiler | `npx tsc --noEmit` in `backend-node` | 0 errors (Exit code 0) | PASS |
-| Membership & Route Tests | `backend-node/tests/unit/project-membership.service.test.ts` | 44 / 44 tests passed | PASS |
+| Membership & Route Tests | `backend-node/tests/unit/project-membership.service.test.ts` | 51 / 51 tests passed | PASS |
 | Integration Adapter Tests | `backend-node/tests/unit/mirai-project-management.adapter.test.ts` | 32 / 32 tests passed | PASS |
+| Full Backend Test Suite | All test suites across `backend-node` | 42 / 42 suites passed (734 / 734 tests) | PASS |
 | Live DB Manual Verification | `npx tsx scripts/manual-test-mirai.ts` against real database records | 5 / 5 checks passed with timing breakdown | PASS |
