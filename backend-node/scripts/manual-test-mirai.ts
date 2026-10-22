@@ -41,7 +41,8 @@ async function main() {
   console.log(`- Project ID:      ${project?.id || 'N/A'} (${project?.name || 'N/A'})`);
   console.log(`- Non-Member User: ${nonMemberUser?.id || 'N/A'} (${nonMemberUser?.email || 'N/A'})\n`);
 
-  const secret = process.env.PM_SERVICE_JWT_SECRET || 'test-service-jwt-secret';
+  process.env.PM_SERVICE_JWT_SECRET = process.env.PM_SERVICE_JWT_SECRET || 'test-service-jwt-secret';
+  const secret = process.env.PM_SERVICE_JWT_SECRET;
 
   // 2. Generate valid M2M Service JWT
   const validToken = jwt.sign(
