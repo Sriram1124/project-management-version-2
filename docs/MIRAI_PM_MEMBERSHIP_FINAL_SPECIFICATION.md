@@ -149,6 +149,8 @@ Where are the `/internal/mirai/v1` routes and token middleware located?
 
 Answer by Sriram:
 - The `/internal/mirai/v1` routes and M2M authentication middleware are implemented in the **Node.js Project Management repository (`intern_performance_dashboard`)**, not in `krisshhjain/Mirai-Dashboard`.
+- Live Commit: [`https://github.com/Sriram1124/project-management-version-2/commit/49fb2a8`](https://github.com/Sriram1124/project-management-version-2/commit/49fb2a8)
+- Branch: [`feature/mirai-project-membership`](https://github.com/Sriram1124/project-management-version-2/tree/feature/mirai-project-membership)
 - Files in PM Repository:
   - Routes: `backend-node/src/routes/internal-mirai.routes.ts`
   - Auth Middleware: `backend-node/src/middleware/auth.middleware.ts`
