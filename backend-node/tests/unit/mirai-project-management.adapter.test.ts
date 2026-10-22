@@ -201,6 +201,38 @@ describe('MIRAI Project Management Integration Adapter', () => {
       expect(mappedCohort.canonical_cohort_id).toBe('canonical-c1-mirai');
     });
 
+    describe('resolveSourceUserId', () => {
+      it('should preserve the canonical UUID TEXT invariant by default', () => {
+        const mapper = new MiraiIdentityMapper('org-123');
+        const resolved = mapper.resolveSourceUserId('8a3e7b12-9c44-4821-b3fa-3d84a7e94e21');
+        expect(resolved).toBe('8a3e7b12-9c44-4821-b3fa-3d84a7e94e21');
+      });
+
+      it('should resolve explicit reverse overrides registered via registerUserOverride', () => {
+        const mapper = new MiraiIdentityMapper('org-123');
+        mapper.registerUserOverride('source-pm-id-999', 'canonical-mirai-id-999');
+        const resolved = mapper.resolveSourceUserId('canonical-mirai-id-999');
+        expect(resolved).toBe('source-pm-id-999');
+      });
+
+      it('should throw UserMappingError on blank or invalid MIRAI user ID', () => {
+        const mapper = new MiraiIdentityMapper('org-123');
+        expect(() => mapper.resolveSourceUserId('')).toThrow(UserMappingError);
+        expect(() => mapper.resolveSourceUserId('   ')).toThrow(UserMappingError);
+      });
+
+      it('should enforce organization boundary if user organization does not match expected boundary', () => {
+        const mapper = new MiraiIdentityMapper('org-123');
+        expect(() => mapper.resolveSourceUserId('user-uuid-1', 'org-alien', 'org-123')).toThrow(UserMappingError);
+      });
+
+      it('should enforce organization boundary on registered user override', () => {
+        const mapper = new MiraiIdentityMapper('org-123');
+        mapper.registerUserOverride('pm-user-1', 'mirai-user-1', 'org-abc');
+        expect(() => mapper.resolveSourceUserId('mirai-user-1', undefined, 'org-xyz')).toThrow(UserMappingError);
+      });
+    });
+
     it('should map a batch of users with boundary checking', () => {
       const mapper = new MiraiIdentityMapper('org-shared');
       const users = [
@@ -532,6 +564,180 @@ describe('MIRAI Project Management Integration Adapter', () => {
         expect(assignments).toHaveLength(1);
         expect(assignments[0].task_id).toBe('task-1');
         expect(assignments[0].user_id).toBe('usr-b');
+      });
+    });
+
+    describe('isProjectMember', () => {
+      it('should return true when user is a verified member in project_members', async () => {
+        mockFetch.mockResolvedValueOnce({
+          ok: true,
+          headers: new Headers({ 'content-type': 'application/json' }),
+          json: async () => ({
+            status: 'success',
+            data: {
+              is_member: true,
+              project_id: 'proj-uuid-1',
+              user_id: 'user-uuid-1',
+              project_role: 'DEVELOPER',
+              joined_at: '2026-10-22T00:00:00.000Z',
+            },
+          }),
+        });
+
+        const isMember = await adapter.isProjectMember('user-uuid-1', 'proj-uuid-1');
+        expect(isMember).toBe(true);
+        expect(mockFetch).toHaveBeenCalledWith(
+          'http://test-server.local/api/projects/proj-uuid-1/members/user-uuid-1/check',
+          expect.anything()
+        );
+      });
+
+      it('should return false when upstream confirms user is not a member', async () => {
+        mockFetch.mockResolvedValueOnce({
+          ok: true,
+          headers: new Headers({ 'content-type': 'application/json' }),
+          json: async () => ({
+            status: 'success',
+            data: {
+              is_member: false,
+              project_id: 'proj-uuid-1',
+              user_id: 'user-uuid-2',
+            },
+          }),
+        });
+
+        const isMember = await adapter.isProjectMember('user-uuid-2', 'proj-uuid-1');
+        expect(isMember).toBe(false);
+      });
+
+      it('should rethrow UpstreamNotFoundError when upstream returns 404 Not Found to distinguish unknown entity from non-membership', async () => {
+        mockFetch.mockResolvedValueOnce({
+          ok: false,
+          status: 404,
+          headers: new Headers({ 'content-type': 'application/json' }),
+          json: async () => ({ error: 'Project not found' }),
+        });
+
+        await expect(adapter.isProjectMember('unknown-user', 'proj-uuid-1')).rejects.toThrow(UpstreamNotFoundError);
+      });
+
+      it('should throw UserMappingError or Error on empty or invalid user or project IDs', async () => {
+        await expect(adapter.isProjectMember('', 'proj-1')).rejects.toThrow(UserMappingError);
+        await expect(adapter.isProjectMember('user-1', '')).rejects.toThrow('Invalid project ID');
+        await expect(adapter.isProjectMember('   ', 'proj-1')).rejects.toThrow(UserMappingError);
+      });
+
+      it('should throw UserMappingError when identity resolution violates organization boundary', async () => {
+        const strictMapper = new MiraiIdentityMapper('org-primary');
+        const boundAdapter = new MiraiProjectManagementAdapter({
+          client,
+          identityMapper: strictMapper,
+        });
+
+        strictMapper.registerUserOverride('pm-user-123', 'mirai-user-123', 'org-other');
+        await expect(boundAdapter.isProjectMember('mirai-user-123', 'proj-1')).rejects.toThrow(UserMappingError);
+      });
+
+      it('should rethrow UpstreamAuthError on 401 or 403 status to prevent false negative/positive', async () => {
+        mockFetch.mockResolvedValueOnce({
+          ok: false,
+          status: 401,
+          headers: new Headers({ 'content-type': 'application/json' }),
+          json: async () => ({ error: 'Unauthorized service token' }),
+        });
+
+        await expect(adapter.isProjectMember('user-1', 'proj-1')).rejects.toThrow(UpstreamAuthError);
+      });
+
+      it('should rethrow UpstreamNetworkError on 500 server error', async () => {
+        mockFetch.mockResolvedValueOnce({
+          ok: false,
+          status: 500,
+          headers: new Headers({ 'content-type': 'application/json' }),
+          json: async () => ({ error: 'Database connection failed' }),
+        });
+
+        await expect(adapter.isProjectMember('user-1', 'proj-1')).rejects.toThrow(UpstreamNetworkError);
+      });
+    });
+
+    describe('getProjectIdsForUser', () => {
+      it('should return all project IDs for a verified project member', async () => {
+        mockFetch.mockResolvedValueOnce({
+          ok: true,
+          headers: new Headers({ 'content-type': 'application/json' }),
+          json: async () => ({
+            status: 'success',
+            data: {
+              user_id: 'user-uuid-1',
+              project_ids: ['proj-1', 'proj-2', 'proj-3'],
+              total: 3,
+            },
+          }),
+        });
+
+        const projectIds = await adapter.getProjectIdsForUser('user-uuid-1');
+        expect(projectIds).toEqual(['proj-1', 'proj-2', 'proj-3']);
+        expect(mockFetch).toHaveBeenCalledWith(
+          'http://test-server.local/api/users/user-uuid-1/project-memberships',
+          expect.anything()
+        );
+      });
+
+      it('should return an empty array when the user belongs to 0 projects', async () => {
+        mockFetch.mockResolvedValueOnce({
+          ok: true,
+          headers: new Headers({ 'content-type': 'application/json' }),
+          json: async () => ({
+            status: 'success',
+            data: {
+              user_id: 'user-uuid-empty',
+              project_ids: [],
+              total: 0,
+            },
+          }),
+        });
+
+        const projectIds = await adapter.getProjectIdsForUser('user-uuid-empty');
+        expect(projectIds).toEqual([]);
+      });
+
+      it('should rethrow UpstreamNotFoundError when upstream returns 404 Not Found to distinguish unknown user from zero memberships', async () => {
+        mockFetch.mockResolvedValueOnce({
+          ok: false,
+          status: 404,
+          headers: new Headers({ 'content-type': 'application/json' }),
+          json: async () => ({ error: 'User not found' }),
+        });
+
+        await expect(adapter.getProjectIdsForUser('unregistered-user')).rejects.toThrow(UpstreamNotFoundError);
+      });
+
+      it('should throw UserMappingError on invalid or blank user ID', async () => {
+        await expect(adapter.getProjectIdsForUser('')).rejects.toThrow(UserMappingError);
+        await expect(adapter.getProjectIdsForUser('   ')).rejects.toThrow(UserMappingError);
+      });
+
+      it('should rethrow UpstreamAuthError on 401/403', async () => {
+        mockFetch.mockResolvedValueOnce({
+          ok: false,
+          status: 403,
+          headers: new Headers({ 'content-type': 'application/json' }),
+          json: async () => ({ error: 'Forbidden' }),
+        });
+
+        await expect(adapter.getProjectIdsForUser('user-1')).rejects.toThrow(UpstreamAuthError);
+      });
+
+      it('should rethrow UpstreamNetworkError on 500 error', async () => {
+        mockFetch.mockResolvedValueOnce({
+          ok: false,
+          status: 500,
+          headers: new Headers({ 'content-type': 'application/json' }),
+          json: async () => ({ error: 'Internal error' }),
+        });
+
+        await expect(adapter.getProjectIdsForUser('user-1')).rejects.toThrow(UpstreamNetworkError);
       });
     });
 

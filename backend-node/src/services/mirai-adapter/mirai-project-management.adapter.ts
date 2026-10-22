@@ -16,14 +16,18 @@ import { MiraiIdentityMapper } from './mirai-identity-mapper';
 import {
   AssignmentFilters,
   NormalizedAssignment,
+  NormalizedMembershipStatus,
   NormalizedMilestone,
   NormalizedParticipant,
   NormalizedProject,
   NormalizedProjectProgress,
   NormalizedTask,
+  NormalizedUserMemberships,
   ParticipantFilters,
   ProjectFilters,
   TaskFilters,
+  UpstreamNotFoundError,
+  UserMappingError,
   WorkItemHierarchyType,
 } from './mirai-adapter.types';
 
@@ -396,6 +400,75 @@ export class MiraiProjectManagementAdapter {
     }
 
     return filtered;
+  }
+
+  /**
+   * Check whether a MIRAI user is an actual member of a specific project.
+   * Authoritative source: public.project_members.
+   * Fails closed on unknown user, invalid project, or network/auth errors.
+   * Distinguishes confirmed non-membership (false) from identity mapping or upstream errors (thrown).
+   */
+  async isProjectMember(miraiUserId: string, projectId: string): Promise<boolean> {
+    if (!projectId || typeof projectId !== 'string' || !projectId.trim()) {
+      throw new Error('Invalid project ID: expected non-empty string');
+    }
+
+    const sourceUserId = this.identityMapper.resolveSourceUserId(miraiUserId);
+
+    try {
+      const response = await this.client.get<{
+        status?: string;
+        data?: NormalizedMembershipStatus;
+        is_member?: boolean;
+      }>(`/projects/${encodeURIComponent(projectId.trim())}/members/${encodeURIComponent(sourceUserId.trim())}/check`);
+
+      if (response?.data && typeof response.data.is_member === 'boolean') {
+        return response.data.is_member;
+      }
+      if (typeof response?.is_member === 'boolean') {
+        return response.is_member;
+      }
+      return false;
+    } catch (err) {
+      if (err instanceof UpstreamNotFoundError) {
+        // Project or user does not exist upstream -> rethrow to distinguish unknown identity from confirmed non-membership
+        throw err;
+      }
+      // Any other upstream error (auth, 500, timeout) is rethrown to distinguish failure from non-membership
+      throw err;
+    }
+  }
+
+  /**
+   * Return all project IDs that a MIRAI user is an actual member of.
+   * Authoritative source: public.project_members.
+   * Fails closed on unknown user or error by rethrowing rather than silently masking with an empty array.
+   */
+  async getProjectIdsForUser(miraiUserId: string): Promise<string[]> {
+    const sourceUserId = this.identityMapper.resolveSourceUserId(miraiUserId);
+
+    try {
+      const response = await this.client.get<{
+        status?: string;
+        data?: NormalizedUserMemberships;
+        project_ids?: string[];
+      }>(`/users/${encodeURIComponent(sourceUserId.trim())}/project-memberships`);
+
+      if (response?.data?.project_ids && Array.isArray(response.data.project_ids)) {
+        return response.data.project_ids;
+      }
+      if (response?.project_ids && Array.isArray(response.project_ids)) {
+        return response.project_ids;
+      }
+      return [];
+    } catch (err) {
+      if (err instanceof UpstreamNotFoundError) {
+        // User not found upstream -> rethrow to distinguish unknown user from confirmed zero-membership
+        throw err;
+      }
+      // Rethrow upstream failures (auth, network, timeouts)
+      throw err;
+    }
   }
 
   /**

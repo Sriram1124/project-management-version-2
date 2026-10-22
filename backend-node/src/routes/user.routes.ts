@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import multer from 'multer';
 import { UserController } from '../controllers/user.controller';
+import { ProjectController } from '../controllers/project.controller';
 import { TimesheetController } from '../controllers/timesheet.controller';
 import { authenticate, requireRole, requirePermission, requireRoleOrPermission } from '../middleware/auth.middleware';
 
@@ -18,7 +19,7 @@ const upload = multer({
 router.use(authenticate);
 
 // List organization users (scoped to user's organization)
-router.get('/', UserController.list);
+router.get('/', requirePermission('USER_READ'), UserController.list);
 
 // Manager provisions individual user (or user with USER_CREATE permission)
 router.post('/', requireRoleOrPermission(['MANAGER', 'ADMIN', 'SUPER_ADMIN'], 'USER_CREATE'), UserController.create);
@@ -55,5 +56,8 @@ router.get('/:id/permissions', requireRole(['MANAGER', 'ADMIN', 'SUPER_ADMIN']),
 
 // Manager updates an intern's explicitly granted permissions
 router.put('/:id/permissions', requireRole(['MANAGER', 'ADMIN', 'SUPER_ADMIN']), UserController.updateUserPermissions);
+
+// User project memberships (authoritative membership list for RBAC)
+router.get('/:id/project-memberships', requireRoleOrPermission(['MANAGER', 'ADMIN', 'SUPER_ADMIN'], 'PROJECT_READ', 'USER_READ'), ProjectController.getUserMemberships);
 
 export { router as userRouter };

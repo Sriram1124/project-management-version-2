@@ -187,6 +187,38 @@ export class ProjectController {
     }
   }
 
+  static async checkMemberStatus(req: Request, res: Response): Promise<void> {
+    try {
+      const user = (req as any).fullUser;
+      const { id, userId } = req.params;
+
+      const result = await ProjectService.checkProjectMembership(id, userId, user);
+      res.status(200).json({
+        status: 'success',
+        data: result,
+        ...result,
+      });
+    } catch (error) {
+      ProjectController.handleError(res, error);
+    }
+  }
+
+  static async getUserMemberships(req: Request, res: Response): Promise<void> {
+    try {
+      const user = (req as any).fullUser;
+      const userId = req.params.userId || req.params.id;
+
+      const result = await ProjectService.getUserProjectMemberships(userId, user);
+      res.status(200).json({
+        status: 'success',
+        data: result,
+        ...result,
+      });
+    } catch (error) {
+      ProjectController.handleError(res, error);
+    }
+  }
+
   static async addMember(req: Request, res: Response): Promise<void> {
     try {
       const user = (req as any).fullUser;

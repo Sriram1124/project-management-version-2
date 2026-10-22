@@ -142,6 +142,21 @@ export interface NormalizedAssignment {
   assigned_at?: string;
 }
 
+export interface NormalizedMembershipStatus {
+  is_member: boolean;
+  project_id: string;
+  user_id: string;
+  project_role: string | null;
+  role_id?: string | null;
+  joined_at: string | null;
+}
+
+export interface NormalizedUserMemberships {
+  user_id: string;
+  project_ids: string[];
+  total: number;
+}
+
 export interface IdentityMapping {
   source_user_id: string;
   canonical_user_id: string;

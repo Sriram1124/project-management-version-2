@@ -26,6 +26,7 @@ router.get('/permissions/registry', requirePermission('PROJECT_READ'), ProjectCo
 router.get('/health-overview', requirePermission('PROJECT_READ'), ProjectController.getHealthOverview);
 router.get('/', requirePermission('PROJECT_READ'), ProjectController.list);
 router.post('/', requirePermission('PROJECT_CREATE'), ProjectController.create);
+router.get('/user/:userId/memberships', requirePermission('PROJECT_READ'), ProjectController.getUserMemberships);
 router.get('/:id', requirePermission('PROJECT_READ'), ProjectController.getById);
 router.patch('/:id', requirePermission('PROJECT_UPDATE'), ProjectController.update);
 router.post('/:id/archive', requirePermission('PROJECT_UPDATE'), ProjectController.archive);
@@ -34,6 +35,7 @@ router.get('/:id/extension-requests', requirePermission('PROJECT_READ'), Project
 
 // ── Project Members & Roles ────────────────────────────────────────────────────
 router.get('/:id/members', requirePermission('PROJECT_READ'), ProjectController.getMembers);
+router.get('/:id/members/:userId/check', requirePermission('PROJECT_READ'), ProjectController.checkMemberStatus);
 router.post('/:id/members', requireAnyPermission('PROJECT_UPDATE', 'PROJECT_MEMBER_MANAGE', 'PROJECT_MEMBER_CREATE'), ProjectController.addMember);
 router.patch('/:id/members/roles', requireAnyPermission('ROLE_ASSIGN', 'PROJECT_ROLE_ASSIGN', 'PROJECT_UPDATE'), ProjectController.updateMemberRoles);
 router.patch('/:id/members/:userId/permissions', requireRoleOrPermission(['ADMIN', 'MANAGER', 'SUPER_ADMIN']), ProjectController.updateMemberPermissions);

@@ -51,6 +51,60 @@ export const authenticate = async (req: Request, res: Response, next: NextFuncti
     }
 
     const token = authHeader.split(' ')[1];
+
+    // ── Machine-to-Machine (M2M) Static Service Token Verification ───────────────
+    const serviceToken = process.env.PROJECT_MANAGEMENT_SERVICE_TOKEN || process.env.INTERNAL_SERVICE_TOKEN;
+    if (serviceToken && token === serviceToken) {
+      let orgId = (req.headers['x-organization-id'] as string) || null;
+      if (orgId) {
+        const validOrg = await prisma.organization.findFirst({
+          where: { id: orgId, is_active: true },
+          select: { id: true },
+        });
+        if (!validOrg) {
+          (req as any)._authDuration = performance.now() - authStart;
+          res.status(403).json({ error: 'Organization not found or inactive' });
+          return;
+        }
+      } else {
+        const firstOrg = await prisma.organization.findFirst({ where: { is_active: true }, select: { id: true } });
+        orgId = firstOrg?.id || null;
+      }
+
+      if (!orgId) {
+        (req as any)._authDuration = performance.now() - authStart;
+        res.status(403).json({ error: 'No active organization found for service context' });
+        return;
+      }
+      const serviceUser = {
+        id: 'service:mirai',
+        name: 'MIRAI Service Client',
+        email: 'service@mirai.internal',
+        role: 'SERVICE',
+        is_active: true,
+        organization_id: orgId,
+        roles: [
+          {
+            role: {
+              name: 'SERVICE',
+              permissions: [
+                { permission: { name: 'PROJECT_READ' } },
+                { permission: { name: 'USER_READ' } },
+              ],
+            },
+          },
+        ],
+        user_permissions: [
+          { permission: { id: 'p_project_read', name: 'PROJECT_READ' } },
+          { permission: { id: 'p_user_read', name: 'USER_READ' } },
+        ],
+      };
+      (req as any).user = { userId: serviceUser.id, role: 'SERVICE', organization_id: orgId, isService: true };
+      (req as any).fullUser = serviceUser;
+      (req as any)._authDuration = performance.now() - authStart;
+      return next();
+    }
+
     let payload: any;
     try {
       payload = jwt.verify(token, ACCESS_SECRET) as any;
@@ -58,6 +112,90 @@ export const authenticate = async (req: Request, res: Response, next: NextFuncti
       (req as any)._authDuration = performance.now() - authStart;
       res.status(401).json({ error: 'Invalid access token' });
       return;
+    }
+
+    // ── Machine-to-Machine (M2M) Service JWT Verification ────────────────────────
+    if (payload?.role === 'SERVICE' || payload?.type === 'service' || payload?.isService === true || payload?.iss === 'mirai-django' || payload?.aud === 'pm-membership-api') {
+      if (payload.iss && payload.iss !== 'mirai-django') {
+        (req as any)._authDuration = performance.now() - authStart;
+        res.status(401).json({ error: 'Invalid token issuer: expected mirai-django' });
+        return;
+      }
+      if (payload.aud && payload.aud !== 'pm-membership-api') {
+        (req as any)._authDuration = performance.now() - authStart;
+        res.status(401).json({ error: 'Invalid token audience: expected pm-membership-api' });
+        return;
+      }
+      if (payload.scope && typeof payload.scope === 'string') {
+        const scopes = payload.scope.split(' ');
+        if (!scopes.includes('membership:read') && !scopes.includes('PROJECT_READ')) {
+          (req as any)._authDuration = performance.now() - authStart;
+          res.status(403).json({ error: 'Insufficient token scope: requires membership:read' });
+          return;
+        }
+      }
+
+      let orgId = payload.org || payload.organizationId || payload.organization_id || null;
+      if (!orgId && process.env.NODE_ENV !== 'production') {
+        orgId = (req.headers['x-organization-id'] as string) || null;
+        if (!orgId) {
+          const firstOrg = await prisma.organization.findFirst({ where: { is_active: true }, select: { id: true } });
+          orgId = firstOrg?.id || null;
+        }
+      }
+
+      if (!orgId) {
+        (req as any)._authDuration = performance.now() - authStart;
+        res.status(403).json({ error: 'Missing organization claim in service token' });
+        return;
+      }
+      if (orgId) {
+        const validOrg = await prisma.organization.findFirst({
+          where: { id: orgId, is_active: true },
+          select: { id: true },
+        });
+        if (!validOrg) {
+          (req as any)._authDuration = performance.now() - authStart;
+          res.status(403).json({ error: 'Organization not found or inactive' });
+          return;
+        }
+      } else {
+        const firstOrg = await prisma.organization.findFirst({ where: { is_active: true }, select: { id: true } });
+        orgId = firstOrg?.id || null;
+      }
+
+      if (!orgId) {
+        (req as any)._authDuration = performance.now() - authStart;
+        res.status(403).json({ error: 'No active organization found for service context' });
+        return;
+      }
+      const serviceUser = {
+        id: payload.userId || 'service:mirai',
+        name: payload.name || 'MIRAI Service Account',
+        email: payload.email || 'service@mirai.internal',
+        role: 'SERVICE',
+        is_active: true,
+        organization_id: orgId,
+        roles: [
+          {
+            role: {
+              name: 'SERVICE',
+              permissions: [
+                { permission: { name: 'PROJECT_READ' } },
+                { permission: { name: 'USER_READ' } },
+              ],
+            },
+          },
+        ],
+        user_permissions: [
+          { permission: { id: 'p_project_read', name: 'PROJECT_READ' } },
+          { permission: { id: 'p_user_read', name: 'USER_READ' } },
+        ],
+      };
+      (req as any).user = { userId: serviceUser.id, role: 'SERVICE', organization_id: orgId, isService: true };
+      (req as any).fullUser = serviceUser;
+      (req as any)._authDuration = performance.now() - authStart;
+      return next();
     }
 
     const now = Date.now();

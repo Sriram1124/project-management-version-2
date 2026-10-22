@@ -11,6 +11,7 @@ import { notificationRouter } from './routes/notification.routes';
 import { timesheetRouter } from './routes/timesheet.routes';
 import { cohortRouter } from './routes/cohort.routes';
 import { actionItemRouter } from './routes/action-item.routes';
+import { internalMiraiRouter } from './routes/internal-mirai.routes';
 
 import { prisma, getSanitizedDatabaseInfo } from './lib/prisma';
 import { getRedisConfig, testRedisConnection } from './lib/redis';
@@ -125,6 +126,7 @@ app.use('/api/notifications', notificationRouter);
 app.use('/api/timesheet', timesheetRouter);
 app.use('/api/cohorts', cohortRouter);
 app.use('/api/action-items', actionItemRouter);
+app.use('/internal/mirai/v1', internalMiraiRouter);
 
 // JSON 404 catch-all
 app.use((req, res) => {

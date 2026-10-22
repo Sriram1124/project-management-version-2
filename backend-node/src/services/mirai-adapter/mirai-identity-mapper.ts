@@ -37,6 +37,8 @@ export class MiraiIdentityMapper {
   private readonly defaultOrganizationId?: string;
   // Optional cache or explicit overrides map
   private readonly userOverrides: Map<string, string> = new Map();
+  private readonly reverseUserOverrides: Map<string, string> = new Map();
+  private readonly userOverrideOrgs: Map<string, string> = new Map();
   private readonly cohortOverrides: Map<string, string> = new Map();
 
   constructor(defaultOrganizationId?: string) {
@@ -44,13 +46,46 @@ export class MiraiIdentityMapper {
   }
 
   /**
-   * Register an explicit canonical override for a specific source user
+   * Register an explicit canonical override for a specific source user,
+   * optionally bound to a specific organization.
    */
-  registerUserOverride(sourceUserId: string, canonicalUserId: string): void {
+  registerUserOverride(sourceUserId: string, canonicalUserId: string, organizationId?: string): void {
     if (!sourceUserId || !canonicalUserId) {
       throw new UserMappingError('Source and canonical user IDs must be valid non-empty strings');
     }
     this.userOverrides.set(sourceUserId, canonicalUserId);
+    this.reverseUserOverrides.set(canonicalUserId, sourceUserId);
+    if (organizationId) {
+      this.userOverrideOrgs.set(canonicalUserId, organizationId);
+      this.userOverrideOrgs.set(sourceUserId, organizationId);
+    }
+  }
+
+  /**
+   * Resolve a canonical MIRAI user UUID to the corresponding source PM user ID.
+   * Preserves UUID strings without alteration by default.
+   * Enforces non-empty string validation and organization boundaries when provided.
+   */
+  resolveSourceUserId(miraiUserId: string, userOrgId?: string, expectedOrgId?: string): string {
+    if (!miraiUserId || typeof miraiUserId !== 'string' || miraiUserId.trim() === '') {
+      throw new UserMappingError('Invalid MIRAI user ID: expected non-empty UUID string', { miraiUserId });
+    }
+
+    const trimmed = miraiUserId.trim();
+
+    // Check organization boundary if supplied or bound to the registered override
+    const overrideOrg = this.userOverrideOrgs.get(trimmed);
+    const orgId = userOrgId || overrideOrg || this.defaultOrganizationId;
+    const boundaryOrgId = expectedOrgId || this.defaultOrganizationId;
+    if (orgId && boundaryOrgId && orgId !== boundaryOrgId) {
+      throw new UserMappingError(
+        `Organization boundary violation: user belongs to organization '${orgId}' but expected '${boundaryOrgId}'`,
+        { miraiUserId, expectedOrgId: boundaryOrgId, actualOrgId: orgId }
+      );
+    }
+
+    // Resolve explicit override if registered, otherwise maintain the exact UUID string invariant
+    return this.reverseUserOverrides.get(trimmed) || trimmed;
   }
 
   /**

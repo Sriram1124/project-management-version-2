@@ -1,7 +1,7 @@
 import fs from 'fs';
 import path from 'path';
 import crypto from 'crypto';
-import mongoose from 'mongoose';
+import { isMongoConnected } from '../lib/mongodb';
 import { ProjectStatus, ProjectMethodology } from '@prisma/client';
 import { prisma } from '../lib/prisma';
 import { StorageService } from './storage.service';
@@ -381,7 +381,7 @@ export class ProjectService {
       }
     }
 
-    if (process.env.ENABLE_MONGODB_PROJECT_FILES === 'true' && mongoose.connection?.readyState === 1) {
+    if (process.env.ENABLE_MONGODB_PROJECT_FILES === 'true' && isMongoConnected()) {
       try {
         const mongoDocs = await ProjectFile.find({
           project_id: projectId,
@@ -1000,7 +1000,7 @@ export class ProjectService {
 
     // 2. Clean up MongoDB project files if enabled
     try {
-      if (process.env.ENABLE_MONGODB_PROJECT_FILES === 'true' && mongoose.connection?.readyState === 1) {
+      if (process.env.ENABLE_MONGODB_PROJECT_FILES === 'true' && isMongoConnected()) {
         const mongoFiles = await ProjectFile.find({ projectId }).select('storage_key _id');
         for (const mf of mongoFiles) {
           if (mf.storage_key) {
@@ -1172,6 +1172,138 @@ export class ProjectService {
       const nameB = b.name || b.email || '';
       return nameA.localeCompare(nameB, undefined, { sensitivity: 'base' });
     });
+  }
+
+  /**
+   * Authoritative check whether a user is a member of a project using public.project_members.
+   * Does NOT infer membership from project ownership or work item assignments.
+   * Enforces organization boundaries and fails closed.
+   */
+  static async checkProjectMembership(projectId: string, targetUserId: string, user: any) {
+    if (!projectId || typeof projectId !== 'string' || !projectId.trim() || projectId === 'undefined') {
+      throw new Error('Project not found');
+    }
+    if (!targetUserId || typeof targetUserId !== 'string' || !targetUserId.trim() || targetUserId === 'undefined') {
+      throw new Error('User not found');
+    }
+
+    const cleanProjectId = projectId.trim();
+    const cleanUserId = targetUserId.trim();
+
+    let orgId = user?.organization_id;
+    if (!orgId && this.isManagerOrAdmin(user)) {
+      const firstOrg = await prisma.organization.findFirst({ where: { is_active: true } });
+      orgId = firstOrg?.id;
+    }
+
+    // 1. Validate that the project exists within the organization boundary
+    const project = await prisma.project.findFirst({
+      where: {
+        id: cleanProjectId,
+        ...(orgId ? { organization_id: orgId } : {}),
+      },
+      select: {
+        id: true,
+        organization_id: true,
+        status: true,
+      },
+    });
+    if (!project) {
+      throw new Error('Project not found');
+    }
+
+    // 2. Validate that the target user exists within the organization boundary
+    const targetUser = await prisma.user.findFirst({
+      where: {
+        id: cleanUserId,
+        ...(orgId ? { organization_id: orgId } : {}),
+      },
+      select: {
+        id: true,
+        organization_id: true,
+        is_active: true,
+      },
+    });
+    if (!targetUser) {
+      throw new Error('User not found');
+    }
+
+    // 3. Authoritative membership check solely in public.project_members
+    const membership = await prisma.projectMember.findFirst({
+      where: {
+        project_id: cleanProjectId,
+        user_id: cleanUserId,
+      },
+      select: {
+        project_id: true,
+        user_id: true,
+        project_role: true,
+        role_id: true,
+      },
+    });
+
+    return {
+      is_member: Boolean(membership),
+      project_id: cleanProjectId,
+      user_id: cleanUserId,
+      project_role: membership?.project_role || null,
+      role_id: membership?.role_id || null,
+      joined_at: null,
+    };
+  }
+
+  /**
+   * Return all project IDs that a user is an authoritative member of using public.project_members.
+   * Single efficient query, avoiding N+1 requests or whole-roster fetching.
+   * Enforces organization boundaries and fails closed.
+   */
+  static async getUserProjectMemberships(targetUserId: string, user: any) {
+    if (!targetUserId || typeof targetUserId !== 'string' || !targetUserId.trim() || targetUserId === 'undefined') {
+      throw new Error('User not found');
+    }
+
+    const cleanUserId = targetUserId.trim();
+
+    let orgId = user?.organization_id;
+    if (!orgId && this.isManagerOrAdmin(user)) {
+      const firstOrg = await prisma.organization.findFirst({ where: { is_active: true } });
+      orgId = firstOrg?.id;
+    }
+
+    // 1. Verify user exists in the organization
+    const targetUser = await prisma.user.findFirst({
+      where: {
+        id: cleanUserId,
+        ...(orgId ? { organization_id: orgId } : {}),
+      },
+      select: {
+        id: true,
+        organization_id: true,
+        is_active: true,
+      },
+    });
+    if (!targetUser) {
+      throw new Error('User not found');
+    }
+
+    // 2. Query project_members with organization filter via relation in a single efficient query
+    const memberships = await prisma.projectMember.findMany({
+      where: {
+        user_id: cleanUserId,
+        ...(orgId ? { project: { organization_id: orgId } } : {}),
+      },
+      select: {
+        project_id: true,
+      },
+    });
+
+    const projectIds = memberships.map((m) => m.project_id);
+
+    return {
+      user_id: cleanUserId,
+      project_ids: projectIds,
+      total: projectIds.length,
+    };
   }
 
   static readonly ALLOWED_PROJECT_ROLES = [
@@ -2255,7 +2387,7 @@ export class ProjectService {
       throw new Error('Project not found');
     }
 
-    if (process.env.ENABLE_MONGODB_PROJECT_FILES === 'true' && mongoose.connection?.readyState === 1) {
+    if (process.env.ENABLE_MONGODB_PROJECT_FILES === 'true' && isMongoConnected()) {
       const mongoDocs = await ProjectFile.find({
         project_id: projectId,
         is_archived: false,
@@ -2312,7 +2444,7 @@ export class ProjectService {
     const extMatch = file.originalname.split('.').pop();
     const ext = extMatch ? extMatch.toLowerCase() : 'bin';
     
-    if (process.env.ENABLE_MONGODB_PROJECT_FILES === 'true' && mongoose.connection?.readyState === 1) {
+    if (process.env.ENABLE_MONGODB_PROJECT_FILES === 'true' && isMongoConnected()) {
       const uploadResult = await ObjectStorageService.uploadBuffer(
         projectId,
         file.originalname,
@@ -2500,7 +2632,7 @@ export class ProjectService {
       throw new Error('Project not found');
     }
 
-    if (process.env.ENABLE_MONGODB_PROJECT_FILES === 'true' && mongoose.connection?.readyState === 1) {
+    if (process.env.ENABLE_MONGODB_PROJECT_FILES === 'true' && isMongoConnected()) {
       let doc: any = null;
       if (documentId && documentId !== 'undefined') {
         doc = await ProjectFile.findOne({
@@ -2624,7 +2756,7 @@ export class ProjectService {
       throw new Error('Project not found');
     }
 
-    if (process.env.ENABLE_MONGODB_PROJECT_FILES === 'true' && mongoose.connection?.readyState === 1) {
+    if (process.env.ENABLE_MONGODB_PROJECT_FILES === 'true' && isMongoConnected()) {
       let doc: any = null;
       if (documentId && documentId !== 'undefined') {
         doc = await ProjectFile.findOne({
@@ -2754,7 +2886,7 @@ export class ProjectService {
       throw new Error('Project not found');
     }
 
-    if (process.env.ENABLE_MONGODB_PROJECT_FILES === 'true' && mongoose.connection?.readyState === 1) {
+    if (process.env.ENABLE_MONGODB_PROJECT_FILES === 'true' && isMongoConnected()) {
       let doc: any = null;
       if (documentId && documentId !== 'undefined') {
         doc = await ProjectFile.findOne({
