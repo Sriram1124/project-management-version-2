@@ -57,12 +57,15 @@ export class AuditService {
   /**
    * Record a sensitive administrative operation.
    */
-  static async record(input: CreateAuditLogInput) {
+  static async record(input: CreateAuditLogInput, tx?: any) {
     try {
+      const client = tx || prisma;
       const sanitizedMeta = input.metadata ? this.sanitizeMetadata(input.metadata) : null;
-      return await prisma.auditLog.create({
+      const isValidUuid = typeof input.actorId === 'string' && /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(input.actorId);
+      const safeActorId = isValidUuid ? input.actorId : null;
+      return await client.auditLog.create({
         data: {
-          actor_id: input.actorId || null,
+          actor_id: safeActorId,
           organization_id: input.organizationId || null,
           action: input.action,
           target_type: input.targetType,

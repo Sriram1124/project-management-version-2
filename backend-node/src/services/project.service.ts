@@ -10,6 +10,7 @@ import { ProjectFile } from '../models/project-file.model';
 import { ObjectStorageService } from './object-storage.service';
 import { invalidateUserSessionCache } from '../middleware/auth.middleware';
 import { cacheService } from './cache.service';
+import { AuditService } from './audit.service';
 
 export interface CreateProjectInput {
   name: string;
@@ -287,9 +288,8 @@ export class ProjectService {
     }
 
     let orgId = user.organization_id;
-    if (!orgId && this.isManagerOrAdmin(user)) {
-      const firstOrg = await prisma.organization.findFirst({ where: { is_active: true } });
-      orgId = firstOrg?.id;
+    if (!orgId) {
+      throw new Error('User does not belong to any organization');
     }
 
     const where: any = { id: projectId };
@@ -411,10 +411,6 @@ export class ProjectService {
    */
   static async createProject(data: CreateProjectInput, user: any) {
     let orgId = user.organization_id || data.organization_id;
-    if (!orgId && this.isManagerOrAdmin(user)) {
-      const firstOrg = await prisma.organization.findFirst({ where: { is_active: true } });
-      orgId = firstOrg?.id;
-    }
     if (!orgId) {
       throw new Error('User does not belong to any organization');
     }
@@ -1408,6 +1404,7 @@ export class ProjectService {
     }
 
     const cleanOrgId = orgId.trim();
+    const serviceActor = user?.id || 'service:mirai';
 
     // 1. Check existing UserIdentityMapping
     const existingMapping = await prisma.userIdentityMapping.findFirst({
@@ -1435,6 +1432,20 @@ export class ProjectService {
       });
 
       if (!pmUser || !pmUser.is_active) {
+        await AuditService.record({
+          organizationId: cleanOrgId,
+          action: 'MIRAI_IDENTITY_RECONCILE_FAILED_INACTIVE',
+          targetType: 'USER_IDENTITY_MAPPING',
+          targetId: existingMapping.id,
+          metadata: {
+            mirai_user_id: cleanMiraiId,
+            pm_user_id: existingMapping.pm_user_id,
+            status: 'unmapped',
+            reason: 'Referenced PM user is inactive or not found in organization',
+            actor: serviceActor,
+          },
+        });
+
         return {
           mirai_user_id: cleanMiraiId,
           pm_user_id: null,
@@ -1451,6 +1462,21 @@ export class ProjectService {
           project: { organization_id: cleanOrgId },
         },
         select: { project_id: true },
+      });
+
+      await AuditService.record({
+        organizationId: cleanOrgId,
+        action: 'MIRAI_IDENTITY_RECONCILED',
+        targetType: 'USER_IDENTITY_MAPPING',
+        targetId: existingMapping.id,
+        metadata: {
+          mirai_user_id: cleanMiraiId,
+          pm_user_id: pmUser.id,
+          status: 'mapped',
+          mapping_source: 'existing_mapping',
+          project_count: memberships.length,
+          actor: serviceActor,
+        },
       });
 
       return {
@@ -1480,6 +1506,20 @@ export class ProjectService {
       });
 
       if (emailMatches.length > 1) {
+        await AuditService.record({
+          organizationId: cleanOrgId,
+          action: 'MIRAI_IDENTITY_RECONCILE_AMBIGUOUS',
+          targetType: 'USER_IDENTITY_MAPPING',
+          targetId: cleanMiraiId,
+          metadata: {
+            mirai_user_id: cleanMiraiId,
+            status: 'ambiguous',
+            match_count: emailMatches.length,
+            reason: 'Multiple active PM users found with matching email',
+            actor: serviceActor,
+          },
+        });
+
         return {
           mirai_user_id: cleanMiraiId,
           pm_user_id: null,
@@ -1505,6 +1545,21 @@ export class ProjectService {
         });
 
         if (existingPmMapping && existingPmMapping.mirai_user_id !== cleanMiraiId) {
+          await AuditService.record({
+            organizationId: cleanOrgId,
+            action: 'MIRAI_IDENTITY_RECONCILE_CONFLICT',
+            targetType: 'USER_IDENTITY_MAPPING',
+            targetId: cleanMiraiId,
+            metadata: {
+              mirai_user_id: cleanMiraiId,
+              pm_user_id: candidatePmUser.id,
+              conflicting_mirai_user_id: existingPmMapping.mirai_user_id,
+              status: 'conflict',
+              reason: 'Candidate PM user is already mapped to a different MIRAI identity',
+              actor: serviceActor,
+            },
+          });
+
           return {
             mirai_user_id: cleanMiraiId,
             pm_user_id: null,
@@ -1515,14 +1570,34 @@ export class ProjectService {
           };
         }
 
-        // Safe insertion with concurrency handling
+        // Safe insertion with concurrency handling and atomic audit record
+        let createdMapping: any = null;
         try {
-          await prisma.userIdentityMapping.create({
-            data: {
-              organization_id: cleanOrgId,
-              mirai_user_id: cleanMiraiId,
-              pm_user_id: candidatePmUser.id,
-            },
+          createdMapping = await prisma.$transaction(async (tx) => {
+            const mapping = await tx.userIdentityMapping.create({
+              data: {
+                organization_id: cleanOrgId,
+                mirai_user_id: cleanMiraiId,
+                pm_user_id: candidatePmUser.id,
+              },
+            });
+            await AuditService.record(
+              {
+                organizationId: cleanOrgId,
+                action: 'MIRAI_IDENTITY_MAPPED',
+                targetType: 'USER_IDENTITY_MAPPING',
+                targetId: mapping.id,
+                metadata: {
+                  mirai_user_id: cleanMiraiId,
+                  pm_user_id: candidatePmUser.id,
+                  status: 'mapped',
+                  mapping_source: 'auto_mapped_by_email',
+                  actor: serviceActor,
+                },
+              },
+              tx
+            );
+            return mapping;
           });
         } catch (err: any) {
           // If already created concurrently, verify consistency
@@ -1533,6 +1608,20 @@ export class ProjectService {
             },
           });
           if (!rechecked || rechecked.pm_user_id !== candidatePmUser.id) {
+            await AuditService.record({
+              organizationId: cleanOrgId,
+              action: 'MIRAI_IDENTITY_RECONCILE_CONFLICT',
+              targetType: 'USER_IDENTITY_MAPPING',
+              targetId: cleanMiraiId,
+              metadata: {
+                mirai_user_id: cleanMiraiId,
+                pm_user_id: candidatePmUser.id,
+                status: 'conflict',
+                reason: 'Concurrent request mapped PM user to a different identity',
+                actor: serviceActor,
+              },
+            });
+
             return {
               mirai_user_id: cleanMiraiId,
               pm_user_id: null,
@@ -1542,6 +1631,7 @@ export class ProjectService {
               as_of,
             };
           }
+          createdMapping = rechecked;
         }
 
         const memberships = await prisma.projectMember.findMany({
@@ -1587,6 +1677,21 @@ export class ProjectService {
       });
 
       if (conflictingMapping && conflictingMapping.mirai_user_id !== cleanMiraiId) {
+        await AuditService.record({
+          organizationId: cleanOrgId,
+          action: 'MIRAI_IDENTITY_RECONCILE_CONFLICT',
+          targetType: 'USER_IDENTITY_MAPPING',
+          targetId: cleanMiraiId,
+          metadata: {
+            mirai_user_id: cleanMiraiId,
+            pm_user_id: directUser.id,
+            conflicting_mirai_user_id: conflictingMapping.mirai_user_id,
+            status: 'conflict',
+            reason: 'Direct PM user is already mapped to a different MIRAI identity',
+            actor: serviceActor,
+          },
+        });
+
         return {
           mirai_user_id: cleanMiraiId,
           pm_user_id: null,
@@ -1605,6 +1710,21 @@ export class ProjectService {
         select: { project_id: true },
       });
 
+      await AuditService.record({
+        organizationId: cleanOrgId,
+        action: 'MIRAI_IDENTITY_RECONCILED',
+        targetType: 'USER_IDENTITY_MAPPING',
+        targetId: cleanMiraiId,
+        metadata: {
+          mirai_user_id: cleanMiraiId,
+          pm_user_id: directUser.id,
+          status: 'mapped',
+          mapping_source: 'direct',
+          project_count: memberships.length,
+          actor: serviceActor,
+        },
+      });
+
       return {
         mirai_user_id: cleanMiraiId,
         pm_user_id: directUser.id,
@@ -1616,6 +1736,19 @@ export class ProjectService {
     }
 
     // 4. No match: fail closed
+    await AuditService.record({
+      organizationId: cleanOrgId,
+      action: 'MIRAI_IDENTITY_UNMAPPED',
+      targetType: 'USER_IDENTITY_MAPPING',
+      targetId: cleanMiraiId,
+      metadata: {
+        mirai_user_id: cleanMiraiId,
+        status: 'unmapped',
+        reason: 'No matching active PM user found by email or direct ID',
+        actor: serviceActor,
+      },
+    });
+
     return {
       mirai_user_id: cleanMiraiId,
       pm_user_id: null,

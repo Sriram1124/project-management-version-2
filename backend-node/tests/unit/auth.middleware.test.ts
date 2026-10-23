@@ -134,7 +134,7 @@ describe('Auth Middleware Unit Tests', () => {
       expect((req as any).fullUser).toHaveProperty('id', 'cached-user');
     });
 
-    it('fetches user from DB and assigns default active organization if unassigned', async () => {
+    it('fetches user from DB and preserves unassigned organization (no firstOrg fallback)', async () => {
       const token = jwt.sign({ userId: 'no-org-user' }, ACCESS_SECRET);
       mockPrisma.user.findUnique.mockResolvedValueOnce({
         id: 'no-org-user',
@@ -143,9 +143,6 @@ describe('Auth Middleware Unit Tests', () => {
         organization_id: null,
         roles: [{ role: { name: 'DEVELOPER' } }],
       });
-      mockPrisma.organization.findFirst.mockResolvedValueOnce({
-        id: 'default-org-id',
-      });
 
       const { req, res, next } = createMockReqRes({
         headers: { authorization: `Bearer ${token}` },
@@ -153,7 +150,7 @@ describe('Auth Middleware Unit Tests', () => {
 
       await authenticate(req, res, next);
       expect(next).toHaveBeenCalled();
-      expect((req as any).fullUser.organization_id).toBe('default-org-id');
+      expect((req as any).fullUser.organization_id).toBeNull();
     });
 
     it('returns 401 if user is not found or inactive in DB', async () => {

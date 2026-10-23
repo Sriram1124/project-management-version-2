@@ -171,6 +171,26 @@ Answer:
 
 ---
 
+
+### Part D: Identity Reconciliation & Persistent Audit Logging (Sriram)
+
+#### Question 9 (Persistent Identity Mapping & Audit Trail)
+How are identity reconciliation outcomes persisted and audited in compliance with security requirements?
+
+Answer by Sriram:
+- **Persistent Storage:** Identity mappings are persisted in `public.user_identity_mappings` with global 1:1 unique constraints on `mirai_user_id` and `pm_user_id`, tenant-scoped by `organization_id`.
+- **Persistent Audit Logging:** Every identity reconciliation request emits an immutable audit event to `public.audit_logs`:
+  - `MIRAI_IDENTITY_MAPPED`: Emitted in an atomic transaction when a new mapping is created via normalized email matching. Target type: `USER_IDENTITY_MAPPING`, metadata includes `mirai_user_id`, `pm_user_id`, `status: 'mapped'`, `mapping_source: 'auto_mapped_by_email'`, and `actor`.
+  - `MIRAI_IDENTITY_RECONCILED`: Emitted when an existing mapping is successfully verified or direct PM user identity is used.
+  - `MIRAI_IDENTITY_RECONCILE_FAILED_INACTIVE`: Emitted when a mapping references an inactive PM user (`is_active: false`), failing closed to `unmapped`.
+  - `MIRAI_IDENTITY_RECONCILE_AMBIGUOUS`: Emitted when multiple active PM users share the same normalized email, failing closed to `ambiguous`.
+  - `MIRAI_IDENTITY_RECONCILE_CONFLICT`: Emitted when a candidate PM user is already mapped to a different MIRAI identity or a concurrent collision occurs, failing closed to `conflict`.
+  - `MIRAI_IDENTITY_UNMAPPED`: Emitted when no matching active PM user is found by email or direct ID.
+- **Tenant Isolation:** Audit events derive `organization_id` strictly from verified service-token claims (`user.organization_id`).
+- **Data Privacy & Credential Safety:** Audit records never record JWTs, service secrets, authorization headers, or passwords.
+
+---
+
 ## 5. Live Internal API Contracts
 
 Base URL: `{PM_BASE}/internal/mirai/v1` (Port 4000)
@@ -259,6 +279,54 @@ Response: Confirmed Non-Member (HTTP 200 OK)
   "as_of": "2026-10-22T11:15:00.000Z"
 }
 ```
+
+---
+
+### Endpoint 3: Identity Reconciliation
+
+Reconciles a MIRAI user UUID and optional email with the PM backend, persisting a mapping if uniquely matched.
+
+Request:
+```http
+POST /internal/mirai/v1/identities/reconcile HTTP/1.1
+Host: localhost:4000
+Authorization: Bearer <Short-Lived-Service-JWT>
+Content-Type: application/json
+Accept: application/json
+
+{
+  "mirai_user_id": "550e8400-e29b-41d4-a716-446655440000",
+  "email": "synthetic.intern@dailoqa.internal"
+}
+```
+
+Response: Mapped Successfully (HTTP 200 OK)
+```json
+{
+  "mirai_user_id": "550e8400-e29b-41d4-a716-446655440000",
+  "pm_user_id": "330e8400-e29b-41d4-a716-446655440001",
+  "mapping_status": "mapped",
+  "mapping_source": "auto_mapped_by_email",
+  "project_ids": ["8f14e45f-ceea-467a-9575-0b6a2b5a7f01"],
+  "as_of": "2026-10-23T09:00:00.000Z"
+}
+```
+
+Audit Event: Writes `MIRAI_IDENTITY_MAPPED` to `public.audit_logs`.
+
+Response: Unmapped User (HTTP 200 OK)
+```json
+{
+  "mirai_user_id": "550e8400-e29b-41d4-a716-446655440000",
+  "pm_user_id": null,
+  "mapping_status": "unmapped",
+  "mapping_source": null,
+  "project_ids": [],
+  "as_of": "2026-10-23T09:00:00.000Z"
+}
+```
+
+Audit Event: Writes `MIRAI_IDENTITY_UNMAPPED` to `public.audit_logs`.
 
 ---
 

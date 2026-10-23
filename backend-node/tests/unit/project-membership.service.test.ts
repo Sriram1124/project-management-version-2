@@ -653,7 +653,35 @@ describe('MIRAI Project Membership Verification & Integration Tests', () => {
       expect(next).not.toHaveBeenCalled();
       expect(res.status).toHaveBeenCalledWith(403);
       expect(res.json).toHaveBeenCalledWith({
-        error: 'Missing organization claim in service token',
+        error: 'Missing canonical organization claim (org) in service token',
+      });
+    });
+
+    it('negative test: should reject service token that only specifies legacy organizationId instead of canonical org', async () => {
+      const serviceSecret = 'dedicated-service-jwt-secret';
+      process.env.PM_SERVICE_JWT_SECRET = serviceSecret;
+      const now = Math.floor(Date.now() / 1000);
+      const token = jwt.sign(
+        {
+          iss: 'mirai-django',
+          aud: 'pm-membership-api',
+          scope: 'membership:read',
+          organizationId: 'org-fallback-only',
+          iat: now,
+          exp: now + 300,
+        },
+        serviceSecret
+      );
+
+      const { req, res, next } = createMockReqRes({
+        headers: { authorization: `Bearer ${token}` },
+      });
+
+      await authenticateMiraiService(req, res, next);
+      expect(next).not.toHaveBeenCalled();
+      expect(res.status).toHaveBeenCalledWith(403);
+      expect(res.json).toHaveBeenCalledWith({
+        error: 'Missing canonical organization claim (org) in service token',
       });
     });
 

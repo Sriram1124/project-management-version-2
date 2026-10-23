@@ -529,5 +529,230 @@ describe('MIRAI–PM User Identity Mapping & Reconciliation Tests', () => {
       expect(mockPrisma.$transaction).toHaveBeenCalled();
     });
   });
-});
 
+  describe('ProjectService.reconcileIdentity Persistent Audit Logging Tests', () => {
+    it('1. should write MIRAI_IDENTITY_MAPPED audit log in transaction when new mapping is created', async () => {
+      // 1. No existing mapping
+      mockPrisma.userIdentityMapping.findFirst.mockResolvedValueOnce(null);
+      // 2. Email search returns exactly 1 active user
+      mockPrisma.user.findMany.mockResolvedValueOnce([mockPmUser]);
+      // 3. Candidate PM user is NOT mapped to another user
+      mockPrisma.userIdentityMapping.findFirst.mockResolvedValueOnce(null);
+      // 4. Creation inside transaction
+      mockPrisma.userIdentityMapping.create.mockResolvedValueOnce({
+        id: 'map-new-1',
+        organization_id: orgId,
+        mirai_user_id: canonicalMiraiId,
+        pm_user_id: mockPmUser.id,
+      });
+      // 5. Memberships query
+      mockPrisma.projectMember.findMany.mockResolvedValueOnce([{ project_id: mockProject.id }]);
+
+      const result = await ProjectService.reconcileIdentity(canonicalMiraiId, mockPmUser.email, callerUser);
+
+      expect(result.mapping_status).toBe('mapped');
+      expect(result.mapping_source).toBe('auto_mapped_by_email');
+      expect(result.pm_user_id).toBe(mockPmUser.id);
+      expect(result.project_ids).toEqual([mockProject.id]);
+
+      // Verify audit log creation
+      expect(mockPrisma.auditLog.create).toHaveBeenCalledWith({
+        data: expect.objectContaining({
+          organization_id: orgId,
+          action: 'MIRAI_IDENTITY_MAPPED',
+          target_type: 'USER_IDENTITY_MAPPING',
+          target_id: 'map-new-1',
+          metadata: expect.objectContaining({
+            mirai_user_id: canonicalMiraiId,
+            pm_user_id: mockPmUser.id,
+            status: 'mapped',
+            mapping_source: 'auto_mapped_by_email',
+          }),
+        }),
+      });
+    });
+
+    it('2. should write MIRAI_IDENTITY_RECONCILED audit log when existing mapping is reused without duplicating mapping', async () => {
+      // 1. Existing mapping
+      mockPrisma.userIdentityMapping.findFirst.mockResolvedValueOnce({
+        id: 'map-existing-1',
+        mirai_user_id: canonicalMiraiId,
+        pm_user_id: mockPmUser.id,
+      });
+      // 2. Active PM user
+      mockPrisma.user.findFirst.mockResolvedValueOnce(mockPmUser);
+      // 3. Memberships
+      mockPrisma.projectMember.findMany.mockResolvedValueOnce([{ project_id: mockProject.id }]);
+
+      const result = await ProjectService.reconcileIdentity(canonicalMiraiId, mockPmUser.email, callerUser);
+
+      expect(result.mapping_status).toBe('mapped');
+      expect(result.mapping_source).toBe('existing_mapping');
+
+      // Verify no new mapping was created
+      expect(mockPrisma.userIdentityMapping.create).not.toHaveBeenCalled();
+
+      // Verify audit log recorded reconciliation event
+      expect(mockPrisma.auditLog.create).toHaveBeenCalledWith({
+        data: expect.objectContaining({
+          organization_id: orgId,
+          action: 'MIRAI_IDENTITY_RECONCILED',
+          target_type: 'USER_IDENTITY_MAPPING',
+          target_id: 'map-existing-1',
+          metadata: expect.objectContaining({
+            mirai_user_id: canonicalMiraiId,
+            pm_user_id: mockPmUser.id,
+            status: 'mapped',
+            mapping_source: 'existing_mapping',
+          }),
+        }),
+      });
+    });
+
+    it('3. should write MIRAI_IDENTITY_RECONCILE_FAILED_INACTIVE audit log when mapped PM user is inactive', async () => {
+      // 1. Existing mapping
+      mockPrisma.userIdentityMapping.findFirst.mockResolvedValueOnce({
+        id: 'map-inactive-1',
+        mirai_user_id: canonicalMiraiId,
+        pm_user_id: mockInactivePmUser.id,
+      });
+      // 2. Inactive PM user
+      mockPrisma.user.findFirst.mockResolvedValueOnce(mockInactivePmUser);
+
+      const result = await ProjectService.reconcileIdentity(canonicalMiraiId, mockInactivePmUser.email, callerUser);
+
+      expect(result.mapping_status).toBe('unmapped');
+      expect(result.pm_user_id).toBeNull();
+      expect(result.project_ids).toEqual([]);
+
+      // Verify audit log recorded inactive user failure
+      expect(mockPrisma.auditLog.create).toHaveBeenCalledWith({
+        data: expect.objectContaining({
+          organization_id: orgId,
+          action: 'MIRAI_IDENTITY_RECONCILE_FAILED_INACTIVE',
+          target_type: 'USER_IDENTITY_MAPPING',
+          target_id: 'map-inactive-1',
+          metadata: expect.objectContaining({
+            mirai_user_id: canonicalMiraiId,
+            pm_user_id: mockInactivePmUser.id,
+            status: 'unmapped',
+          }),
+        }),
+      });
+    });
+
+    it('4. should write MIRAI_IDENTITY_RECONCILE_AMBIGUOUS audit log when multiple users match normalized email', async () => {
+      mockPrisma.userIdentityMapping.findFirst.mockResolvedValueOnce(null);
+      // Multiple active users share this email
+      mockPrisma.user.findMany.mockResolvedValueOnce([mockPmUser, { ...mockPmUser, id: 'pm-user-2' }]);
+
+      const result = await ProjectService.reconcileIdentity(canonicalMiraiId, mockPmUser.email, callerUser);
+
+      expect(result.mapping_status).toBe('ambiguous');
+      expect(result.pm_user_id).toBeNull();
+
+      expect(mockPrisma.userIdentityMapping.create).not.toHaveBeenCalled();
+      expect(mockPrisma.auditLog.create).toHaveBeenCalledWith({
+        data: expect.objectContaining({
+          organization_id: orgId,
+          action: 'MIRAI_IDENTITY_RECONCILE_AMBIGUOUS',
+          target_type: 'USER_IDENTITY_MAPPING',
+          target_id: canonicalMiraiId,
+          metadata: expect.objectContaining({
+            mirai_user_id: canonicalMiraiId,
+            status: 'ambiguous',
+            match_count: 2,
+          }),
+        }),
+      });
+    });
+
+    it('5. should write MIRAI_IDENTITY_RECONCILE_CONFLICT audit log when candidate user is mapped to different MIRAI ID', async () => {
+      mockPrisma.userIdentityMapping.findFirst.mockResolvedValueOnce(null);
+      mockPrisma.user.findMany.mockResolvedValueOnce([mockPmUser]);
+      // Candidate PM user is already mapped to a different MIRAI ID
+      mockPrisma.userIdentityMapping.findFirst.mockResolvedValueOnce({
+        mirai_user_id: 'different-mirai-uuid',
+      });
+
+      const result = await ProjectService.reconcileIdentity(canonicalMiraiId, mockPmUser.email, callerUser);
+
+      expect(result.mapping_status).toBe('conflict');
+      expect(result.pm_user_id).toBeNull();
+
+      expect(mockPrisma.userIdentityMapping.create).not.toHaveBeenCalled();
+      expect(mockPrisma.auditLog.create).toHaveBeenCalledWith({
+        data: expect.objectContaining({
+          organization_id: orgId,
+          action: 'MIRAI_IDENTITY_RECONCILE_CONFLICT',
+          target_type: 'USER_IDENTITY_MAPPING',
+          target_id: canonicalMiraiId,
+          metadata: expect.objectContaining({
+            mirai_user_id: canonicalMiraiId,
+            pm_user_id: mockPmUser.id,
+            conflicting_mirai_user_id: 'different-mirai-uuid',
+            status: 'conflict',
+          }),
+        }),
+      });
+    });
+
+    it('6. should write MIRAI_IDENTITY_UNMAPPED audit log when no active user matches', async () => {
+      mockPrisma.userIdentityMapping.findFirst.mockResolvedValueOnce(null);
+      mockPrisma.user.findMany.mockResolvedValueOnce([]); // No email match
+      mockPrisma.user.findFirst.mockResolvedValueOnce(null); // No direct UUID match
+
+      const result = await ProjectService.reconcileIdentity(canonicalMiraiId, 'nonexistent@example.com', callerUser);
+
+      expect(result.mapping_status).toBe('unmapped');
+      expect(result.pm_user_id).toBeNull();
+
+      expect(mockPrisma.userIdentityMapping.create).not.toHaveBeenCalled();
+      expect(mockPrisma.auditLog.create).toHaveBeenCalledWith({
+        data: expect.objectContaining({
+          organization_id: orgId,
+          action: 'MIRAI_IDENTITY_UNMAPPED',
+          target_type: 'USER_IDENTITY_MAPPING',
+          target_id: canonicalMiraiId,
+          metadata: expect.objectContaining({
+            mirai_user_id: canonicalMiraiId,
+            status: 'unmapped',
+          }),
+        }),
+      });
+    });
+
+    it('7. should guarantee tenant organization isolation in audit logs and reject unauthorized cross-tenant writes', async () => {
+      mockPrisma.userIdentityMapping.findFirst.mockResolvedValueOnce(null);
+      mockPrisma.user.findMany.mockResolvedValueOnce([]);
+      mockPrisma.user.findFirst.mockResolvedValueOnce(null);
+
+      // Caller from otherOrgId
+      const otherCaller = { id: 'alien-caller', organization_id: otherOrgId, role: 'SERVICE' };
+      await ProjectService.reconcileIdentity(canonicalMiraiId, 'user@other.com', otherCaller);
+
+      expect(mockPrisma.auditLog.create).toHaveBeenCalledWith({
+        data: expect.objectContaining({
+          organization_id: otherOrgId, // Strictly matches authenticated caller's tenant!
+          action: 'MIRAI_IDENTITY_UNMAPPED',
+        }),
+      });
+    });
+
+    it('8. should never record secrets, tokens, or passwords in audit metadata', async () => {
+      mockPrisma.userIdentityMapping.findFirst.mockResolvedValueOnce(null);
+      mockPrisma.user.findMany.mockResolvedValueOnce([]);
+      mockPrisma.user.findFirst.mockResolvedValueOnce(null);
+
+      await ProjectService.reconcileIdentity(canonicalMiraiId, 'clean@example.com', callerUser);
+
+      const auditCall = mockPrisma.auditLog.create.mock.calls[0][0];
+      const metadata = auditCall.data.metadata;
+
+      expect(metadata).not.toHaveProperty('token');
+      expect(metadata).not.toHaveProperty('secret');
+      expect(metadata).not.toHaveProperty('password');
+      expect(metadata).not.toHaveProperty('authorization');
+    });
+  });
+});

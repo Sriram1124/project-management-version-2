@@ -86,25 +86,25 @@ export const authenticate = async (req: Request, res: Response, next: NextFuncti
     // ── Machine-to-Machine (M2M) Static Service Token Verification ───────────────
     const serviceToken = process.env.PROJECT_MANAGEMENT_SERVICE_TOKEN || process.env.INTERNAL_SERVICE_TOKEN;
     if (serviceToken && token === serviceToken) {
-      let orgId = (req.headers['x-organization-id'] as string) || null;
-      if (orgId) {
-        const validOrg = await prisma.organization.findFirst({
-          where: { id: orgId, is_active: true },
-          select: { id: true },
-        });
-        if (!validOrg) {
-          (req as any)._authDuration = performance.now() - authStart;
-          res.status(403).json({ error: 'Organization not found or inactive' });
-          return;
-        }
-      } else {
-        const firstOrg = await prisma.organization.findFirst({ where: { is_active: true }, select: { id: true } });
-        orgId = firstOrg?.id || null;
+      if (process.env.NODE_ENV === 'production') {
+        (req as any)._authDuration = performance.now() - authStart;
+        res.status(401).json({ error: 'Static service tokens are disabled in production' });
+        return;
       }
-
+      let orgId = (req.headers['x-organization-id'] as string) || null;
       if (!orgId) {
         (req as any)._authDuration = performance.now() - authStart;
-        res.status(403).json({ error: 'No active organization found for service context' });
+        res.status(403).json({ error: 'Missing required X-Organization-Id header for service context' });
+        return;
+      }
+
+      const validOrg = await prisma.organization.findFirst({
+        where: { id: orgId, is_active: true },
+        select: { id: true },
+      });
+      if (!validOrg) {
+        (req as any)._authDuration = performance.now() - authStart;
+        res.status(403).json({ error: 'Organization not found or inactive' });
         return;
       }
       const serviceUser = {
@@ -225,26 +225,6 @@ export const authenticate = async (req: Request, res: Response, next: NextFuncti
           let duration = performance.now() - dbStart;
 
           if (dbUser && dbUser.is_active) {
-            // Handle fallback organization if unassigned
-            if (!dbUser.organization_id) {
-              const currentNow = Date.now();
-              if (cachedDefaultOrgId && currentNow < cachedDefaultOrgExpiry) {
-                dbUser.organization_id = cachedDefaultOrgId;
-              } else {
-                const orgStart = performance.now();
-                const firstOrg = await prisma.organization.findFirst({
-                  where: { is_active: true },
-                  select: { id: true }
-                });
-                duration += (performance.now() - orgStart);
-                if (firstOrg) {
-                  cachedDefaultOrgId = firstOrg.id;
-                  cachedDefaultOrgExpiry = currentNow + 5 * 60 * 1000;
-                  dbUser.organization_id = firstOrg.id;
-                }
-              }
-            }
-
             userSessionCache.set(payload.userId, { user: dbUser, cachedAt: Date.now() });
           }
 
@@ -438,11 +418,11 @@ export const authenticateMiraiService = async (req: Request, res: Response, next
       return;
     }
 
-    // 5. Tenant Validation (strictly from token claim payload.org; X-Organization-Id header is completely ignored)
-    const orgId = payload.org || payload.organizationId || payload.organization_id;
+    // 5. Tenant Validation (strictly from canonical token claim payload.org; X-Organization-Id header is completely ignored)
+    const orgId = payload.org;
     if (!orgId || typeof orgId !== 'string') {
       (req as any)._authDuration = performance.now() - authStart;
-      res.status(403).json({ error: 'Missing organization claim in service token' });
+      res.status(403).json({ error: 'Missing canonical organization claim (org) in service token' });
       return;
     }
 
