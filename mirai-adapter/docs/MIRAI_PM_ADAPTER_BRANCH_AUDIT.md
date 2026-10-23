@@ -113,7 +113,7 @@ These files belong strictly to the PM Node.js backend. **They are already commit
 5. `backend-node/src/services/project.service.ts` (`reconcileIdentity` logic)
 6. `backend-node/tests/unit/user-identity-mapping.test.ts` (21 unit tests)
 7. `backend-node/tests/unit/integration-scenarios.test.ts` (4 integration tests)
-8. `PM_IDENTITY_MAPPING_HTTP_E2E_REPORT.md` (E2E verification evidence)
+8. [`PM_IDENTITY_MAPPING_HTTP_E2E_REPORT.md`](./PM_IDENTITY_MAPPING_HTTP_E2E_REPORT.md) (E2E verification evidence)
 
 ### Category C: Do Not Push Yet
 1. `backend-node/storage/projects/...` (demo PDFs and rollback test artifacts).

@@ -69,10 +69,10 @@ frontend/.env
 login_frontend/
 intern_dashboard/
 reference_dir/
+# Scratch test scripts in root and backend-node
 test_*.js
-
-
-test_*.js
+!scripts/testing/test_*.js
+*.xlsx
 
 
 # Generated test coverage reports

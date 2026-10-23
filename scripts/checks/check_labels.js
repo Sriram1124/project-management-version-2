@@ -16,7 +16,11 @@ function walk(dir) {
   return results;
 }
 
-const files = walk('frontend/src');
+const frontendDir = fs.existsSync(path.resolve(__dirname, '../../frontend/src'))
+  ? path.resolve(__dirname, '../../frontend/src')
+  : path.resolve(process.cwd(), 'frontend/src');
+
+const files = walk(frontendDir);
 const labelHits = [];
 
 files.forEach(file => {

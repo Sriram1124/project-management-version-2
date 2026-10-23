@@ -1,5 +1,7 @@
-require('dotenv').config({ path: 'backend-node/.env' });
-const { PrismaClient } = require('./backend-node/node_modules/@prisma/client');
+const path = require('path');
+const backendNodeDir = path.resolve(__dirname, '../../backend-node');
+require(path.join(backendNodeDir, 'node_modules/dotenv')).config({ path: path.join(backendNodeDir, '.env') });
+const { PrismaClient } = require(path.join(backendNodeDir, 'node_modules/@prisma/client'));
 const prisma = new PrismaClient();
 
 async function run() {

@@ -2057,7 +2057,7 @@ m12 = {
 collection["item"] = [m00, m01, m02, m03, m04, m05, m06, m07, m08, m09, m10, m11, m12]
 
 # Write to file
-postman_dir = os.path.join(os.path.dirname(__file__), "..", "postman")
+postman_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", "postman"))
 os.makedirs(postman_dir, exist_ok=True)
 out_path = os.path.join(postman_dir, "InternHub_API_Collection.json")
 

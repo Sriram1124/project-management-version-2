@@ -147,8 +147,11 @@ intern_performance_dashboard/
 │   ├── src/                       # Identity mapping, membership resolution, service auth, client SDK
 │   └── tests/                     # Dedicated adapter test suites (72 passing tests)
 ├── backend/                       # Legacy migration reference files
-├── docs/                          # Architecture documentation, design guides, and audit plans
-├── scripts/                       # Workspace helper scripts & Postman collection builders
+├── docs/                          # Architecture documentation, design guides, audit plans, and specifications
+├── scripts/                       # Workspace helper and automation utilities
+│   ├── checks/                    # Static code, accessibility, and label verifications
+│   ├── testing/                   # Performance load testing and export test utilities
+│   └── maintenance/               # Database diagnostics, collections, and service migration scripts
 ├── docker-compose.yml             # Local multi-container development stack
 ├── package.json                   # Workspace root package configuration
 └── .env.example                   # Master environment variable template
