@@ -457,31 +457,57 @@ class PMProjectMembershipResolver:
 ## 7. Verification & Engineering Evidence (Approved Identity Decisions & Hardening)
 
 ### Summary of Approved Invariants & Architecture
-1. **Decision A — Read-Only GET Endpoints**: Membership GET routes (/internal/mirai/v1/users/:mirai_user_id/project-memberships and /internal/mirai/v1/users/:mirai_user_id/projects/:projectId/membership) never mutate or create identity mappings. Query parameters (email) and headers (x-user-email) on GET are strictly read-only.
-2. **Decision B — Complete Removal of Direct-ID Fallback**: The persistent public.user_identity_mappings table is the **sole** identity resolution mechanism. Direct UUID equivalence between MIRAI and PM backend is completely eliminated. If no mapping row exists, the system returns unmapped (failing closed).
-3. **Dedicated Reconciliation Lifecycle**: Identity mapping mutations occur exclusively via authenticated POST /internal/mirai/v1/identities/reconcile (or the administrative migration script 
-econcile-identities.ts), recording audited mapping events.
-4. **Mandatory Audit Atomicity (SEC-01)**: When a transaction client is provided to AuditService.record, audit insert failures are never caught or suppressed; they rethrow to ensure complete database transaction rollback of mapping mutations.
+1. **Decision A — Read-Only GET Endpoints**: Membership GET routes (`/internal/mirai/v1/users/:mirai_user_id/project-memberships` and `/internal/mirai/v1/users/:mirai_user_id/projects/:projectId/membership`) never mutate or create identity mappings. Query parameters (`email`) and headers (`x-user-email`) on GET are strictly read-only.
+2. **Decision B — Complete Removal of Direct-ID Fallback**: The persistent `public.user_identity_mappings` table is the **sole** identity resolution mechanism. Direct UUID equivalence between MIRAI and PM backend is completely eliminated. If no mapping row exists, the system returns `unmapped` (failing closed).
+3. **Dedicated Reconciliation Lifecycle**: Identity mapping mutations occur exclusively via authenticated `POST /internal/mirai/v1/identities/reconcile` (or the administrative migration script `reconcile-identities.ts`), recording audited mapping events.
+4. **Mandatory Audit Atomicity (SEC-01)**: When a transaction client is provided to `MiraiAuditService.record`, audit insert failures are never caught or suppressed; they rethrow to ensure complete database transaction rollback of mapping mutations.
 5. **Legacy Route & Secret Hardening (SEC-04 & SEC-05)**:
    - Static service tokens and service JWTs are rejected with HTTP 401 on user endpoints.
-   - User tokens signed with JWT_ACCESS_SECRET are rejected with HTTP 401 on internal service routes.
-   - alidateStartupConfig() runs on all non-test entry points (including pi/index.ts). It enforces a 32-character minimum, rejects known placeholder values, and enforces mutual distinctness between JWT_ACCESS_SECRET, JWT_REFRESH_SECRET, and PM_SERVICE_JWT_SECRET.
-6. **Django Implementation Alignment (INT-01 & INT-02)**:
-   - Django adapter resides in ackend/mirai_adapters/pm_resolver.py on branch eature/project-management-adapter.
-   - Adheres to the Django MembershipResolver protocol (member_ids(user) -> frozenset[UUID]).
-   - Implements 
-econcile_user(self, user, email=None) to call POST /internal/mirai/v1/identities/reconcile with audience-restricted service JWTs.
+   - User tokens signed with `JWT_ACCESS_SECRET` are rejected with HTTP 401 on internal service routes.
+   - `validateStartupConfig()` runs on all non-test entry points (including `api/index.ts`). It enforces a 32-character minimum, rejects known placeholder values, and enforces mutual distinctness between `JWT_ACCESS_SECRET`, `JWT_REFRESH_SECRET`, and `PM_SERVICE_JWT_SECRET`.
+6. **Concurrency & Database Uniqueness**:
+   - `user_identity_mappings` enforces global single-column uniqueness on `mirai_user_id` and `pm_user_id` (`@@unique([mirai_user_id])`, `@@unique([pm_user_id])`).
+   - Concurrent mapping reconciliation requests for the same identity or PM user handle `P2002` collisions idempotently, verifying the committed row before returning and preventing duplicate or conflicting mappings.
+7. **Inactive Existing Mapping Invariant**:
+   - When an existing identity mapping points to a PM user that is inactive, the mapping row remains unmodified in the database; audit metadata reflects `mapping_changed: false` with `before` and `after` recording the actual database mapping IDs, returning `unmapped`.
 
-### Verified Test Results
+### Real HTTP End-to-End Sandbox Verification
 
-| Test Suite | Repository & Path | Tests Run | Result | Evidence |
+Tested in an isolated local PostgreSQL sandbox environment (`pms_test_db` on `127.0.0.1:5432`) executing real HTTP network requests against the Express server (`http://127.0.0.1:3099`):
+
+- **Execution Command**:
+  ```powershell
+  $root = (Get-Location).Path; $env:NODE_PATH = "$root\backend-node\node_modules"; Set-Location backend-node; npx tsx src/scripts/verify-full-e2e.ts
+  ```
+- **Exit Code**: `0`
+- **Scenarios Verified**: **26 / 26 PASSED (100%)**
+- **Duration**: ~3.3 seconds
+
+| Category | Scenarios | HTTP Status | Evidence & Database Invariants | Result |
 |---|---|---|---|---|
-| PM TypeScript Typecheck | project-management-version-2 (ackend-node) | 	sc --noEmit | **0 errors (Exit 0)** | Verified clean compilation |
-| User Identity Mapping & Decision B Tests | ackend-node/tests/unit/user-identity-mapping.test.ts | **22 tests** | **22 passed (100%)** | Verified Decision A, Decision B (cases 1-5), and transactional audit rollback |
-| Auth Middleware & Secret Hardening | ackend-node/tests/unit/auth.middleware.test.ts | **41 tests** | **41 passed (100%)** | Verified startup validation, secret separation, and static token rejection |
-| Project Membership Service & Route Tests | ackend-node/tests/unit/project-membership.service.test.ts | **52 tests** | **52 passed (100%)** | Verified service JWT verification, fail-closed revocation, and route contracts |
-| PM Integration Adapter Tests | ackend-node/tests/unit/mirai-project-management.adapter.test.ts | **46 tests** | **46 passed (100%)** | Verified TypeScript adapter boundary enforcement and error handling |
-| Integration Scenario Tests | ackend-node/tests/unit/integration-scenarios.test.ts | **4 tests** | **4 passed (100%)** | Verified Scenarios B and C synthetic user onboarding |
-| **PM Backend Total** | ackend-node | **165 tests** | **165 passed (100%)** | **ALL PASSED** |
-| Django PM Resolver Unit Tests | Mirai-Dashboard/backend/tests/test_pm_resolver.py | **22 tests** | **22 passed (100%)** | Verified protocol, system checks, claims, fail-closed, timeout cap, and 
-econcile_user |
+| **Startup Config Validation** | 8 tests | N/A | Missing refresh secret in prod, missing service secret in prod, secrets < 32 bytes, reused secrets (access=service, access=refresh, service=refresh), and placeholder secrets (`changeme`) all fail fast; valid distinct secrets start up cleanly | **PASSED (8/8)** |
+| **Infrastructure Health** | Real HTTP probe | 200 OK | Direct pool connection confirmed to `pms_test_db` | **PASSED (1/1)** |
+| **HTTP Auth & Reconciliation** | Service JWT POST | 200 OK | Reconciled unique active email, auto-mapped in PostgreSQL, returned `mapping_status: 'mapped'`, `mapping_source: 'auto_mapped_by_email'` | **PASSED (1/1)** |
+| **Database Persistence** | Direct SQL query | N/A | Verified row inserted in `user_identity_mappings` with correct UUIDs | **PASSED (1/1)** |
+| **Audit Verification** | Direct SQL query | N/A | Verified `audit_logs` row persisted atomically with `actor: 'service:mirai'`, `source: 'email'`, `mapping_changed: true`, and matching before/after IDs | **PASSED (1/1)** |
+| **Security Gates** | User JWT to service routes | 401 Unauthorized | User tokens rejected on `POST /identities/reconcile` and `GET /users/:id/project-memberships` | **PASSED (2/2)** |
+| **Security Gates** | Static/service tokens on `/api` | 401 Unauthorized | Service tokens rejected on user endpoints (`/api/projects/:id/members/:userId/check`, `/api/users/:id/project-memberships`) | **PASSED (2/2)** |
+| **Multi-Tenant Isolation** | Forged `X-Organization-Id` | 200 OK (unmapped) | Token for Org A ignored forged Org B header; target user in Org B was completely inaccessible | **PASSED (1/1)** |
+| **Multi-Tenant Isolation** | Invalid/unknown organization | 403 Forbidden | Token with non-existent org UUID fails with 403 without falling back to any database organization | **PASSED (1/1)** |
+| **Read-Only GET Invariant** | GET with `email` query param | 200 OK (unmapped) | Direct DB count confirmed 0 mapping rows created on GET | **PASSED (1/1)** |
+| **Fail-Closed Behavior** | Ambiguous email | 200 OK (ambiguous) | Email matching 2 active PM users in tenant returns `ambiguous`, 0 mapping rows created | **PASSED (1/1)** |
+| **Fail-Closed Behavior** | Inactive PM user | 200 OK (unmapped) | Mapping pointing to inactive PM user returns `unmapped`; audit metadata records `mapping_changed: false` with unchanged DB IDs | **PASSED (2/2)** |
+| **Fail-Closed Behavior** | Conflicting identity | 200 OK (conflict) | Candidate PM user already mapped to different MIRAI ID returns `conflict`, 0 duplicate rows created | **PASSED (1/1)** |
+| **Fail-Closed Behavior** | Cross-organization email | 200 OK (unmapped) | Target user in another tenant returns `unmapped`, zero cross-tenant leak | **PASSED (1/1)** |
+| **Transaction Safety** | Simulated audit write failure | N/A | Aborted transaction rolls back `user_identity_mappings` creation row (verified 0 rows in DB) | **PASSED (1/1)** |
+| **Concurrency & Idempotency** | 10 concurrent HTTP POSTs | 200 OK | 10 simultaneous reconcile requests for identical identity/email all returned 200 mapped; direct PostgreSQL query confirmed **EXACTLY 1 row** created | **PASSED (1/1)** |
+
+### Unit & Integration Test Suites
+
+| Test Suite | Path | Tests Run | Result | Evidence |
+|---|---|---|---|---|
+| PM TypeScript Typecheck | `backend-node/` (`tsc --noEmit`) | Full codebase | **0 errors (Exit 0)** | Verified clean compilation |
+| Mirai Adapter Test Suite | `mirai-adapter/tests/` | **80 tests** (5 suites) | **80 passed (100%)** | Verified HTTP client, identity mapper, adapter methods, audit, and membership |
+| PM Identity Mapping & Decision B Tests | `backend-node/tests/unit/user-identity-mapping.test.ts` | **31 tests** | **31 passed (100%)** | Verified Decision A, Decision B, reconciliation script logic, audit rollback |
+| PM Project Membership Service & Route Tests | `backend-node/tests/unit/project-membership.service.test.ts` | **52 tests** | **52 passed (100%)** | Verified service JWT verification, fail-closed revocation, and route contracts |
+| **Total Automated Tests** | Root & Adapter | **163 unit/integration + 26 E2E** | **189 passed (100%)** | **ALL PASSED** |

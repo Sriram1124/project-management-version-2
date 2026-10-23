@@ -150,8 +150,25 @@ export class IdentityMappingService {
           targetId: existingMapping.id,
           actor: serviceActor,
           metadata: {
+            actor: serviceActor,
+            timestamp: as_of,
+            source: 'reconcile',
+            organization_id: cleanOrgId,
             mirai_user_id: cleanMiraiId,
             pm_user_id: existingMapping.pm_user_id,
+            mapping_changed: false,
+            before: {
+              mirai_user_id: cleanMiraiId,
+              pm_user_id: existingMapping.pm_user_id,
+            },
+            after: {
+              mirai_user_id: cleanMiraiId,
+              pm_user_id: existingMapping.pm_user_id,
+            },
+            before_mirai_user_id: cleanMiraiId,
+            before_pm_user_id: existingMapping.pm_user_id,
+            after_mirai_user_id: cleanMiraiId,
+            after_pm_user_id: existingMapping.pm_user_id,
             status: 'unmapped',
             reason: 'Referenced PM user is inactive or not found in organization',
           },
@@ -175,14 +192,32 @@ export class IdentityMappingService {
         select: { project_id: true },
       });
 
+      // Requirement 4: Do not claim a mapping change when only reconciling an existing mapping.
       await MiraiAuditService.record({
         organizationId: cleanOrgId,
         action: 'MIRAI_IDENTITY_RECONCILED',
         targetId: existingMapping.id,
         actor: serviceActor,
         metadata: {
+          actor: serviceActor,
+          timestamp: as_of,
+          source: 'reconcile',
+          organization_id: cleanOrgId,
           mirai_user_id: cleanMiraiId,
           pm_user_id: pmUser.id,
+          mapping_changed: false,
+          before: {
+            mirai_user_id: cleanMiraiId,
+            pm_user_id: pmUser.id,
+          },
+          after: {
+            mirai_user_id: cleanMiraiId,
+            pm_user_id: pmUser.id,
+          },
+          before_mirai_user_id: cleanMiraiId,
+          before_pm_user_id: pmUser.id,
+          after_mirai_user_id: cleanMiraiId,
+          after_pm_user_id: pmUser.id,
           status: 'mapped',
           mapping_source: 'existing_mapping',
           project_count: memberships.length,
@@ -222,9 +257,26 @@ export class IdentityMappingService {
           targetId: cleanMiraiId,
           actor: serviceActor,
           metadata: {
+            actor: serviceActor,
+            timestamp: as_of,
+            source: 'email',
+            organization_id: cleanOrgId,
             mirai_user_id: cleanMiraiId,
             status: 'ambiguous',
             match_count: emailMatches.length,
+            mapping_changed: false,
+            before: {
+              mirai_user_id: null,
+              pm_user_id: null,
+            },
+            after: {
+              mirai_user_id: null,
+              pm_user_id: null,
+            },
+            before_mirai_user_id: null,
+            before_pm_user_id: null,
+            after_mirai_user_id: null,
+            after_pm_user_id: null,
             reason: 'Multiple active PM users found with matching email',
           },
         });
@@ -260,9 +312,26 @@ export class IdentityMappingService {
             targetId: cleanMiraiId,
             actor: serviceActor,
             metadata: {
+              actor: serviceActor,
+              timestamp: as_of,
+              source: 'email',
+              organization_id: cleanOrgId,
               mirai_user_id: cleanMiraiId,
               pm_user_id: candidatePmUser.id,
               conflicting_mirai_user_id: existingPmMapping.mirai_user_id,
+              mapping_changed: false,
+              before: {
+                mirai_user_id: null,
+                pm_user_id: candidatePmUser.id,
+              },
+              after: {
+                mirai_user_id: null,
+                pm_user_id: candidatePmUser.id,
+              },
+              before_mirai_user_id: null,
+              before_pm_user_id: candidatePmUser.id,
+              after_mirai_user_id: null,
+              after_pm_user_id: candidatePmUser.id,
               status: 'conflict',
               reason: 'Candidate PM user is already mapped to a different MIRAI identity',
             },
@@ -289,40 +358,88 @@ export class IdentityMappingService {
                 pm_user_id: candidatePmUser.id,
               },
             });
+
+            // Requirement 3 & 5: Write audit event in the same transaction as mutation.
+            // If audit write fails, transaction rolls back.
             await MiraiAuditService.record({
               organizationId: cleanOrgId,
               action: 'MIRAI_IDENTITY_MAPPED',
               targetId: mapping.id,
               actor: serviceActor,
               metadata: {
+                actor: serviceActor,
+                timestamp: as_of,
+                source: 'email',
+                mapping_source: 'auto_mapped_by_email',
+                mapping_changed: true,
+                organization_id: cleanOrgId,
                 mirai_user_id: cleanMiraiId,
                 pm_user_id: candidatePmUser.id,
+                before: {
+                  mirai_user_id: null,
+                  pm_user_id: null,
+                },
+                after: {
+                  mirai_user_id: cleanMiraiId,
+                  pm_user_id: candidatePmUser.id,
+                },
+                before_mirai_user_id: null,
+                before_pm_user_id: null,
+                after_mirai_user_id: cleanMiraiId,
+                after_pm_user_id: candidatePmUser.id,
                 status: 'mapped',
-                mapping_source: 'auto_mapped_by_email',
               },
               tx,
             });
+
             return mapping;
           });
         } catch (err: any) {
-          // If already created concurrently, verify consistency
+          // Requirement 5 & 7: If transaction aborted (e.g. audit persistence failure) or
+          // unique constraint collision occurred on concurrent insertion:
+          // The database transaction rolled back the mapping creation.
+          // Re-check whether an authoritative mapping exists in the database.
           const rechecked = await prisma.userIdentityMapping.findFirst({
             where: {
-              mirai_user_id: cleanMiraiId,
               organization_id: cleanOrgId,
+              OR: [
+                { mirai_user_id: cleanMiraiId },
+                { pm_user_id: candidatePmUser.id },
+              ],
             },
           });
-          if (!rechecked || rechecked.pm_user_id !== candidatePmUser.id) {
+
+          if (!rechecked || rechecked.mirai_user_id !== cleanMiraiId || rechecked.pm_user_id !== candidatePmUser.id) {
+            // Failed closed: mapping rolled back or conflicting mapping present
             await MiraiAuditService.record({
               organizationId: cleanOrgId,
               action: 'MIRAI_IDENTITY_RECONCILE_CONFLICT',
               targetId: cleanMiraiId,
               actor: serviceActor,
               metadata: {
+                actor: serviceActor,
+                timestamp: as_of,
+                source: 'email',
+                organization_id: cleanOrgId,
                 mirai_user_id: cleanMiraiId,
                 pm_user_id: candidatePmUser.id,
+                mapping_changed: false,
+                before: {
+                  mirai_user_id: null,
+                  pm_user_id: null,
+                },
+                after: {
+                  mirai_user_id: null,
+                  pm_user_id: null,
+                },
+                before_mirai_user_id: null,
+                before_pm_user_id: null,
+                after_mirai_user_id: null,
+                after_pm_user_id: null,
                 status: 'conflict',
-                reason: 'Concurrent request mapped PM user to a different identity',
+                reason: err?.message
+                  ? `Transaction rolled back or concurrent conflict: ${err.message}`
+                  : 'Concurrent request mapped PM user to a different identity or transaction aborted',
               },
             });
 
@@ -335,6 +452,8 @@ export class IdentityMappingService {
               as_of,
             };
           }
+
+          // Exact same mapping was committed by the concurrent worker: idempotent success
           createdMapping = rechecked;
         }
 
@@ -364,7 +483,24 @@ export class IdentityMappingService {
       targetId: cleanMiraiId,
       actor: serviceActor,
       metadata: {
+        actor: serviceActor,
+        timestamp: as_of,
+        source: normEmail ? 'email' : 'reconcile',
+        organization_id: cleanOrgId,
         mirai_user_id: cleanMiraiId,
+        mapping_changed: false,
+        before: {
+          mirai_user_id: cleanMiraiId,
+          pm_user_id: null,
+        },
+        after: {
+          mirai_user_id: cleanMiraiId,
+          pm_user_id: null,
+        },
+        before_mirai_user_id: cleanMiraiId,
+        before_pm_user_id: null,
+        after_mirai_user_id: cleanMiraiId,
+        after_pm_user_id: null,
         status: 'unmapped',
         reason: 'No matching active PM user found by email or direct ID',
       },

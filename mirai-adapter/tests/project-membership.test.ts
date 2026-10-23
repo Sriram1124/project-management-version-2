@@ -104,6 +104,23 @@ describe('MiraiAdapter: ProjectMembershipService', () => {
         ProjectMembershipService.checkProjectMembership(projectId, miraiUserId, mockServiceUser)
       ).rejects.toThrow('User not found');
     });
+
+    it('Requirement 2: never creates or mutates identity mapping when email is supplied to checkProjectMembership', async () => {
+      (mockPrisma.project.findFirst as jest.Mock).mockResolvedValue({
+        id: projectId,
+        organization_id: orgId,
+        status: 'ACTIVE',
+      });
+
+      (mockPrisma.userIdentityMapping.findFirst as jest.Mock).mockResolvedValue(null);
+
+      await expect(
+        ProjectMembershipService.checkProjectMembership(projectId, miraiUserId, mockServiceUser, 'candidate@test.com')
+      ).rejects.toThrow('User not found');
+
+      expect(mockPrisma.userIdentityMapping.create).not.toHaveBeenCalled();
+      expect(mockPrisma.userIdentityMapping.update).not.toHaveBeenCalled();
+    });
   });
 
   describe('getUserProjectMemberships', () => {
@@ -139,6 +156,17 @@ describe('MiraiAdapter: ProjectMembershipService', () => {
       await expect(
         ProjectMembershipService.getUserProjectMemberships(miraiUserId, mockServiceUser)
       ).rejects.toThrow('User not found');
+    });
+
+    it('Requirement 2: never creates or mutates identity mapping when email is supplied to getUserProjectMemberships', async () => {
+      (mockPrisma.userIdentityMapping.findFirst as jest.Mock).mockResolvedValue(null);
+
+      await expect(
+        ProjectMembershipService.getUserProjectMemberships(miraiUserId, mockServiceUser, 'candidate@test.com')
+      ).rejects.toThrow('User not found');
+
+      expect(mockPrisma.userIdentityMapping.create).not.toHaveBeenCalled();
+      expect(mockPrisma.userIdentityMapping.update).not.toHaveBeenCalled();
     });
   });
 });

@@ -8,8 +8,13 @@ export class MiraiAuditService {
    * and any failure will roll back the enclosing transaction.
    */
   static async record(input: MiraiAuditInput): Promise<any> {
+    const isValidUuid =
+      typeof input.actor === 'string' &&
+      /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(input.actor);
+
     return await AuditService.record(
       {
+        actorId: isValidUuid ? input.actor : null,
         organizationId: input.organizationId,
         action: input.action,
         targetType: 'USER_IDENTITY_MAPPING',
@@ -17,6 +22,8 @@ export class MiraiAuditService {
         metadata: {
           ...input.metadata,
           actor: input.actor || 'service:mirai',
+          organization_id: input.organizationId,
+          timestamp: input.metadata?.timestamp || new Date().toISOString(),
         },
       },
       input.tx
