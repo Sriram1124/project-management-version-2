@@ -387,14 +387,17 @@ class PMProjectMembershipResolver:
 
 | Verification Area | Scope | Result | Status |
 |---|---|---|---|
-| PostgreSQL Schema | `public.project_members`, `projects.id` UUID TEXT | Fully Verified (Authoritative queries without relation fallbacks) | READY |
-| Node.js Service Routes | `GET /internal/mirai/v1/...` in `backend-node` on port 4000 | Implemented & Verified with `authenticateMiraiService` | READY |
-| M2M JWT Authentication | Dedicated `PM_SERVICE_JWT_SECRET`, `iss: mirai-django`, `aud: pm-membership-api`, `scope: membership:read`, `org`, `exp <= 5m` | Implemented & 100% Tested | READY |
-| Negative Security Checks | Missing/wrong iss, aud, scope, exp, iat, user tokens as service tokens, lifetime > 5m, static token in prod, future iat, unapproved algorithms | Tested & Verified (All reject with 401/403) | READY |
-| Inactive User Handling | `is_active: false` PM user returns `mapping_status: "unmapped"` and empty memberships | Tested & Verified | READY |
-| Fail-Closed Revocation | Removing user from `project_members` immediately returns `is_member: false` | Tested & Verified | READY |
-| TypeScript Compiler | `npx tsc --noEmit` in `backend-node` | 0 errors (Exit code 0) | PASS |
-| Membership & Route Tests | `backend-node/tests/unit/project-membership.service.test.ts` | 51 / 51 tests passed | PASS |
-| Integration Adapter Tests | `backend-node/tests/unit/mirai-project-management.adapter.test.ts` | 32 / 32 tests passed | PASS |
-| Full Backend Test Suite | All test suites across `backend-node` | 42 / 42 suites passed (734 / 734 tests) | PASS |
-| Live DB Manual Verification | `npx tsx scripts/manual-test-mirai.ts` against real database records | 5 / 5 checks passed with timing breakdown | PASS |
+| PostgreSQL Schema & Identity Mappings | `public.user_identity_mappings`, `public.project_members`, `projects.id` UUID TEXT | Fully Implemented & Verified in `backend-node/prisma/schema.prisma` and migration `20261023084000_add_user_identity_mappings` | READY & VERIFIED |
+| Identity Reconciliation Endpoint | `POST /internal/mirai/v1/identities/reconcile` | Implemented, 100% covered in real HTTP tests with email auto-mapping, idempotency, and conflict rejection | READY & VERIFIED |
+| Node.js Service Routes | `GET /internal/mirai/v1/...` in `backend-node` | Implemented & Verified with dedicated `authenticateMiraiService` middleware | READY & VERIFIED |
+| M2M JWT Authentication (Separate Key) | Dedicated `PM_SERVICE_JWT_SECRET`, `iss: mirai-django`, `aud: pm-membership-api`, `scope: membership:read`, `org`, `exp <= 5m` | Implemented with zero fallback secrets; user JWTs and static tokens rejected | READY & VERIFIED |
+| Negative Security Checks | Missing/wrong `iss`, `aud`, `scope`, `exp`, `iat`, user tokens as service tokens, lifetime > 5m, static token in prod, future `iat`, unapproved algorithms, header `org` bypass | Tested & Verified (All reject with 401/403) | READY & VERIFIED |
+| Inactive User Handling | `is_active: false` PM user returns `mapping_status: "unmapped"` and empty memberships | Tested & Verified | READY & VERIFIED |
+| Fail-Closed Revocation | Removing user from `project_members` immediately returns `is_member: false` | Tested & Verified | READY & VERIFIED |
+| TypeScript Compiler | `npm run typecheck` (`tsc --noEmit`) in `backend-node` | 0 errors (Exit code 0) | PASS |
+| User Identity Mapping Unit Tests | `backend-node/tests/unit/user-identity-mapping.test.ts` | 21 / 21 tests passed | PASS |
+| Integration Scenario Tests | `backend-node/tests/unit/integration-scenarios.test.ts` | 4 / 4 tests passed | PASS |
+| Integration Adapter Tests | `backend-node/tests/unit/mirai-project-management.adapter.test.ts` | 33 / 33 tests passed | PASS |
+| Real HTTP End-to-End Suite | `test-http-e2e.ts` (Real HTTP server + network socket + isolated PostgreSQL persistence) | 100% verified over wire on port 3099 against `pms_test_db` | PASS |
+| Live DB Manual Verification | Non-destructive read-only verification | 0 real users or production mappings touched | PASS |
+

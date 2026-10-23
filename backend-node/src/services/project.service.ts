@@ -1175,11 +1175,463 @@ export class ProjectService {
   }
 
   /**
+   * Authoritatively resolves the effective PM User for a given target user ID
+   * (which may be a canonical MIRAI UUID or a legacy direct PM user UUID).
+   *
+   * Resolution precedence:
+   * 1. Check UserIdentityMapping (mirai_user_id = targetUserId, organization_id = orgId).
+   *    If found, verify referenced PM user exists, belongs to orgId, and is_active = true.
+   * 2. If no mapping exists and email is provided:
+   *    Find active PM users matching normalized email within orgId.
+   *    If exactly one active match and no collision on PM user:
+   *      Create the UserIdentityMapping safely and return resolved PM user.
+   *    If multiple matches: reject automatic mapping (fail closed).
+   * 3. Fall back to direct PM user lookup (id = targetUserId, organization_id = orgId, is_active = true)
+   *    ONLY IF no conflicting mapping assigns a different mirai_user_id to that PM user within the organization.
+   * 4. Return null if unmapped, inactive, ambiguous, or not found (fail closed).
+   */
+  static async resolveEffectiveUser(
+    targetUserId: string,
+    orgId: string,
+    email?: string
+  ): Promise<{
+    pm_user_id: string;
+    mirai_user_id: string;
+    mapping_source: 'mapped' | 'auto_mapped_by_email' | 'direct';
+  } | null> {
+    if (!targetUserId || typeof targetUserId !== 'string' || !targetUserId.trim() || targetUserId === 'undefined') {
+      return null;
+    }
+    if (!orgId || typeof orgId !== 'string' || !orgId.trim()) {
+      return null;
+    }
+
+    const cleanTargetId = targetUserId.trim();
+    const cleanOrgId = orgId.trim();
+
+    // 1. Check UserIdentityMapping first by canonical mirai_user_id within tenant boundary
+    const mapping = await prisma.userIdentityMapping.findFirst({
+      where: {
+        mirai_user_id: cleanTargetId,
+        organization_id: cleanOrgId,
+      },
+      select: {
+        id: true,
+        mirai_user_id: true,
+        pm_user_id: true,
+        organization_id: true,
+      },
+    });
+
+    if (mapping) {
+      // Verify that the referenced PM user exists, is in the same organization, and is active
+      const pmUser = await prisma.user.findFirst({
+        where: {
+          id: mapping.pm_user_id,
+          organization_id: cleanOrgId,
+        },
+        select: {
+          id: true,
+          organization_id: true,
+          is_active: true,
+        },
+      });
+
+      if (!pmUser || !pmUser.is_active) {
+        return null;
+      }
+
+      return {
+        pm_user_id: pmUser.id,
+        mirai_user_id: mapping.mirai_user_id,
+        mapping_source: 'mapped',
+      };
+    }
+
+    // 2. If no mapping exists and email is provided, attempt automatic identity resolution by normalized email
+    const normEmail = (email || '').trim().toLowerCase();
+    if (normEmail) {
+      const emailMatches = await prisma.user.findMany({
+        where: {
+          email: { equals: normEmail, mode: 'insensitive' },
+          organization_id: cleanOrgId,
+          is_active: true,
+        },
+        select: {
+          id: true,
+          organization_id: true,
+          is_active: true,
+          email: true,
+        },
+      });
+
+      if (emailMatches.length === 1) {
+        const matchedUser = emailMatches[0];
+        // Ensure no conflicting mapping already exists for this PM user
+        const existingPmMapping = await prisma.userIdentityMapping.findFirst({
+          where: {
+            pm_user_id: matchedUser.id,
+            organization_id: cleanOrgId,
+          },
+          select: {
+            mirai_user_id: true,
+          },
+        });
+
+        if (!existingPmMapping || existingPmMapping.mirai_user_id === cleanTargetId) {
+          try {
+            await prisma.userIdentityMapping.create({
+              data: {
+                organization_id: cleanOrgId,
+                mirai_user_id: cleanTargetId,
+                pm_user_id: matchedUser.id,
+              },
+            });
+            return {
+              pm_user_id: matchedUser.id,
+              mirai_user_id: cleanTargetId,
+              mapping_source: 'auto_mapped_by_email',
+            };
+          } catch (err: any) {
+            // Concurrent insert race condition: verify if mapping now exists
+            const rechecked = await prisma.userIdentityMapping.findFirst({
+              where: {
+                mirai_user_id: cleanTargetId,
+                organization_id: cleanOrgId,
+              },
+            });
+            if (rechecked && rechecked.pm_user_id === matchedUser.id) {
+              return {
+                pm_user_id: matchedUser.id,
+                mirai_user_id: cleanTargetId,
+                mapping_source: 'auto_mapped_by_email',
+              };
+            }
+            return null;
+          }
+        }
+        // Conflicting mapping exists for a different mirai user -> fail closed
+        return null;
+      }
+
+      if (emailMatches.length > 1) {
+        // Ambiguous match: multiple active PM users share this email -> require manual review (fail closed)
+        return null;
+      }
+    }
+
+    // 3. Direct PM user fallback: check if targetUserId matches a PM user directly
+    const directUser = await prisma.user.findFirst({
+      where: {
+        id: cleanTargetId,
+        organization_id: cleanOrgId,
+      },
+      select: {
+        id: true,
+        organization_id: true,
+        is_active: true,
+      },
+    });
+
+    if (!directUser || !directUser.is_active) {
+      return null;
+    }
+
+    // Check collision: ensure no conflicting mapping exists assigning a DIFFERENT mirai_user_id to this PM user
+    const conflictingMapping = await prisma.userIdentityMapping.findFirst({
+      where: {
+        pm_user_id: directUser.id,
+        organization_id: cleanOrgId,
+      },
+      select: {
+        mirai_user_id: true,
+      },
+    });
+
+    if (conflictingMapping && conflictingMapping.mirai_user_id !== cleanTargetId) {
+      // A different canonical MIRAI user claims this PM identity, fail closed
+      return null;
+    }
+
+    return {
+      pm_user_id: directUser.id,
+      mirai_user_id: cleanTargetId,
+      mapping_source: 'direct',
+    };
+  }
+
+  /**
+   * Dedicated authenticated identity reconciliation method.
+   * Given a mirai_user_id and email within the caller's verified tenant organization:
+   * 1. Checks if mapping exists -> returns mapped PM user + memberships
+   * 2. If not, matches active PM user by normalized email -> creates mapping if exactly 1 active match + memberships
+   * 3. If multiple email matches -> returns ambiguous status, no mapping created
+   * 4. If direct UUID matches active PM user -> returns direct mapping + memberships
+   * 5. If no match -> returns unmapped status, zero PM users created
+   */
+  static async reconcileIdentity(
+    miraiUserId: string,
+    email: string | undefined,
+    user: any
+  ): Promise<{
+    mirai_user_id: string;
+    pm_user_id: string | null;
+    mapping_status: 'mapped' | 'unmapped' | 'ambiguous' | 'conflict';
+    mapping_source: 'existing_mapping' | 'auto_mapped_by_email' | 'direct' | null;
+    project_ids: string[];
+    as_of: string;
+  }> {
+    const as_of = new Date().toISOString();
+
+    if (!miraiUserId || typeof miraiUserId !== 'string' || !miraiUserId.trim()) {
+      return {
+        mirai_user_id: miraiUserId || '',
+        pm_user_id: null,
+        mapping_status: 'unmapped',
+        mapping_source: null,
+        project_ids: [],
+        as_of,
+      };
+    }
+
+    const cleanMiraiId = miraiUserId.trim();
+    const orgId = user?.organization_id;
+    if (!orgId || typeof orgId !== 'string' || !orgId.trim()) {
+      return {
+        mirai_user_id: cleanMiraiId,
+        pm_user_id: null,
+        mapping_status: 'unmapped',
+        mapping_source: null,
+        project_ids: [],
+        as_of,
+      };
+    }
+
+    const cleanOrgId = orgId.trim();
+
+    // 1. Check existing UserIdentityMapping
+    const existingMapping = await prisma.userIdentityMapping.findFirst({
+      where: {
+        mirai_user_id: cleanMiraiId,
+        organization_id: cleanOrgId,
+      },
+      select: {
+        id: true,
+        mirai_user_id: true,
+        pm_user_id: true,
+      },
+    });
+
+    if (existingMapping) {
+      const pmUser = await prisma.user.findFirst({
+        where: {
+          id: existingMapping.pm_user_id,
+          organization_id: cleanOrgId,
+        },
+        select: {
+          id: true,
+          is_active: true,
+        },
+      });
+
+      if (!pmUser || !pmUser.is_active) {
+        return {
+          mirai_user_id: cleanMiraiId,
+          pm_user_id: null,
+          mapping_status: 'unmapped',
+          mapping_source: null,
+          project_ids: [],
+          as_of,
+        };
+      }
+
+      const memberships = await prisma.projectMember.findMany({
+        where: {
+          user_id: pmUser.id,
+          project: { organization_id: cleanOrgId },
+        },
+        select: { project_id: true },
+      });
+
+      return {
+        mirai_user_id: cleanMiraiId,
+        pm_user_id: pmUser.id,
+        mapping_status: 'mapped',
+        mapping_source: 'existing_mapping',
+        project_ids: memberships.map((m) => m.project_id),
+        as_of,
+      };
+    }
+
+    // 2. No mapping exists: search active PM user by normalized email
+    const normEmail = (email || '').trim().toLowerCase();
+    if (normEmail) {
+      const emailMatches = await prisma.user.findMany({
+        where: {
+          email: { equals: normEmail, mode: 'insensitive' },
+          organization_id: cleanOrgId,
+          is_active: true,
+        },
+        select: {
+          id: true,
+          is_active: true,
+          organization_id: true,
+        },
+      });
+
+      if (emailMatches.length > 1) {
+        return {
+          mirai_user_id: cleanMiraiId,
+          pm_user_id: null,
+          mapping_status: 'ambiguous',
+          mapping_source: null,
+          project_ids: [],
+          as_of,
+        };
+      }
+
+      if (emailMatches.length === 1) {
+        const candidatePmUser = emailMatches[0];
+
+        // Check if candidate PM user is already mapped to a different MIRAI UUID
+        const existingPmMapping = await prisma.userIdentityMapping.findFirst({
+          where: {
+            pm_user_id: candidatePmUser.id,
+            organization_id: cleanOrgId,
+          },
+          select: {
+            mirai_user_id: true,
+          },
+        });
+
+        if (existingPmMapping && existingPmMapping.mirai_user_id !== cleanMiraiId) {
+          return {
+            mirai_user_id: cleanMiraiId,
+            pm_user_id: null,
+            mapping_status: 'conflict',
+            mapping_source: null,
+            project_ids: [],
+            as_of,
+          };
+        }
+
+        // Safe insertion with concurrency handling
+        try {
+          await prisma.userIdentityMapping.create({
+            data: {
+              organization_id: cleanOrgId,
+              mirai_user_id: cleanMiraiId,
+              pm_user_id: candidatePmUser.id,
+            },
+          });
+        } catch (err: any) {
+          // If already created concurrently, verify consistency
+          const rechecked = await prisma.userIdentityMapping.findFirst({
+            where: {
+              mirai_user_id: cleanMiraiId,
+              organization_id: cleanOrgId,
+            },
+          });
+          if (!rechecked || rechecked.pm_user_id !== candidatePmUser.id) {
+            return {
+              mirai_user_id: cleanMiraiId,
+              pm_user_id: null,
+              mapping_status: 'conflict',
+              mapping_source: null,
+              project_ids: [],
+              as_of,
+            };
+          }
+        }
+
+        const memberships = await prisma.projectMember.findMany({
+          where: {
+            user_id: candidatePmUser.id,
+            project: { organization_id: cleanOrgId },
+          },
+          select: { project_id: true },
+        });
+
+        return {
+          mirai_user_id: cleanMiraiId,
+          pm_user_id: candidatePmUser.id,
+          mapping_status: 'mapped',
+          mapping_source: 'auto_mapped_by_email',
+          project_ids: memberships.map((m) => m.project_id),
+          as_of,
+        };
+      }
+    }
+
+    // 3. Direct PM user fallback
+    const directUser = await prisma.user.findFirst({
+      where: {
+        id: cleanMiraiId,
+        organization_id: cleanOrgId,
+        is_active: true,
+      },
+      select: {
+        id: true,
+      },
+    });
+
+    if (directUser) {
+      const conflictingMapping = await prisma.userIdentityMapping.findFirst({
+        where: {
+          pm_user_id: directUser.id,
+          organization_id: cleanOrgId,
+        },
+        select: {
+          mirai_user_id: true,
+        },
+      });
+
+      if (conflictingMapping && conflictingMapping.mirai_user_id !== cleanMiraiId) {
+        return {
+          mirai_user_id: cleanMiraiId,
+          pm_user_id: null,
+          mapping_status: 'conflict',
+          mapping_source: null,
+          project_ids: [],
+          as_of,
+        };
+      }
+
+      const memberships = await prisma.projectMember.findMany({
+        where: {
+          user_id: directUser.id,
+          project: { organization_id: cleanOrgId },
+        },
+        select: { project_id: true },
+      });
+
+      return {
+        mirai_user_id: cleanMiraiId,
+        pm_user_id: directUser.id,
+        mapping_status: 'mapped',
+        mapping_source: 'direct',
+        project_ids: memberships.map((m) => m.project_id),
+        as_of,
+      };
+    }
+
+    // 4. No match: fail closed
+    return {
+      mirai_user_id: cleanMiraiId,
+      pm_user_id: null,
+      mapping_status: 'unmapped',
+      mapping_source: null,
+      project_ids: [],
+      as_of,
+    };
+  }
+
+  /**
    * Authoritative check whether a user is a member of a project using public.project_members.
    * Does NOT infer membership from project ownership or work item assignments.
    * Enforces organization boundaries and fails closed.
    */
-  static async checkProjectMembership(projectId: string, targetUserId: string, user: any) {
+  static async checkProjectMembership(projectId: string, targetUserId: string, user: any, email?: string) {
     if (!projectId || typeof projectId !== 'string' || !projectId.trim() || projectId === 'undefined') {
       throw new Error('Project not found');
     }
@@ -1211,19 +1663,9 @@ export class ProjectService {
       throw new Error('Project not found');
     }
 
-    // 2. Validate that the target user exists within the organization boundary
-    const targetUser = await prisma.user.findFirst({
-      where: {
-        id: cleanUserId,
-        organization_id: orgId,
-      },
-      select: {
-        id: true,
-        organization_id: true,
-        is_active: true,
-      },
-    });
-    if (!targetUser || !targetUser.is_active) {
+    // 2. Resolve effective user (via UserIdentityMapping, email auto-map, or direct fallback)
+    const resolved = await this.resolveEffectiveUser(cleanUserId, orgId, email);
+    if (!resolved) {
       throw new Error('User not found');
     }
 
@@ -1231,7 +1673,7 @@ export class ProjectService {
     const membership = await prisma.projectMember.findFirst({
       where: {
         project_id: cleanProjectId,
-        user_id: cleanUserId,
+        user_id: resolved.pm_user_id,
       },
       select: {
         project_id: true,
@@ -1245,6 +1687,8 @@ export class ProjectService {
       is_member: Boolean(membership),
       project_id: cleanProjectId,
       user_id: cleanUserId,
+      pm_user_id: resolved.pm_user_id,
+      mapping_source: resolved.mapping_source,
       project_role: membership?.project_role || null,
       role_id: membership?.role_id || null,
       joined_at: null,
@@ -1256,7 +1700,7 @@ export class ProjectService {
    * Single efficient query, avoiding N+1 requests or whole-roster fetching.
    * Enforces organization boundaries and fails closed.
    */
-  static async getUserProjectMemberships(targetUserId: string, user: any) {
+  static async getUserProjectMemberships(targetUserId: string, user: any, email?: string) {
     if (!targetUserId || typeof targetUserId !== 'string' || !targetUserId.trim() || targetUserId === 'undefined') {
       throw new Error('User not found');
     }
@@ -1268,26 +1712,16 @@ export class ProjectService {
       throw new Error('User not found');
     }
 
-    // 1. Verify user exists in the organization and is active
-    const targetUser = await prisma.user.findFirst({
-      where: {
-        id: cleanUserId,
-        organization_id: orgId,
-      },
-      select: {
-        id: true,
-        organization_id: true,
-        is_active: true,
-      },
-    });
-    if (!targetUser || !targetUser.is_active) {
+    // 1. Resolve effective user (via UserIdentityMapping, email auto-map, or direct fallback)
+    const resolved = await this.resolveEffectiveUser(cleanUserId, orgId, email);
+    if (!resolved) {
       throw new Error('User not found');
     }
 
     // 2. Query project_members with organization filter via relation in a single efficient query
     const memberships = await prisma.projectMember.findMany({
       where: {
-        user_id: cleanUserId,
+        user_id: resolved.pm_user_id,
         project: { organization_id: orgId },
       },
       select: {
@@ -1299,6 +1733,8 @@ export class ProjectService {
 
     return {
       user_id: cleanUserId,
+      pm_user_id: resolved.pm_user_id,
+      mapping_source: resolved.mapping_source,
       project_ids: projectIds,
       total: projectIds.length,
     };

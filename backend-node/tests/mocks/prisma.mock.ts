@@ -47,6 +47,7 @@ export const mockPrisma: any = {
   actionItem: createModelMock(),
   auditLog: createModelMock(),
   workItemExtensionRequest: createModelMock(),
+  userIdentityMapping: createModelMock(),
   $transaction: jest.fn(async (arg: any) => {
     if (typeof arg === 'function') {
       return arg(mockPrisma);

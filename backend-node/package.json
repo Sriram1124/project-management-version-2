@@ -16,7 +16,9 @@
     "migrate:project-files:verify": "tsx src/scripts/migrate-project-files.ts --verify-only",
     "reset:interns:dry-run": "tsx src/scripts/bulk-reset-intern-passwords.ts",
     "reset:interns:execute": "tsx src/scripts/bulk-reset-intern-passwords.ts --execute",
-    "postinstall": "prisma generate"
+    "postinstall": "prisma generate",
+    "reconcile:identities:dry-run": "tsx src/scripts/reconcile-identities.ts",
+    "reconcile:identities:execute": "tsx src/scripts/reconcile-identities.ts --execute"
   },
   "keywords": [],
   "author": "",

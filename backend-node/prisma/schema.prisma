@@ -28,6 +28,7 @@ model Organization {
   work_policy   OrganizationWorkPolicy?
   audit_logs    AuditLog[]
   extension_requests WorkItemExtensionRequest[]
+  identity_mappings  UserIdentityMapping[]
 
   @@map("organizations")
 }
@@ -88,6 +89,7 @@ model User {
   reviewed_extensions    WorkItemExtensionRequest[] @relation("ExtensionReviewer")
   user_permissions       UserPermission[]
   project_ownerships     ProjectOwner[]          @relation("ProjectOwners")
+  identity_mappings      UserIdentityMapping[]
 
   @@unique([organization_id, user_code])
   @@index([cohort_id])
@@ -703,4 +705,22 @@ model WorkItemExtensionRequest {
   @@index([status])
   @@index([task_id, status])
   @@map("work_item_extension_requests")
+}
+
+model UserIdentityMapping {
+  id              String   @id @default(uuid())
+  organization_id String
+  mirai_user_id   String
+  pm_user_id      String
+  created_at      DateTime @default(now())
+  updated_at      DateTime @updatedAt
+
+  organization Organization @relation(fields: [organization_id], references: [id], onDelete: Cascade)
+  pm_user      User         @relation(fields: [pm_user_id], references: [id], onDelete: Cascade)
+
+  @@unique([mirai_user_id])
+  @@unique([pm_user_id])
+  @@index([organization_id])
+  @@index([mirai_user_id, organization_id])
+  @@map("user_identity_mappings")
 }
