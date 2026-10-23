@@ -9,6 +9,7 @@ import {
   invalidateUserSessionCache,
   setUserSessionInCache,
   getUserSessionFromCache,
+  validateStartupConfig,
 } from '../../src/middleware/auth.middleware';
 import { prisma } from '../../src/lib/prisma';
 import { mockPrisma } from '../mocks/prisma.mock';
@@ -669,6 +670,70 @@ describe('Auth Middleware Unit Tests', () => {
       expect(res.json).toHaveBeenCalledWith(
         expect.objectContaining({ error: 'Forbidden: insufficient permissions' })
       );
+    });
+  })
+  describe('Startup Configuration Validation and Security Hardening (SEC-04 & SEC-05)', () => {
+    const originalEnv = { ...process.env };
+
+    afterEach(() => {
+      process.env = { ...originalEnv };
+    });
+
+    it('rejects static service token on general user authenticate middleware with 401', async () => {
+      process.env.PROJECT_MANAGEMENT_SERVICE_TOKEN = 'some-static-token';
+      const { req, res, next } = createMockReqRes({
+        headers: { authorization: 'Bearer some-static-token', 'x-organization-id': 'org-spoof' },
+      });
+
+      await authenticate(req, res, next);
+
+      expect(next).not.toHaveBeenCalled();
+      expect(res.status).toHaveBeenCalledWith(401);
+      expect(res.json).toHaveBeenCalledWith({
+        error: 'Static service tokens cannot be used to authenticate user sessions',
+      });
+    });
+
+    it('validates startup secrets in production: rejects missing or weak access secret', () => {
+      process.env.NODE_ENV = 'production';
+      delete process.env.JWT_ACCESS_SECRET;
+      process.env.PM_SERVICE_JWT_SECRET = 'a'.repeat(32);
+      process.env.JWT_REFRESH_SECRET = 'b'.repeat(32);
+
+      expect(() => validateStartupConfig()).toThrow('FATAL: JWT_ACCESS_SECRET must be configured in production.');
+
+      process.env.JWT_ACCESS_SECRET = 'short';
+      expect(() => validateStartupConfig()).toThrow('FATAL: JWT_ACCESS_SECRET is weak or uses a known placeholder value.');
+    });
+
+    it('validates startup secrets in production: rejects weak, placeholder, or matching service secrets', () => {
+      process.env.NODE_ENV = 'production';
+      process.env.JWT_ACCESS_SECRET = 'a'.repeat(32);
+      process.env.JWT_REFRESH_SECRET = 'b'.repeat(32);
+
+      delete process.env.PM_SERVICE_JWT_SECRET;
+      expect(() => validateStartupConfig()).toThrow('FATAL: PM_SERVICE_JWT_SECRET must be configured in production.');
+
+      process.env.PM_SERVICE_JWT_SECRET = 'too-short-key';
+      expect(() => validateStartupConfig()).toThrow('FATAL: PM_SERVICE_JWT_SECRET must be at least 32 bytes and cannot use placeholder values.');
+
+      process.env.PM_SERVICE_JWT_SECRET = 'a'.repeat(32); // Same as access secret!
+      expect(() => validateStartupConfig()).toThrow('FATAL: PM_SERVICE_JWT_SECRET cannot be equal to JWT_ACCESS_SECRET.');
+    });
+
+    it('validates startup secrets in production: rejects weak or reused refresh secrets', () => {
+      process.env.NODE_ENV = 'production';
+      process.env.JWT_ACCESS_SECRET = 'a'.repeat(32);
+      process.env.PM_SERVICE_JWT_SECRET = 'b'.repeat(32);
+
+      delete process.env.JWT_REFRESH_SECRET;
+      expect(() => validateStartupConfig()).toThrow('FATAL: JWT_REFRESH_SECRET must be configured in production.');
+
+      process.env.JWT_REFRESH_SECRET = 'refresh_secret'; // Placeholder!
+      expect(() => validateStartupConfig()).toThrow('FATAL: JWT_REFRESH_SECRET is weak or uses a known placeholder value.');
+
+      process.env.JWT_REFRESH_SECRET = 'a'.repeat(32); // Reused access secret!
+      expect(() => validateStartupConfig()).toThrow('FATAL: JWT_REFRESH_SECRET cannot be equal to JWT_ACCESS_SECRET.');
     });
   });
 });

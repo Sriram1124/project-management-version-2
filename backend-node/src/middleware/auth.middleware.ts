@@ -2,16 +2,12 @@ import { Request, Response, NextFunction } from 'express';
 import jwt from 'jsonwebtoken';
 import { prisma } from '../lib/prisma';
 
-export const getServiceJwtSecret = (): string => {
-  const secret = process.env.PM_SERVICE_JWT_SECRET;
-  if (!secret) {
-    if (process.env.NODE_ENV === 'production') {
-      throw new Error('FATAL: PM_SERVICE_JWT_SECRET is required in production.');
-    }
-    throw new Error('FATAL: PM_SERVICE_JWT_SECRET must be configured.');
-  }
-  return secret;
-};
+import {
+  authenticateMiraiService,
+  getServiceJwtSecret,
+} from '../../../mirai-adapter/src/authentication/service-auth.middleware';
+
+export { authenticateMiraiService, getServiceJwtSecret };
 
 export const getAccessSecret = (): string => {
   const secret = process.env.JWT_ACCESS_SECRET;
@@ -24,13 +20,68 @@ export const getAccessSecret = (): string => {
   return secret;
 };
 
+const WEAK_PLACEHOLDERS = new Set([
+  'access_secret',
+  'refresh_secret',
+  'service_secret',
+  'secret',
+  'password',
+  'your-secret-key',
+  'dedicated-service-jwt-secret',
+  '123456',
+  'changeme',
+]);
+
 export function validateStartupConfig(): void {
-  if (process.env.NODE_ENV === 'production') {
-    if (!process.env.JWT_ACCESS_SECRET) {
+  const isProd = process.env.NODE_ENV === 'production';
+  const isTest = process.env.NODE_ENV === 'test';
+
+  if (isTest) {
+    return;
+  }
+
+  // 1. JWT_ACCESS_SECRET validation
+  const accessSecret = process.env.JWT_ACCESS_SECRET;
+  if (!accessSecret) {
+    if (isProd) {
       throw new Error('FATAL: JWT_ACCESS_SECRET must be configured in production.');
     }
-    if (!process.env.PM_SERVICE_JWT_SECRET) {
+  } else {
+    if (isProd && (accessSecret.length < 32 || WEAK_PLACEHOLDERS.has(accessSecret.toLowerCase()))) {
+      throw new Error('FATAL: JWT_ACCESS_SECRET is weak or uses a known placeholder value.');
+    }
+  }
+
+  // 2. PM_SERVICE_JWT_SECRET validation
+  const serviceSecret = process.env.PM_SERVICE_JWT_SECRET;
+  if (!serviceSecret) {
+    if (isProd) {
       throw new Error('FATAL: PM_SERVICE_JWT_SECRET must be configured in production.');
+    }
+  } else {
+    if (serviceSecret.length < 32 || WEAK_PLACEHOLDERS.has(serviceSecret.toLowerCase())) {
+      throw new Error('FATAL: PM_SERVICE_JWT_SECRET must be at least 32 bytes and cannot use placeholder values.');
+    }
+    if (accessSecret && serviceSecret === accessSecret) {
+      throw new Error('FATAL: PM_SERVICE_JWT_SECRET cannot be equal to JWT_ACCESS_SECRET.');
+    }
+  }
+
+  // 3. JWT_REFRESH_SECRET validation
+  const refreshSecret = process.env.JWT_REFRESH_SECRET;
+  if (!refreshSecret) {
+    if (isProd) {
+      throw new Error('FATAL: JWT_REFRESH_SECRET must be configured in production.');
+    }
+  } else {
+    if (isProd && (refreshSecret.length < 32 || WEAK_PLACEHOLDERS.has(refreshSecret.toLowerCase()))) {
+      throw new Error('FATAL: JWT_REFRESH_SECRET is weak or uses a known placeholder value.');
+    }
+    if (accessSecret && refreshSecret === accessSecret) {
+      throw new Error('FATAL: JWT_REFRESH_SECRET cannot be equal to JWT_ACCESS_SECRET.');
+    }
+    if (serviceSecret && refreshSecret === serviceSecret) {
+      throw new Error('FATAL: JWT_REFRESH_SECRET cannot be equal to PM_SERVICE_JWT_SECRET.');
     }
   }
 }
@@ -47,8 +98,7 @@ const USER_CACHE_TTL_MS = 30_000;
 // In-flight lookup deduplication to prevent database connection spikes/stampedes under concurrent requests
 const inFlightUserLookups = new Map<string, Promise<{ user: any; dbDuration: number }>>();
 
-let cachedDefaultOrgId: string | null = null;
-let cachedDefaultOrgExpiry = 0;
+
 
 export function invalidateUserSessionCache(userId?: string): void {
   if (userId) {
@@ -83,57 +133,12 @@ export const authenticate = async (req: Request, res: Response, next: NextFuncti
 
     const token = authHeader.split(' ')[1];
 
-    // ── Machine-to-Machine (M2M) Static Service Token Verification ───────────────
-    const serviceToken = process.env.PROJECT_MANAGEMENT_SERVICE_TOKEN || process.env.INTERNAL_SERVICE_TOKEN;
-    if (serviceToken && token === serviceToken) {
-      if (process.env.NODE_ENV === 'production') {
-        (req as any)._authDuration = performance.now() - authStart;
-        res.status(401).json({ error: 'Static service tokens are disabled in production' });
-        return;
-      }
-      let orgId = (req.headers['x-organization-id'] as string) || null;
-      if (!orgId) {
-        (req as any)._authDuration = performance.now() - authStart;
-        res.status(403).json({ error: 'Missing required X-Organization-Id header for service context' });
-        return;
-      }
-
-      const validOrg = await prisma.organization.findFirst({
-        where: { id: orgId, is_active: true },
-        select: { id: true },
-      });
-      if (!validOrg) {
-        (req as any)._authDuration = performance.now() - authStart;
-        res.status(403).json({ error: 'Organization not found or inactive' });
-        return;
-      }
-      const serviceUser = {
-        id: 'service:mirai',
-        name: 'MIRAI Service Client',
-        email: 'service@mirai.internal',
-        role: 'SERVICE',
-        is_active: true,
-        organization_id: orgId,
-        roles: [
-          {
-            role: {
-              name: 'SERVICE',
-              permissions: [
-                { permission: { name: 'PROJECT_READ' } },
-                { permission: { name: 'USER_READ' } },
-              ],
-            },
-          },
-        ],
-        user_permissions: [
-          { permission: { id: 'p_project_read', name: 'PROJECT_READ' } },
-          { permission: { id: 'p_user_read', name: 'USER_READ' } },
-        ],
-      };
-      (req as any).user = { userId: serviceUser.id, role: 'SERVICE', organization_id: orgId, isService: true };
-      (req as any).fullUser = serviceUser;
+    // Static service tokens are rejected for user endpoints
+    const staticToken = process.env.PROJECT_MANAGEMENT_SERVICE_TOKEN || process.env.INTERNAL_SERVICE_TOKEN;
+    if (staticToken && token === staticToken) {
       (req as any)._authDuration = performance.now() - authStart;
-      return next();
+      res.status(401).json({ error: 'Static service tokens cannot be used to authenticate user sessions' });
+      return;
     }
 
     let accessSecret: string;
@@ -309,164 +314,6 @@ export const authenticate = async (req: Request, res: Response, next: NextFuncti
     }
 
     res.status(500).json({ error: 'Internal server error during authentication' });
-  }
-};
-
-/**
- * Dedicated M2M Authentication Middleware for MIRAI Service-to-Service Endpoints (/internal/mirai/v1)
- * Enforces:
- * 1. Dedicated PM_SERVICE_JWT_SECRET verification (tokens signed with JWT_ACCESS_SECRET fail signature)
- * 2. Static tokens rejected in production with 401
- * 3. Issuer strictly 'mirai-django'
- * 4. Audience strictly 'pm-membership-api'
- * 5. Scope strictly includes 'membership:read' (no PROJECT_READ alternative)
- * 6. Expiration (exp) mandatory, lifetime <= 5m (300s)
- * 7. Tenant organization strictly from token org claim (X-Organization-Id header ignored)
- */
-export const authenticateMiraiService = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
-  const authStart = performance.now();
-
-  try {
-    const authHeader = req.headers.authorization;
-    if (!authHeader || !authHeader.startsWith('Bearer ')) {
-      (req as any)._authDuration = performance.now() - authStart;
-      res.status(401).json({ error: 'Missing or invalid authorization header' });
-      return;
-    }
-
-    const token = authHeader.split(' ')[1];
-
-    // 1. Static Service Token Check - Rejected in production (401) and disallowed for MIRAI service endpoints
-    const staticToken = process.env.PROJECT_MANAGEMENT_SERVICE_TOKEN || process.env.INTERNAL_SERVICE_TOKEN;
-    if (staticToken && token === staticToken) {
-      (req as any)._authDuration = performance.now() - authStart;
-      if (process.env.NODE_ENV === 'production') {
-        res.status(401).json({ error: 'Static service tokens are disabled in production' });
-        return;
-      }
-      res.status(401).json({ error: 'Static service tokens are disabled for MIRAI endpoints' });
-      return;
-    }
-
-    // 2. Machine-to-Machine JWT Verification with dedicated PM_SERVICE_JWT_SECRET
-    let serviceSecret: string;
-    try {
-      serviceSecret = getServiceJwtSecret();
-    } catch (err: any) {
-      (req as any)._authDuration = performance.now() - authStart;
-      res.status(500).json({ error: err.message });
-      return;
-    }
-
-    let payload: any;
-    try {
-      payload = jwt.verify(token, serviceSecret, {
-        issuer: 'mirai-django',
-        audience: 'pm-membership-api',
-        algorithms: ['HS256'],
-        maxAge: '5m',
-      });
-    } catch (jwtError: any) {
-      (req as any)._authDuration = performance.now() - authStart;
-      res.status(401).json({ error: `Invalid service token: ${jwtError.message}` });
-      return;
-    }
-
-    // 3. Strict Expiration & Lifetime Check (iat and exp mandatory, lifetime <= 5m / 300s)
-    if (typeof payload.exp !== 'number') {
-      (req as any)._authDuration = performance.now() - authStart;
-      res.status(401).json({ error: 'Missing token expiration claim (exp)' });
-      return;
-    }
-
-    if (typeof payload.iat !== 'number') {
-      (req as any)._authDuration = performance.now() - authStart;
-      res.status(401).json({ error: 'Missing token issued-at claim (iat)' });
-      return;
-    }
-
-    const nowSec = Math.floor(Date.now() / 1000);
-    if (payload.iat > nowSec + 5) {
-      (req as any)._authDuration = performance.now() - authStart;
-      res.status(401).json({ error: 'Token issued in the future (iat)' });
-      return;
-    }
-
-    if (payload.exp <= payload.iat) {
-      (req as any)._authDuration = performance.now() - authStart;
-      res.status(401).json({ error: 'Token expiration must be after issued at time' });
-      return;
-    }
-
-    if (payload.exp - payload.iat > 300) {
-      (req as any)._authDuration = performance.now() - authStart;
-      res.status(401).json({ error: 'Token lifetime exceeds maximum allowed 5 minutes (300s)' });
-      return;
-    }
-
-    // 4. Strict Scope Enforcement (must contain membership:read; no PROJECT_READ alternative)
-    if (!payload.scope || typeof payload.scope !== 'string') {
-      (req as any)._authDuration = performance.now() - authStart;
-      res.status(403).json({ error: 'Missing or invalid scope claim in service token' });
-      return;
-    }
-
-    const scopes = payload.scope.split(' ');
-    if (!scopes.includes('membership:read')) {
-      (req as any)._authDuration = performance.now() - authStart;
-      res.status(403).json({ error: 'Insufficient token scope: requires membership:read' });
-      return;
-    }
-
-    // 5. Tenant Validation (strictly from canonical token claim payload.org; X-Organization-Id header is completely ignored)
-    const orgId = payload.org;
-    if (!orgId || typeof orgId !== 'string') {
-      (req as any)._authDuration = performance.now() - authStart;
-      res.status(403).json({ error: 'Missing canonical organization claim (org) in service token' });
-      return;
-    }
-
-    const validOrg = await prisma.organization.findFirst({
-      where: { id: orgId, is_active: true },
-      select: { id: true },
-    });
-
-    if (!validOrg) {
-      (req as any)._authDuration = performance.now() - authStart;
-      res.status(403).json({ error: 'Organization not found or inactive' });
-      return;
-    }
-
-    const serviceUser = {
-      id: payload.userId || 'service:mirai',
-      name: payload.name || 'MIRAI Service Account',
-      email: payload.email || 'service@mirai.internal',
-      role: 'SERVICE',
-      is_active: true,
-      organization_id: validOrg.id,
-      roles: [
-        {
-          role: {
-            name: 'SERVICE',
-            permissions: [
-              { permission: { name: 'PROJECT_READ' } },
-            ],
-          },
-        },
-      ],
-      user_permissions: [
-        { permission: { id: 'p_project_read', name: 'PROJECT_READ' } },
-      ],
-    };
-
-    (req as any).user = { userId: serviceUser.id, role: 'SERVICE', organization_id: validOrg.id, isService: true };
-    (req as any).fullUser = serviceUser;
-    (req as any)._authDuration = performance.now() - authStart;
-    return next();
-  } catch (err: any) {
-    (req as any)._authDuration = performance.now() - authStart;
-    res.status(500).json({ error: err.message || 'Authentication error' });
-    return;
   }
 };
 

@@ -88,17 +88,27 @@ describe('MIRAI–PM User Identity Mapping & Reconciliation Tests', () => {
       expect(resolved?.mapping_source).toBe('mapped');
     });
 
-    it('should fallback to direct PM user lookup when no mapping exists and UUID matches active PM user', async () => {
-      mockPrisma.userIdentityMapping.findFirst.mockResolvedValueOnce(null); // No mapping for mirai_user_id
-      mockPrisma.user.findFirst.mockResolvedValueOnce(mockPmUser); // Matches direct PM user
-      mockPrisma.userIdentityMapping.findFirst.mockResolvedValueOnce(null); // No collision
+    it('Decision B Test 1: MIRAI and PM IDs are equal but no mapping row exists -> returns null (unmapped)', async () => {
+      mockPrisma.userIdentityMapping.findFirst.mockResolvedValueOnce(null);
 
       const resolved = await ProjectService.resolveEffectiveUser(mockPmUser.id, orgId);
 
-      expect(resolved).not.toBeNull();
-      expect(resolved?.pm_user_id).toBe(mockPmUser.id);
-      expect(resolved?.mirai_user_id).toBe(mockPmUser.id);
-      expect(resolved?.mapping_source).toBe('direct');
+      expect(resolved).toBeNull();
+      expect(mockPrisma.userIdentityMapping.findFirst).toHaveBeenCalledWith({
+        where: {
+          mirai_user_id: mockPmUser.id,
+          organization_id: orgId,
+        },
+        select: expect.anything(),
+      });
+    });
+
+    it('Decision B Test 2: MIRAI and PM IDs differ and no mapping exists -> returns null (unmapped)', async () => {
+      mockPrisma.userIdentityMapping.findFirst.mockResolvedValueOnce(null);
+
+      const resolved = await ProjectService.resolveEffectiveUser('completely-different-mirai-uuid', orgId);
+
+      expect(resolved).toBeNull();
     });
 
     it('negative test: should fail closed (return null) if mapped PM user is inactive', async () => {
@@ -129,19 +139,14 @@ describe('MIRAI–PM User Identity Mapping & Reconciliation Tests', () => {
       expect(resolved).toBeNull();
     });
 
-    it('negative test: collision rejection — should fail closed if direct PM user is mapped to a different MIRAI UUID', async () => {
-      // Input is direct PM user ID, no mapping exists with mirai_user_id = mockPmUser.id
-      mockPrisma.userIdentityMapping.findFirst.mockResolvedValueOnce(null);
-      // Direct PM user exists
-      mockPrisma.user.findFirst.mockResolvedValueOnce(mockPmUser);
-      // But a collision exists: this PM user is already claimed by another MIRAI user
-      mockPrisma.userIdentityMapping.findFirst.mockResolvedValueOnce({
-        mirai_user_id: 'different-mirai-uuid-777',
-      });
-
-      const resolved = await ProjectService.resolveEffectiveUser(mockPmUser.id, orgId);
-
-      expect(resolved).toBeNull();
+    it('Decision B Test 5: Unauthorized or malformed identity cannot obtain membership access', async () => {
+      expect(await ProjectService.resolveEffectiveUser('', orgId)).toBeNull();
+      expect(await ProjectService.resolveEffectiveUser('   ', orgId)).toBeNull();
+      expect(await ProjectService.resolveEffectiveUser('undefined', orgId)).toBeNull();
+      expect(await ProjectService.resolveEffectiveUser(null as any, orgId)).toBeNull();
+      expect(await ProjectService.resolveEffectiveUser(canonicalMiraiId, '')).toBeNull();
+      expect(await ProjectService.resolveEffectiveUser(canonicalMiraiId, '   ')).toBeNull();
+      expect(await ProjectService.resolveEffectiveUser(canonicalMiraiId, null as any)).toBeNull();
     });
 
     it('negative test: should fail closed for unmapped user with non-matching UUID', async () => {
@@ -260,26 +265,15 @@ describe('MIRAI–PM User Identity Mapping & Reconciliation Tests', () => {
       expect(res.body.project_ids).toEqual([]);
     });
 
-    it('GET /users/:mirai_user_id/project-memberships with email query should auto-reconcile unmapped user by normalized email', async () => {
+    it('GET /users/:mirai_user_id/project-memberships with email query must NOT create mapping (GET is strictly read-only SEC-02)', async () => {
       const syntheticMiraiId = 'synthetic-mirai-user-auto-1';
-      const syntheticEmail = 'ALICE@COMPANY.COM'; // Uppercase to test normalization
+      const syntheticEmail = 'ALICE@COMPANY.COM';
 
       mockPrisma.organization.findFirst.mockResolvedValueOnce({ id: orgId, is_active: true });
       // 1. Check existing mapping -> null
       mockPrisma.userIdentityMapping.findFirst.mockResolvedValueOnce(null);
-      // 2. Email lookup in PM DB -> returns mockPmUser
-      mockPrisma.user.findMany.mockResolvedValueOnce([mockPmUser]);
-      // 3. Collision check -> null (no conflict)
-      mockPrisma.userIdentityMapping.findFirst.mockResolvedValueOnce(null);
-      // 4. Create mapping in DB
-      mockPrisma.userIdentityMapping.create.mockResolvedValueOnce({
-        id: 'new-auto-map-1',
-        organization_id: orgId,
-        mirai_user_id: syntheticMiraiId,
-        pm_user_id: mockPmUser.id,
-      });
-      // 5. Query project memberships
-      mockPrisma.projectMember.findMany.mockResolvedValueOnce([{ project_id: 'proj-auto-1' }]);
+      // 2. Direct PM user fallback -> null
+      mockPrisma.user.findFirst.mockResolvedValueOnce(null);
 
       const res = await request(app)
         .get(`/internal/mirai/v1/users/${syntheticMiraiId}/project-memberships?email=${syntheticEmail}`)
@@ -287,16 +281,11 @@ describe('MIRAI–PM User Identity Mapping & Reconciliation Tests', () => {
 
       expect(res.status).toBe(200);
       expect(res.body.mirai_user_id).toBe(syntheticMiraiId);
-      expect(res.body.pm_user_id).toBe(mockPmUser.id);
-      expect(res.body.mapping_status).toBe('mapped');
-      expect(res.body.project_ids).toEqual(['proj-auto-1']);
-      expect(mockPrisma.userIdentityMapping.create).toHaveBeenCalledWith({
-        data: {
-          organization_id: orgId,
-          mirai_user_id: syntheticMiraiId,
-          pm_user_id: mockPmUser.id,
-        },
-      });
+      expect(res.body.pm_user_id).toBeNull();
+      expect(res.body.mapping_status).toBe('unmapped');
+      expect(res.body.project_ids).toEqual([]);
+      // Critical assertion: GET requests must NEVER mutate or create identity mappings!
+      expect(mockPrisma.userIdentityMapping.create).not.toHaveBeenCalled();
     });
 
     it('POST /identities/reconcile should reconcile existing mapping and return project memberships', async () => {
@@ -753,6 +742,39 @@ describe('MIRAI–PM User Identity Mapping & Reconciliation Tests', () => {
       expect(metadata).not.toHaveProperty('secret');
       expect(metadata).not.toHaveProperty('password');
       expect(metadata).not.toHaveProperty('authorization');
+    });
+
+    it('9. should roll back mapping creation if audit persistence fails inside transaction (SEC-01)', async () => {
+      mockPrisma.userIdentityMapping.findFirst.mockResolvedValueOnce(null);
+      mockPrisma.user.findMany.mockResolvedValueOnce([mockPmUser]);
+      mockPrisma.userIdentityMapping.findFirst.mockResolvedValueOnce(null);
+
+      // Force transactional auditLog.create to reject with an error
+      mockPrisma.$transaction.mockImplementationOnce(async (callback: any) => {
+        const mockTx = {
+          userIdentityMapping: {
+            create: jest.fn().mockResolvedValue({
+              id: 'map-rolled-back-id',
+              organization_id: orgId,
+              mirai_user_id: canonicalMiraiId,
+              pm_user_id: mockPmUser.id,
+            }),
+          },
+          auditLog: {
+            create: jest.fn().mockRejectedValue(new Error('DATABASE_DISK_FULL: audit write failed')),
+          },
+        };
+        return await callback(mockTx);
+      });
+
+      // Verification: reconciliation with audit failure rolls back and catches conflict/abort
+      mockPrisma.userIdentityMapping.findFirst.mockResolvedValueOnce(null);
+
+      const result = await ProjectService.reconcileIdentity(canonicalMiraiId, mockPmUser.email, callerUser);
+
+      // Expect conflict/fail-closed because the transaction could not commit the mapping with audit
+      expect(result.mapping_status).toBe('conflict');
+      expect(result.pm_user_id).toBeNull();
     });
   });
 });

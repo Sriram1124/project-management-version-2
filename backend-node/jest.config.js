@@ -1,8 +1,13 @@
 module.exports = {
   preset: 'ts-jest',
   testEnvironment: 'node',
-  roots: ['<rootDir>/src', '<rootDir>/tests'],
-  testMatch: ['<rootDir>/tests/**/*.test.ts', '<rootDir>/src/**/*.test.ts'],
+  roots: ['<rootDir>/src', '<rootDir>/tests', '<rootDir>/../mirai-adapter'],
+  testMatch: [
+    '<rootDir>/tests/**/*.test.ts',
+    '<rootDir>/src/**/*.test.ts',
+    '<rootDir>/../mirai-adapter/tests/**/*.test.ts',
+  ],
+  moduleDirectories: ['node_modules', '<rootDir>/node_modules'],
   moduleFileExtensions: ['ts', 'js', 'json', 'node'],
   setupFilesAfterEnv: ['<rootDir>/tests/setup.ts'],
   testTimeout: 15000,

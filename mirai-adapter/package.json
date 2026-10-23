@@ -1,0 +1,15 @@
+{
+  "name": "mirai-adapter",
+  "version": "1.0.0",
+  "description": "MIRAI ↔ PM Project Membership Integration Adapter",
+  "main": "src/index.ts",
+  "types": "src/index.ts",
+  "scripts": {
+    "test": "jest --runInBand",
+    "typecheck": "tsc --noEmit"
+  },
+  "keywords": ["mirai", "project-membership", "adapter", "identity-mapping"],
+  "author": "",
+  "license": "ISC"
+}
+

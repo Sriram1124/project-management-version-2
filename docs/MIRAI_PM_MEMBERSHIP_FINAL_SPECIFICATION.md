@@ -1,5 +1,8 @@
 # Engineering Specification: MIRAI Project Management Membership & Adapter Integration
 
+> [!NOTE]
+> **Canonical Location:** The authoritative version of this integration specification is maintained in [mirai-adapter/docs/MIRAI_PM_MEMBERSHIP_FINAL_SPECIFICATION.md](../mirai-adapter/docs/MIRAI_PM_MEMBERSHIP_FINAL_SPECIFICATION.md). This copy is preserved for backwards compatibility with existing repository links.
+
 Author: Sriram (Identity Mapping & PM Backend Lead)  
 Co-Owner / Integration Adapter: Jangeti Chaithanya Sai  
 Target Repository: https://github.com/krisshhjain/Mirai-Dashboard  
@@ -451,21 +454,34 @@ class PMProjectMembershipResolver:
 
 ---
 
-## 7. Verification & Engineering Evidence
+## 7. Verification & Engineering Evidence (Approved Identity Decisions & Hardening)
 
-| Verification Area | Scope | Result | Status |
-|---|---|---|---|
-| PostgreSQL Schema & Identity Mappings | `public.user_identity_mappings`, `public.project_members`, `projects.id` UUID TEXT | Fully Implemented & Verified in `backend-node/prisma/schema.prisma` and migration `20261023084000_add_user_identity_mappings` | READY & VERIFIED |
-| Identity Reconciliation Endpoint | `POST /internal/mirai/v1/identities/reconcile` | Implemented, 100% covered in real HTTP tests with email auto-mapping, idempotency, and conflict rejection | READY & VERIFIED |
-| Node.js Service Routes | `GET /internal/mirai/v1/...` in `backend-node` | Implemented & Verified with dedicated `authenticateMiraiService` middleware | READY & VERIFIED |
-| M2M JWT Authentication (Separate Key) | Dedicated `PM_SERVICE_JWT_SECRET`, `iss: mirai-django`, `aud: pm-membership-api`, `scope: membership:read`, `org`, `exp <= 5m` | Implemented with zero fallback secrets; user JWTs and static tokens rejected | READY & VERIFIED |
-| Negative Security Checks | Missing/wrong `iss`, `aud`, `scope`, `exp`, `iat`, user tokens as service tokens, lifetime > 5m, static token in prod, future `iat`, unapproved algorithms, header `org` bypass | Tested & Verified (All reject with 401/403) | READY & VERIFIED |
-| Inactive User Handling | `is_active: false` PM user returns `mapping_status: "unmapped"` and empty memberships | Tested & Verified | READY & VERIFIED |
-| Fail-Closed Revocation | Removing user from `project_members` immediately returns `is_member: false` | Tested & Verified | READY & VERIFIED |
-| TypeScript Compiler | `npm run typecheck` (`tsc --noEmit`) in `backend-node` | 0 errors (Exit code 0) | PASS |
-| User Identity Mapping Unit Tests | `backend-node/tests/unit/user-identity-mapping.test.ts` | 21 / 21 tests passed | PASS |
-| Integration Scenario Tests | `backend-node/tests/unit/integration-scenarios.test.ts` | 4 / 4 tests passed | PASS |
-| Integration Adapter Tests | `backend-node/tests/unit/mirai-project-management.adapter.test.ts` | 33 / 33 tests passed | PASS |
-| Real HTTP End-to-End Suite | `test-http-e2e.ts` (Real HTTP server + network socket + isolated PostgreSQL persistence) | 100% verified over wire on port 3099 against `pms_test_db` | PASS |
-| Live DB Manual Verification | Non-destructive read-only verification | 0 real users or production mappings touched | PASS |
+### Summary of Approved Invariants & Architecture
+1. **Decision A — Read-Only GET Endpoints**: Membership GET routes (/internal/mirai/v1/users/:mirai_user_id/project-memberships and /internal/mirai/v1/users/:mirai_user_id/projects/:projectId/membership) never mutate or create identity mappings. Query parameters (email) and headers (x-user-email) on GET are strictly read-only.
+2. **Decision B — Complete Removal of Direct-ID Fallback**: The persistent public.user_identity_mappings table is the **sole** identity resolution mechanism. Direct UUID equivalence between MIRAI and PM backend is completely eliminated. If no mapping row exists, the system returns unmapped (failing closed).
+3. **Dedicated Reconciliation Lifecycle**: Identity mapping mutations occur exclusively via authenticated POST /internal/mirai/v1/identities/reconcile (or the administrative migration script 
+econcile-identities.ts), recording audited mapping events.
+4. **Mandatory Audit Atomicity (SEC-01)**: When a transaction client is provided to AuditService.record, audit insert failures are never caught or suppressed; they rethrow to ensure complete database transaction rollback of mapping mutations.
+5. **Legacy Route & Secret Hardening (SEC-04 & SEC-05)**:
+   - Static service tokens and service JWTs are rejected with HTTP 401 on user endpoints.
+   - User tokens signed with JWT_ACCESS_SECRET are rejected with HTTP 401 on internal service routes.
+   - alidateStartupConfig() runs on all non-test entry points (including pi/index.ts). It enforces a 32-character minimum, rejects known placeholder values, and enforces mutual distinctness between JWT_ACCESS_SECRET, JWT_REFRESH_SECRET, and PM_SERVICE_JWT_SECRET.
+6. **Django Implementation Alignment (INT-01 & INT-02)**:
+   - Django adapter resides in ackend/mirai_adapters/pm_resolver.py on branch eature/project-management-adapter.
+   - Adheres to the Django MembershipResolver protocol (member_ids(user) -> frozenset[UUID]).
+   - Implements 
+econcile_user(self, user, email=None) to call POST /internal/mirai/v1/identities/reconcile with audience-restricted service JWTs.
 
+### Verified Test Results
+
+| Test Suite | Repository & Path | Tests Run | Result | Evidence |
+|---|---|---|---|---|
+| PM TypeScript Typecheck | project-management-version-2 (ackend-node) | 	sc --noEmit | **0 errors (Exit 0)** | Verified clean compilation |
+| User Identity Mapping & Decision B Tests | ackend-node/tests/unit/user-identity-mapping.test.ts | **22 tests** | **22 passed (100%)** | Verified Decision A, Decision B (cases 1-5), and transactional audit rollback |
+| Auth Middleware & Secret Hardening | ackend-node/tests/unit/auth.middleware.test.ts | **41 tests** | **41 passed (100%)** | Verified startup validation, secret separation, and static token rejection |
+| Project Membership Service & Route Tests | ackend-node/tests/unit/project-membership.service.test.ts | **52 tests** | **52 passed (100%)** | Verified service JWT verification, fail-closed revocation, and route contracts |
+| PM Integration Adapter Tests | ackend-node/tests/unit/mirai-project-management.adapter.test.ts | **46 tests** | **46 passed (100%)** | Verified TypeScript adapter boundary enforcement and error handling |
+| Integration Scenario Tests | ackend-node/tests/unit/integration-scenarios.test.ts | **4 tests** | **4 passed (100%)** | Verified Scenarios B and C synthetic user onboarding |
+| **PM Backend Total** | ackend-node | **165 tests** | **165 passed (100%)** | **ALL PASSED** |
+| Django PM Resolver Unit Tests | Mirai-Dashboard/backend/tests/test_pm_resolver.py | **22 tests** | **22 passed (100%)** | Verified protocol, system checks, claims, fail-closed, timeout cap, and 
+econcile_user |

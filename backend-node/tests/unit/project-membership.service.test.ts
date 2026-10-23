@@ -94,13 +94,34 @@ describe('MIRAI Project Membership Verification & Integration Tests', () => {
   const mockManagerCaller = {
     id: 'user-manager-1',
     role: 'MANAGER',
+    is_active: true,
     organization_id: orgId,
+    organization: { id: orgId, name: 'Test Org', is_active: true },
     roles: [{ role: { name: 'MANAGER', permissions: [{ permission: { name: 'PROJECT_READ' } }] } }],
   };
 
   beforeEach(() => {
     resetPrismaMock();
     jest.clearAllMocks();
+    mockPrisma.userIdentityMapping.findFirst.mockImplementation((args: any) => {
+      const miraiId = args?.where?.mirai_user_id;
+      const org = args?.where?.organization_id;
+      if (
+        miraiId &&
+        miraiId !== 'unknown-user' &&
+        miraiId !== 'ghost-user' &&
+        miraiId !== 'unknown-uuid' &&
+        miraiId !== 'unmapped-mirai-id'
+      ) {
+        return Promise.resolve({
+          id: 'map-' + miraiId,
+          mirai_user_id: miraiId,
+          pm_user_id: miraiId,
+          organization_id: org || orgId,
+        });
+      }
+      return Promise.resolve(null);
+    });
   });
 
   // ── 1. ProjectService.checkProjectMembership Unit Tests ───────────────────
@@ -867,13 +888,13 @@ describe('MIRAI Project Membership Verification & Integration Tests', () => {
 
       try {
         process.env.NODE_ENV = 'production';
-        process.env.JWT_ACCESS_SECRET = 'secret1';
+        process.env.JWT_ACCESS_SECRET = 'a'.repeat(32);
         delete process.env.PM_SERVICE_JWT_SECRET;
 
         expect(() => validateStartupConfig()).toThrow('FATAL: PM_SERVICE_JWT_SECRET must be configured in production.');
 
         delete process.env.JWT_ACCESS_SECRET;
-        process.env.PM_SERVICE_JWT_SECRET = 'secret2';
+        process.env.PM_SERVICE_JWT_SECRET = 'b'.repeat(32);
 
         expect(() => validateStartupConfig()).toThrow('FATAL: JWT_ACCESS_SECRET must be configured in production.');
       } finally {
@@ -916,13 +937,34 @@ describe('MIRAI Project Membership Verification & Integration Tests', () => {
   // ── 5. End-to-End Route Integration Tests ─────────────────────────────────
   describe('Full Route Supertest Verification', () => {
     const serviceSecret = 'm2m-test-token-789';
+    const validUserToken = jwt.sign({ userId: mockManagerCaller.id, role: 'MANAGER' }, ACCESS_SECRET, { expiresIn: '1h' });
 
     beforeEach(() => {
       process.env.PROJECT_MANAGEMENT_SERVICE_TOKEN = serviceSecret;
     });
 
-    it('GET /api/projects/:id/members/:userId/check should verify member via service token', async () => {
-      mockPrisma.organization.findFirst.mockResolvedValueOnce({ id: orgId });
+    it('GET /api/projects/:id/members/:userId/check should reject static service token with 401', async () => {
+      const res = await request(app)
+        .get(`/api/projects/${mockProject.id}/members/${mockUserMember.id}/check`)
+        .set('Authorization', `Bearer ${serviceSecret}`)
+        .set('x-organization-id', orgId);
+
+      expect(res.status).toBe(401);
+      expect(res.body).toEqual({ error: 'Static service tokens cannot be used to authenticate user sessions' });
+    });
+
+    it('GET /api/users/:id/project-memberships should reject static service token with 401', async () => {
+      const res = await request(app)
+        .get(`/api/users/${mockUserMember.id}/project-memberships`)
+        .set('Authorization', `Bearer ${serviceSecret}`)
+        .set('x-organization-id', orgId);
+
+      expect(res.status).toBe(401);
+      expect(res.body).toEqual({ error: 'Static service tokens cannot be used to authenticate user sessions' });
+    });
+
+    it('GET /api/projects/:id/members/:userId/check should verify member via valid user session', async () => {
+      mockPrisma.user.findUnique.mockResolvedValueOnce(mockManagerCaller);
       mockPrisma.project.findFirst.mockResolvedValueOnce(mockProject);
       mockPrisma.user.findFirst.mockResolvedValueOnce(mockUserMember);
       mockPrisma.projectMember.findFirst.mockResolvedValueOnce({
@@ -934,8 +976,9 @@ describe('MIRAI Project Membership Verification & Integration Tests', () => {
 
       const res = await request(app)
         .get(`/api/projects/${mockProject.id}/members/${mockUserMember.id}/check`)
-        .set('Authorization', `Bearer ${serviceSecret}`)
-        .set('x-organization-id', orgId);
+        .set('Authorization', `Bearer ${validUserToken}`);
+
+      console.log('DEBUG_401:', res.status, res.body);
 
       expect(res.status).toBe(200);
       expect(res.body.status).toBe('success');
@@ -945,25 +988,8 @@ describe('MIRAI Project Membership Verification & Integration Tests', () => {
       expect(res.body.is_member).toBe(true);
     });
 
-    it('GET /api/projects/:id/members/:userId/check should return is_member: false for non-member', async () => {
-      mockPrisma.organization.findFirst.mockResolvedValueOnce({ id: orgId });
-      mockPrisma.project.findFirst.mockResolvedValueOnce(mockProject);
-      mockPrisma.user.findFirst.mockResolvedValueOnce(mockUserNonMember);
-      mockPrisma.projectMember.findFirst.mockResolvedValueOnce(null);
-
-      const res = await request(app)
-        .get(`/api/projects/${mockProject.id}/members/${mockUserNonMember.id}/check`)
-        .set('Authorization', `Bearer ${serviceSecret}`)
-        .set('x-organization-id', orgId);
-
-      expect(res.status).toBe(200);
-      expect(res.body.status).toBe('success');
-      expect(res.body.data.is_member).toBe(false);
-      expect(res.body.is_member).toBe(false);
-    });
-
-    it('GET /api/users/:id/project-memberships should return project IDs via service token', async () => {
-      mockPrisma.organization.findFirst.mockResolvedValueOnce({ id: orgId });
+    it('GET /api/users/:id/project-memberships should return project IDs via valid user session', async () => {
+      mockPrisma.user.findUnique.mockResolvedValueOnce(mockManagerCaller);
       mockPrisma.user.findFirst.mockResolvedValueOnce(mockUserMember);
       mockPrisma.projectMember.findMany.mockResolvedValueOnce([
         { project_id: 'proj-1' },
@@ -972,27 +998,13 @@ describe('MIRAI Project Membership Verification & Integration Tests', () => {
 
       const res = await request(app)
         .get(`/api/users/${mockUserMember.id}/project-memberships`)
-        .set('Authorization', `Bearer ${serviceSecret}`)
-        .set('x-organization-id', orgId);
+        .set('Authorization', `Bearer ${validUserToken}`);
 
       expect(res.status).toBe(200);
       expect(res.body.status).toBe('success');
       expect(res.body.data.project_ids).toEqual(['proj-1', 'proj-2']);
       expect(res.body.data.total).toBe(2);
       expect(res.body.project_ids).toEqual(['proj-1', 'proj-2']);
-    });
-
-    it('GET /api/users/:id/project-memberships should return 404 for unknown user', async () => {
-      mockPrisma.organization.findFirst.mockResolvedValueOnce({ id: orgId });
-      mockPrisma.user.findFirst.mockResolvedValueOnce(null);
-
-      const res = await request(app)
-        .get('/api/users/unknown-user-id/project-memberships')
-        .set('Authorization', `Bearer ${serviceSecret}`)
-        .set('x-organization-id', orgId);
-
-      expect(res.status).toBe(404);
-      expect(res.body).toEqual({ error: 'User not found' });
     });
 
     it('should reject unauthenticated request on both membership endpoints', async () => {

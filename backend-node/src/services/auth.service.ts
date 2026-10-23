@@ -9,7 +9,13 @@ const getAccessSecret = (): string => {
   }
   return secret;
 };
-const REFRESH_SECRET = process.env.JWT_REFRESH_SECRET || 'refresh_secret';
+const getRefreshSecret = (): string => {
+  const secret = process.env.JWT_REFRESH_SECRET;
+  if (!secret) {
+    throw new Error('FATAL: JWT_REFRESH_SECRET must be configured.');
+  }
+  return secret;
+};
 const ACCESS_EXPIRY = process.env.ACCESS_TOKEN_EXPIRY || '7d';
 
 export class AuthService {
@@ -104,7 +110,7 @@ export class AuthService {
 
     const refreshToken = jwt.sign(
       { userId: user.id },
-      REFRESH_SECRET,
+      getRefreshSecret(),
       { expiresIn: '30d' }
     );
     
@@ -158,7 +164,7 @@ export class AuthService {
 
   static async refresh(refreshToken: string, sessionId: string) {
     try {
-      const payload = jwt.verify(refreshToken, REFRESH_SECRET) as any;
+      const payload = jwt.verify(refreshToken, getRefreshSecret()) as any;
       const session = await prisma.userSession.findUnique({
         where: { id: sessionId },
       });

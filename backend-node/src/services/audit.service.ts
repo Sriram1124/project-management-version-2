@@ -58,11 +58,29 @@ export class AuditService {
    * Record a sensitive administrative operation.
    */
   static async record(input: CreateAuditLogInput, tx?: any) {
+    const client = tx || prisma;
+    const sanitizedMeta = input.metadata ? this.sanitizeMetadata(input.metadata) : null;
+    const isValidUuid = typeof input.actorId === 'string' && /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(input.actorId);
+    const safeActorId = isValidUuid ? input.actorId : null;
+
+    if (tx) {
+      // In transactional context (e.g. mapping creation), audit persistence is mandatory and atomic.
+      // Errors MUST propagate so the enclosing database transaction rolls back.
+      return await client.auditLog.create({
+        data: {
+          actor_id: safeActorId,
+          organization_id: input.organizationId || null,
+          action: input.action,
+          target_type: input.targetType,
+          target_id: input.targetId,
+          metadata: sanitizedMeta,
+          ip_address: input.ipAddress || null,
+          user_agent: input.userAgent || null,
+        },
+      });
+    }
+
     try {
-      const client = tx || prisma;
-      const sanitizedMeta = input.metadata ? this.sanitizeMetadata(input.metadata) : null;
-      const isValidUuid = typeof input.actorId === 'string' && /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(input.actorId);
-      const safeActorId = isValidUuid ? input.actorId : null;
       return await client.auditLog.create({
         data: {
           actor_id: safeActorId,

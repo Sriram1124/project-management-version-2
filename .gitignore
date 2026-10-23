@@ -91,3 +91,8 @@ backend-node/inspect_tech_lead.js
 backend-node/sync_tech_lead_role.js
 backend-node/inspect_item.js
 
+# Local file storage and test migration fixtures
+backend-node/storage/
+storage/
+.s3-local-data/
+
