@@ -327,6 +327,3 @@ Before deploying this workspace in an enterprise production environment:
 
 ---
 
-## 📄 License
-
-This project is licensed under the [MIT License](LICENSE).
